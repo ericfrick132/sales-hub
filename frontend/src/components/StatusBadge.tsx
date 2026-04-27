@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import type { LeadStatus } from '../lib/types';
+import { LEAD_STATUS_LABEL, type LeadStatus } from '../lib/types';
 
 const styles: Record<LeadStatus, string> = {
   New: 'bg-slate-100 text-slate-700',
@@ -15,5 +15,5 @@ const styles: Record<LeadStatus, string> = {
 };
 
 export default function StatusBadge({ status }: { status: LeadStatus }) {
-  return <span className={clsx('badge', styles[status])}>{status}</span>;
+  return <span className={clsx('badge', styles[status])}>{LEAD_STATUS_LABEL[status]}</span>;
 }

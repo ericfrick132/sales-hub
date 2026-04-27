@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
-import type { Lead, LeadStatus, Product } from '../lib/types';
+import { LEAD_STATUS_LABEL, type Lead, type LeadStatus, type Product } from '../lib/types';
 import LeadTable from '../components/LeadTable';
 
 const STATUSES: LeadStatus[] = ['Assigned', 'Queued', 'Sent', 'Replied', 'Interested', 'DemoScheduled', 'Closed', 'Lost'];
@@ -55,7 +55,7 @@ export default function MyLeads() {
           <label className="text-xs text-slate-500">Estado</label>
           <select className="input" value={status} onChange={(e) => setStatus(e.target.value as LeadStatus)}>
             <option value="">Todos</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            {STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABEL[s]}</option>)}
           </select>
         </div>
         <div>

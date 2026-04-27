@@ -2,6 +2,19 @@ export type LeadStatus =
   | 'New' | 'Assigned' | 'Queued' | 'Sent' | 'Replied'
   | 'Interested' | 'DemoScheduled' | 'Closed' | 'Lost' | 'Blocked';
 
+export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
+  New: 'Nuevo',
+  Assigned: 'Asignado',
+  Queued: 'En cola',
+  Sent: 'Contactado',
+  Replied: 'Respondió',
+  Interested: 'Interesado',
+  DemoScheduled: 'Demo agendada',
+  Closed: 'Cerrado',
+  Lost: 'Perdido',
+  Blocked: 'Bloqueado'
+};
+
 export type LeadSource =
   | 'GooglePlaces' | 'ApifyGoogleMaps' | 'ApifyMetaAdsLibrary'
   | 'ApifyInstagram' | 'ApifyFacebookPages' | 'Manual'

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
-import type { Lead, LeadStatus } from '../lib/types';
+import { LEAD_STATUS_LABEL, type Lead, type LeadStatus } from '../lib/types';
 import StatusBadge from '../components/StatusBadge';
 
 const STATUSES: LeadStatus[] = ['Assigned', 'Queued', 'Sent', 'Replied', 'Interested', 'DemoScheduled', 'Closed', 'Lost', 'Blocked'];
@@ -116,7 +116,7 @@ export default function LeadDetail() {
           {STATUSES.map((s) => (
             <button key={s} className={`btn ${lead.status === s ? 'bg-brand-600 text-white' : 'bg-white border border-slate-300'}`}
               onClick={() => update(s)}>
-              {s}
+              {LEAD_STATUS_LABEL[s]}
             </button>
           ))}
         </div>
