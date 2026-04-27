@@ -27,7 +27,7 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest req, CancellationToken ct)
     {
-        var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Email == req.Email.ToLowerInvariant(), ct);
+        var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Email.ToLower() == req.Email.ToLowerInvariant(), ct);
         if (seller is null || !seller.IsActive) return Unauthorized();
         if (string.IsNullOrEmpty(seller.PasswordHash) || !BCrypt.Net.BCrypt.Verify(req.Password, seller.PasswordHash))
             return Unauthorized();
@@ -50,7 +50,7 @@ public class AuthController : ControllerBase
                 Audience = new[] { _google.OAuthClientId }
             });
 
-        var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Email == payload.Email.ToLowerInvariant(), ct);
+        var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Email.ToLower() == payload.Email.ToLowerInvariant(), ct);
         if (seller is null || !seller.IsActive) return Unauthorized(new { error = "Email no autorizado" });
 
         seller.GoogleSubject = payload.Subject;
