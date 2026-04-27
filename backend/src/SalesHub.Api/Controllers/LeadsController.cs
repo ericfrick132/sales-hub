@@ -162,6 +162,27 @@ public class LeadsController : ControllerBase
         return ToDto(lead);
     }
 
+    public record SimilarLeadDto(Guid Id, string Name, string ProductKey, string? ProductName, LeadStatus Status, Guid? SellerId, string? SellerName, DateTimeOffset CreatedAt);
+
+    [HttpGet("search")]
+    public async Task<ActionResult<IEnumerable<SimilarLeadDto>>> SearchSimilar([FromQuery] string q, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 3) return new List<SimilarLeadDto>();
+        var needle = $"%{q.Trim()}%";
+        // Sellers see only their own leads (avoid leaking other sellers' lists);
+        // admins see everyone's so they can spot duplicates across the team.
+        var isAdmin = CurrentUser.IsAdmin(User);
+        var callerId = CurrentUser.Id(User);
+        var query = _db.Leads.AsNoTracking().Include(l => l.Product).Include(l => l.Seller)
+            .Where(l => EF.Functions.ILike(l.Name, needle));
+        if (!isAdmin) query = query.Where(l => l.SellerId == callerId);
+        var rows = await query.OrderByDescending(l => l.CreatedAt).Take(8)
+            .Select(l => new SimilarLeadDto(l.Id, l.Name, l.ProductKey, l.Product != null ? l.Product.DisplayName : null,
+                l.Status, l.SellerId, l.Seller != null ? l.Seller.DisplayName : null, l.CreatedAt))
+            .ToListAsync(ct);
+        return rows;
+    }
+
     [HttpPost]
     public async Task<ActionResult<LeadDto>> CreateManual([FromBody] CreateManualLeadRequest req, CancellationToken ct)
     {

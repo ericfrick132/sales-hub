@@ -19,13 +19,20 @@ export default function Layout() {
   if (!user) return null;
   const admin = isAdmin(user);
 
-  const sellerLinks: { to: string; label: string; badge?: number }[] = [
-    { to: '/dashboard', label: 'Mi dashboard' },
-    { to: '/leads', label: 'Mis leads' },
-    { to: '/conversations', label: 'Conversaciones', badge: unread.data },
-    { to: '/pool', label: 'Pool' },
-    { to: '/connect', label: 'WhatsApp' }
-  ];
+  // Sellers see only what they need: load leads, see their reports, manage status.
+  // Admins also get conversations/pool/connect for the full workflow.
+  const sellerLinks: { to: string; label: string; badge?: number }[] = admin
+    ? [
+        { to: '/dashboard', label: 'Mi dashboard' },
+        { to: '/leads', label: 'Mis leads' },
+        { to: '/conversations', label: 'Conversaciones', badge: unread.data },
+        { to: '/pool', label: 'Pool' },
+        { to: '/connect', label: 'WhatsApp' }
+      ]
+    : [
+        { to: '/leads', label: 'Mis leads' },
+        { to: '/dashboard', label: 'Mis reportes' }
+      ];
   const adminLinks: { to: string; label: string; badge?: number }[] = [
     { to: '/admin', label: 'Panel admin' },
     { to: '/sellers', label: 'Vendedores' },

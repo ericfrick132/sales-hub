@@ -2,6 +2,19 @@ export type LeadStatus =
   | 'New' | 'Assigned' | 'Queued' | 'Sent' | 'Replied'
   | 'Interested' | 'DemoScheduled' | 'Closed' | 'Lost' | 'Blocked';
 
+export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
+  GooglePlaces: 'Google Places',
+  ApifyGoogleMaps: 'Maps',
+  ApifyMetaAdsLibrary: 'Meta Ads',
+  ApifyInstagram: 'Instagram',
+  ApifyFacebookPages: 'Facebook',
+  Manual: 'Manual',
+  ManualMaps: 'Maps',
+  ManualInstagram: 'Instagram',
+  ManualWhatsApp: 'WhatsApp',
+  ManualWeb: 'Web'
+};
+
 export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
   New: 'Nuevo',
   Assigned: 'Asignado',
