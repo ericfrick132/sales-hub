@@ -12,6 +12,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- When this project is referenced by SalesHub.Api (fused-process deploy), avoid
+         shipping its own appsettings.json since Api ships its own. -->
+    <Content Update="appsettings*.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SalesHub.Core\SalesHub.Core.csproj" />
     <ProjectReference Include="..\SalesHub.Infrastructure\SalesHub.Infrastructure.csproj" />
   </ItemGroup>
