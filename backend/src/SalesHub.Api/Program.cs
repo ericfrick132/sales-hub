@@ -11,6 +11,11 @@ using SalesHub.Infrastructure.Persistence;
 using SalesHub.Infrastructure.Seed;
 using SalesHub.Workers;
 
+// Npgsql 6+ defaults reject non-UTC DateTimeOffsets for timestamptz columns; the codebase passes
+// local-time values in several places, so opt back into legacy behavior to avoid runtime errors.
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+AppContext.SetSwitch("Npgsql.DisableDateTimeInfinityConversions", true);
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSalesHubInfrastructure(builder.Configuration);
