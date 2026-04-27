@@ -16,6 +16,7 @@ services:
       TZ: America/Argentina/Buenos_Aires
     networks:
       - caddy
+      - evolution
     mem_limit: 450m
     mem_reservation: 250m
     healthcheck:
@@ -29,3 +30,6 @@ networks:
   caddy:
     external: true
     name: n8n-docker-caddy_default
+  evolution:
+    external: true
+    name: evolution-api_evolution-network
