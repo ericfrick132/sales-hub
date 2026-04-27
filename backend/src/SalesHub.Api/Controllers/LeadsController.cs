@@ -169,14 +169,12 @@ public class LeadsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 3) return new List<SimilarLeadDto>();
         var needle = $"%{q.Trim()}%";
-        // Sellers see only their own leads (avoid leaking other sellers' lists);
-        // admins see everyone's so they can spot duplicates across the team.
-        var isAdmin = CurrentUser.IsAdmin(User);
-        var callerId = CurrentUser.Id(User);
-        var query = _db.Leads.AsNoTracking().Include(l => l.Product).Include(l => l.Seller)
-            .Where(l => EF.Functions.ILike(l.Name, needle));
-        if (!isAdmin) query = query.Where(l => l.SellerId == callerId);
-        var rows = await query.OrderByDescending(l => l.CreatedAt).Take(8)
+        // Cross-user lookup: a seller should see if another seller already loaded the same lead
+        // so the team avoids contacting the same business twice. Seller name is included so the
+        // duplicate-finder knows who to coordinate with.
+        var rows = await _db.Leads.AsNoTracking().Include(l => l.Product).Include(l => l.Seller)
+            .Where(l => EF.Functions.ILike(l.Name, needle))
+            .OrderByDescending(l => l.CreatedAt).Take(8)
             .Select(l => new SimilarLeadDto(l.Id, l.Name, l.ProductKey, l.Product != null ? l.Product.DisplayName : null,
                 l.Status, l.SellerId, l.Seller != null ? l.Seller.DisplayName : null, l.CreatedAt))
             .ToListAsync(ct);

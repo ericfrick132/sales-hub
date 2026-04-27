@@ -235,8 +235,7 @@ function AddLeadModal({ products, onClose, onSaved }: AddLeadModalProps) {
                     <li key={s.id} className="flex justify-between gap-2">
                       <span className="font-medium">{s.name}</span>
                       <span className="text-slate-500">
-                        {s.productName ?? s.productKey} · {LEAD_STATUS_LABEL[s.status]}
-                        {s.sellerName ? ` · ${s.sellerName}` : ''}
+                        {s.sellerName ?? 'Sin vendedor'} · {s.productName ?? s.productKey} · {LEAD_STATUS_LABEL[s.status]}
                       </span>
                     </li>
                   ))}
