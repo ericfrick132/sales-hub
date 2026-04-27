@@ -9,11 +9,21 @@ using SalesHub.Infrastructure;
 using SalesHub.Infrastructure.Options;
 using SalesHub.Infrastructure.Persistence;
 using SalesHub.Infrastructure.Seed;
+using SalesHub.Workers;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSalesHubInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IJwtService, JwtService>();
+
+if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "true")
+{
+    builder.Services.AddHostedService<InstanceMonitorService>();
+    builder.Services.AddHostedService<HumanizedSenderService>();
+    builder.Services.AddHostedService<PipelineSchedulerService>();
+    builder.Services.AddHostedService<CompetitorIngestWorker>();
+    builder.Services.AddHostedService<TrendsIngestWorker>();
+}
 
 builder.Services.AddControllers().AddJsonOptions(o =>
 {

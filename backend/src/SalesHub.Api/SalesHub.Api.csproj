@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SalesHub.Core\SalesHub.Core.csproj" />
     <ProjectReference Include="..\SalesHub.Infrastructure\SalesHub.Infrastructure.csproj" />
+    <ProjectReference Include="..\SalesHub.Workers\SalesHub.Workers.csproj" />
   </ItemGroup>
 
 </Project>

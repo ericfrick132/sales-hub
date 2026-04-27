@@ -1,0 +1,31 @@
+services:
+  saleshub-api:
+    build:
+      context: ./backend
+      args:
+        PROJECT: SalesHub.Api
+    image: sales-hub:latest
+    container_name: saleshub-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      SALESHUB_RUN_WORKERS: "true"
+      SALESHUB_AUTO_MIGRATE: "true"
+      TZ: America/Argentina/Buenos_Aires
+    networks:
+      - caddy
+    mem_limit: 450m
+    mem_reservation: 250m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+networks:
+  caddy:
+    external: true
+    name: n8n-docker-caddy_default

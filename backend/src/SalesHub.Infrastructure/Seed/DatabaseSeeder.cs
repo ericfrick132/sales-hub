@@ -18,21 +18,28 @@ public static class DatabaseSeeder
     private static async Task SeedSampleSellersAsync(ApplicationDbContext db, CancellationToken ct)
     {
         if (await db.Sellers.AnyAsync(s => s.Role == SellerRole.Seller, ct)) return;
-        var keys = new[] { ("juan", "Juan"), ("pedro", "Pedro"), ("maria", "Maria") };
-        var allProducts = await db.Products.Select(p => p.ProductKey).ToListAsync(ct);
+        var verticals = new List<string> { "gymhero", "playcrew" };
         var defaultPwd = "changeme"; // admin reassigns on /sellers
-        foreach (var (key, name) in keys)
+        var sellers = new[]
+        {
+            new { Key = "martu",  Name = "Martu",  Email = "Burgosmarti723@gmail.com", Regions = new List<string> { "Rosario" } },
+            new { Key = "brian",  Name = "Brian",  Email = "Briandmsc@gmail.com",       Regions = new List<string> { "GBA Oeste – 1er cordón" } },
+            new { Key = "thiago", Name = "Thiago", Email = "scrivanothiago@gmail.com",  Regions = new List<string> { "CABA" } },
+            new { Key = "zeke",   Name = "Zeke",   Email = "eznex7@gmail.com",          Regions = new List<string> { "GBA Norte – 1er cordón" } }
+        };
+        foreach (var s in sellers)
         {
             var seller = new Seller
             {
                 Id = Guid.NewGuid(),
-                SellerKey = key,
-                DisplayName = name,
-                Email = $"{key}@sales-hub.local",
+                SellerKey = s.Key,
+                DisplayName = s.Name,
+                Email = s.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(defaultPwd),
                 Role = SellerRole.Seller,
                 IsActive = true,
-                VerticalsWhitelist = allProducts.ToList(),
+                VerticalsWhitelist = verticals.ToList(),
+                RegionsAssigned = s.Regions,
                 SendingEnabled = false,
                 WarmupDays = 7
             };
@@ -40,7 +47,7 @@ public static class DatabaseSeeder
             {
                 Id = Guid.NewGuid(),
                 SellerId = seller.Id,
-                InstanceName = $"seller_{key}"
+                InstanceName = $"seller_{s.Key}"
             };
             db.Sellers.Add(seller);
         }
@@ -58,7 +65,7 @@ public static class DatabaseSeeder
                 Id = Guid.NewGuid(), ProductKey = "gymhero", DisplayName = "GymHero",
                 Active = true, Country = "AR", CountryName = "Argentina", RegionCode = "ar",
                 Language = "es", PhonePrefix = "54",
-                Categories = new() { "gimnasio", "crossfit", "funcional", "pilates", "yoga", "artes marciales", "dojo", "box" },
+                Categories = new() { "gimnasio", "crossfit", "yoga", "pilates", "taekwondo", "funcional", "running", "natación", "danza" },
                 MessageTemplate = "{Hola!|Qué tal!|Buenas!} Soy {seller}, fundador de GymHero.\n\n¿Cómo manejan las reservas de clases y pagos en {name}? Nuestra app envía recordatorios por WhatsApp y cobra las clases por Mercado Pago automáticamente.\n\nEstamos empezando operaciones en {city}. Precio final sin límite de alumnos: {price}. En 10 segundos creás tu cuenta:\n{checkout_url}\n\n7 días gratis sin tarjeta. Cualquier duda, escribime por acá!",
                 CheckoutUrl = "https://gymhero.fitness", PriceDisplay = "$20.000/mes", DailyLimit = 60,
                 TriggerHours = new() { 10, 14, 18 }, RequiresAssistedSale = false
@@ -111,7 +118,7 @@ public static class DatabaseSeeder
                 Id = Guid.NewGuid(), ProductKey = "playcrew", DisplayName = "PlayCrew",
                 Active = true, Country = "AR", CountryName = "Argentina", RegionCode = "ar",
                 Language = "es", PhonePrefix = "54",
-                Categories = new() { "club de pádel", "canchas de pádel", "complejo deportivo", "pádel" },
+                Categories = new() { "pádel", "tenis", "club de pádel", "canchas de pádel", "club de tenis" },
                 MessageTemplate = "Hola! Soy {seller}. Vi {name} en {city}. ¿Cómo toman las reservas del club? PlayCrew está hecho para clubes de Argentina (Playtomic casi no opera acá). Te muestro cómo anda? {checkout_url}",
                 CheckoutUrl = "https://playcrewpadel.com/", PriceDisplay = "a confirmar",
                 DailyLimit = 40, TriggerHours = new() { 10, 14, 18 }, RequiresAssistedSale = true
@@ -185,6 +192,15 @@ public static class CitySeedData
     public static readonly Row[] Argentina =
     {
         new("AR", "Buenos Aires", "CABA", PopulationBucket.Mega),
+        new("AR", "Buenos Aires", "La Matanza", PopulationBucket.Big),
+        new("AR", "Buenos Aires", "Morón", PopulationBucket.Medium),
+        new("AR", "Buenos Aires", "Tres de Febrero", PopulationBucket.Medium),
+        new("AR", "Buenos Aires", "Hurlingham", PopulationBucket.Medium),
+        new("AR", "Buenos Aires", "Ituzaingó", PopulationBucket.Medium),
+        new("AR", "Buenos Aires", "Vicente López", PopulationBucket.Medium),
+        new("AR", "Buenos Aires", "San Isidro", PopulationBucket.Medium),
+        new("AR", "Buenos Aires", "San Fernando", PopulationBucket.Medium),
+        new("AR", "Buenos Aires", "Tigre", PopulationBucket.Medium),
         new("AR", "Buenos Aires", "La Plata", PopulationBucket.Big),
         new("AR", "Buenos Aires", "Mar del Plata", PopulationBucket.Big),
         new("AR", "Buenos Aires", "Bahía Blanca", PopulationBucket.Medium),
