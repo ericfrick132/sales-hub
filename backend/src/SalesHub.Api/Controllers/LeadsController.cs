@@ -162,6 +162,54 @@ public class LeadsController : ControllerBase
         return ToDto(lead);
     }
 
+    [HttpPost]
+    public async Task<ActionResult<LeadDto>> CreateManual([FromBody] CreateManualLeadRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Falta el nombre del lead" });
+        if (string.IsNullOrWhiteSpace(req.ProductKey)) return BadRequest(new { error = "Falta el producto" });
+
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.ProductKey == req.ProductKey, ct);
+        if (product is null) return BadRequest(new { error = $"Producto '{req.ProductKey}' no existe" });
+
+        var callerId = CurrentUser.Id(User);
+        var isAdmin = CurrentUser.IsAdmin(User);
+        var sellerId = isAdmin && req.SellerId is not null ? req.SellerId.Value : callerId;
+        var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == sellerId, ct);
+        if (seller is null) return BadRequest(new { error = "Vendedor no encontrado" });
+
+        var now = DateTimeOffset.UtcNow;
+        var status = req.Status ?? LeadStatus.Sent;
+        var lead = new Lead
+        {
+            Id = Guid.NewGuid(),
+            ProductKey = req.ProductKey,
+            Source = req.Source,
+            Name = req.Name.Trim(),
+            City = string.IsNullOrWhiteSpace(req.City) ? null : req.City.Trim(),
+            WhatsappPhone = string.IsNullOrWhiteSpace(req.WhatsappPhone) ? null : req.WhatsappPhone.Trim(),
+            InstagramHandle = string.IsNullOrWhiteSpace(req.InstagramHandle) ? null : req.InstagramHandle.Trim(),
+            Website = string.IsNullOrWhiteSpace(req.Website) ? null : req.Website.Trim(),
+            Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
+            SellerId = sellerId,
+            AssignedAt = now,
+            Status = status,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        // Mark timestamps based on status, since the seller is recording past activity.
+        if (status >= LeadStatus.Sent) lead.SentAt = now;
+        if (status == LeadStatus.Replied) lead.FirstReplyAt = now;
+        if (status is LeadStatus.Closed or LeadStatus.Lost) lead.ClosedAt = now;
+
+        _db.Leads.Add(lead);
+        await _db.SaveChangesAsync(ct);
+
+        await _db.Entry(lead).Reference(l => l.Product).LoadAsync(ct);
+        await _db.Entry(lead).Reference(l => l.Seller).LoadAsync(ct);
+        return ToDto(lead);
+    }
+
     private static LeadDto ToDto(Lead l) => new(
         l.Id, l.ProductKey, l.Product?.DisplayName, l.Source, l.Name, l.City, l.Province,
         l.WhatsappPhone, l.Website, l.InstagramHandle, l.FacebookUrl, l.Rating, l.TotalReviews,

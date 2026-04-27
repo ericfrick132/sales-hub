@@ -31,3 +31,15 @@ public record LeadDto(
 public record UpdateLeadStatusRequest(LeadStatus Status, string? Notes);
 public record QueueLeadRequest(DateTimeOffset? At);
 public record ClaimLeadRequest(Guid LeadId);
+
+public record CreateManualLeadRequest(
+    string Name,
+    string ProductKey,
+    LeadSource Source,
+    LeadStatus? Status,
+    string? City,
+    string? WhatsappPhone,
+    string? InstagramHandle,
+    string? Website,
+    string? Notes,
+    Guid? SellerId);

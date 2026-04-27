@@ -7,5 +7,9 @@ public enum LeadSource
     ApifyMetaAdsLibrary = 2,
     ApifyInstagram = 3,
     ApifyFacebookPages = 4,
-    Manual = 99
+    Manual = 99,
+    ManualMaps = 100,
+    ManualInstagram = 101,
+    ManualWhatsApp = 102,
+    ManualWeb = 103
 }

@@ -4,7 +4,8 @@ export type LeadStatus =
 
 export type LeadSource =
   | 'GooglePlaces' | 'ApifyGoogleMaps' | 'ApifyMetaAdsLibrary'
-  | 'ApifyInstagram' | 'ApifyFacebookPages' | 'Manual';
+  | 'ApifyInstagram' | 'ApifyFacebookPages' | 'Manual'
+  | 'ManualMaps' | 'ManualInstagram' | 'ManualWhatsApp' | 'ManualWeb';
 
 export interface Lead {
   id: string;
