@@ -33,7 +33,7 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npm run build
         env:
-          VITE_API_URL: https://api.sales.efcloud.tech
+          VITE_API_URL: https://api.sales.efcloud.tech/api
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ vars.VITE_GOOGLE_OAUTH_CLIENT_ID }}
       - name: SPA 404 fallback + CNAME
         run: |
