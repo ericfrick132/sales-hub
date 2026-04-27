@@ -1,0 +1,30 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using SalesHub.Core.Domain.Entities;
+
+namespace SalesHub.Infrastructure.Persistence.Configurations;
+
+public class ProductConfiguration : IEntityTypeConfiguration<Product>
+{
+    public void Configure(EntityTypeBuilder<Product> b)
+    {
+        b.ToTable("products");
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.ProductKey).HasMaxLength(64).IsRequired();
+        b.HasIndex(x => x.ProductKey).IsUnique();
+
+        b.Property(x => x.DisplayName).HasMaxLength(128).IsRequired();
+        b.Property(x => x.Country).HasMaxLength(4).IsRequired();
+        b.Property(x => x.CountryName).HasMaxLength(64).IsRequired();
+        b.Property(x => x.RegionCode).HasMaxLength(8).IsRequired();
+        b.Property(x => x.Language).HasMaxLength(8).IsRequired();
+        b.Property(x => x.PhonePrefix).HasMaxLength(8).IsRequired();
+        b.Property(x => x.CheckoutUrl).HasMaxLength(256);
+        b.Property(x => x.PriceDisplay).HasMaxLength(64);
+        b.Property(x => x.MessageTemplate).HasColumnType("text");
+
+        b.Property(x => x.Categories).HasColumnType("text[]");
+        b.Property(x => x.TriggerHours).HasColumnType("integer[]");
+    }
+}

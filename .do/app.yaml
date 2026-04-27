@@ -1,0 +1,106 @@
+name: sales-hub
+region: atl
+services:
+  - name: api
+    dockerfile_path: backend/Dockerfile
+    source_dir: backend
+    github:
+      repo: ericfrick132/sales-hub
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    instance_count: 1
+    http_port: 8080
+    routes:
+      - path: /api
+    health_check:
+      http_path: /health
+    envs:
+      - key: PROJECT
+        scope: BUILD_TIME
+        value: SalesHub.Api
+      - key: ConnectionStrings__Default
+        scope: RUN_TIME
+        type: SECRET
+      - key: Jwt__Issuer
+        scope: RUN_TIME
+        value: sales-hub
+      - key: Jwt__Audience
+        scope: RUN_TIME
+        value: sales-hub
+      - key: Jwt__SigningKey
+        scope: RUN_TIME
+        type: SECRET
+      - key: Apify__Token
+        scope: RUN_TIME
+        type: SECRET
+      - key: Evolution__BaseUrl
+        scope: RUN_TIME
+      - key: Evolution__ApiKey
+        scope: RUN_TIME
+        type: SECRET
+      - key: Google__OAuthClientId
+        scope: RUN_TIME
+      - key: Google__PlacesApiKey
+        scope: RUN_TIME
+        type: SECRET
+      - key: Cors__Origins
+        scope: RUN_TIME
+      - key: Seed__AdminEmail
+        scope: RUN_TIME
+      - key: Seed__AdminPassword
+        scope: RUN_TIME
+        type: SECRET
+
+workers:
+  - name: workers
+    dockerfile_path: backend/Dockerfile
+    source_dir: backend
+    github:
+      repo: ericfrick132/sales-hub
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    instance_count: 1
+    envs:
+      - key: PROJECT
+        scope: BUILD_TIME
+        value: SalesHub.Workers
+      - key: ConnectionStrings__Default
+        scope: RUN_TIME
+        type: SECRET
+      - key: Apify__Token
+        scope: RUN_TIME
+        type: SECRET
+      - key: Evolution__BaseUrl
+        scope: RUN_TIME
+      - key: Evolution__ApiKey
+        scope: RUN_TIME
+        type: SECRET
+      - key: Google__PlacesApiKey
+        scope: RUN_TIME
+        type: SECRET
+      - key: SALESHUB_AUTO_MIGRATE
+        scope: RUN_TIME
+        value: "false"
+      - key: TZ
+        scope: RUN_TIME
+        value: America/Argentina/Buenos_Aires
+
+static_sites:
+  - name: frontend
+    dockerfile_path: frontend/Dockerfile
+    source_dir: frontend
+    github:
+      repo: ericfrick132/sales-hub
+      branch: main
+      deploy_on_push: true
+    output_dir: /app/dist
+    routes:
+      - path: /
+    envs:
+      - key: VITE_API_URL
+        scope: BUILD_TIME
+        value: /api
+      - key: VITE_GOOGLE_OAUTH_CLIENT_ID
+        scope: BUILD_TIME
