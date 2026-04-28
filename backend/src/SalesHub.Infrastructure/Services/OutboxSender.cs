@@ -26,9 +26,11 @@ public class OutboxSender
     public async Task<int> TickAsync(CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
+        // Cualquier usuario con SendingEnabled + WhatsApp conectado envía, sea Seller o Admin.
+        // El Admin que conecta su WhatsApp y prende el switch debe poder mandar como un vendedor más.
         var sellers = await _db.Sellers
             .Include(s => s.EvolutionInstance)
-            .Where(s => s.IsActive && s.SendingEnabled && s.Role == SellerRole.Seller)
+            .Where(s => s.IsActive && s.SendingEnabled)
             .ToListAsync(ct);
 
         var sent = 0;

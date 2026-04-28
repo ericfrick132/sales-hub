@@ -48,6 +48,28 @@ public class DashboardController : ControllerBase
         return new GlobalMetrics(totalLeads, leadsToday, leadsSent7d, leadsReplied7d, leadsClosed7d, byProduct, bySource, rows);
     }
 
+    public record OutboxItemDto(
+        Guid Id, Guid LeadId, string LeadName, string ProductKey, string? ProductName,
+        string WhatsappPhone, string Message, OutboxStatus Status,
+        DateTimeOffset ScheduledAt, DateTime? SentAt, int Attempts, string? Error);
+
+    [HttpGet("outbox")]
+    public async Task<ActionResult<IEnumerable<OutboxItemDto>>> Outbox(
+        [FromQuery] OutboxStatus? status, [FromQuery] int limit = 100, CancellationToken ct = default)
+    {
+        var id = CurrentUser.Id(User);
+        var q = _db.Outbox.AsNoTracking()
+            .Include(o => o.Lead).ThenInclude(l => l!.Product)
+            .Where(o => o.SellerId == id);
+        if (status is not null) q = q.Where(o => o.Status == status);
+        q = q.OrderByDescending(o => o.SentAt ?? o.ScheduledAt).Take(Math.Min(limit, 500));
+        var rows = await q.ToListAsync(ct);
+        return rows.Select(o => new OutboxItemDto(
+            o.Id, o.LeadId, o.Lead?.Name ?? "—", o.Lead?.ProductKey ?? "",
+            o.Lead?.Product?.DisplayName, o.WhatsappPhone, o.Message,
+            o.Status, o.ScheduledAt, o.SentAt, o.Attempts, o.Error)).ToList();
+    }
+
     [HttpGet("me")]
     public async Task<ActionResult<SellerDashboard>> Me(CancellationToken ct)
     {

@@ -23,6 +23,12 @@ const fmtDateTime = (s?: string) => {
   return `${dd}/${mm} ${hh}:${mi}`;
 };
 
+const daysSince = (iso?: string) => {
+  if (!iso) return 0;
+  const ms = Date.now() - new Date(iso).getTime();
+  return Math.max(0, Math.floor(ms / 86_400_000));
+};
+
 export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Props) {
   const qc = useQueryClient();
 
@@ -62,7 +68,16 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
               <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
                 {fmtDateTime(l.sentAt ?? l.assignedAt ?? l.createdAt)}
               </td>
-              {showSeller && <td className="px-3 py-2 text-slate-700">{l.sellerName ?? '—'}</td>}
+              {showSeller && (
+                <td className="px-3 py-2 text-slate-700">
+                  {l.sellerName ?? (
+                    <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 text-xs">
+                      Sin asignar
+                      {daysSince(l.createdAt) > 0 && <span className="text-amber-500">· {daysSince(l.createdAt)}d</span>}
+                    </span>
+                  )}
+                </td>
+              )}
               <td className="px-3 py-2 font-medium">
                 <Link to={`/leads/${l.id}`} className="text-brand-700 hover:underline">
                   {l.name}

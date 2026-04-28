@@ -1,12 +1,36 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { isAdmin, useAuthStore } from '../lib/auth';
-import { LEAD_STATUS_LABEL, type Lead, type LeadStatus, type Product } from '../lib/types';
+import {
+  LEAD_SOURCE_LABEL,
+  LEAD_STATUS_LABEL,
+  type Lead,
+  type LeadSource,
+  type LeadStatus,
+  type Product
+} from '../lib/types';
 import LeadTable from '../components/LeadTable';
 
+type TabKey = 'mine' | 'pool';
+
 const STATUSES: LeadStatus[] = ['Assigned', 'Queued', 'Sent', 'Replied', 'Interested', 'DemoScheduled', 'Closed', 'Lost'];
+
+const SOURCE_FILTER_OPTIONS: { value: LeadSource | ''; label: string }[] = [
+  { value: '', label: 'Todos' },
+  { value: 'ApifyGoogleMaps', label: 'Google Maps (Apify)' },
+  { value: 'GooglePlaces', label: 'Google Places' },
+  { value: 'ApifyInstagram', label: 'Instagram (Apify)' },
+  { value: 'ApifyMetaAdsLibrary', label: 'Meta Ads' },
+  { value: 'ApifyFacebookPages', label: 'Facebook' },
+  { value: 'ManualMaps', label: 'Manual · Maps' },
+  { value: 'ManualInstagram', label: 'Manual · Instagram' },
+  { value: 'ManualWhatsApp', label: 'Manual · WhatsApp' },
+  { value: 'ManualWeb', label: 'Manual · Web' },
+  { value: 'Manual', label: 'Manual (otro)' }
+];
 
 const SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: 'ManualMaps', label: 'Google Maps' },
@@ -44,12 +68,21 @@ function saveDefaults(d: ModalDefaults) {
 }
 
 export default function MyLeads() {
-  const [status, setStatus] = useState<LeadStatus | ''>('');
-  const [productKey, setProductKey] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
-  const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const admin = isAdmin(user);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab: TabKey = (searchParams.get('tab') as TabKey) === 'pool' ? 'pool' : 'mine';
+  const [tab, setTab] = useState<TabKey>(initialTab);
+  const [status, setStatus] = useState<LeadStatus | ''>('');
+  const [productKey, setProductKey] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<LeadSource | ''>('');
+  const [showAdd, setShowAdd] = useState(false);
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    if (tab === 'pool') setSearchParams({ tab: 'pool' }, { replace: true });
+    else setSearchParams({}, { replace: true });
+  }, [tab, setSearchParams]);
 
   const products = useQuery({
     queryKey: ['products-min'],
@@ -57,30 +90,77 @@ export default function MyLeads() {
   });
 
   const leadsQ = useQuery({
-    queryKey: ['my-leads', status, productKey],
+    queryKey: ['leads', tab, status, productKey],
     queryFn: async () => {
       const params: Record<string, string> = {};
-      if (status) params.status = status;
       if (productKey) params.productKey = productKey;
+      if (tab === 'pool') {
+        const { data } = await api.get<Lead[]>('/leads/pool', { params });
+        return data;
+      }
+      if (status) params.status = status;
       const { data } = await api.get<Lead[]>('/leads/mine', { params });
       return data;
     }
   });
 
+  // Filter by source on the client — small lists, avoids backend changes.
+  const leads = useMemo(() => {
+    const all = leadsQ.data ?? [];
+    if (!sourceFilter) return all;
+    return all.filter((l) => l.source === sourceFilter);
+  }, [leadsQ.data, sourceFilter]);
+
+  async function claim(leadId: string) {
+    try {
+      await api.post(`/leads/${leadId}/claim`);
+      toast.success('Lead tomado');
+      qc.invalidateQueries({ queryKey: ['leads'] });
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e?.response?.data?.error ?? 'No se pudo tomar');
+    }
+  }
+
+  const title = admin ? 'Leads del equipo' : 'Mis leads';
+  const showTabs = admin;
+  const showStatusFilter = tab === 'mine';
+  const showClaim = tab === 'pool';
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{admin ? 'Leads del equipo' : 'Mis leads'}</h1>
+        <h1 className="text-2xl font-bold">{title}</h1>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Cargar lead</button>
       </div>
-      <div className="flex gap-3 items-end">
-        <div>
-          <label className="text-xs text-slate-500">Estado</label>
-          <select className="input" value={status} onChange={(e) => setStatus(e.target.value as LeadStatus)}>
-            <option value="">Todos</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABEL[s]}</option>)}
-          </select>
+
+      {showTabs && (
+        <div className="flex gap-1 border-b border-slate-200">
+          {(['mine', 'pool'] as TabKey[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => { setTab(t); setStatus(''); }}
+              className={`px-4 py-2 text-sm border-b-2 ${
+                tab === t
+                  ? 'border-brand-600 text-brand-700 font-medium'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}>
+              {t === 'mine' ? 'Todos' : 'Sin asignar'}
+            </button>
+          ))}
         </div>
+      )}
+
+      <div className="flex gap-3 items-end flex-wrap">
+        {showStatusFilter && (
+          <div>
+            <label className="text-xs text-slate-500">Estado</label>
+            <select className="input" value={status} onChange={(e) => setStatus(e.target.value as LeadStatus)}>
+              <option value="">Todos</option>
+              {STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABEL[s]}</option>)}
+            </select>
+          </div>
+        )}
         <div>
           <label className="text-xs text-slate-500">Producto</label>
           <select className="input" value={productKey} onChange={(e) => setProductKey(e.target.value)}>
@@ -88,19 +168,36 @@ export default function MyLeads() {
             {(products.data ?? []).map((p) => <option key={p.productKey} value={p.productKey}>{p.displayName}</option>)}
           </select>
         </div>
-        <button className="btn-secondary" onClick={() => qc.invalidateQueries({ queryKey: ['my-leads'] })}>
+        <div>
+          <label className="text-xs text-slate-500">Origen</label>
+          <select className="input" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as LeadSource | '')}>
+            {SOURCE_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        <button className="btn-secondary" onClick={() => qc.invalidateQueries({ queryKey: ['leads'] })}>
           Refrescar
         </button>
+        <div className="ml-auto text-xs text-slate-500 self-center">
+          {leadsQ.isLoading ? '' : `${leads.length} lead${leads.length === 1 ? '' : 's'}`}
+        </div>
       </div>
-      {leadsQ.isLoading ? <div>Cargando…</div> : <LeadTable leads={leadsQ.data ?? []} showSeller={admin} />}
+
+      {leadsQ.isLoading ? (
+        <div>Cargando…</div>
+      ) : (
+        <LeadTable
+          leads={leads}
+          showSeller={admin}
+          onClaim={showClaim ? claim : undefined}
+          emptyText={tab === 'pool' ? 'El pool está vacío.' : 'No hay leads.'}
+        />
+      )}
 
       {showAdd && (
         <AddLeadModal
           products={products.data ?? []}
           onClose={() => setShowAdd(false)}
-          onSaved={() => {
-            qc.invalidateQueries({ queryKey: ['my-leads'] });
-          }}
+          onSaved={() => qc.invalidateQueries({ queryKey: ['leads'] })}
         />
       )}
     </div>
@@ -140,12 +237,10 @@ function AddLeadModal({ products, onClose, onSaved }: AddLeadModalProps) {
   const [suggestions, setSuggestions] = useState<SimilarLead[]>([]);
   const [ignoredDup, setIgnoredDup] = useState(false);
 
-  // Persist defaults so bulk loading is fast.
   useEffect(() => {
     saveDefaults({ productKey, source, status: leadStatus });
   }, [productKey, source, leadStatus]);
 
-  // Debounced similar-name search.
   useEffect(() => {
     const trimmed = name.trim();
     if (trimmed.length < 3) {
