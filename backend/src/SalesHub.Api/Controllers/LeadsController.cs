@@ -23,7 +23,8 @@ public class LeadsController : ControllerBase
     }
 
     public record MapLeadDto(
-        Guid Id, string Name, string ProductKey, string? City, string? Province,
+        Guid Id, string Name, string ProductKey, string? City, string? Province, string? Address,
+        string? WhatsappPhone, string? SellerName,
         double Latitude, double Longitude, Core.Domain.Enums.LeadStatus Status, Guid? SellerId);
 
     [HttpGet("map")]
@@ -41,8 +42,9 @@ public class LeadsController : ControllerBase
         else if (sellerId is not null) q = q.Where(l => l.SellerId == sellerId);
         if (!string.IsNullOrWhiteSpace(productKey)) q = q.Where(l => l.ProductKey == productKey);
 
-        var rows = await q.OrderByDescending(l => l.CreatedAt).Take(Math.Min(limit, 5000))
-            .Select(l => new MapLeadDto(l.Id, l.Name, l.ProductKey, l.City, l.Province,
+        var rows = await q.Include(l => l.Seller).OrderByDescending(l => l.CreatedAt).Take(Math.Min(limit, 5000))
+            .Select(l => new MapLeadDto(l.Id, l.Name, l.ProductKey, l.City, l.Province, l.Address,
+                l.WhatsappPhone, l.Seller != null ? l.Seller.DisplayName : null,
                 l.Latitude!.Value, l.Longitude!.Value, l.Status, l.SellerId))
             .ToListAsync(ct);
         return rows;

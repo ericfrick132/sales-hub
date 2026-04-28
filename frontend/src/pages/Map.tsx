@@ -12,6 +12,9 @@ type MapLead = {
   productKey: string;
   city?: string;
   province?: string;
+  address?: string;
+  whatsappPhone?: string;
+  sellerName?: string;
   latitude: number;
   longitude: number;
   status: string;
@@ -103,12 +106,21 @@ export default function MapPage() {
               }}>
               <Tooltip>{l.name}</Tooltip>
               <Popup>
-                <div className="text-sm">
+                <div className="text-sm space-y-1 min-w-[220px]">
                   <div className="font-semibold">{l.name}</div>
-                  <div className="text-slate-500">{l.productKey}</div>
-                  <div>{l.city ?? '?'}, {l.province ?? '?'}</div>
-                  <div>Estado: {l.status}</div>
-                  <Link to={`/leads/${l.id}`} className="text-brand-600 underline text-xs">Ver detalle</Link>
+                  {l.address && <div className="text-slate-600">{l.address}</div>}
+                  <div className="text-xs text-slate-500">
+                    {l.productKey}{l.sellerName ? ` · ${l.sellerName}` : ''} · {l.status}
+                  </div>
+                  {l.whatsappPhone && (
+                    <a
+                      href={`https://wa.me/${l.whatsappPhone}`}
+                      target="_blank" rel="noreferrer"
+                      className="text-emerald-600 hover:underline text-xs block">
+                      WhatsApp: +{l.whatsappPhone}
+                    </a>
+                  )}
+                  <Link to={`/leads/${l.id}`} className="text-brand-600 underline text-xs block">Ver detalle</Link>
                 </div>
               </Popup>
             </CircleMarker>

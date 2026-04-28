@@ -75,6 +75,14 @@ public class GooglePlacesSource : IApifySource
 
                     var details = placeId is null ? null : await GetPlaceDetailsAsync(placeId, request.Product.Language, ct);
 
+                    double? lat = null, lng = null;
+                    if (place.TryGetProperty("geometry", out var geom)
+                        && geom.TryGetProperty("location", out var locObj))
+                    {
+                        if (locObj.TryGetProperty("lat", out var latEl) && latEl.ValueKind == JsonValueKind.Number) lat = latEl.GetDouble();
+                        if (locObj.TryGetProperty("lng", out var lngEl) && lngEl.ValueKind == JsonValueKind.Number) lng = lngEl.GetDouble();
+                    }
+
                     leads.Add(new Lead
                     {
                         ProductKey = request.Product.ProductKey,
@@ -82,6 +90,8 @@ public class GooglePlacesSource : IApifySource
                         PlaceId = placeId,
                         Name = name,
                         Address = place.TryGetProperty("formatted_address", out var a) ? a.GetString() : null,
+                        Latitude = lat,
+                        Longitude = lng,
                         City = request.City,
                         Province = request.Province,
                         Country = request.Product.Country,
