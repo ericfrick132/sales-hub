@@ -22,6 +22,10 @@ export default function LeadDetail() {
 
   const [notes, setNotes] = useState('');
   const [enriching, setEnriching] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [savingInfo, setSavingInfo] = useState(false);
 
   if (isLoading) return <div>Cargando…</div>;
   if (!lead) return <div className="card p-8 text-center">Lead no encontrado. <Link className="text-brand-600" to="/leads">Volver</Link></div>;
@@ -43,6 +47,30 @@ export default function LeadDetail() {
     }
   }
 
+  function startEdit() {
+    setEditName(lead!.name);
+    setEditPhone(lead!.whatsappPhone ?? '');
+    setEditing(true);
+  }
+
+  async function saveInfo() {
+    setSavingInfo(true);
+    try {
+      await api.patch(`/leads/${lead!.id}/info`, {
+        name: editName.trim(),
+        whatsappPhone: editPhone.trim()
+      });
+      toast.success('Datos actualizados');
+      setEditing(false);
+      qc.invalidateQueries({ queryKey: ['lead', id] });
+      qc.invalidateQueries({ queryKey: ['my-leads'] });
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? 'Falló');
+    } finally {
+      setSavingInfo(false);
+    }
+  }
+
   async function enrich(kind: 'instagram' | 'website') {
     setEnriching(true);
     try {
@@ -60,7 +88,32 @@ export default function LeadDetail() {
         <button className="btn-secondary" onClick={() => nav(-1)}>← Volver</button>
         <h1 className="text-2xl font-bold">{lead.name}</h1>
         <StatusBadge status={lead.status} />
+        {!editing && (
+          <button className="btn-secondary ml-auto" onClick={startEdit}>Editar</button>
+        )}
       </div>
+
+      {editing && (
+        <div className="card p-5 space-y-3">
+          <h3 className="font-semibold">Editar datos del lead</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="text-sm">
+              <div className="text-slate-500 mb-1">Nombre</div>
+              <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              <div className="text-slate-500 mb-1">WhatsApp (con código de país, sin +)</div>
+              <input className="input" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="5491155555555" />
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-primary" disabled={savingInfo || !editName.trim()} onClick={saveInfo}>
+              {savingInfo ? 'Guardando…' : 'Guardar'}
+            </button>
+            <button className="btn-secondary" disabled={savingInfo} onClick={() => setEditing(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
 
       <div className="card p-5 grid grid-cols-2 gap-4 text-sm">
         <div>

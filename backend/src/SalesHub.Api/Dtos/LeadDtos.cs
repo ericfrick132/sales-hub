@@ -29,6 +29,7 @@ public record LeadDto(
     DateTimeOffset CreatedAt);
 
 public record UpdateLeadStatusRequest(LeadStatus Status, string? Notes);
+public record UpdateLeadInfoRequest(string? Name, string? WhatsappPhone);
 public record QueueLeadRequest(DateTimeOffset? At);
 public record ClaimLeadRequest(Guid LeadId);
 

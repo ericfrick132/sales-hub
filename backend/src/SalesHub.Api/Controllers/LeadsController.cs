@@ -137,6 +137,42 @@ public class LeadsController : ControllerBase
         return ToDto(lead);
     }
 
+    [HttpPatch("{id:guid}/info")]
+    public async Task<ActionResult<LeadDto>> UpdateInfo(Guid id, [FromBody] UpdateLeadInfoRequest req, CancellationToken ct)
+    {
+        var sellerId = CurrentUser.Id(User);
+        var lead = await _db.Leads.Include(l => l.Product).Include(l => l.Seller).FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (lead is null) return NotFound();
+        if (lead.SellerId != sellerId && !CurrentUser.IsAdmin(User)) return Forbid();
+
+        var name = req.Name?.Trim();
+        if (!string.IsNullOrWhiteSpace(name)) lead.Name = name;
+
+        var phoneChanged = false;
+        if (req.WhatsappPhone is not null)
+        {
+            var phone = req.WhatsappPhone.Trim();
+            var newPhone = string.IsNullOrWhiteSpace(phone) ? null : phone;
+            if (newPhone != lead.WhatsappPhone)
+            {
+                lead.WhatsappPhone = newPhone;
+                phoneChanged = true;
+            }
+        }
+
+        if ((phoneChanged || !string.IsNullOrWhiteSpace(name)) && lead.Product is not null && lead.Seller is not null)
+        {
+            lead.RenderedMessage = _renderer.Render(lead, lead.Product, lead.Seller);
+            lead.WhatsappLink = string.IsNullOrWhiteSpace(lead.WhatsappPhone)
+                ? null
+                : $"https://wa.me/{lead.WhatsappPhone}?text={Uri.EscapeDataString(lead.RenderedMessage ?? "")}";
+        }
+
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return ToDto(lead);
+    }
+
     [HttpPost("{id:guid}/queue")]
     public async Task<ActionResult<LeadDto>> Queue(Guid id, [FromBody] QueueLeadRequest? req, CancellationToken ct)
     {
