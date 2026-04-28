@@ -77,6 +77,7 @@ export interface Product {
   dailyLimit: number;
   triggerHours: number[];
   requiresAssistedSale: boolean;
+  googlePlacesDailyLeadCap: number;
 }
 
 export type InstanceStatus = 'Disconnected' | 'Connecting' | 'Connected' | 'Banned' | 'Unknown' | null;

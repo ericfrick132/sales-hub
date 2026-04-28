@@ -7,7 +7,8 @@ import type { Product } from '../lib/types';
 const EMPTY: Product = {
   id: '', productKey: '', displayName: '', active: true, country: 'AR', countryName: 'Argentina',
   regionCode: 'ar', language: 'es', phonePrefix: '54', categories: [], messageTemplate: '',
-  checkoutUrl: '', priceDisplay: '', dailyLimit: 60, triggerHours: [10, 14, 18], requiresAssistedSale: false
+  checkoutUrl: '', priceDisplay: '', dailyLimit: 60, triggerHours: [10, 14, 18], requiresAssistedSale: false,
+  googlePlacesDailyLeadCap: 60
 };
 
 export default function Products() {
@@ -70,8 +71,12 @@ export default function Products() {
           <Field label="Checkout URL"><input className="input" value={draft.checkoutUrl} onChange={(e) => onChange('checkoutUrl', e.target.value)} /></Field>
           <Field label="Precio display"><input className="input" value={draft.priceDisplay} onChange={(e) => onChange('priceDisplay', e.target.value)} /></Field>
           <Field label="Daily limit"><input type="number" className="input" value={draft.dailyLimit} onChange={(e) => onChange('dailyLimit', +e.target.value)} /></Field>
+          <Field label="Leads/día Google Places (0 = sin tope)">
+            <input type="number" className="input" value={draft.googlePlacesDailyLeadCap}
+              onChange={(e) => onChange('googlePlacesDailyLeadCap', +e.target.value)} />
+          </Field>
         </div>
-        <Field label="Categorías (coma)">
+        <Field label="Categorías de búsqueda Google Maps (coma)">
           <input className="input" value={draft.categories.join(', ')}
             onChange={(e) => onChange('categories', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} />
         </Field>
