@@ -49,6 +49,7 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
             <th className="px-3 py-2 text-left">Fecha/hora</th>
             {showSeller && <th className="px-3 py-2 text-left">Vendedor</th>}
             <th className="px-3 py-2 text-left">Negocio</th>
+            <th className="px-3 py-2 text-left">App</th>
             <th className="px-3 py-2 text-left">Origen</th>
             <th className="px-3 py-2 text-left">WhatsApp</th>
             <th className="px-3 py-2 text-left">Estado</th>
@@ -68,6 +69,7 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
                 </Link>
                 {l.city && <span className="ml-2 text-xs text-slate-400">{l.city}</span>}
               </td>
+              <td className="px-3 py-2 text-slate-600">{l.productName ?? l.productKey}</td>
               <td className="px-3 py-2 text-slate-600">{LEAD_SOURCE_LABEL[l.source] ?? l.source}</td>
               <td className="px-3 py-2">
                 {l.whatsappLink ? (
