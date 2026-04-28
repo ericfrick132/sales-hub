@@ -50,13 +50,18 @@ public class LeadsController : ControllerBase
 
     [HttpGet("mine")]
     public async Task<ActionResult<IEnumerable<LeadDto>>> Mine(
-        [FromQuery] LeadStatus? status, [FromQuery] string? productKey, [FromQuery] int limit = 200, CancellationToken ct = default)
+        [FromQuery] LeadStatus? status, [FromQuery] string? productKey, [FromQuery] Guid? sellerId,
+        [FromQuery] int limit = 200, CancellationToken ct = default)
     {
-        var sellerId = CurrentUser.Id(User);
+        var isAdmin = CurrentUser.IsAdmin(User);
+        var callerId = CurrentUser.Id(User);
         var q = _db.Leads.AsNoTracking()
             .Include(l => l.Product)
             .Include(l => l.Seller)
-            .Where(l => l.SellerId == sellerId);
+            .AsQueryable();
+        // Admins see all leads (with optional ?sellerId= filter); sellers see only their own.
+        if (!isAdmin) q = q.Where(l => l.SellerId == callerId);
+        else if (sellerId is not null) q = q.Where(l => l.SellerId == sellerId);
         if (status is not null) q = q.Where(l => l.Status == status);
         if (!string.IsNullOrWhiteSpace(productKey)) q = q.Where(l => l.ProductKey == productKey);
         q = q.OrderByDescending(l => l.AssignedAt ?? l.CreatedAt).Take(Math.Min(limit, 500));

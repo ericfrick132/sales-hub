@@ -10,3 +10,7 @@ node_modules/
 .DS_Store
 appsettings.Development.json
 appsettings.Local.json
+
+# Local-only operator notes (deployment runbooks with secrets)
+DEPLOY-NOTES.txt
+*.local.txt

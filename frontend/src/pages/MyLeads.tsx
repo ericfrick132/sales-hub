@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { isAdmin, useAuthStore } from '../lib/auth';
 import { LEAD_STATUS_LABEL, type Lead, type LeadStatus, type Product } from '../lib/types';
 import LeadTable from '../components/LeadTable';
 
@@ -47,6 +48,8 @@ export default function MyLeads() {
   const [productKey, setProductKey] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const admin = isAdmin(user);
 
   const products = useQuery({
     queryKey: ['products-min'],
@@ -67,7 +70,7 @@ export default function MyLeads() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Mis leads</h1>
+        <h1 className="text-2xl font-bold">{admin ? 'Leads del equipo' : 'Mis leads'}</h1>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Cargar lead</button>
       </div>
       <div className="flex gap-3 items-end">
@@ -89,7 +92,7 @@ export default function MyLeads() {
           Refrescar
         </button>
       </div>
-      {leadsQ.isLoading ? <div>Cargando…</div> : <LeadTable leads={leadsQ.data ?? []} />}
+      {leadsQ.isLoading ? <div>Cargando…</div> : <LeadTable leads={leadsQ.data ?? []} showSeller={admin} />}
 
       {showAdd && (
         <AddLeadModal
