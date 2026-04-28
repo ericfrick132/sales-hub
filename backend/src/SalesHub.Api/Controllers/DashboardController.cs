@@ -48,6 +48,80 @@ public class DashboardController : ControllerBase
         return new GlobalMetrics(totalLeads, leadsToday, leadsSent7d, leadsReplied7d, leadsClosed7d, byProduct, bySource, rows);
     }
 
+    public record DailyActivity(string Date, int Total, Dictionary<string, int> ByProduct, Dictionary<string, int> ByStatus);
+    public record SellerActivity(
+        Guid SellerId, string DisplayName, string Email, string InstanceStatus, bool SendingEnabled,
+        int Total, int Total7d, int TodayCount, int YesterdayCount,
+        Dictionary<string, int> TopProducts, List<DailyActivity> Daily);
+
+    [HttpGet("sellers/activity")]
+    public async Task<ActionResult<IEnumerable<SellerActivity>>> SellersActivity(
+        [FromQuery] int days = 14, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        days = Math.Clamp(days, 1, 60);
+
+        var sellers = await _db.Sellers.AsNoTracking()
+            .Include(s => s.EvolutionInstance)
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.DisplayName)
+            .ToListAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        var todayLocal = DateOnly.FromDateTime(now.UtcDateTime);
+        var since = todayLocal.AddDays(-(days - 1)).ToDateTime(TimeOnly.MinValue);
+        var sinceOffset = new DateTimeOffset(since, TimeSpan.Zero);
+
+        // Pull all leads in window for active sellers in one shot, then group in-memory.
+        // The dataset is bounded (sellers × days × leads-per-day, typically < 5k rows) so this is fine.
+        var sellerIds = sellers.Select(s => s.Id).ToList();
+        var leads = await _db.Leads.AsNoTracking()
+            .Where(l => l.SellerId != null && sellerIds.Contains(l.SellerId!.Value)
+                     && (l.AssignedAt ?? l.CreatedAt) >= sinceOffset)
+            .Select(l => new
+            {
+                l.SellerId,
+                l.ProductKey,
+                l.Status,
+                Stamp = l.AssignedAt ?? l.CreatedAt
+            })
+            .ToListAsync(ct);
+
+        var rows = new List<SellerActivity>();
+        foreach (var s in sellers)
+        {
+            var mine = leads.Where(l => l.SellerId == s.Id).ToList();
+
+            var byDay = new List<DailyActivity>();
+            for (var i = 0; i < days; i++)
+            {
+                var d = todayLocal.AddDays(-i);
+                var dStart = new DateTimeOffset(d.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+                var dEnd = dStart.AddDays(1);
+                var dayLeads = mine.Where(l => l.Stamp >= dStart && l.Stamp < dEnd).ToList();
+                var byProduct = dayLeads.GroupBy(l => l.ProductKey).ToDictionary(g => g.Key, g => g.Count());
+                var byStatus = dayLeads.GroupBy(l => l.Status.ToString()).ToDictionary(g => g.Key, g => g.Count());
+                byDay.Add(new DailyActivity(d.ToString("yyyy-MM-dd"), dayLeads.Count, byProduct, byStatus));
+            }
+
+            var todayCount = byDay.FirstOrDefault(d => d.Date == todayLocal.ToString("yyyy-MM-dd"))?.Total ?? 0;
+            var yesterdayCount = byDay.FirstOrDefault(d => d.Date == todayLocal.AddDays(-1).ToString("yyyy-MM-dd"))?.Total ?? 0;
+            var total7d = byDay.Take(7).Sum(d => d.Total);
+            var topProducts = mine.GroupBy(l => l.ProductKey)
+                .Select(g => new { Key = g.Key, Count = g.Count() })
+                .OrderByDescending(x => x.Count).Take(3)
+                .ToDictionary(x => x.Key, x => x.Count);
+
+            rows.Add(new SellerActivity(
+                s.Id, s.DisplayName, s.Email,
+                s.EvolutionInstance?.Status.ToString() ?? "no_instance",
+                s.SendingEnabled,
+                mine.Count, total7d, todayCount, yesterdayCount,
+                topProducts, byDay));
+        }
+        return rows;
+    }
+
     public record OutboxItemDto(
         Guid Id, Guid LeadId, string LeadName, string ProductKey, string? ProductName,
         string WhatsappPhone, string Message, OutboxStatus Status,
@@ -70,10 +144,22 @@ public class DashboardController : ControllerBase
             o.Status, o.ScheduledAt, o.SentAt, o.Attempts, o.Error)).ToList();
     }
 
+    [HttpGet("seller/{id:guid}")]
+    public async Task<ActionResult<SellerDashboard>> ForSeller(Guid id, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User) && CurrentUser.Id(User) != id) return Forbid();
+        return await BuildSellerDashboardAsync(id, ct);
+    }
+
     [HttpGet("me")]
     public async Task<ActionResult<SellerDashboard>> Me(CancellationToken ct)
     {
         var id = CurrentUser.Id(User);
+        return await BuildSellerDashboardAsync(id, ct);
+    }
+
+    private async Task<ActionResult<SellerDashboard>> BuildSellerDashboardAsync(Guid id, CancellationToken ct)
+    {
         var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == id, ct);
         if (seller is null) return NotFound();
         var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
