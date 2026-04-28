@@ -22,10 +22,17 @@ public static class DatabaseSeeder
         var defaultPwd = "changeme"; // admin reassigns on /sellers
         var sellers = new[]
         {
-            new { Key = "martu",  Name = "Martu",  Email = "Burgosmarti723@gmail.com", Regions = new List<string> { "Rosario" } },
-            new { Key = "brian",  Name = "Brian",  Email = "Briandmsc@gmail.com",       Regions = new List<string> { "GBA Oeste – 1er cordón" } },
-            new { Key = "thiago", Name = "Thiago", Email = "scrivanothiago@gmail.com",  Regions = new List<string> { "CABA" } },
-            new { Key = "zeke",   Name = "Zeke",   Email = "eznex7@gmail.com",          Regions = new List<string> { "GBA Norte – 1er cordón" } }
+            new { Key = "martu",  Name = "Martu",  Email = "Burgosmarti723@gmail.com",
+                Regions = new List<string> { "Rosario", "Santa Fe" } },
+            new { Key = "brian",  Name = "Brian",  Email = "Briandmsc@gmail.com",
+                // GBA Oeste primer cordón — partidos individuales para que matcheen city de Google Maps.
+                Regions = new List<string> { "Morón", "Tres de Febrero", "Hurlingham", "Ituzaingó", "La Matanza" } },
+            new { Key = "thiago", Name = "Thiago", Email = "scrivanothiago@gmail.com",
+                // CABA con variantes que devuelve Google Maps (a veces "Capital Federal", a veces el nombre completo).
+                Regions = new List<string> { "CABA", "Capital Federal", "Ciudad Autónoma de Buenos Aires" } },
+            new { Key = "zeke",   Name = "Zeke",   Email = "eznex7@gmail.com",
+                // GBA Norte primer cordón
+                Regions = new List<string> { "Vicente López", "San Isidro", "San Fernando", "Tigre" } }
         };
         foreach (var s in sellers)
         {

@@ -19,13 +19,15 @@ public class LeadAssigner : ILeadAssigner
     public LeadAssigner(ApplicationDbContext db) { _db = db; }
 
     public Task<Guid?> PickSellerForProductAsync(string productKey, CancellationToken ct = default)
-        => PickAsync(productKey, province: null, ct);
+        => PickAsync(productKey, province: null, city: null, ct);
 
-    /// <summary>Resolves the best seller for a lead given its product vertical and province.</summary>
-    public Task<Guid?> PickForLeadAsync(string productKey, string? province, CancellationToken ct = default)
-        => PickAsync(productKey, province, ct);
+    /// <summary>Resolves the best seller for a lead given its product vertical and the lead's
+    /// city/province. RegionsAssigned can hold either provinces or cities (e.g. "Rosario", "CABA",
+    /// "Morón") — we match against both so a city assignment wins for a city-level lead.</summary>
+    public Task<Guid?> PickForLeadAsync(string productKey, string? province, string? city = null, CancellationToken ct = default)
+        => PickAsync(productKey, province, city, ct);
 
-    private async Task<Guid?> PickAsync(string productKey, string? province, CancellationToken ct)
+    private async Task<Guid?> PickAsync(string productKey, string? province, string? city, CancellationToken ct)
     {
         var candidates = await _db.Sellers
             .Where(s => s.IsActive && s.Role == SellerRole.Seller)
@@ -39,12 +41,18 @@ public class LeadAssigner : ILeadAssigner
         if (candidates.Count == 0) return null;
 
         List<Seller> pool;
-        if (!string.IsNullOrWhiteSpace(province))
+        var hasLocation = !string.IsNullOrWhiteSpace(province) || !string.IsNullOrWhiteSpace(city);
+        if (hasLocation)
         {
-            // Vendedor con esa provincia asignada gana.
-            var owners = candidates
-                .Where(s => s.RegionsAssigned != null && s.RegionsAssigned.Contains(province))
-                .ToList();
+            // Match the lead's city/province (case-insensitive) against the seller's RegionsAssigned.
+            // City-level matches (Rosario, CABA, Morón…) win over province-level ones implicitly,
+            // because if any seller has the exact city tag they'll be in the owners pool.
+            bool Matches(Seller s) =>
+                s.RegionsAssigned != null && s.RegionsAssigned.Any(r =>
+                    (!string.IsNullOrWhiteSpace(city) && r.Equals(city, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrWhiteSpace(province) && r.Equals(province, StringComparison.OrdinalIgnoreCase)));
+
+            var owners = candidates.Where(Matches).ToList();
             if (owners.Count > 0)
             {
                 pool = owners;

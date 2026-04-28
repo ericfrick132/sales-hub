@@ -240,7 +240,7 @@ public class PipelineService
 
             // Region-aware: si el vendedor tiene la provincia del lead asignada, gana.
             // Si no hay dueño, round-robin entre los sin-región (o global como fallback).
-            var sellerId = await _assigner.PickForLeadAsync(product.ProductKey, lead.Province, ct);
+            var sellerId = await _assigner.PickForLeadAsync(product.ProductKey, lead.Province, lead.City, ct);
             if (sellerId is not null)
             {
                 lead.SellerId = sellerId;
