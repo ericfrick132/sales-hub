@@ -2,12 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { GlobalMetrics } from '../lib/types';
 import MetricCards from '../components/MetricCards';
+import SendingControl from '../components/SendingControl';
 
 export default function AdminDashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-metrics'],
     queryFn: async () => (await api.get<GlobalMetrics>('/dashboard/admin')).data,
-    refetchInterval: 15000
+    // Tick faster while any seller is actively sending so the admin sees the counter move.
+    refetchInterval: (q) => q.state.data?.sellers.some((s) => s.sendingEnabled) ? 5000 : 15000
   });
 
   if (isLoading || !data) return <div>Cargando…</div>;
@@ -74,7 +76,15 @@ export default function AdminDashboard() {
                 <tr key={s.sellerId}>
                   <td className="px-3 py-2 font-medium">{s.displayName}</td>
                   <td className="px-3 py-2">{s.instanceStatus}</td>
-                  <td className="px-3 py-2">{s.sendingEnabled ? 'On' : 'Off'}</td>
+                  <td className="px-3 py-2">
+                    <SendingControl
+                      sellerId={s.sellerId}
+                      sendingEnabled={s.sendingEnabled}
+                      instanceStatus={s.instanceStatus}
+                      compact
+                      invalidate={[['admin-metrics']]}
+                    />
+                  </td>
                   <td className="px-3 py-2 text-right">{s.todayCap}</td>
                   <td className="px-3 py-2 text-right">{s.todaySent}</td>
                   <td className="px-3 py-2 text-right">{s.leadsAssigned}</td>

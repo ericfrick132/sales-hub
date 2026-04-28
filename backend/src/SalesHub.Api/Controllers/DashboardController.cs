@@ -80,8 +80,16 @@ public class DashboardController : ControllerBase
         var sent = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.SentAt != null, ct);
         var replied = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.FirstReplyAt != null, ct);
         var closed = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.Status == LeadStatus.Closed, ct);
-        var todaySent = await _db.Outbox.CountAsync(o => o.SellerId == s.Id && o.Status == OutboxStatus.Sent
+        // Count both auto-sent (Outbox via Evolution) and manually-recorded sends (Lead.SentAt
+        // when seller marks status=Contactado). Today the team is sending by hand from their own
+        // WhatsApp, so the manual count is the load-bearing one.
+        var dayStartOffset = new DateTimeOffset(dayStart, TimeSpan.Zero);
+        var dayEndOffset = new DateTimeOffset(dayEnd, TimeSpan.Zero);
+        var todayManual = await _db.Leads.CountAsync(l => l.SellerId == s.Id
+            && l.SentAt != null && l.SentAt >= dayStartOffset && l.SentAt < dayEndOffset, ct);
+        var todayAuto = await _db.Outbox.CountAsync(o => o.SellerId == s.Id && o.Status == OutboxStatus.Sent
             && o.SentAt >= dayStart && o.SentAt < dayEnd, ct);
+        var todaySent = todayManual + todayAuto;
         return new SellerMetricRow(
             s.Id, s.DisplayName, assigned, sent, replied, closed,
             sent == 0 ? 0 : Math.Round((double)replied / sent, 3),
