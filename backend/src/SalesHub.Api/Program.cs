@@ -26,6 +26,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<InstanceMonitorService>();
     builder.Services.AddHostedService<HumanizedSenderService>();
     builder.Services.AddHostedService<PipelineSchedulerService>();
+    builder.Services.AddHostedService<GooglePlacesSchedulerService>();
     builder.Services.AddHostedService<CompetitorIngestWorker>();
     builder.Services.AddHostedService<TrendsIngestWorker>();
 }

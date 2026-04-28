@@ -32,64 +32,76 @@ public class GooglePlacesSource : IApifySource
             return new SourceRunResult(Source, Array.Empty<Lead>(), null, 0);
         }
 
-        var category = request.Category ?? request.Product.Categories.FirstOrDefault() ?? "negocio";
         var loc = request.City is null ? request.Product.CountryName : $"{request.City}, {request.Province ?? string.Empty}, {request.Product.CountryName}";
-        var query = $"{category} en {loc}".TrimEnd(',');
+        // Manual override (admin passes ?category=...) → search just that. Otherwise spread the
+        // run across all configured Categories so every search term in /products gets used.
+        var categories = request.Category is not null
+            ? new[] { request.Category }
+            : (request.Product.Categories.Count > 0 ? request.Product.Categories.ToArray() : new[] { "negocio" });
 
         var leads = new List<Lead>();
         var totalRaw = 0;
-        string? pageToken = null;
-        int pages = 0;
+        var seenPlaceIds = new HashSet<string>();
 
-        while (pages < 3 && leads.Count < request.MaxResults)
+        foreach (var category in categories)
         {
-            var url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-                + $"?query={Uri.EscapeDataString(query)}"
-                + $"&key={_google.PlacesApiKey}"
-                + $"&region={request.Product.RegionCode}"
-                + $"&language={request.Product.Language}"
-                + (pageToken is null ? "" : $"&pagetoken={pageToken}");
+            if (leads.Count >= request.MaxResults) break;
+            var query = $"{category} en {loc}".TrimEnd(',');
+            string? pageToken = null;
+            int pages = 0;
 
-            if (pageToken is not null) await Task.Delay(2000, ct);
-            var resp = await _http.GetAsync(url, ct);
-            resp.EnsureSuccessStatusCode();
-            var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-
-            if (!doc.RootElement.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array) break;
-            foreach (var place in results.EnumerateArray())
+            while (pages < 3 && leads.Count < request.MaxResults)
             {
-                totalRaw++;
-                var name = place.TryGetProperty("name", out var nEl) ? nEl.GetString() : null;
-                if (name is null) continue;
-                var placeId = place.TryGetProperty("place_id", out var pEl) ? pEl.GetString() : null;
+                var url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+                    + $"?query={Uri.EscapeDataString(query)}"
+                    + $"&key={_google.PlacesApiKey}"
+                    + $"&region={request.Product.RegionCode}"
+                    + $"&language={request.Product.Language}"
+                    + (pageToken is null ? "" : $"&pagetoken={pageToken}");
 
-                var details = placeId is null ? null : await GetPlaceDetailsAsync(placeId, request.Product.Language, ct);
+                if (pageToken is not null) await Task.Delay(2000, ct);
+                var resp = await _http.GetAsync(url, ct);
+                resp.EnsureSuccessStatusCode();
+                var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
 
-                leads.Add(new Lead
+                if (!doc.RootElement.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array) break;
+                foreach (var place in results.EnumerateArray())
                 {
-                    ProductKey = request.Product.ProductKey,
-                    Source = LeadSource.GooglePlaces,
-                    PlaceId = placeId,
-                    Name = name,
-                    Address = place.TryGetProperty("formatted_address", out var a) ? a.GetString() : null,
-                    City = request.City,
-                    Province = request.Province,
-                    Country = request.Product.Country,
-                    RawPhone = details?.RootElement.TryGetProperty("formatted_phone_number", out var ph) == true ? ph.GetString() : null,
-                    Website = details?.RootElement.TryGetProperty("website", out var ws) == true ? ws.GetString() : null,
-                    Rating = place.TryGetProperty("rating", out var r) && r.ValueKind == JsonValueKind.Number ? r.GetDouble() : null,
-                    TotalReviews = place.TryGetProperty("user_ratings_total", out var rt) && rt.ValueKind == JsonValueKind.Number ? rt.GetInt32() : null,
-                    BusinessStatus = place.TryGetProperty("business_status", out var bs) ? bs.GetString() : null,
-                    SearchQuery = query,
-                    RawDataJson = place.GetRawText()
-                });
+                    totalRaw++;
+                    var name = place.TryGetProperty("name", out var nEl) ? nEl.GetString() : null;
+                    if (name is null) continue;
+                    var placeId = place.TryGetProperty("place_id", out var pEl) ? pEl.GetString() : null;
+                    if (placeId is not null && !seenPlaceIds.Add(placeId)) continue;
 
-                if (leads.Count >= request.MaxResults) break;
+                    var details = placeId is null ? null : await GetPlaceDetailsAsync(placeId, request.Product.Language, ct);
+
+                    leads.Add(new Lead
+                    {
+                        ProductKey = request.Product.ProductKey,
+                        Source = LeadSource.GooglePlaces,
+                        PlaceId = placeId,
+                        Name = name,
+                        Address = place.TryGetProperty("formatted_address", out var a) ? a.GetString() : null,
+                        City = request.City,
+                        Province = request.Province,
+                        Country = request.Product.Country,
+                        RawPhone = details?.RootElement.TryGetProperty("formatted_phone_number", out var ph) == true ? ph.GetString() : null,
+                        Website = details?.RootElement.TryGetProperty("website", out var ws) == true ? ws.GetString() : null,
+                        Rating = place.TryGetProperty("rating", out var r) && r.ValueKind == JsonValueKind.Number ? r.GetDouble() : null,
+                        TotalReviews = place.TryGetProperty("user_ratings_total", out var rt) && rt.ValueKind == JsonValueKind.Number ? rt.GetInt32() : null,
+                        BusinessStatus = place.TryGetProperty("business_status", out var bs) ? bs.GetString() : null,
+                        SearchQuery = query,
+                        SearchCategory = category,
+                        RawDataJson = place.GetRawText()
+                    });
+
+                    if (leads.Count >= request.MaxResults) break;
+                }
+
+                pageToken = doc.RootElement.TryGetProperty("next_page_token", out var tok) ? tok.GetString() : null;
+                pages++;
+                if (pageToken is null) break;
             }
-
-            pageToken = doc.RootElement.TryGetProperty("next_page_token", out var tok) ? tok.GetString() : null;
-            pages++;
-            if (pageToken is null) break;
         }
 
         return new SourceRunResult(Source, leads, null, totalRaw);

@@ -30,6 +30,8 @@ public static class DependencyInjection
         services.AddHttpClient<EvolutionClient>();
         services.AddHttpClient<GooglePlacesSource>();
         services.AddHttpClient<GeonamesImporter>();
+        services.AddHttpClient<WebsiteContactExtractor>();
+        services.AddScoped<IWebsiteContactExtractor>(sp => sp.GetRequiredService<WebsiteContactExtractor>());
 
         services.AddScoped<IEvolutionClient>(sp => sp.GetRequiredService<EvolutionClient>());
 

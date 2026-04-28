@@ -74,11 +74,12 @@ public class ProductsController : ControllerBase
         p.DailyLimit = r.DailyLimit;
         p.TriggerHours = r.TriggerHours;
         p.RequiresAssistedSale = r.RequiresAssistedSale;
+        p.GooglePlacesDailyLeadCap = r.GooglePlacesDailyLeadCap;
         return p;
     }
 
     private static ProductDto ToDto(Product p) => new(
         p.Id, p.ProductKey, p.DisplayName, p.Active, p.Country, p.CountryName, p.RegionCode, p.Language,
         p.PhonePrefix, p.Categories, p.MessageTemplate, p.CheckoutUrl, p.PriceDisplay,
-        p.DailyLimit, p.TriggerHours, p.RequiresAssistedSale);
+        p.DailyLimit, p.TriggerHours, p.RequiresAssistedSale, p.GooglePlacesDailyLeadCap);
 }

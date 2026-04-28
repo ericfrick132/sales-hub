@@ -28,6 +28,7 @@ public class PipelineService
     private readonly ILeadAssigner _assigner;
     private readonly IEvolutionClient _evo;
     private readonly ApifyUsageMonitor _usage;
+    private readonly IWebsiteContactExtractor _websiteExtractor;
     private readonly GoogleOptions _google;
     private readonly ApifyOptions _apify;
     private readonly ILogger<PipelineService> _log;
@@ -40,12 +41,13 @@ public class PipelineService
         ILeadAssigner assigner,
         IEvolutionClient evo,
         ApifyUsageMonitor usage,
+        IWebsiteContactExtractor websiteExtractor,
         IOptions<GoogleOptions> google,
         IOptions<ApifyOptions> apify,
         ILogger<PipelineService> log)
     {
         _db = db; _sources = sources; _phone = phone; _renderer = renderer;
-        _assigner = assigner; _evo = evo; _usage = usage;
+        _assigner = assigner; _evo = evo; _usage = usage; _websiteExtractor = websiteExtractor;
         _google = google.Value; _apify = apify.Value; _log = log;
     }
 
@@ -84,16 +86,33 @@ public class PipelineService
             var (city, province, _) = await PickTargetAsync(product, opts, ct);
             foreach (var src in _sources.Where(s => opts.Sources.Contains(s.Source)))
             {
-                if (src.Source == LeadSource.GooglePlaces && _google.PlacesDailyCap > 0)
+                var perRunCap = opts.MaxPerSource;
+                if (src.Source == LeadSource.GooglePlaces)
                 {
                     var since = DateTimeOffset.UtcNow.Date;
-                    var todayCount = await _db.ScrapeLogs
-                        .CountAsync(l => l.Source == LeadSource.GooglePlaces && l.RunAt >= since, ct);
-                    if (todayCount >= _google.PlacesDailyCap)
+                    if (_google.PlacesDailyCap > 0)
                     {
-                        _log.LogWarning("Google Places daily cap hit ({Count}/{Cap}); skipping {Product}",
-                            todayCount, _google.PlacesDailyCap, product.ProductKey);
-                        continue;
+                        var todayRuns = await _db.ScrapeLogs
+                            .CountAsync(l => l.Source == LeadSource.GooglePlaces && l.RunAt >= since, ct);
+                        if (todayRuns >= _google.PlacesDailyCap)
+                        {
+                            _log.LogWarning("Google Places global runs/day cap hit ({Count}/{Cap}); skipping {Product}",
+                                todayRuns, _google.PlacesDailyCap, product.ProductKey);
+                            continue;
+                        }
+                    }
+                    if (product.GooglePlacesDailyLeadCap > 0)
+                    {
+                        var leadsToday = await _db.Leads
+                            .CountAsync(l => l.ProductKey == product.ProductKey && l.Source == LeadSource.GooglePlaces && l.CreatedAt >= since, ct);
+                        var remaining = product.GooglePlacesDailyLeadCap - leadsToday;
+                        if (remaining <= 0)
+                        {
+                            _log.LogInformation("Per-product Google Places lead cap reached for {Product} ({Count}/{Cap}); skipping",
+                                product.ProductKey, leadsToday, product.GooglePlacesDailyLeadCap);
+                            continue;
+                        }
+                        perRunCap = Math.Min(perRunCap, remaining);
                     }
                 }
                 if (src.Source != LeadSource.GooglePlaces && _apify.DailyRunCap > 0)
@@ -122,7 +141,7 @@ public class PipelineService
 
                 try
                 {
-                    var res = await src.RunAsync(new SourceRunRequest(product, city, province, opts.Category, opts.MaxPerSource), ct);
+                    var res = await src.RunAsync(new SourceRunRequest(product, city, province, opts.Category, perRunCap), ct);
                     var created = await IngestLeadsAsync(res.Leads, product, src.Source, opts.AutoQueueMessages, ct);
                     totalCreated += created;
 
@@ -175,6 +194,22 @@ public class PipelineService
         foreach (var lead in leads)
         {
             lead.WhatsappPhone = _phone.Normalize(lead.RawPhone, product.PhonePrefix);
+
+            // Fallback: si Google no trajo teléfono pero sí website, lo crawleamos buscando
+            // tel: / wa.me / patrones de tel argentinos, y de paso sacamos IG/FB.
+            if (string.IsNullOrWhiteSpace(lead.WhatsappPhone) && !string.IsNullOrWhiteSpace(lead.Website))
+            {
+                var info = await _websiteExtractor.ExtractAsync(lead.Website, ct);
+                if (!string.IsNullOrWhiteSpace(info.Phone))
+                {
+                    lead.RawPhone ??= info.Phone;
+                    lead.WhatsappPhone = _phone.Normalize(info.Phone, product.PhonePrefix);
+                }
+                if (string.IsNullOrWhiteSpace(lead.InstagramHandle) && !string.IsNullOrWhiteSpace(info.InstagramHandle))
+                    lead.InstagramHandle = info.InstagramHandle;
+                if (string.IsNullOrWhiteSpace(lead.FacebookUrl) && !string.IsNullOrWhiteSpace(info.FacebookUrl))
+                    lead.FacebookUrl = info.FacebookUrl;
+            }
 
             // Quality filter: descartar leads que no sirven para venta.
             if (!PassesQualityFilter(lead))

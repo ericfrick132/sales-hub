@@ -36,6 +36,7 @@ public class Lead
     public List<string> Types { get; set; } = new();
 
     public string? SearchQuery { get; set; }
+    public string? SearchCategory { get; set; }
     public string? RawDataJson { get; set; }
 
     public int Score { get; set; }

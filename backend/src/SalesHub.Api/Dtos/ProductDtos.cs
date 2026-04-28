@@ -16,7 +16,8 @@ public record ProductDto(
     string PriceDisplay,
     int DailyLimit,
     List<int> TriggerHours,
-    bool RequiresAssistedSale);
+    bool RequiresAssistedSale,
+    int GooglePlacesDailyLeadCap);
 
 public record CreateOrUpdateProductRequest(
     string ProductKey,
@@ -33,4 +34,5 @@ public record CreateOrUpdateProductRequest(
     string PriceDisplay,
     int DailyLimit,
     List<int> TriggerHours,
-    bool RequiresAssistedSale);
+    bool RequiresAssistedSale,
+    int GooglePlacesDailyLeadCap);

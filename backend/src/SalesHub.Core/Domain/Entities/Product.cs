@@ -23,6 +23,10 @@ public class Product
     public int DailyLimit { get; set; } = 60;
     public List<int> TriggerHours { get; set; } = new();
 
+    // Cap of NEW leads per day from the free Google Places pipeline. 0 = no per-product cap
+    // (only the global Google:PlacesDailyCap of runs/day applies).
+    public int GooglePlacesDailyLeadCap { get; set; } = 60;
+
     public bool RequiresAssistedSale { get; set; } = false;
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
