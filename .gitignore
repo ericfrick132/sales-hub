@@ -13,4 +13,5 @@ appsettings.Local.json
 
 # Local-only operator notes (deployment runbooks with secrets)
 DEPLOY-NOTES.txt
+deploy.txt
 *.local.txt
