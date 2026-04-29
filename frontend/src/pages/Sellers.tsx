@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import type { Seller, Product } from '../lib/types';
@@ -58,6 +59,9 @@ export default function Sellers() {
                 <p className="text-sm text-slate-500">{selected.email}</p>
               </div>
               <div className="flex gap-2">
+                <Link to={`/sellers/${selected.id}/zones`} className="btn-secondary text-xs">
+                  Editar zonas (mapa)
+                </Link>
                 <button className="btn-secondary text-xs"
                   onClick={async () => {
                     const pwd = prompt('Nueva contraseña:');

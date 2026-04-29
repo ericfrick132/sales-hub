@@ -11,6 +11,7 @@ import Connect from './pages/Connect';
 import AdminDashboard from './pages/AdminDashboard';
 import Sellers from './pages/Sellers';
 import SellerDetail from './pages/SellerDetail';
+import SellerZones from './pages/SellerZones';
 import Products from './pages/Products';
 import Pipeline from './pages/Pipeline';
 import Competitors from './pages/Competitors';
@@ -46,6 +47,7 @@ export default function App() {
           <>
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/sellers" element={<Sellers />} />
+            <Route path="/sellers/:id/zones" element={<SellerZones />} />
             <Route path="/admin/sellers/:id" element={<SellerDetail />} />
             <Route path="/products" element={<Products />} />
             <Route path="/pipeline" element={<Pipeline />} />
