@@ -240,12 +240,20 @@ export default function LeadDetail() {
 
       <div className="card p-5 space-y-3">
         <h3 className="font-semibold">Acciones</h3>
+        {(!lead.sellerId || !lead.whatsappPhone) && (
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            No se puede encolar:
+            <ul className="list-disc ml-5 mt-1">
+              {!lead.sellerId && <li>el lead no está asignado a un vendedor.</li>}
+              {!lead.whatsappPhone && <li>el lead no tiene número de WhatsApp.</li>}
+            </ul>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           <button
             className="btn-primary"
             onClick={queueNow}
-            disabled={!lead.sellerId || !lead.whatsappPhone}
-            title={!lead.sellerId ? 'Asignalo a un vendedor primero' : !lead.whatsappPhone ? 'Lead sin WhatsApp' : ''}>
+            disabled={!lead.sellerId || !lead.whatsappPhone}>
             Encolar envío automático
           </button>
           <button className="btn-secondary" disabled={enriching || !lead.instagramHandle} onClick={() => enrich('instagram')}>
