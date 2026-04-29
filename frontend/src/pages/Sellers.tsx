@@ -32,7 +32,10 @@ export default function Sellers() {
       <div className="col-span-4">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xl font-bold">Vendedores</h2>
-          <button className="btn-primary text-xs" onClick={() => setShowCreate(true)}>+ Nuevo</button>
+          <div className="flex gap-2">
+            <Link to="/sellers/zones" className="btn-secondary text-xs">Mapa de zonas</Link>
+            <button className="btn-primary text-xs" onClick={() => setShowCreate(true)}>+ Nuevo</button>
+          </div>
         </div>
         <div className="card divide-y divide-slate-100">
           {(sellersQ.data ?? []).map((s) => (
@@ -59,7 +62,7 @@ export default function Sellers() {
                 <p className="text-sm text-slate-500">{selected.email}</p>
               </div>
               <div className="flex gap-2">
-                <Link to={`/sellers/${selected.id}/zones`} className="btn-secondary text-xs">
+                <Link to={`/sellers/zones?seller=${selected.id}`} className="btn-secondary text-xs">
                   Editar zonas (mapa)
                 </Link>
                 <button className="btn-secondary text-xs"

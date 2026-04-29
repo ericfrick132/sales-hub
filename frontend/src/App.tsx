@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { isAdmin, useAuthStore } from './lib/auth';
 import Login from './pages/Login';
 import Layout from './components/Layout';
@@ -18,6 +18,11 @@ import Competitors from './pages/Competitors';
 import Trends from './pages/Trends';
 import MapPage from './pages/Map';
 import Conversations from './pages/Conversations';
+
+function SellerZonesRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/sellers/zones?seller=${id ?? ''}`} replace />;
+}
 
 export default function App() {
   const user = useAuthStore((s) => s.user);
@@ -47,7 +52,8 @@ export default function App() {
           <>
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/sellers" element={<Sellers />} />
-            <Route path="/sellers/:id/zones" element={<SellerZones />} />
+            <Route path="/sellers/zones" element={<SellerZones />} />
+            <Route path="/sellers/:id/zones" element={<SellerZonesRedirect />} />
             <Route path="/admin/sellers/:id" element={<SellerDetail />} />
             <Route path="/products" element={<Products />} />
             <Route path="/pipeline" element={<Pipeline />} />

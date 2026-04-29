@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -19,98 +19,145 @@ interface CityPin {
 }
 
 const BUCKET_RADIUS: Record<Bucket, number> = {
-  Mega: 11,
-  Big: 9,
-  Medium: 7,
-  Small: 5,
-  Town: 4
+  Mega: 11, Big: 9, Medium: 7, Small: 5, Town: 4
 };
 
-const COLOR_ON = '#10b981';   // verde — asignado
-const COLOR_OFF = '#94a3b8';  // gris — no asignado
+// Stable palette assigned by seller index (sorted by name).
+const PALETTE = [
+  '#1e8dff', // azul
+  '#ef4444', // rojo
+  '#10b981', // verde
+  '#f59e0b', // ámbar
+  '#a855f7', // violeta
+  '#ec4899', // rosa
+  '#06b6d4', // cian
+  '#84cc16', // lima
+  '#a16207', // marrón
+  '#64748b'  // pizarra
+];
+
+const COLOR_GRAY = '#cbd5e1';
 
 export default function SellerZones() {
-  const { id } = useParams<{ id: string }>();
-  const nav = useNavigate();
   const qc = useQueryClient();
+  const [params, setParams] = useSearchParams();
 
-  const sellerQ = useQuery({
-    queryKey: ['seller-detail', id],
-    enabled: !!id,
-    queryFn: async () => (await api.get<Seller[]>('/sellers')).data.find((s) => s.id === id) ?? null
+  const sellersQ = useQuery({
+    queryKey: ['sellers'],
+    queryFn: async () => (await api.get<Seller[]>('/sellers')).data
   });
-
   const citiesQ = useQuery({
     queryKey: ['cities-map'],
     queryFn: async () => (await api.get<CityPin[]>('/cities/map', { params: { country: 'AR' } })).data
   });
 
-  // Local state for selection. Sync to seller's regionsAssigned when it loads.
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [filterProvince, setFilterProvince] = useState<string>('');
+  // Per-seller working copy of regions (lowercase keys).
+  const [zones, setZones] = useState<Record<string, Set<string>>>({});
+  const [activeSellerId, setActiveSellerId] = useState<string | null>(params.get('seller'));
+  const [provinceFilter, setProvinceFilter] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
+  // Hydrate from server when sellers load.
   useEffect(() => {
-    if (sellerQ.data) {
-      setSelected(new Set((sellerQ.data.regionsAssigned ?? []).map((r) => r.toLowerCase())));
+    if (!sellersQ.data) return;
+    const init: Record<string, Set<string>> = {};
+    for (const s of sellersQ.data.filter((s) => s.isActive)) {
+      init[s.id] = new Set((s.regionsAssigned ?? []).map((r) => r.toLowerCase()));
     }
-  }, [sellerQ.data?.id]);
+    setZones(init);
+  }, [sellersQ.data?.length]);
+
+  const sellers = useMemo(
+    () => (sellersQ.data ?? [])
+      .filter((s) => s.isActive)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [sellersQ.data]
+  );
+
+  const colorFor = (sellerId: string) => {
+    const idx = sellers.findIndex((s) => s.id === sellerId);
+    return idx >= 0 ? PALETTE[idx % PALETTE.length] : COLOR_GRAY;
+  };
 
   const cities = citiesQ.data ?? [];
+  const visible = provinceFilter ? cities.filter((c) => c.province === provinceFilter) : cities;
   const provinces = useMemo(() => {
     const s = new Set<string>();
     cities.forEach((c) => s.add(c.province));
     return [...s].sort();
   }, [cities]);
 
-  const initial = useMemo(
-    () => new Set((sellerQ.data?.regionsAssigned ?? []).map((r) => r.toLowerCase())),
-    [sellerQ.data?.regionsAssigned]
-  );
-  const dirty =
-    selected.size !== initial.size ||
-    [...selected].some((s) => !initial.has(s)) ||
-    [...initial].some((s) => !selected.has(s));
-
-  function isSelected(c: CityPin) {
-    return selected.has(c.city.toLowerCase()) || selected.has(c.province.toLowerCase());
+  function getAssignees(c: CityPin): string[] {
+    const cityKey = c.city.toLowerCase();
+    const provKey = c.province.toLowerCase();
+    const out: string[] = [];
+    for (const s of sellers) {
+      const set = zones[s.id];
+      if (!set) continue;
+      if (set.has(cityKey) || set.has(provKey)) out.push(s.id);
+    }
+    return out;
   }
 
+  function isDirty(sellerId: string): boolean {
+    const seller = sellers.find((s) => s.id === sellerId);
+    if (!seller) return false;
+    const orig = new Set((seller.regionsAssigned ?? []).map((r) => r.toLowerCase()));
+    const cur = zones[sellerId] ?? new Set();
+    if (orig.size !== cur.size) return true;
+    for (const k of cur) if (!orig.has(k)) return true;
+    for (const k of orig) if (!cur.has(k)) return true;
+    return false;
+  }
+
+  const dirtySellerIds = sellers.filter((s) => isDirty(s.id)).map((s) => s.id);
+
   function toggleCity(c: CityPin) {
-    setSelected((prev) => {
-      const next = new Set(prev);
+    if (!activeSellerId) {
+      toast.error('Elegí un vendedor en el panel izquierdo para asignar');
+      return;
+    }
+    setZones((prev) => {
+      const next = { ...prev };
+      const cur = new Set(next[activeSellerId]);
       const k = c.city.toLowerCase();
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
+      if (cur.has(k)) cur.delete(k);
+      else cur.add(k);
+      next[activeSellerId] = cur;
       return next;
     });
   }
 
   function toggleProvince(province: string) {
-    const k = province.toLowerCase();
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
+    if (!activeSellerId) {
+      toast.error('Elegí un vendedor primero');
+      return;
+    }
+    setZones((prev) => {
+      const next = { ...prev };
+      const cur = new Set(next[activeSellerId]);
+      const k = province.toLowerCase();
+      if (cur.has(k)) cur.delete(k);
+      else cur.add(k);
+      next[activeSellerId] = cur;
       return next;
     });
   }
 
-  async function save() {
-    if (!sellerQ.data) return;
+  async function saveAll() {
+    if (dirtySellerIds.length === 0) return;
+    const cityByLower = new Map(cities.map((c) => [c.city.toLowerCase(), c.city]));
+    const provinceByLower = new Map(cities.map((c) => [c.province.toLowerCase(), c.province]));
     setSaving(true);
     try {
-      // Preserve original casing for known cities/provinces; case-insensitive matched.
-      const cityByLower = new Map<string, string>();
-      cities.forEach((c) => cityByLower.set(c.city.toLowerCase(), c.city));
-      const provinceByLower = new Map<string, string>();
-      cities.forEach((c) => provinceByLower.set(c.province.toLowerCase(), c.province));
-      const regions = [...selected].map((k) => cityByLower.get(k) ?? provinceByLower.get(k) ?? k);
-
-      await api.put(`/sellers/${sellerQ.data.id}`, { regionsAssigned: regions });
-      toast.success('Zonas guardadas');
+      await Promise.all(dirtySellerIds.map((id) => {
+        const regions = [...(zones[id] ?? [])].map(
+          (k) => cityByLower.get(k) ?? provinceByLower.get(k) ?? k
+        );
+        return api.put(`/sellers/${id}`, { regionsAssigned: regions });
+      }));
+      toast.success(`Guardado (${dirtySellerIds.length} vendedor${dirtySellerIds.length === 1 ? '' : 'es'})`);
       qc.invalidateQueries({ queryKey: ['sellers'] });
-      qc.invalidateQueries({ queryKey: ['seller-detail'] });
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
       toast.error(e?.response?.data?.error ?? 'Falló');
@@ -119,128 +166,216 @@ export default function SellerZones() {
     }
   }
 
-  function reset() {
-    setSelected(new Set((sellerQ.data?.regionsAssigned ?? []).map((r) => r.toLowerCase())));
+  function discardAll() {
+    if (!sellersQ.data) return;
+    const init: Record<string, Set<string>> = {};
+    for (const s of sellersQ.data.filter((s) => s.isActive)) {
+      init[s.id] = new Set((s.regionsAssigned ?? []).map((r) => r.toLowerCase()));
+    }
+    setZones(init);
   }
 
-  if (sellerQ.isLoading) return <div>Cargando…</div>;
-  if (!sellerQ.data) return <div className="card p-6">Vendedor no encontrado.</div>;
+  function selectSeller(id: string | null) {
+    setActiveSellerId(id);
+    if (id) setParams({ seller: id }, { replace: true });
+    else setParams({}, { replace: true });
+  }
 
-  const visibleCities = filterProvince
-    ? cities.filter((c) => c.province === filterProvince)
-    : cities;
+  function citiesAssignedTo(sellerId: string): number {
+    const cur = zones[sellerId];
+    if (!cur) return 0;
+    // Count both direct city tags and cities under province tags.
+    let n = 0;
+    for (const c of cities) {
+      if (cur.has(c.city.toLowerCase()) || cur.has(c.province.toLowerCase())) n++;
+    }
+    return n;
+  }
+
+  if (sellersQ.isLoading || citiesQ.isLoading) return <div>Cargando…</div>;
+
+  const activeSeller = sellers.find((s) => s.id === activeSellerId);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <button className="btn-secondary" onClick={() => nav(-1)}>← Volver</button>
-        <h1 className="text-2xl font-bold">Zonas — {sellerQ.data.displayName}</h1>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold">Zonas por vendedor</h1>
+        <div className="flex items-center gap-2">
+          {dirtySellerIds.length > 0 && (
+            <span className="text-xs text-amber-700">
+              {dirtySellerIds.length} cambio{dirtySellerIds.length === 1 ? '' : 's'} sin guardar
+            </span>
+          )}
+          {dirtySellerIds.length > 0 && (
+            <button className="btn-secondary" onClick={discardAll} disabled={saving}>
+              Descartar
+            </button>
+          )}
+          <button
+            className="btn-primary"
+            onClick={saveAll}
+            disabled={saving || dirtySellerIds.length === 0}>
+            {saving ? 'Guardando…' : `Guardar (${dirtySellerIds.length})`}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-12 gap-4">
         {/* Sidebar */}
-        <aside className="col-span-12 lg:col-span-4 space-y-3">
-          <div className="card p-4 space-y-2">
-            <div className="text-xs uppercase tracking-wide text-slate-500">Acciones</div>
-            <div className="flex gap-2">
-              <button
-                className="btn-primary flex-1"
-                disabled={!dirty || saving}
-                onClick={save}>
-                {saving ? 'Guardando…' : `Guardar ${selected.size > 0 ? `(${selected.size})` : ''}`}
-              </button>
-              {dirty && (
-                <button className="btn-secondary" onClick={reset}>Descartar</button>
-              )}
+        <aside className="col-span-12 lg:col-span-3 space-y-3">
+          <div className="card p-3">
+            <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Vendedores</div>
+            <div className="space-y-1">
+              {sellers.map((s) => {
+                const cnt = citiesAssignedTo(s.id);
+                const dirty = isDirty(s.id);
+                const isActive = activeSellerId === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => selectSeller(isActive ? null : s.id)}
+                    className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-sm text-left transition ${
+                      isActive ? 'bg-slate-900 text-white' : 'hover:bg-slate-100 text-slate-700'
+                    }`}>
+                    <span className="flex items-center gap-2 truncate">
+                      <span
+                        className="w-3 h-3 rounded-full flex-shrink-0 ring-2 ring-white shadow-sm"
+                        style={{ background: colorFor(s.id) }} />
+                      <span className="truncate">{s.displayName}</span>
+                      {dirty && <span className={`text-[10px] ${isActive ? 'text-amber-300' : 'text-amber-600'}`}>•</span>}
+                    </span>
+                    <span className={`text-xs ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>{cnt}</span>
+                  </button>
+                );
+              })}
             </div>
-            {dirty && <div className="text-xs text-amber-600">Hay cambios sin guardar</div>}
-            <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-              Click en un punto del mapa para asignar/desasignar la ciudad. Click en una provincia
-              de la lista para asignarla entera.
+            <div className="text-[11px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
+              {activeSeller
+                ? <>Click en el mapa para asignar/quitar ciudades a <strong>{activeSeller.displayName}</strong>.</>
+                : <>Elegí un vendedor para empezar a asignar zonas.</>}
             </div>
           </div>
 
-          <div className="card p-4 space-y-2 max-h-[55vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
+          <div className="card p-3 max-h-[50vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-2">
               <div className="text-xs uppercase tracking-wide text-slate-500">Provincias</div>
               <button
-                onClick={() => setFilterProvince('')}
-                className={`text-xs ${filterProvince === '' ? 'text-brand-700 font-medium' : 'text-slate-500 hover:text-slate-700'}`}>
+                onClick={() => setProvinceFilter('')}
+                className={`text-xs ${provinceFilter === '' ? 'text-brand-700 font-medium' : 'text-slate-500 hover:text-slate-700'}`}>
                 Todas
               </button>
             </div>
-            {provinces.map((p) => {
-              const provSelected = selected.has(p.toLowerCase());
-              return (
-                <div key={p} className="flex items-center justify-between gap-2 text-sm">
-                  <button
-                    onClick={() => setFilterProvince(p === filterProvince ? '' : p)}
-                    className={`text-left flex-1 truncate hover:text-slate-900 ${filterProvince === p ? 'text-brand-700 font-medium' : 'text-slate-700'}`}>
-                    {p}
-                  </button>
-                  <button
-                    onClick={() => toggleProvince(p)}
-                    title={provSelected ? 'Desasignar provincia entera' : 'Asignar provincia entera'}
-                    className={`text-xs px-2 py-0.5 rounded border ${
-                      provSelected
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
-                    }`}>
-                    {provSelected ? '✓ asignada' : '+ provincia'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          {selected.size > 0 && (
-            <div className="card p-4 space-y-1">
-              <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-                Asignadas ({selected.size})
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {[...selected].sort().map((s) => (
-                  <span
-                    key={s}
-                    className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2 py-0.5">
-                    {s}
+            <ul className="space-y-1">
+              {provinces.map((p) => {
+                const provSelected = activeSellerId
+                  ? (zones[activeSellerId]?.has(p.toLowerCase()) ?? false)
+                  : false;
+                return (
+                  <li key={p} className="flex items-center justify-between gap-2 text-sm">
                     <button
-                      onClick={() => setSelected((prev) => { const n = new Set(prev); n.delete(s); return n; })}
-                      className="hover:text-emerald-900">×</button>
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+                      onClick={() => setProvinceFilter(p === provinceFilter ? '' : p)}
+                      className={`text-left flex-1 truncate hover:text-slate-900 ${provinceFilter === p ? 'text-brand-700 font-medium' : 'text-slate-700'}`}>
+                      {p}
+                    </button>
+                    <button
+                      disabled={!activeSellerId}
+                      onClick={() => toggleProvince(p)}
+                      title={activeSellerId
+                        ? (provSelected ? 'Desasignar provincia entera' : 'Asignar provincia entera al vendedor activo')
+                        : 'Elegí un vendedor primero'}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                        provSelected
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : activeSellerId
+                            ? 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                            : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
+                      }`}>
+                      {provSelected ? '✓' : '+'}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         </aside>
 
         {/* Map */}
-        <div className="col-span-12 lg:col-span-8 card overflow-hidden" style={{ height: '75vh' }}>
+        <div className="col-span-12 lg:col-span-9 card overflow-hidden" style={{ height: '78vh' }}>
           <MapContainer center={[-38.5, -63.6]} zoom={4} style={{ height: '100%', width: '100%' }}>
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {visibleCities.map((c) => {
+            {visible.map((c) => {
               if (c.latitude == null || c.longitude == null) return null;
-              const on = isSelected(c);
+              const assignees = getAssignees(c);
+              const isActiveAssigned = activeSellerId !== null && assignees.includes(activeSellerId);
+              const isOtherAssigned = assignees.length > 0 && !isActiveAssigned;
+
+              // Color: active wins, otherwise first assignee, otherwise gray.
+              let fillColor: string;
+              let opacity: number;
+              let weight: number;
+              let strokeColor: string;
+
+              if (activeSellerId && isActiveAssigned) {
+                fillColor = colorFor(activeSellerId);
+                opacity = 0.95;
+                weight = 3;
+                strokeColor = '#ffffff';
+              } else if (activeSellerId && isOtherAssigned) {
+                fillColor = colorFor(assignees[0]);
+                opacity = 0.35;
+                weight = 1;
+                strokeColor = fillColor;
+              } else if (!activeSellerId && assignees.length > 0) {
+                fillColor = colorFor(assignees[0]);
+                opacity = 0.85;
+                weight = assignees.length > 1 ? 3 : 1;
+                strokeColor = assignees.length > 1 ? '#1f2937' : fillColor;
+              } else {
+                fillColor = COLOR_GRAY;
+                opacity = activeSellerId ? 0.5 : 0.4;
+                weight = 1;
+                strokeColor = fillColor;
+              }
+
               return (
                 <CircleMarker
                   key={c.id}
                   center={[c.latitude, c.longitude]}
-                  radius={BUCKET_RADIUS[c.bucket]}
+                  radius={BUCKET_RADIUS[c.bucket] + (isActiveAssigned ? 2 : 0)}
                   eventHandlers={{ click: () => toggleCity(c) }}
                   pathOptions={{
-                    color: on ? COLOR_ON : COLOR_OFF,
-                    fillColor: on ? COLOR_ON : COLOR_OFF,
-                    fillOpacity: on ? 0.85 : 0.45,
-                    weight: on ? 2 : 1
+                    color: strokeColor,
+                    fillColor,
+                    fillOpacity: opacity,
+                    weight
                   }}>
                   <Tooltip>
                     <div className="text-xs">
                       <div className="font-semibold">{c.city}</div>
                       <div className="text-slate-500">{c.province} · {c.bucket}</div>
-                      <div className="text-slate-400">click para {on ? 'desasignar' : 'asignar'}</div>
+                      {assignees.length > 0 ? (
+                        <div className="mt-1">
+                          <span className="text-slate-500">Asignada a: </span>
+                          {assignees.map((id) => (
+                            <span
+                              key={id}
+                              className="inline-flex items-center gap-1 mr-1">
+                              <span className="w-2 h-2 rounded-full" style={{ background: colorFor(id) }} />
+                              {sellers.find((s) => s.id === id)?.displayName}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-slate-400 mt-1">sin asignar</div>
+                      )}
+                      {activeSellerId && (
+                        <div className="text-slate-400 mt-1">
+                          click → {isActiveAssigned ? 'quitar de' : 'asignar a'} <strong>{activeSeller?.displayName}</strong>
+                        </div>
+                      )}
                     </div>
                   </Tooltip>
                 </CircleMarker>
@@ -251,9 +386,11 @@ export default function SellerZones() {
       </div>
 
       <div className="text-xs text-slate-500">
-        ¿Falta alguna ciudad? Importá el catálogo desde Captación → "Importar ciudades AR".
-        {' '}
-        <Link to="/pipeline" className="text-brand-700 hover:underline">Ir a Captación</Link>
+        ¿Falta una ciudad? Importá el catálogo desde{' '}
+        <Link to="/pipeline" className="text-brand-700 hover:underline">Captación → Importar ciudades AR</Link>.
+        {' · '}
+        Las ciudades grises no están asignadas y van al fallback / Pool. Cuando un círculo tiene
+        borde negro, es porque está compartida entre 2+ vendedores (round-robin).
       </div>
     </div>
   );
