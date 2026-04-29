@@ -18,6 +18,7 @@ import Competitors from './pages/Competitors';
 import Trends from './pages/Trends';
 import MapPage from './pages/Map';
 import Conversations from './pages/Conversations';
+import SearchLeads from './pages/SearchLeads';
 
 function SellerZonesRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/dashboard" element={<MyDashboard />} />
         <Route path="/leads" element={<MyLeads />} />
         <Route path="/leads/import" element={<LeadsImport />} />
+        <Route path="/leads/search" element={<SearchLeads />} />
         <Route path="/leads/:id" element={<LeadDetail />} />
         <Route path="/pool" element={<Pool />} />
         <Route path="/connect" element={<Connect />} />

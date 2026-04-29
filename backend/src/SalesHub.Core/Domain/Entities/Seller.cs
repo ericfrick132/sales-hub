@@ -48,4 +48,5 @@ public class Seller
     public ICollection<Lead> Leads { get; set; } = new List<Lead>();
     public ICollection<MessageOutbox> OutboxItems { get; set; } = new List<MessageOutbox>();
     public ICollection<SellerDailyStats> DailyStats { get; set; } = new List<SellerDailyStats>();
+    public ICollection<SellerLocality> LocalityAssignments { get; set; } = new List<SellerLocality>();
 }

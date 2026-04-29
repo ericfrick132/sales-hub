@@ -35,6 +35,7 @@ public class LeadConfiguration : IEntityTypeConfiguration<Lead>
         b.Property(x => x.Source).HasConversion<int>();
         b.Property(x => x.Status).HasConversion<int>();
         b.Property(x => x.Types).HasColumnType("text[]");
+        b.Property(x => x.LocalityGid2).HasMaxLength(32);
 
         b.HasIndex(x => new { x.ProductKey, x.WhatsappPhone })
             .IsUnique()
@@ -58,5 +59,12 @@ public class LeadConfiguration : IEntityTypeConfiguration<Lead>
             .WithMany(x => x.Leads)
             .HasForeignKey(x => x.SellerId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        b.HasOne(x => x.Locality)
+            .WithMany()
+            .HasForeignKey(x => x.LocalityGid2)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        b.HasIndex(x => new { x.ProductKey, x.LocalityGid2 });
     }
 }

@@ -40,7 +40,8 @@ export default function Layout() {
       ]
     : [
         { to: '/dashboard', label: 'Hoy' },
-        { to: '/leads', label: 'Mis leads' }
+        { to: '/leads', label: 'Mis leads' },
+        { to: '/leads/search', label: 'Capturar de Maps' }
       ];
 
   // Configuración + captación: solo admin.

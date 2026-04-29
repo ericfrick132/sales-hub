@@ -19,15 +19,18 @@ public class LeadAssigner : ILeadAssigner
     public LeadAssigner(ApplicationDbContext db) { _db = db; }
 
     public Task<Guid?> PickSellerForProductAsync(string productKey, CancellationToken ct = default)
-        => PickAsync(productKey, province: null, city: null, ct);
+        => PickAsync(productKey, localityGid2: null, province: null, city: null, ct);
 
     /// <summary>Resolves the best seller for a lead given its product vertical and the lead's
     /// city/province. RegionsAssigned can hold either provinces or cities (e.g. "Rosario", "CABA",
     /// "Morón") — we match against both so a city assignment wins for a city-level lead.</summary>
     public Task<Guid?> PickForLeadAsync(string productKey, string? province, string? city = null, CancellationToken ct = default)
-        => PickAsync(productKey, province, city, ct);
+        => PickAsync(productKey, localityGid2: null, province, city, ct);
 
-    private async Task<Guid?> PickAsync(string productKey, string? province, string? city, CancellationToken ct)
+    public Task<Guid?> PickForLeadAsync(string productKey, string? localityGid2, string? province, string? city, CancellationToken ct = default)
+        => PickAsync(productKey, localityGid2, province, city, ct);
+
+    private async Task<Guid?> PickAsync(string productKey, string? localityGid2, string? province, string? city, CancellationToken ct)
     {
         // Solo asignamos a vendedores listos para enviar AHORA: WhatsApp conectado + envío prendido.
         // Si están desconectados o pausados, sus leads se quedarían parados. Mejor que caigan al
@@ -55,6 +58,23 @@ public class LeadAssigner : ILeadAssigner
         if (candidates.Count == 0) return null;
 
         List<Seller> pool;
+        // Primer intento: gid2 explícito de locality (M:N seller_localities). Más fiable
+        // que matchear por nombre porque no depende de tildes ni alias.
+        if (!string.IsNullOrWhiteSpace(localityGid2))
+        {
+            var ownerIds = await _db.SellerLocalities
+                .Where(sl => sl.LocalityGid2 == localityGid2)
+                .Select(sl => sl.SellerId)
+                .ToListAsync(ct);
+            var ownerSet = ownerIds.ToHashSet();
+            var owners = candidates.Where(c => ownerSet.Contains(c.Id)).ToList();
+            if (owners.Count > 0)
+            {
+                return PickRoundRobin(owners, await GetCountsAsync(ct));
+            }
+            // si nadie tiene esa zona, sigue con el matching por string
+        }
+
         var hasLocation = !string.IsNullOrWhiteSpace(province) || !string.IsNullOrWhiteSpace(city);
         if (hasLocation)
         {
@@ -83,14 +103,21 @@ public class LeadAssigner : ILeadAssigner
             pool = candidates;
         }
 
-        // Round-robin dentro del pool elegido: el que menos leads tomó en 24h.
+        return PickRoundRobin(pool, await GetCountsAsync(ct));
+    }
+
+    private async Task<Dictionary<Guid, int>> GetCountsAsync(CancellationToken ct)
+    {
         var since = DateTimeOffset.UtcNow.AddHours(-24);
-        var counts = await _db.Leads
+        return await _db.Leads
             .Where(l => l.SellerId != null && l.AssignedAt >= since)
             .GroupBy(l => l.SellerId!.Value)
             .Select(g => new { SellerId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.SellerId, x => x.Count, ct);
+    }
 
+    private static Guid PickRoundRobin(IReadOnlyList<Seller> pool, IReadOnlyDictionary<Guid, int> counts)
+    {
         return pool
             .OrderBy(s => counts.TryGetValue(s.Id, out var c) ? c : 0)
             .ThenBy(_ => Guid.NewGuid())

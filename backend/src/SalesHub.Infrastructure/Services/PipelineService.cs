@@ -238,9 +238,10 @@ public class PipelineService
             _db.Leads.Add(lead);
             created++;
 
-            // Region-aware: si el vendedor tiene la provincia del lead asignada, gana.
-            // Si no hay dueño, round-robin entre los sin-región (o global como fallback).
-            var sellerId = await _assigner.PickForLeadAsync(product.ProductKey, lead.Province, lead.City, ct);
+            // Region-aware: prioriza gid2 (M:N seller_localities); si el lead no trae
+            // gid2, cae al matching por string (provincia/ciudad). Sin owner → round-robin
+            // entre los sin-región o global como último recurso.
+            var sellerId = await _assigner.PickForLeadAsync(product.ProductKey, lead.LocalityGid2, lead.Province, lead.City, ct);
             if (sellerId is not null)
             {
                 lead.SellerId = sellerId;
@@ -298,7 +299,7 @@ public class PipelineService
         foreach (var lead in orphans)
         {
             if (lead.Product is null) continue;
-            var sellerId = await _assigner.PickForLeadAsync(lead.ProductKey, lead.Province, lead.City, ct);
+            var sellerId = await _assigner.PickForLeadAsync(lead.ProductKey, lead.LocalityGid2, lead.Province, lead.City, ct);
             if (sellerId is null)
             {
                 stillOrphan[lead.ProductKey] = stillOrphan.GetValueOrDefault(lead.ProductKey) + 1;

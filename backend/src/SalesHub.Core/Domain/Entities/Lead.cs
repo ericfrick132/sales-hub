@@ -39,6 +39,9 @@ public class Lead
     public string? SearchCategory { get; set; }
     public string? RawDataJson { get; set; }
 
+    public string? LocalityGid2 { get; set; }
+    public Locality? Locality { get; set; }
+
     public int Score { get; set; }
 
     public Guid? SellerId { get; set; }

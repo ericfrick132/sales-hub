@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SalesHub.Infrastructure.Persistence;
@@ -12,9 +13,11 @@ using SalesHub.Infrastructure.Persistence;
 namespace SalesHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260429225526_AddLocalities")]
+    partial class AddLocalities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -526,11 +529,6 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("latitude");
 
-                    b.Property<string>("LocalityGid2")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("locality_gid2");
-
                     b.Property<double?>("Longitude")
                         .HasColumnType("double precision")
                         .HasColumnName("longitude");
@@ -653,17 +651,11 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("ix_leads_created_at");
 
-                    b.HasIndex("LocalityGid2")
-                        .HasDatabaseName("ix_leads_locality_gid2");
-
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_leads_status");
 
                     b.HasIndex("Latitude", "Longitude")
                         .HasDatabaseName("ix_leads_latitude_longitude");
-
-                    b.HasIndex("ProductKey", "LocalityGid2")
-                        .HasDatabaseName("ix_leads_product_key_locality_gid2");
 
                     b.HasIndex("ProductKey", "PlaceId")
                         .HasDatabaseName("ix_leads_product_key_place_id")
@@ -987,85 +979,6 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("scrape_log", (string)null);
                 });
 
-            modelBuilder.Entity("SalesHub.Core.Domain.Entities.SearchJob", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Category")
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
-                        .HasColumnName("category");
-
-                    b.Property<string>("Error")
-                        .HasColumnType("text")
-                        .HasColumnName("error");
-
-                    b.Property<DateTimeOffset?>("FinishedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("finished_at");
-
-                    b.Property<int>("LeadsCreated")
-                        .HasColumnType("integer")
-                        .HasColumnName("leads_created");
-
-                    b.Property<string>("LocalityGid2")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("locality_gid2");
-
-                    b.Property<string>("ProductKey")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("product_key");
-
-                    b.Property<string>("Query")
-                        .IsRequired()
-                        .HasMaxLength(400)
-                        .HasColumnType("character varying(400)")
-                        .HasColumnName("query");
-
-                    b.Property<int>("RawItems")
-                        .HasColumnType("integer")
-                        .HasColumnName("raw_items");
-
-                    b.Property<DateTimeOffset>("ScheduledAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("scheduled_at");
-
-                    b.Property<Guid>("SellerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("seller_id");
-
-                    b.Property<DateTimeOffset?>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("started_at");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer")
-                        .HasColumnName("status");
-
-                    b.HasKey("Id")
-                        .HasName("pk_search_jobs");
-
-                    b.HasIndex("LocalityGid2")
-                        .HasDatabaseName("ix_search_jobs_locality_gid2");
-
-                    b.HasIndex("ProductKey")
-                        .HasDatabaseName("ix_search_jobs_product_key");
-
-                    b.HasIndex("SellerId", "ScheduledAt")
-                        .HasDatabaseName("ix_search_jobs_seller_id_scheduled_at");
-
-                    b.HasIndex("Status", "ScheduledAt")
-                        .HasDatabaseName("ix_search_jobs_status_scheduled_at");
-
-                    b.ToTable("search_jobs", (string)null);
-                });
-
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.Seller", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1354,12 +1267,6 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.Lead", b =>
                 {
-                    b.HasOne("SalesHub.Core.Domain.Entities.Locality", "Locality")
-                        .WithMany()
-                        .HasForeignKey("LocalityGid2")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_leads_localities_locality_gid2");
-
                     b.HasOne("SalesHub.Core.Domain.Entities.Product", "Product")
                         .WithMany("Leads")
                         .HasForeignKey("ProductKey")
@@ -1373,8 +1280,6 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasForeignKey("SellerId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_leads_sellers_seller_id");
-
-                    b.Navigation("Locality");
 
                     b.Navigation("Product");
 
@@ -1398,36 +1303,6 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_message_outbox_sellers_seller_id");
 
                     b.Navigation("Lead");
-
-                    b.Navigation("Seller");
-                });
-
-            modelBuilder.Entity("SalesHub.Core.Domain.Entities.SearchJob", b =>
-                {
-                    b.HasOne("SalesHub.Core.Domain.Entities.Locality", "Locality")
-                        .WithMany()
-                        .HasForeignKey("LocalityGid2")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_search_jobs_localities_locality_gid2");
-
-                    b.HasOne("SalesHub.Core.Domain.Entities.Product", "Product")
-                        .WithMany()
-                        .HasForeignKey("ProductKey")
-                        .HasPrincipalKey("ProductKey")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_search_jobs_products_product_key");
-
-                    b.HasOne("SalesHub.Core.Domain.Entities.Seller", "Seller")
-                        .WithMany()
-                        .HasForeignKey("SellerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_search_jobs_sellers_seller_id");
-
-                    b.Navigation("Locality");
-
-                    b.Navigation("Product");
 
                     b.Navigation("Seller");
                 });
