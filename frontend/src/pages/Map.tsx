@@ -57,14 +57,13 @@ export default function MapPage() {
 
   const [productKey, setProductKey] = useState('');
   const [editing, setEditing] = useState(false);
-  const [activeSellerId, setActiveSellerId] = useState<string | null>(null);
+  // Vendedor sobre el que la próxima acción "agregar/quitar" va a aplicarse.
+  const [assignTarget, setAssignTarget] = useState<string | null>(null);
+  // Multi-select: el usuario click + ctrl/cmd va sumando zonas a este set.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // Local optimistic copy of seller→localities while painting. We sync to the
-  // server on mouseup with a debounce so a long drag is one PATCH per seller.
-  const [draftAssignments, setDraftAssignments] = useState<Record<string, Set<string>>>({});
-  const dirtySellersRef = useRef<Set<string>>(new Set());
-  const isPaintingRef = useRef(false);
-  const paintModeRef = useRef<'add' | 'remove'>('add');
+  // Estado canónico (M:N seller↔gid2). Se refresca tras cada PATCH al backend.
+  const [assignments, setAssignments] = useState<Record<string, Set<string>>>({});
 
   const products = useQuery({
     queryKey: ['products-min'],
@@ -85,13 +84,13 @@ export default function MapPage() {
     refetchInterval: 30_000
   });
 
-  // Initialise the local draft from the server response so optimistic edits
-  // start from the latest state.
   useEffect(() => {
     if (!sellersQ.data) return;
     const m: Record<string, Set<string>> = {};
     for (const s of sellersQ.data) m[s.sellerId] = new Set(s.localityGid2s);
-    setDraftAssignments(m);
+    setAssignments(m);
+    if (!assignTarget && sellersQ.data.length > 0) setAssignTarget(sellersQ.data[0].sellerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sellersQ.data]);
 
   const sellersById = useMemo(() => {
@@ -100,10 +99,9 @@ export default function MapPage() {
     return m;
   }, [sellersQ.data]);
 
-  // For each gid2, who owns it. Computed on every assignment change.
   const ownersByGid2 = useMemo(() => {
     const m = new Map<string, string[]>();
-    for (const [sellerId, set] of Object.entries(draftAssignments)) {
+    for (const [sellerId, set] of Object.entries(assignments)) {
       for (const gid2 of set) {
         const arr = m.get(gid2) ?? [];
         arr.push(sellerId);
@@ -111,29 +109,29 @@ export default function MapPage() {
       }
     }
     return m;
-  }, [draftAssignments]);
+  }, [assignments]);
 
-  // Build the {gid2 → fillColor} mapping for the current view+edit state.
-  // - Editing + active seller: green if active owns it, hatched-gray if other owns it
-  // - Otherwise: color of first owner (or transparent if none)
+  // {gid2 → fillColor} para el view normal o para el view de edición. En edición
+  // resaltamos las zonas que tiene el assignTarget para que el admin vea su
+  // territorio actual mientras selecciona zonas nuevas.
   const fillExpression = useMemo(() => {
     const stops: unknown[] = ['match', ['get', 'gid2']];
     for (const [gid2, owners] of ownersByGid2) {
       let color = '#cbd5e1';
-      if (editing && activeSellerId) {
-        if (owners.includes(activeSellerId)) {
-          color = sellersById.get(activeSellerId)?.color ?? '#16a34a';
+      if (editing && assignTarget) {
+        if (owners.includes(assignTarget)) {
+          color = sellersById.get(assignTarget)?.color ?? '#16a34a';
         } else {
-          color = '#94a3b8';
+          color = '#cbd5e1';
         }
       } else {
         color = sellersById.get(owners[0])?.color ?? '#cbd5e1';
       }
       stops.push(gid2, color);
     }
-    stops.push('rgba(0,0,0,0)'); // default: transparent
+    stops.push('rgba(0,0,0,0)');
     return stops;
-  }, [ownersByGid2, editing, activeSellerId, sellersById]);
+  }, [ownersByGid2, editing, assignTarget, sellersById]);
 
   // Initialise the map once.
   useEffect(() => {
@@ -169,27 +167,29 @@ export default function MapPage() {
           id: 'localities-fill',
           type: 'fill',
           source: 'localities',
-          paint: {
-            'fill-color': 'rgba(0,0,0,0)',
-            'fill-opacity': 0.55
-          }
+          paint: { 'fill-color': 'rgba(0,0,0,0)', 'fill-opacity': 0.55 }
         });
         map.addLayer({
           id: 'localities-outline',
           type: 'line',
           source: 'localities',
-          paint: {
-            'line-color': '#475569',
-            'line-width': 0.4,
-            'line-opacity': 0.6
-          }
+          paint: { 'line-color': '#475569', 'line-width': 0.4, 'line-opacity': 0.6 }
         });
+        // Subrayado al pasar el mouse (modo no-edición).
         map.addLayer({
           id: 'localities-hover',
           type: 'line',
           source: 'localities',
           paint: { 'line-color': '#0f172a', 'line-width': 2 },
           filter: ['==', ['get', 'gid2'], '__none__']
+        });
+        // Borde grueso amarillo para zonas seleccionadas en modo edición.
+        map.addLayer({
+          id: 'localities-selected',
+          type: 'line',
+          source: 'localities',
+          paint: { 'line-color': '#f59e0b', 'line-width': 3 },
+          filter: ['in', ['get', 'gid2'], ['literal', []]]
         });
         setMapReady(true);
       } catch (err) {
@@ -201,13 +201,18 @@ export default function MapPage() {
     return () => { map.remove(); mapRef.current = null; };
   }, []);
 
-  // Update fill color expression whenever assignments / active seller change.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return;
-    if (!map.getLayer('localities-fill')) return;
+    if (!map || !mapReady || !map.getLayer('localities-fill')) return;
     map.setPaintProperty('localities-fill', 'fill-color', fillExpression as never);
   }, [fillExpression, mapReady]);
+
+  // Update the selected layer filter when the selection changes.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !map.getLayer('localities-selected')) return;
+    map.setFilter('localities-selected', ['in', ['get', 'gid2'], ['literal', [...selected]]]);
+  }, [selected, mapReady]);
 
   // Lead pins (circles) on top of polygons.
   useEffect(() => {
@@ -239,10 +244,11 @@ export default function MapPage() {
     }
   }, [leadsQ.data, mapReady]);
 
-  // Hover highlight + tooltip.
+  // Hover popup — sólo en modo NO-edición (en edición confunde con la selección).
   useEffect(() => {
     const m = mapRef.current;
     if (!m || !mapReady || !m.getLayer('localities-fill')) return;
+    if (editing) return;
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 6 });
     const onMove = (e: MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
       const f = e.features?.[0];
@@ -269,92 +275,84 @@ export default function MapPage() {
       m.off('mouseleave', 'localities-fill', onLeave);
       popup.remove();
     };
-  }, [mapReady, ownersByGid2, sellersById]);
+  }, [mapReady, editing, ownersByGid2, sellersById]);
 
-  // Drag-paint when editing + an active seller is selected. Toggling on the
-  // first cell decides whether the rest of the drag adds or removes.
+  // Click handler en modo edición. Sin modificador: reemplaza la selección.
+  // Con Ctrl/Cmd o Shift: toggle (suma/saca).
   useEffect(() => {
     const m = mapRef.current;
-    if (!m || !mapReady) return;
-    if (!editing || !activeSellerId) return;
-    m.dragPan.disable();
-    m.getCanvas().style.cursor = 'crosshair';
-
-    const applyToggle = (gid2: string) => {
-      setDraftAssignments(prev => {
-        const next = { ...prev };
-        const set = new Set(next[activeSellerId!] ?? []);
-        if (paintModeRef.current === 'add') set.add(gid2);
-        else set.delete(gid2);
-        next[activeSellerId!] = set;
+    if (!m || !mapReady || !editing) return;
+    const onClick = (e: MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[]; originalEvent: MouseEvent }) => {
+      const f = e.features?.[0];
+      const gid2 = (f?.properties as { gid2?: string } | undefined)?.gid2;
+      if (!gid2) return;
+      const additive = e.originalEvent.ctrlKey || e.originalEvent.metaKey || e.originalEvent.shiftKey;
+      setSelected(prev => {
+        const next = new Set(prev);
+        if (additive) {
+          if (next.has(gid2)) next.delete(gid2);
+          else next.add(gid2);
+        } else {
+          // Click sin modificador: si ya estaba selccionada sola, deselecciona;
+          // si no, queda como única selección.
+          if (next.size === 1 && next.has(gid2)) {
+            next.clear();
+          } else {
+            next.clear();
+            next.add(gid2);
+          }
+        }
         return next;
       });
-      dirtySellersRef.current.add(activeSellerId!);
     };
+    m.on('click', 'localities-fill', onClick);
+    return () => { m.off('click', 'localities-fill', onClick); };
+  }, [mapReady, editing]);
 
-    const pickGid2 = (e: MapMouseEvent): string | null => {
-      const fs = m.queryRenderedFeatures(e.point, { layers: ['localities-fill'] });
-      const f = fs?.[0];
-      const id = (f?.properties as { gid2?: string } | undefined)?.gid2;
-      return id ?? null;
-    };
+  // Cuando salgo de modo edición, limpio la selección.
+  useEffect(() => {
+    if (!editing) setSelected(new Set());
+  }, [editing]);
 
-    const onDown = (e: MapMouseEvent) => {
-      const gid2 = pickGid2(e); if (!gid2) return;
-      const has = (draftAssignments[activeSellerId!] ?? new Set()).has(gid2);
-      paintModeRef.current = has ? 'remove' : 'add';
-      isPaintingRef.current = true;
-      applyToggle(gid2);
-    };
-    let lastGid2: string | null = null;
-    const onMove = (e: MapMouseEvent) => {
-      if (!isPaintingRef.current) return;
-      const gid2 = pickGid2(e); if (!gid2 || gid2 === lastGid2) return;
-      lastGid2 = gid2;
-      applyToggle(gid2);
-    };
-    const onUp = () => {
-      isPaintingRef.current = false;
-      lastGid2 = null;
-      flushDirty();
-    };
-
-    m.on('mousedown', onDown);
-    m.on('mousemove', onMove);
-    m.on('mouseup', onUp);
-    return () => {
-      m.dragPan.enable();
-      m.getCanvas().style.cursor = '';
-      m.off('mousedown', onDown);
-      m.off('mousemove', onMove);
-      m.off('mouseup', onUp);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, editing, activeSellerId]);
-
-  async function flushDirty() {
-    const ids = [...dirtySellersRef.current];
-    dirtySellersRef.current.clear();
-    for (const sellerId of ids) {
-      const set = draftAssignments[sellerId];
-      try {
-        await api.put(`/admin/sellers/${sellerId}/localities`, {
-          localityGid2s: [...(set ?? [])]
-        });
-      } catch (err) {
-        const e = err as { response?: { data?: { error?: string } } };
-        toast.error(e?.response?.data?.error ?? 'Error guardando asignación');
-      }
+  async function applySelection(mode: 'add' | 'remove') {
+    if (!assignTarget) return toast.error('Elegí un vendedor primero');
+    if (selected.size === 0) return toast.error('No hay zonas seleccionadas');
+    const current = new Set(assignments[assignTarget] ?? []);
+    if (mode === 'add') {
+      for (const gid2 of selected) current.add(gid2);
+    } else {
+      for (const gid2 of selected) current.delete(gid2);
     }
-    qc.invalidateQueries({ queryKey: ['sellers-with-localities'] });
+    // Optimistic UI
+    setAssignments(prev => ({ ...prev, [assignTarget]: current }));
+    try {
+      await api.put(`/admin/sellers/${assignTarget}/localities`, {
+        localityGid2s: [...current]
+      });
+      toast.success(mode === 'add'
+        ? `+${selected.size} zona${selected.size === 1 ? '' : 's'}`
+        : `-${selected.size} zona${selected.size === 1 ? '' : 's'}`);
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ['sellers-with-localities'] });
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e?.response?.data?.error ?? 'Error guardando');
+      // Revert on failure
+      setAssignments(prev => {
+        const reverted = new Set(sellersQ.data?.find(s => s.sellerId === assignTarget)?.localityGid2s ?? []);
+        return { ...prev, [assignTarget]: reverted };
+      });
+    }
   }
 
-  // Counts for the legend.
   const productCounts = useMemo(() => {
     const m = new Map<string, number>();
     (leadsQ.data ?? []).forEach(l => m.set(l.productKey, (m.get(l.productKey) ?? 0) + 1));
     return m;
   }, [leadsQ.data]);
+
+  const targetSeller = assignTarget ? sellersById.get(assignTarget) : null;
+  const targetCount = assignTarget ? (assignments[assignTarget]?.size ?? 0) : 0;
 
   return (
     <div className="space-y-3">
@@ -382,17 +380,64 @@ export default function MapPage() {
 
       <div className="flex gap-3" style={{ height: '70vh' }}>
         {admin && (
-          <div className="card p-3 overflow-y-auto" style={{ width: 240 }}>
+          <div className="card p-3 overflow-y-auto flex flex-col" style={{ width: 280 }}>
+            {editing && (
+              <div className="border border-slate-200 rounded-md p-2 mb-3 bg-slate-50">
+                <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">Asignar zonas</div>
+                <div className="text-xs text-slate-600 mb-2">
+                  Click sobre el mapa selecciona una zona. <b>Ctrl/Cmd+click</b> suma o saca zonas
+                  de la selección.
+                </div>
+                <label className="text-xs text-slate-500">Vendedor</label>
+                <select
+                  className="input w-full text-sm mb-2"
+                  value={assignTarget ?? ''}
+                  onChange={e => setAssignTarget(e.target.value || null)}>
+                  {(sellersQ.data ?? []).map(s => (
+                    <option key={s.sellerId} value={s.sellerId}>{s.displayName}</option>
+                  ))}
+                </select>
+                <div className="text-xs text-slate-600 mb-2">
+                  Selección actual: <b>{selected.size}</b> zona{selected.size === 1 ? '' : 's'}
+                  {targetSeller && (
+                    <span className="block text-slate-500">
+                      {targetSeller.displayName} hoy tiene {targetCount}.
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    className="btn-primary text-xs flex-1"
+                    disabled={selected.size === 0 || !assignTarget}
+                    onClick={() => applySelection('add')}>
+                    + Asignar
+                  </button>
+                  <button
+                    className="btn-secondary text-xs flex-1"
+                    disabled={selected.size === 0 || !assignTarget}
+                    onClick={() => applySelection('remove')}>
+                    − Quitar
+                  </button>
+                  <button
+                    className="btn-secondary text-xs"
+                    disabled={selected.size === 0}
+                    onClick={() => setSelected(new Set())}>
+                    Limpiar
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Vendedores</div>
             {(sellersQ.data ?? []).map(s => {
-              const active = activeSellerId === s.sellerId;
-              const count = draftAssignments[s.sellerId]?.size ?? 0;
+              const isTarget = assignTarget === s.sellerId;
+              const count = assignments[s.sellerId]?.size ?? 0;
               return (
                 <button
                   key={s.sellerId}
-                  onClick={() => setActiveSellerId(active ? null : s.sellerId)}
+                  onClick={() => setAssignTarget(s.sellerId)}
                   className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-sm ${
-                    active ? 'bg-slate-100 ring-1 ring-slate-300' : 'hover:bg-slate-50'
+                    isTarget && editing ? 'bg-slate-100 ring-1 ring-slate-300' : 'hover:bg-slate-50'
                   }`}>
                   <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: s.color }} />
                   <span className="flex-1 truncate">{s.displayName}</span>
@@ -402,13 +447,6 @@ export default function MapPage() {
             })}
             {!sellersQ.isLoading && (sellersQ.data ?? []).length === 0 && (
               <div className="text-xs text-slate-500">Sin vendedores activos.</div>
-            )}
-            {editing && (
-              <div className="mt-3 text-xs text-slate-500 border-t border-slate-200 pt-2">
-                {activeSellerId
-                  ? 'Click + arrastrar sobre el mapa para pintar/borrar zonas. Una zona puede tener varios vendedores.'
-                  : 'Elegí un vendedor del listado para empezar a pintar.'}
-              </div>
             )}
           </div>
         )}
@@ -439,7 +477,6 @@ export default function MapPage() {
         )}
       </div>
 
-      {/* Active lead detail link via popup is handled by maplibre. Detail card omitted. */}
       <div className="text-xs text-slate-400">
         <Link to="/leads" className="hover:underline">Ir a leads →</Link>
       </div>
