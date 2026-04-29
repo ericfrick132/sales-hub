@@ -6,6 +6,7 @@ using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Api.Controllers;
 
@@ -16,10 +17,70 @@ public class LeadsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IMessageRenderer _renderer;
+    private readonly PipelineService _pipeline;
 
-    public LeadsController(ApplicationDbContext db, IMessageRenderer renderer)
+    public LeadsController(ApplicationDbContext db, IMessageRenderer renderer, PipelineService pipeline)
     {
-        _db = db; _renderer = renderer;
+        _db = db; _renderer = renderer; _pipeline = pipeline;
+    }
+
+    public record AssignRequest(Guid SellerId, bool AutoQueue = true);
+
+    [HttpPost("{id:guid}/assign")]
+    public async Task<ActionResult<LeadDto>> Assign(Guid id, [FromBody] AssignRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var lead = await _db.Leads.Include(l => l.Product).FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (lead is null) return NotFound();
+
+        var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == req.SellerId, ct);
+        if (seller is null) return BadRequest(new { error = "Vendedor no encontrado" });
+        if (!seller.IsActive) return BadRequest(new { error = "Vendedor inactivo" });
+
+        lead.SellerId = seller.Id;
+        lead.AssignedAt = DateTimeOffset.UtcNow;
+        lead.Status = LeadStatus.Assigned;
+        if (lead.Product is not null)
+        {
+            lead.RenderedMessage = _renderer.Render(lead, lead.Product, seller);
+            lead.WhatsappLink = string.IsNullOrWhiteSpace(lead.WhatsappPhone)
+                ? null
+                : $"https://wa.me/{lead.WhatsappPhone}?text={Uri.EscapeDataString(lead.RenderedMessage ?? "")}";
+        }
+
+        if (req.AutoQueue
+            && seller.SendingEnabled
+            && seller.EvolutionInstance is { Status: InstanceStatus.Connected } inst
+            && !string.IsNullOrWhiteSpace(lead.WhatsappPhone)
+            && lead.RenderedMessage is not null)
+        {
+            _db.Outbox.Add(new MessageOutbox
+            {
+                Id = Guid.NewGuid(),
+                LeadId = lead.Id,
+                SellerId = seller.Id,
+                EvolutionInstance = inst.InstanceName,
+                WhatsappPhone = lead.WhatsappPhone,
+                Message = lead.RenderedMessage,
+                ScheduledAt = DateTimeOffset.UtcNow,
+                Status = OutboxStatus.Scheduled
+            });
+            lead.Status = LeadStatus.Queued;
+            lead.QueuedAt = DateTimeOffset.UtcNow;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        lead.Seller = seller;
+        return ToDto(lead);
+    }
+
+    [HttpPost("reassign-orphans")]
+    public async Task<ActionResult<PipelineService.ReassignOrphansResult>> ReassignOrphans(
+        [FromQuery] bool autoQueue = true, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var result = await _pipeline.ReassignOrphansAsync(autoQueue, ct);
+        return result;
     }
 
     public record MapLeadDto(
