@@ -125,7 +125,7 @@ public class DashboardController : ControllerBase
     public record OutboxItemDto(
         Guid Id, Guid LeadId, string LeadName, string ProductKey, string? ProductName,
         string WhatsappPhone, string Message, OutboxStatus Status,
-        DateTimeOffset ScheduledAt, DateTime? SentAt, int Attempts, string? Error);
+        DateTimeOffset ScheduledAt, DateTimeOffset? SentAt, int Attempts, string? Error);
 
     [HttpGet("outbox")]
     public async Task<ActionResult<IEnumerable<OutboxItemDto>>> Outbox(
