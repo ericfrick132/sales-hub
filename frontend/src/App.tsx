@@ -3,6 +3,7 @@ import { isAdmin, useAuthStore } from './lib/auth';
 import Login from './pages/Login';
 import Layout from './components/Layout';
 import MyLeads from './pages/MyLeads';
+import LeadsImport from './pages/LeadsImport';
 import LeadDetail from './pages/LeadDetail';
 import Pool from './pages/Pool';
 import MyDashboard from './pages/MyDashboard';
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/" element={<Navigate to={isAdmin(user) ? '/admin' : '/dashboard'} replace />} />
         <Route path="/dashboard" element={<MyDashboard />} />
         <Route path="/leads" element={<MyLeads />} />
+        <Route path="/leads/import" element={<LeadsImport />} />
         <Route path="/leads/:id" element={<LeadDetail />} />
         <Route path="/pool" element={<Pool />} />
         <Route path="/connect" element={<Connect />} />

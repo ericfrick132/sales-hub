@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { isAdmin, useAuthStore } from '../lib/auth';
@@ -155,6 +155,7 @@ export default function MyLeads() {
               Reasignar todos
             </button>
           )}
+          <Link to="/leads/import" className="btn-secondary">Importar de Maps</Link>
           <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Cargar lead</button>
         </div>
       </div>

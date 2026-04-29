@@ -18,10 +18,11 @@ public class LeadsController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly IMessageRenderer _renderer;
     private readonly PipelineService _pipeline;
+    private readonly IPhoneNormalizer _phone;
 
-    public LeadsController(ApplicationDbContext db, IMessageRenderer renderer, PipelineService pipeline)
+    public LeadsController(ApplicationDbContext db, IMessageRenderer renderer, PipelineService pipeline, IPhoneNormalizer phone)
     {
-        _db = db; _renderer = renderer; _pipeline = pipeline;
+        _db = db; _renderer = renderer; _pipeline = pipeline; _phone = phone;
     }
 
     public record AssignRequest(Guid SellerId, bool AutoQueue = true);
@@ -291,6 +292,120 @@ public class LeadsController : ControllerBase
                 l.Status, l.SellerId, l.Seller != null ? l.Seller.DisplayName : null, l.CreatedAt))
             .ToListAsync(ct);
         return rows;
+    }
+
+    [HttpPost("bulk-import")]
+    public async Task<ActionResult<BulkImportResult>> BulkImport([FromBody] BulkImportRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.RawText))
+            return BadRequest(new { error = "Falta el texto a importar" });
+        if (string.IsNullOrWhiteSpace(req.ProductKey))
+            return BadRequest(new { error = "Falta el producto" });
+
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.ProductKey == req.ProductKey, ct);
+        if (product is null)
+            return BadRequest(new { error = $"Producto '{req.ProductKey}' no existe" });
+
+        var callerId = CurrentUser.Id(User);
+        var isAdmin = CurrentUser.IsAdmin(User);
+        Guid? sellerId = req.AssignToCaller
+            ? callerId
+            : (isAdmin ? req.SellerId : null);
+
+        Seller? seller = null;
+        if (sellerId is not null)
+        {
+            seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == sellerId.Value, ct);
+            if (seller is null) return BadRequest(new { error = "Vendedor no encontrado" });
+        }
+
+        var parsed = MapsTextParser.Parse(req.RawText);
+        var now = DateTimeOffset.UtcNow;
+        var items = new List<BulkImportItem>();
+
+        // Dedupe set para el mismo batch (varios items con mismo phone en el paste).
+        var seenInBatch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var p in parsed)
+        {
+            if (string.Equals(p.BusinessStatus, "permanently_closed", StringComparison.OrdinalIgnoreCase))
+            {
+                items.Add(new BulkImportItem(p.Name, p.Phone, p.Address, p.Rating, p.TotalReviews, "closed", "Cerrado permanentemente"));
+                continue;
+            }
+
+            var normalized = _phone.Normalize(p.Phone, product.PhonePrefix);
+
+            // Dedupe within the batch — by phone if present, else by name+product.
+            var batchKey = normalized ?? $"name:{p.Name.ToLowerInvariant()}";
+            if (!seenInBatch.Add(batchKey))
+            {
+                items.Add(new BulkImportItem(p.Name, normalized, p.Address, p.Rating, p.TotalReviews, "duplicate", "Duplicado en el paste"));
+                continue;
+            }
+
+            // Dedupe vs DB.
+            bool existsInDb;
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                existsInDb = await _db.Leads.AnyAsync(l => l.ProductKey == product.ProductKey && l.WhatsappPhone == normalized, ct);
+            }
+            else
+            {
+                var lower = p.Name.Trim().ToLower();
+                existsInDb = await _db.Leads.AnyAsync(l => l.ProductKey == product.ProductKey && l.Name.ToLower() == lower, ct);
+            }
+            if (existsInDb)
+            {
+                items.Add(new BulkImportItem(p.Name, normalized, p.Address, p.Rating, p.TotalReviews, "duplicate", "Ya existe en la base"));
+                continue;
+            }
+
+            try
+            {
+                var lead = new Lead
+                {
+                    Id = Guid.NewGuid(),
+                    ProductKey = product.ProductKey,
+                    Source = req.Source,
+                    Name = p.Name.Trim(),
+                    City = string.IsNullOrWhiteSpace(req.City) ? null : req.City.Trim(),
+                    WhatsappPhone = normalized,
+                    Address = p.Address,
+                    Rating = p.Rating,
+                    TotalReviews = p.TotalReviews,
+                    BusinessStatus = p.BusinessStatus,
+                    SearchQuery = "bulk-import",
+                    SearchCategory = p.Type,
+                    SellerId = sellerId,
+                    AssignedAt = sellerId is not null ? now : null,
+                    Status = sellerId is not null && req.Status == LeadStatus.New
+                        ? LeadStatus.Assigned
+                        : req.Status,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+
+                if (lead.Status >= LeadStatus.Sent) lead.SentAt = now;
+
+                _db.Leads.Add(lead);
+                await _db.SaveChangesAsync(ct);
+
+                items.Add(new BulkImportItem(p.Name, normalized, p.Address, p.Rating, p.TotalReviews, "inserted", null, lead.Id));
+            }
+            catch (Exception ex)
+            {
+                items.Add(new BulkImportItem(p.Name, normalized, p.Address, p.Rating, p.TotalReviews, "error", ex.Message));
+            }
+        }
+
+        return new BulkImportResult(
+            Parsed: parsed.Count,
+            Inserted: items.Count(i => i.Outcome == "inserted"),
+            Duplicates: items.Count(i => i.Outcome == "duplicate"),
+            Closed: items.Count(i => i.Outcome == "closed"),
+            Errors: items.Count(i => i.Outcome == "error"),
+            Items: items);
     }
 
     [HttpPost]
