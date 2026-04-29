@@ -35,6 +35,7 @@ export default function Layout() {
     ? [
         { to: '/admin', label: 'Hoy' },
         { to: '/leads', label: 'Leads' },
+        { to: '/leads/search', label: 'Capturar de Maps' },
         { to: '/conversations', label: 'Conversaciones', badge: unread.data },
         { to: '/connect', label: 'WhatsApp' }
       ]
