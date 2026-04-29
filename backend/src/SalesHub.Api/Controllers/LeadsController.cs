@@ -48,9 +48,12 @@ public class LeadsController : ControllerBase
                 : $"https://wa.me/{lead.WhatsappPhone}?text={Uri.EscapeDataString(lead.RenderedMessage ?? "")}";
         }
 
+        // Si el admin pidió encolar, lo hacemos siempre que haya instancia + teléfono + mensaje.
+        // El OutboxSender va a chequear SendingEnabled + Status=Connected al momento de mandar,
+        // así que es seguro encolar aunque el seller esté momentáneamente desconectado o pausado:
+        // los items se quedan Scheduled hasta que el seller pueda mandar.
         if (req.AutoQueue
-            && seller.SendingEnabled
-            && seller.EvolutionInstance is { Status: InstanceStatus.Connected } inst
+            && seller.EvolutionInstance is not null
             && !string.IsNullOrWhiteSpace(lead.WhatsappPhone)
             && lead.RenderedMessage is not null)
         {
@@ -59,7 +62,7 @@ public class LeadsController : ControllerBase
                 Id = Guid.NewGuid(),
                 LeadId = lead.Id,
                 SellerId = seller.Id,
-                EvolutionInstance = inst.InstanceName,
+                EvolutionInstance = seller.EvolutionInstance.InstanceName,
                 WhatsappPhone = lead.WhatsappPhone,
                 Message = lead.RenderedMessage,
                 ScheduledAt = DateTimeOffset.UtcNow,

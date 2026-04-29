@@ -160,12 +160,29 @@ public class SellersController : ControllerBase
         var info = await _evo.GetInstanceStatusAsync(instanceName, ct);
 
         var now = DateTimeOffset.UtcNow;
+        // Map raw Evolution status to our enum so the DB reflects current state immediately
+        // (no lag waiting for the InstanceMonitor tick).
+        var mapped = info.Status switch
+        {
+            "open" or "connected" => InstanceStatus.Connected,
+            "connecting" or "qr" => InstanceStatus.Connecting,
+            "close" or "disconnected" or "not_found" => InstanceStatus.Disconnected,
+            _ => InstanceStatus.Unknown
+        };
         await _db.EvolutionInstances
             .Where(x => x.SellerId == id)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(e => e.LastQrCodeBase64, qr)
                 .SetProperty(e => e.QrCodeGeneratedAt, now)
-                .SetProperty(e => e.UpdatedAt, now), ct);
+                .SetProperty(e => e.UpdatedAt, now)
+                .SetProperty(e => e.Status, mapped)
+                .SetProperty(e => e.LastStatusCheckAt, now), ct);
+        if (mapped == InstanceStatus.Connected)
+        {
+            await _db.EvolutionInstances
+                .Where(x => x.SellerId == id && x.ConnectedAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.ConnectedAt, now), ct);
+        }
 
         return new QrCodeResponse(qr, info.Status);
     }
