@@ -51,6 +51,7 @@ public record BulkImportRequest(
     LeadSource Source = LeadSource.ManualMaps,
     LeadStatus Status = LeadStatus.New,
     bool AssignToCaller = true,
+    bool EnrichWithPlacesApi = true,
     string? City = null,
     Guid? SellerId = null);
 

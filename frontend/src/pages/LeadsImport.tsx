@@ -75,6 +75,7 @@ export default function LeadsImport() {
   const [status, setStatus] = useState<LeadStatus>(defaults.status ?? 'New');
   const [city, setCity] = useState(defaults.city ?? '');
   const [assignToCaller, setAssignToCaller] = useState(true);
+  const [enrichWithPlaces, setEnrichWithPlaces] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BulkResult | null>(null);
 
@@ -104,8 +105,9 @@ export default function LeadsImport() {
         source,
         status,
         city: city.trim() || null,
-        assignToCaller
-      });
+        assignToCaller,
+        enrichWithPlacesApi: enrichWithPlaces
+      }, { timeout: 600_000 });
       setResult(data);
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ productKey, source, status, city }));
       toast.success(`${data.inserted} insertados · ${data.duplicates} duplicados · ${data.closed} cerrados · ${data.errors} errores`);
@@ -163,12 +165,29 @@ export default function LeadsImport() {
           </div>
         </div>
 
-        {admin && (
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={assignToCaller} onChange={(e) => setAssignToCaller(e.target.checked)} />
-            Asignarme estos leads (si lo destildás, quedan en el Pool sin asignar)
+        <div className="space-y-2 border border-slate-200 rounded p-3 bg-slate-50">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={enrichWithPlaces}
+              onChange={(e) => setEnrichWithPlaces(e.target.checked)}
+              className="mt-0.5" />
+            <span>
+              <strong>Enriquecer con Google Places</strong> (recomendado)
+              <span className="block text-xs text-slate-500">
+                Busca cada lead por nombre + dirección y completa teléfono, website y coordenadas.
+                Necesario porque el listado de Maps no trae teléfono. Cuesta ~$0.04/lead — dentro del free tier ($200/mes).
+                Si lo desactivás, solo se importan los leads que ya traen teléfono visible en el listado.
+              </span>
+            </span>
           </label>
-        )}
+          {admin && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={assignToCaller} onChange={(e) => setAssignToCaller(e.target.checked)} />
+              Asignarme estos leads (si lo destildás, quedan en el Pool)
+            </label>
+          )}
+        </div>
 
         <div>
           <label className="text-xs text-slate-500 mb-1 block">
@@ -185,7 +204,12 @@ export default function LeadsImport() {
           </div>
         </div>
 
-        <div className="flex gap-2 justify-end">
+        <div className="flex items-center gap-2 justify-end">
+          {submitting && enrichWithPlaces && (
+            <span className="text-xs text-slate-500">
+              Enriqueciendo con Places… (~1s por lead)
+            </span>
+          )}
           <button className="btn-secondary" disabled={submitting} onClick={() => { setRawText(''); setResult(null); }}>
             Limpiar
           </button>

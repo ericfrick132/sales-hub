@@ -29,6 +29,8 @@ public static class DependencyInjection
         services.AddHttpClient<ApifyUsageMonitor>();
         services.AddHttpClient<EvolutionClient>();
         services.AddHttpClient<GooglePlacesSource>();
+        services.AddHttpClient<GooglePlacesEnricher>();
+        services.AddScoped<IGooglePlacesEnricher>(sp => sp.GetRequiredService<GooglePlacesEnricher>());
         services.AddHttpClient<GeonamesImporter>();
         services.AddHttpClient<WebsiteContactExtractor>();
         services.AddScoped<IWebsiteContactExtractor>(sp => sp.GetRequiredService<WebsiteContactExtractor>());

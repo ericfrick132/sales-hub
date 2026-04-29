@@ -19,10 +19,16 @@ public class LeadsController : ControllerBase
     private readonly IMessageRenderer _renderer;
     private readonly PipelineService _pipeline;
     private readonly IPhoneNormalizer _phone;
+    private readonly IGooglePlacesEnricher _enricher;
 
-    public LeadsController(ApplicationDbContext db, IMessageRenderer renderer, PipelineService pipeline, IPhoneNormalizer phone)
+    public LeadsController(
+        ApplicationDbContext db,
+        IMessageRenderer renderer,
+        PipelineService pipeline,
+        IPhoneNormalizer phone,
+        IGooglePlacesEnricher enricher)
     {
-        _db = db; _renderer = renderer; _pipeline = pipeline; _phone = phone;
+        _db = db; _renderer = renderer; _pipeline = pipeline; _phone = phone; _enricher = enricher;
     }
 
     public record AssignRequest(Guid SellerId, bool AutoQueue = true);
@@ -328,37 +334,105 @@ public class LeadsController : ControllerBase
 
         foreach (var p in parsed)
         {
+            // Skip permanently closed lugares — no tiene sentido contactarlos.
             if (string.Equals(p.BusinessStatus, "permanently_closed", StringComparison.OrdinalIgnoreCase))
             {
                 items.Add(new BulkImportItem(p.Name, p.Phone, p.Address, p.Rating, p.TotalReviews, "closed", "Cerrado permanentemente"));
                 continue;
             }
 
-            var normalized = _phone.Normalize(p.Phone, product.PhonePrefix);
-
-            // Dedupe within the batch — by phone if present, else by name+product.
-            var batchKey = normalized ?? $"name:{p.Name.ToLowerInvariant()}";
-            if (!seenInBatch.Add(batchKey))
+            // Pre-dedupe POR NOMBRE para no gastar API call de Places en duplicados.
+            // (El paste rara vez trae el mismo lugar 2 veces, pero la base sí puede tenerlo
+            // de una corrida previa.)
+            var nameLower = p.Name.Trim().ToLower();
+            var nameBatchKey = $"name:{nameLower}";
+            if (!seenInBatch.Add(nameBatchKey))
             {
-                items.Add(new BulkImportItem(p.Name, normalized, p.Address, p.Rating, p.TotalReviews, "duplicate", "Duplicado en el paste"));
+                items.Add(new BulkImportItem(p.Name, p.Phone, p.Address, p.Rating, p.TotalReviews, "duplicate", "Duplicado en el paste (mismo nombre)"));
                 continue;
             }
 
-            // Dedupe vs DB.
-            bool existsInDb;
+            var existsByName = await _db.Leads.AnyAsync(
+                l => l.ProductKey == product.ProductKey && l.Name.ToLower() == nameLower, ct);
+            if (existsByName)
+            {
+                items.Add(new BulkImportItem(p.Name, p.Phone, p.Address, p.Rating, p.TotalReviews, "duplicate", "Ya existe en la base (mismo nombre)"));
+                continue;
+            }
+
+            // Enriquecimiento opcional con Google Places: trae teléfono / website / lat-lng
+            // para ítems donde el listado pegado no incluyó esos datos. ~$0.04/lead.
+            string? enrichedPhone = p.Phone;
+            string? enrichedWebsite = null;
+            string? placeId = null;
+            double? lat = null, lng = null;
+            string? formattedAddress = p.Address;
+            var rating = p.Rating;
+            var reviews = p.TotalReviews;
+            var bizStatus = p.BusinessStatus;
+            var enrichmentNote = (string?)null;
+
+            if (req.EnrichWithPlacesApi)
+            {
+                var enriched = await _enricher.EnrichAsync(
+                    p.Name, p.Address, req.City, product.CountryName, product.Language, ct);
+                if (enriched is not null)
+                {
+                    placeId = enriched.PlaceId;
+                    if (string.IsNullOrWhiteSpace(enrichedPhone)) enrichedPhone = enriched.Phone;
+                    enrichedWebsite = enriched.Website;
+                    lat = enriched.Latitude; lng = enriched.Longitude;
+                    rating ??= enriched.Rating;
+                    reviews ??= enriched.TotalReviews;
+                    formattedAddress = enriched.FormattedAddress ?? formattedAddress;
+
+                    // Si Google reporta cerrado permanentemente, lo respetamos.
+                    if (string.Equals(enriched.BusinessStatus, "CLOSED_PERMANENTLY", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(enriched.BusinessStatus, "permanently_closed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        items.Add(new BulkImportItem(p.Name, enrichedPhone, formattedAddress, rating, reviews, "closed", "Cerrado permanentemente (Google)"));
+                        continue;
+                    }
+                    bizStatus ??= enriched.BusinessStatus;
+                }
+                else
+                {
+                    enrichmentNote = "no se encontró en Places";
+                }
+            }
+
+            var normalized = _phone.Normalize(enrichedPhone, product.PhonePrefix);
+
+            // Segundo dedupe: por placeId (más robusto) y por phone (si el enrich consiguió uno).
+            if (!string.IsNullOrWhiteSpace(placeId))
+            {
+                if (!seenInBatch.Add($"pid:{placeId}"))
+                {
+                    items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "duplicate", "Duplicado en el paste (place_id)"));
+                    continue;
+                }
+                var existsByPlace = await _db.Leads.AnyAsync(
+                    l => l.ProductKey == product.ProductKey && l.PlaceId == placeId, ct);
+                if (existsByPlace)
+                {
+                    items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "duplicate", "Ya existe en la base (place_id)"));
+                    continue;
+                }
+            }
             if (!string.IsNullOrWhiteSpace(normalized))
             {
-                existsInDb = await _db.Leads.AnyAsync(l => l.ProductKey == product.ProductKey && l.WhatsappPhone == normalized, ct);
-            }
-            else
-            {
-                var lower = p.Name.Trim().ToLower();
-                existsInDb = await _db.Leads.AnyAsync(l => l.ProductKey == product.ProductKey && l.Name.ToLower() == lower, ct);
-            }
-            if (existsInDb)
-            {
-                items.Add(new BulkImportItem(p.Name, normalized, p.Address, p.Rating, p.TotalReviews, "duplicate", "Ya existe en la base"));
-                continue;
+                if (!seenInBatch.Add($"phone:{normalized}"))
+                {
+                    items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "duplicate", "Duplicado en el paste (teléfono)"));
+                    continue;
+                }
+                var existsByPhone = await _db.Leads.AnyAsync(
+                    l => l.ProductKey == product.ProductKey && l.WhatsappPhone == normalized, ct);
+                if (existsByPhone)
+                {
+                    items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "duplicate", "Ya existe en la base (teléfono)"));
+                    continue;
+                }
             }
 
             try
@@ -371,10 +445,14 @@ public class LeadsController : ControllerBase
                     Name = p.Name.Trim(),
                     City = string.IsNullOrWhiteSpace(req.City) ? null : req.City.Trim(),
                     WhatsappPhone = normalized,
-                    Address = p.Address,
-                    Rating = p.Rating,
-                    TotalReviews = p.TotalReviews,
-                    BusinessStatus = p.BusinessStatus,
+                    Website = enrichedWebsite,
+                    Address = formattedAddress,
+                    Latitude = lat,
+                    Longitude = lng,
+                    PlaceId = placeId,
+                    Rating = rating,
+                    TotalReviews = reviews,
+                    BusinessStatus = bizStatus,
                     SearchQuery = "bulk-import",
                     SearchCategory = p.Type,
                     SellerId = sellerId,
@@ -391,11 +469,11 @@ public class LeadsController : ControllerBase
                 _db.Leads.Add(lead);
                 await _db.SaveChangesAsync(ct);
 
-                items.Add(new BulkImportItem(p.Name, normalized, p.Address, p.Rating, p.TotalReviews, "inserted", null, lead.Id));
+                items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "inserted", enrichmentNote, lead.Id));
             }
             catch (Exception ex)
             {
-                items.Add(new BulkImportItem(p.Name, normalized, p.Address, p.Rating, p.TotalReviews, "error", ex.Message));
+                items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "error", ex.Message));
             }
         }
 
