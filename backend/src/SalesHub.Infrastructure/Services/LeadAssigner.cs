@@ -29,9 +29,23 @@ public class LeadAssigner : ILeadAssigner
 
     private async Task<Guid?> PickAsync(string productKey, string? province, string? city, CancellationToken ct)
     {
+        // Solo asignamos a vendedores listos para enviar AHORA: WhatsApp conectado + envío prendido.
+        // Si están desconectados o pausados, sus leads se quedarían parados. Mejor que caigan al
+        // pool y los tome alguien que sí pueda mandar.
         var candidates = await _db.Sellers
-            .Where(s => s.IsActive && s.Role == SellerRole.Seller)
+            .Include(s => s.EvolutionInstance)
+            .Where(s => s.IsActive
+                     && s.SendingEnabled
+                     && s.EvolutionInstance != null
+                     && s.EvolutionInstance.Status == InstanceStatus.Connected)
             .ToListAsync(ct);
+
+        // Sellers participan siempre. Admins solo si tienen una whitelist explícita
+        // (para no inundar al admin que dejó la whitelist vacía con todos los productos).
+        candidates = candidates
+            .Where(s => s.Role == SellerRole.Seller
+                     || (s.Role == SellerRole.Admin && s.VerticalsWhitelist != null && s.VerticalsWhitelist.Count > 0))
+            .ToList();
 
         candidates = candidates
             .Where(s => s.VerticalsWhitelist == null

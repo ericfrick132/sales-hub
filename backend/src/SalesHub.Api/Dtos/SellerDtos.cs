@@ -14,6 +14,7 @@ public record SellerDto(
     string? EvolutionInstance,
     InstanceStatus? InstanceStatus,
     List<string> VerticalsWhitelist,
+    List<string> RegionsAssigned,
     SendMode SendMode,
     int DailyCap,
     int DailyVariancePct,
@@ -39,6 +40,7 @@ public record CreateSellerRequest(
     string Email,
     string Password,
     List<string>? VerticalsWhitelist,
+    List<string>? RegionsAssigned,
     string? WhatsappPhone,
     SellerRole Role = SellerRole.Seller);
 
@@ -47,6 +49,7 @@ public record UpdateSellerRequest(
     string? Password,
     bool? IsActive,
     List<string>? VerticalsWhitelist,
+    List<string>? RegionsAssigned,
     string? WhatsappPhone,
     SendMode? SendMode,
     int? DailyCap,

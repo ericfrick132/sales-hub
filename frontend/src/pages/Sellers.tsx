@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
@@ -79,26 +79,12 @@ export default function Sellers() {
               </div>
             </div>
 
-            <div className="card p-5 space-y-3">
-              <label className="block">
-                <div className="text-xs text-slate-500 mb-1">Verticals whitelist (productos que puede atender)</div>
-                <div className="flex flex-wrap gap-2">
-                  {(products.data ?? []).map((p) => (
-                    <label key={p.productKey} className="inline-flex items-center gap-1 text-sm">
-                      <input type="checkbox"
-                        checked={selected.verticalsWhitelist.includes(p.productKey)}
-                        onChange={(e) => {
-                          const next = e.target.checked
-                            ? [...selected.verticalsWhitelist, p.productKey]
-                            : selected.verticalsWhitelist.filter((v) => v !== p.productKey);
-                          save({ verticalsWhitelist: next });
-                        }} />
-                      {p.displayName}
-                    </label>
-                  ))}
-                </div>
-              </label>
-            </div>
+            <AssignmentEditor
+              key={selected.id}
+              seller={selected}
+              products={products.data ?? []}
+              onSave={save} />
+
 
             <div className="card p-5">
               <h3 className="font-semibold mb-3">Gauges humanización</h3>
@@ -114,6 +100,110 @@ export default function Sellers() {
         products={products.data ?? []}
         onClose={() => setShowCreate(false)}
         onDone={() => { qc.invalidateQueries({ queryKey: ['sellers'] }); setShowCreate(false); }} />}
+    </div>
+  );
+}
+
+function AssignmentEditor({ seller, products, onSave }: {
+  seller: Seller;
+  products: Product[];
+  onSave: (patch: Partial<Seller>) => Promise<void>;
+}) {
+  const [whitelist, setWhitelist] = useState<string[]>(seller.verticalsWhitelist);
+  const [regionsRaw, setRegionsRaw] = useState((seller.regionsAssigned ?? []).join(', '));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setWhitelist(seller.verticalsWhitelist);
+    setRegionsRaw((seller.regionsAssigned ?? []).join(', '));
+  }, [seller.id]);
+
+  const initialRegions = (seller.regionsAssigned ?? []).join(', ');
+  const dirty =
+    whitelist.length !== seller.verticalsWhitelist.length ||
+    whitelist.some((v) => !seller.verticalsWhitelist.includes(v)) ||
+    seller.verticalsWhitelist.some((v) => !whitelist.includes(v)) ||
+    regionsRaw.trim() !== initialRegions.trim();
+
+  function toggle(productKey: string) {
+    setWhitelist((prev) =>
+      prev.includes(productKey)
+        ? prev.filter((v) => v !== productKey)
+        : [...prev, productKey]
+    );
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const regions = regionsRaw
+        .split(',')
+        .map((r) => r.trim())
+        .filter(Boolean);
+      await onSave({ verticalsWhitelist: whitelist, regionsAssigned: regions });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleReset() {
+    setWhitelist(seller.verticalsWhitelist);
+    setRegionsRaw(initialRegions);
+  }
+
+  return (
+    <div className="card p-5 space-y-4">
+      <div>
+        <div className="text-xs text-slate-500 mb-2">Verticals whitelist (productos que puede atender — vacío = ninguno para admins, todos para sellers)</div>
+        <div className="flex flex-wrap gap-2">
+          {products.map((p) => {
+            const active = whitelist.includes(p.productKey);
+            return (
+              <button
+                key={p.productKey}
+                type="button"
+                onClick={() => toggle(p.productKey)}
+                className={`text-sm px-3 py-1 rounded-full border transition ${
+                  active
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                }`}>
+                {p.displayName}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <div className="text-xs text-slate-500 mb-1">
+          Regiones asignadas (ciudades o provincias, separadas por coma — vacío = catch-all)
+        </div>
+        <input
+          className="input w-full"
+          value={regionsRaw}
+          onChange={(e) => setRegionsRaw(e.target.value)}
+          placeholder="ej. Rosario, Santa Fe, CABA, Buenos Aires" />
+        <div className="text-[11px] text-slate-400 mt-1">
+          Match case-insensitive contra la ciudad o provincia del lead. City-level (ej. Rosario) gana sobre province-level si ambos matchean.
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={!dirty || saving}
+          onClick={handleSave}>
+          {saving ? 'Guardando…' : 'Guardar cambios'}
+        </button>
+        {dirty && !saving && (
+          <button type="button" className="btn-secondary" onClick={handleReset}>
+            Descartar
+          </button>
+        )}
+        {dirty && <span className="text-xs text-amber-600">Hay cambios sin guardar</span>}
+      </div>
     </div>
   );
 }

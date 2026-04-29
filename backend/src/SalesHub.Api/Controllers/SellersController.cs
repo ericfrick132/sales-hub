@@ -45,6 +45,7 @@ public class SellersController : ControllerBase
             Email = req.Email.ToLowerInvariant(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             VerticalsWhitelist = req.VerticalsWhitelist ?? new(),
+            RegionsAssigned = req.RegionsAssigned ?? new(),
             WhatsappPhone = req.WhatsappPhone,
             Role = req.Role,
             IsActive = true,
@@ -75,6 +76,7 @@ public class SellersController : ControllerBase
         {
             if (req.IsActive is not null) seller.IsActive = req.IsActive.Value;
             if (req.VerticalsWhitelist is not null) seller.VerticalsWhitelist = req.VerticalsWhitelist;
+            if (req.RegionsAssigned is not null) seller.RegionsAssigned = req.RegionsAssigned;
         }
         if (req.DisplayName is not null) seller.DisplayName = req.DisplayName;
         if (req.WhatsappPhone is not null) seller.WhatsappPhone = req.WhatsappPhone;
@@ -207,7 +209,7 @@ public class SellersController : ControllerBase
     private static SellerDto ToDto(Seller s) => new(
         s.Id, s.SellerKey, s.DisplayName, s.Email, s.Role.ToString(), s.IsActive, s.SendingEnabled,
         s.WhatsappPhone, s.EvolutionInstance?.InstanceName, s.EvolutionInstance?.Status,
-        s.VerticalsWhitelist, s.SendMode, s.DailyCap, s.DailyVariancePct, s.WarmupDays, s.WarmupStartedAt,
+        s.VerticalsWhitelist, s.RegionsAssigned, s.SendMode, s.DailyCap, s.DailyVariancePct, s.WarmupDays, s.WarmupStartedAt,
         s.ActiveHoursStart, s.ActiveHoursEnd, s.Timezone,
         s.DelayMinSeconds, s.DelayMaxSeconds, s.BurstSize, s.BurstPauseMinSeconds, s.BurstPauseMaxSeconds,
         s.PreSendTypingMinSeconds, s.PreSendTypingMaxSeconds, s.ReadIncomingFirst,
