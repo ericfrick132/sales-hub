@@ -241,7 +241,13 @@ export default function LeadDetail() {
       <div className="card p-5 space-y-3">
         <h3 className="font-semibold">Acciones</h3>
         <div className="flex flex-wrap gap-2">
-          <button className="btn-primary" onClick={queueNow}>Encolar envío automático</button>
+          <button
+            className="btn-primary"
+            onClick={queueNow}
+            disabled={!lead.sellerId || !lead.whatsappPhone}
+            title={!lead.sellerId ? 'Asignalo a un vendedor primero' : !lead.whatsappPhone ? 'Lead sin WhatsApp' : ''}>
+            Encolar envío automático
+          </button>
           <button className="btn-secondary" disabled={enriching || !lead.instagramHandle} onClick={() => enrich('instagram')}>
             Enriquecer con Instagram
           </button>

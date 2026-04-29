@@ -247,10 +247,15 @@ public class LeadsController : ControllerBase
         if (lead.SellerId != sellerId && !CurrentUser.IsAdmin(User)) return Forbid();
         if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return BadRequest(new { error = "Lead sin teléfono WhatsApp" });
 
-        var seller = lead.Seller!;
-        if (seller.EvolutionInstance is null || seller.EvolutionInstance.Status != InstanceStatus.Connected)
-            return BadRequest(new { error = "Evolution instance no conectada" });
+        if (lead.SellerId is null || lead.Seller is null)
+            return BadRequest(new { error = "Lead sin vendedor asignado. Asignalo primero." });
 
+        var seller = lead.Seller;
+        if (seller.EvolutionInstance is null)
+            return BadRequest(new { error = "El vendedor no tiene instancia de WhatsApp configurada." });
+
+        // No exigimos Status==Connected acá: el OutboxSender ya filtra al momento de mandar.
+        // Si está desconectado, el item se queda Scheduled hasta que reconecte.
         var msg = lead.RenderedMessage ?? (lead.Product is null ? "" : _renderer.Render(lead, lead.Product, seller));
         _db.Outbox.Add(new MessageOutbox
         {
