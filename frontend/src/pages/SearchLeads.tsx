@@ -66,36 +66,103 @@ export default function SearchLeads() {
     <div className="space-y-4 max-w-6xl">
       <h1 className="text-2xl font-bold">Buscar leads en mis zonas</h1>
 
-      <div className="card p-5 space-y-3">
-        <div className="font-semibold">Setup (una sola vez)</div>
-        <ol className="text-sm text-slate-700 space-y-2 list-decimal list-inside">
-          <li>
-            Instalá <a className="text-brand-700 underline" href="https://www.tampermonkey.net/" target="_blank" rel="noreferrer">Tampermonkey</a>
-            {' '}(Chrome / Edge / Firefox).
-          </li>
-          <li>
-            Instalá el script de SalesHub: <a className="text-brand-700 underline" href={SCRIPT_URL} target="_blank" rel="noreferrer">saleshub-capture.user.js</a>
-            {' '}— Tampermonkey te abre la pantalla de instalación, click "Instalar".
-          </li>
-          <li>
-            Copiá tu token: <button className="btn-secondary text-xs ml-2" onClick={copyToken}>Copiar token</button>
-            {' '}(después en Google Maps abrí el panel del script y pegalo en "Config").
-          </li>
-          <li>
-            Logueate a Google con la cuenta que querés usar — el script captura desde TU sesión, no desde el server.
-          </li>
-        </ol>
+      <div className="card p-5 space-y-4">
+        <div className="font-semibold text-base">Setup — primera vez</div>
+
+        <div>
+          <div className="font-medium text-sm mb-1">1. Instalá Tampermonkey en tu browser</div>
+          <div className="text-sm text-slate-600 mb-1">
+            Es una extensión gratuita y oficial. Permite que un script chiquito de SalesHub
+            se ejecute dentro de Google Maps cuando vos lo navegás (sin esto, no hay forma
+            de capturar datos del DOM de Google).
+          </div>
+          <div className="text-sm">
+            • <b>Chrome / Brave / Edge / Arc</b>:{' '}
+            <a className="text-brand-700 underline"
+               href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo"
+               target="_blank" rel="noreferrer">Chrome Web Store</a>{' '}→ "Añadir a Chrome".
+            <br />
+            • <b>Firefox</b>:{' '}
+            <a className="text-brand-700 underline"
+               href="https://addons.mozilla.org/firefox/addon/tampermonkey/"
+               target="_blank" rel="noreferrer">addons.mozilla.org</a>{' '}→ "Add to Firefox".
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            Cuando termina ves un ícono nuevo arriba a la derecha del browser (cuadrado negro con tres puntos).
+          </div>
+        </div>
+
+        <div>
+          <div className="font-medium text-sm mb-1">2. Instalá el script de SalesHub</div>
+          <div className="text-sm text-slate-600">
+            Click acá: <a className="text-brand-700 underline font-mono" href={SCRIPT_URL} target="_blank" rel="noreferrer">saleshub-capture.user.js</a>
+            {' '}— Tampermonkey detecta el archivo y abre solo una pantalla con el código y
+            un botón verde grande <b>"Instalar"</b>. Click ahí, listo.
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            Si ves código sin colorear (texto plano), Tampermonkey no se está activando — verificá que la
+            extensión esté instalada y habilitada en el browser.
+          </div>
+        </div>
+
+        <div>
+          <div className="font-medium text-sm mb-1">3. Pegá tu token en el script</div>
+          <div className="text-sm text-slate-600 mb-2">
+            El token es un password temporal (vale 7 días) que el script usa para mandar los leads a tu cuenta.
+          </div>
+          <ol className="text-sm text-slate-700 list-decimal list-inside space-y-1">
+            <li>
+              <button className="btn-secondary text-xs mx-1" onClick={copyToken}>Copiar token</button>
+              {' '}(se copia al portapapeles).
+            </li>
+            <li>Abrí <a className="text-brand-700 underline" href="https://www.google.com/maps" target="_blank" rel="noreferrer">google.com/maps</a> en una pestaña.</li>
+            <li>Mirá <b>abajo a la derecha</b> de la pantalla: aparece un panel "SalesHub · captura" con un texto rojo "Falta configurar token + producto".</li>
+            <li>Click el botón <b>"Config"</b> del panel. Te van a aparecer 3 ventanitas en orden:
+              <ul className="list-disc list-inside ml-4 mt-1 text-slate-600">
+                <li><i>URL del backend</i>: dejá lo que ya está (https://sales.efcloud.tech) → OK.</li>
+                <li><i>JWT</i>: pegá con Ctrl/Cmd+V el token que copiaste → OK.</li>
+                <li><i>productKey</i>: escribí el de la app que vas a buscar (ej. <code>gymhero</code>) → OK.</li>
+              </ul>
+            </li>
+          </ol>
+          <div className="text-xs text-slate-500 mt-1">
+            Cuando termina, el texto rojo desaparece. El panel queda listo.
+          </div>
+        </div>
+
+        <div>
+          <div className="font-medium text-sm mb-1">4. Logueate a Google</div>
+          <div className="text-sm text-slate-600">
+            En Google Maps, arriba a la derecha, asegurate de estar con tu cuenta. Cuando estás
+            logueado Google muestra los teléfonos de los negocios sin captcha — esa es la diferencia
+            con scrapear desde un servidor.
+          </div>
+        </div>
       </div>
 
       <div className="card p-5 space-y-3">
-        <div className="font-semibold">Cómo funciona el script en Maps</div>
-        <ul className="text-sm text-slate-700 space-y-1 list-disc list-inside">
-          <li>Aparece un panelito flotante abajo a la derecha cuando estás en <code>google.com/maps</code>.</li>
-          <li><b>+ Este lugar</b>: cuando abrís el detalle de un negocio (ese panel grande con teléfono y horarios), captura ese item.</li>
-          <li><b>+ Listado visible</b>: scrollea como quieras y después click acá para mandar todo lo que se ve al buffer.</li>
-          <li><b>Subir N</b>: postea el buffer al backend. Te asigna los leads a vos directamente.</li>
-          <li>Los links de abajo abren Maps con el contexto (producto + localidad) ya configurado en el script.</li>
-        </ul>
+        <div className="font-semibold">Cómo lo usás todos los días</div>
+        <ol className="text-sm text-slate-700 space-y-2 list-decimal list-inside">
+          <li>
+            Click un atajo de los de abajo (ej. "yoga en Caballito, Argentina") — abre Google Maps
+            con el contexto pre-configurado en el script.
+          </li>
+          <li>
+            Click un negocio del listado lateral → se abre el panel grande de detalle (con teléfono y horarios).
+          </li>
+          <li>
+            En el panel de SalesHub (abajo a la derecha) click <b>"+ Este lugar"</b>. El contador
+            del buffer sube en 1. Repetí con cada negocio que te interese.
+          </li>
+          <li>
+            Cuando junten 10-50, click <b>"Subir N"</b>. El backend dedupea (no carga teléfonos repetidos)
+            y te crea los leads asignados a vos.
+          </li>
+        </ol>
+        <div className="text-xs text-slate-500">
+          Si el listado está abierto y querés capturar todo de una sola vez, el botón <b>"+ Listado visible"</b> agarra los items que ves
+          (rinde menos teléfonos porque Maps no los muestra todos en el listado — para teléfono confiable, usá "+ Este lugar").
+        </div>
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-2">
