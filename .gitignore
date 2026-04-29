@@ -16,3 +16,4 @@ DEPLOY-NOTES.txt
 deploy.txt
 *.local.txt
 .playwright-mcp/
+scripts/localities/localities-import.json
