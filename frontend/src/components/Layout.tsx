@@ -39,12 +39,14 @@ export default function Layout() {
     ? [
         { to: '/admin', label: 'Hoy' },
         { to: '/leads', label: 'Leads' },
+        { to: '/leads/search', label: 'Capturar de Maps' },
         { to: '/conversations', label: 'Conversaciones', badge: unread.data },
         { to: '/connect', label: 'WhatsApp' }
       ]
     : [
         { to: '/dashboard', label: 'Hoy' },
-        { to: '/leads', label: 'Mis leads' }
+        { to: '/leads', label: 'Mis leads' },
+        { to: '/leads/search', label: 'Capturar de Maps' }
       ];
 
   const adminLinks: NavItem[] = [

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { isAdmin, useAuthStore } from '../lib/auth';
@@ -129,9 +129,35 @@ export default function MyLeads() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h1 className="text-xl md:text-2xl font-bold">{title}</h1>
-        <button className="btn-primary text-sm" onClick={() => setShowAdd(true)}>+ Cargar lead</button>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">{title}</h1>
+        <div className="flex gap-2">
+          {admin && tab === 'pool' && (
+            <button
+              className="btn-secondary"
+              onClick={async () => {
+                if (!confirm('Reasignar todos los leads "Sin asignar" usando whitelist + regiones de los vendedores conectados?')) return;
+                try {
+                  const { data } = await api.post<{
+                    scanned: number; assigned: number; queued: number; stillOrphanByProduct: Record<string, number>
+                  }>('/leads/reassign-orphans?autoQueue=true');
+                  const stuck = Object.entries(data.stillOrphanByProduct);
+                  toast.success(
+                    `Asignados: ${data.assigned} de ${data.scanned} · En cola: ${data.queued}` +
+                    (stuck.length > 0 ? ` · Sin destino: ${stuck.map(([k, v]) => `${k}(${v})`).join(', ')}` : '')
+                  );
+                  qc.invalidateQueries({ queryKey: ['leads'] });
+                } catch (err) {
+                  const e = err as { response?: { data?: { error?: string } } };
+                  toast.error(e?.response?.data?.error ?? 'Falló la reasignación');
+                }
+              }}>
+              Reasignar todos
+            </button>
+          )}
+          <Link to="/leads/import" className="btn-secondary">Importar de Maps</Link>
+          <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Cargar lead</button>
+        </div>
       </div>
 
       {showTabs && (

@@ -3,8 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
-import { LEAD_STATUS_LABEL, type Lead, type LeadStatus } from '../lib/types';
+import { LEAD_STATUS_LABEL, type Lead, type LeadStatus, type Seller } from '../lib/types';
 import StatusBadge from '../components/StatusBadge';
+import { isAdmin, useAuthStore } from '../lib/auth';
 
 const STATUSES: LeadStatus[] = ['Assigned', 'Queued', 'Sent', 'Replied', 'Interested', 'DemoScheduled', 'Closed', 'Lost', 'Blocked'];
 
@@ -12,6 +13,8 @@ export default function LeadDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const admin = isAdmin(user);
   const { data: lead, isLoading } = useQuery({
     queryKey: ['lead', id],
     queryFn: async () => {
@@ -20,12 +23,21 @@ export default function LeadDetail() {
     }
   });
 
+  const sellersQ = useQuery({
+    queryKey: ['sellers-for-assign'],
+    enabled: admin,
+    queryFn: async () => (await api.get<Seller[]>('/sellers')).data
+  });
+
   const [notes, setNotes] = useState('');
   const [enriching, setEnriching] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [savingInfo, setSavingInfo] = useState(false);
+  const [assignSellerId, setAssignSellerId] = useState('');
+  const [assignAutoQueue, setAssignAutoQueue] = useState(true);
+  const [assigning, setAssigning] = useState(false);
 
   if (isLoading) return <div>Cargando…</div>;
   if (!lead) return <div className="card p-8 text-center">Lead no encontrado. <Link className="text-brand-600" to="/leads">Volver</Link></div>;
@@ -44,6 +56,21 @@ export default function LeadDetail() {
       qc.invalidateQueries();
     } catch (err: any) {
       toast.error(err.response?.data?.error ?? 'Falló');
+    }
+  }
+
+  async function assignTo() {
+    if (!assignSellerId) return toast.error('Elegí un vendedor');
+    setAssigning(true);
+    try {
+      await api.post(`/leads/${lead!.id}/assign`, { sellerId: assignSellerId, autoQueue: assignAutoQueue });
+      toast.success('Asignado' + (assignAutoQueue ? ' + en cola' : ''));
+      qc.invalidateQueries();
+      setAssignSellerId('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? 'Falló');
+    } finally {
+      setAssigning(false);
     }
   }
 
@@ -178,10 +205,57 @@ export default function LeadDetail() {
         {lead.notes && <div className="text-xs text-slate-500">Previas: {lead.notes}</div>}
       </div>
 
+      {admin && (
+        <div className="card p-5 space-y-3">
+          <h3 className="font-semibold">Asignar vendedor</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="input"
+              value={assignSellerId}
+              onChange={(e) => setAssignSellerId(e.target.value)}>
+              <option value="">— Elegir vendedor —</option>
+              {(sellersQ.data ?? []).filter((s) => s.isActive).map((s) => {
+                const ready = s.sendingEnabled && s.instanceStatus === 'Connected';
+                return (
+                  <option key={s.id} value={s.id}>
+                    {s.displayName} {ready ? '✓' : ''} · {s.instanceStatus ?? 'sin instance'} · envío {s.sendingEnabled ? 'on' : 'off'}
+                  </option>
+                );
+              })}
+            </select>
+            <label className="text-sm inline-flex items-center gap-1">
+              <input type="checkbox" checked={assignAutoQueue} onChange={(e) => setAssignAutoQueue(e.target.checked)} />
+              Encolar al asignar
+            </label>
+            <button className="btn-primary" disabled={!assignSellerId || assigning} onClick={assignTo}>
+              {assigning ? 'Asignando…' : 'Asignar'}
+            </button>
+          </div>
+          <div className="text-xs text-slate-500">
+            Si "Encolar al asignar" está tildado y el vendedor tiene WhatsApp conectado + envío ON,
+            se crea la fila en la cola y SalesHub lo manda en su próximo tick.
+          </div>
+        </div>
+      )}
+
       <div className="card p-5 space-y-3">
         <h3 className="font-semibold">Acciones</h3>
+        {(!lead.sellerId || !lead.whatsappPhone) && (
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            No se puede encolar:
+            <ul className="list-disc ml-5 mt-1">
+              {!lead.sellerId && <li>el lead no está asignado a un vendedor.</li>}
+              {!lead.whatsappPhone && <li>el lead no tiene número de WhatsApp.</li>}
+            </ul>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
-          <button className="btn-primary" onClick={queueNow}>Encolar envío automático</button>
+          <button
+            className="btn-primary"
+            onClick={queueNow}
+            disabled={!lead.sellerId || !lead.whatsappPhone}>
+            Encolar envío automático
+          </button>
           <button className="btn-secondary" disabled={enriching || !lead.instagramHandle} onClick={() => enrich('instagram')}>
             Enriquecer con Instagram
           </button>

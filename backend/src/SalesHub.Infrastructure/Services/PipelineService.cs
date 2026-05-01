@@ -238,9 +238,10 @@ public class PipelineService
             _db.Leads.Add(lead);
             created++;
 
-            // Region-aware: si el vendedor tiene la provincia del lead asignada, gana.
-            // Si no hay dueño, round-robin entre los sin-región (o global como fallback).
-            var sellerId = await _assigner.PickForLeadAsync(product.ProductKey, lead.Province, lead.City, ct);
+            // Region-aware: prioriza gid2 (M:N seller_localities); si el lead no trae
+            // gid2, cae al matching por string (provincia/ciudad). Sin owner → round-robin
+            // entre los sin-región o global como último recurso.
+            var sellerId = await _assigner.PickForLeadAsync(product.ProductKey, lead.LocalityGid2, lead.Province, lead.City, ct);
             if (sellerId is not null)
             {
                 lead.SellerId = sellerId;
@@ -271,6 +272,71 @@ public class PipelineService
         }
         await _db.SaveChangesAsync(ct);
         return created;
+    }
+
+    public record ReassignOrphansResult(
+        int Scanned,
+        int Assigned,
+        int Queued,
+        Dictionary<string, int> StillOrphanByProduct);
+
+    /// <summary>
+    /// Re-corre el assigner sobre leads ya creados que quedaron sin vendedor (Status=New, SellerId=null).
+    /// Útil cuando el admin recién acaba de configurar whitelist/regiones y quiere repartir el backlog.
+    /// </summary>
+    public async Task<ReassignOrphansResult> ReassignOrphansAsync(bool autoQueue, CancellationToken ct)
+    {
+        var orphans = await _db.Leads
+            .Include(l => l.Product)
+            .Where(l => l.SellerId == null && l.Status == LeadStatus.New)
+            .OrderBy(l => l.CreatedAt)
+            .ToListAsync(ct);
+
+        var assigned = 0;
+        var queued = 0;
+        var stillOrphan = new Dictionary<string, int>();
+
+        foreach (var lead in orphans)
+        {
+            if (lead.Product is null) continue;
+            var sellerId = await _assigner.PickForLeadAsync(lead.ProductKey, lead.LocalityGid2, lead.Province, lead.City, ct);
+            if (sellerId is null)
+            {
+                stillOrphan[lead.ProductKey] = stillOrphan.GetValueOrDefault(lead.ProductKey) + 1;
+                continue;
+            }
+            lead.SellerId = sellerId;
+            lead.AssignedAt = DateTimeOffset.UtcNow;
+            lead.Status = LeadStatus.Assigned;
+            var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstAsync(s => s.Id == sellerId.Value, ct);
+            lead.RenderedMessage = _renderer.Render(lead, lead.Product, seller);
+            lead.WhatsappLink = BuildWhatsappLink(lead.WhatsappPhone, lead.RenderedMessage);
+            assigned++;
+
+            if (autoQueue
+                && seller.SendingEnabled
+                && seller.EvolutionInstance is { Status: InstanceStatus.Connected } inst
+                && !string.IsNullOrWhiteSpace(lead.WhatsappPhone))
+            {
+                _db.Outbox.Add(new MessageOutbox
+                {
+                    Id = Guid.NewGuid(),
+                    LeadId = lead.Id,
+                    SellerId = seller.Id,
+                    EvolutionInstance = inst.InstanceName,
+                    WhatsappPhone = lead.WhatsappPhone,
+                    Message = lead.RenderedMessage,
+                    ScheduledAt = DateTimeOffset.UtcNow,
+                    Status = OutboxStatus.Scheduled
+                });
+                lead.Status = LeadStatus.Queued;
+                lead.QueuedAt = DateTimeOffset.UtcNow;
+                queued++;
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return new ReassignOrphansResult(orphans.Count, assigned, queued, stillOrphan);
     }
 
     /// <summary>

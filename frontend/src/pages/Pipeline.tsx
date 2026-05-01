@@ -19,15 +19,15 @@ type Run = {
 };
 
 const TABS: { key: LeadSource; label: string }[] = [
+  { key: 'GooglePlaces', label: 'Places API' },
   { key: 'ApifyGoogleMaps', label: 'Google Maps' },
   { key: 'ApifyInstagram', label: 'Instagram' },
   { key: 'ApifyMetaAdsLibrary', label: 'Meta Ads Library' },
-  { key: 'ApifyFacebookPages', label: 'Facebook Posts' },
-  { key: 'GooglePlaces', label: 'Places API' }
+  { key: 'ApifyFacebookPages', label: 'Facebook Posts' }
 ];
 
 export default function Pipeline() {
-  const [tab, setTab] = useState<LeadSource>('ApifyGoogleMaps');
+  const [tab, setTab] = useState<LeadSource>('GooglePlaces');
   const [modal, setModal] = useState(false);
   const qc = useQueryClient();
 

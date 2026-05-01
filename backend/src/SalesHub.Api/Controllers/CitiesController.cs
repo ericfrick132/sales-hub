@@ -18,6 +18,24 @@ public class CitiesController : ControllerBase
 
     public CitiesController(ApplicationDbContext db) { _db = db; }
 
+    public record CityMapPin(Guid Id, string Country, string Province, string City,
+        PopulationBucket Bucket, double? Latitude, double? Longitude);
+
+    /// <summary>Lista compacta para el mapa de zonas (admin → /sellers/.../zones).</summary>
+    [HttpGet("map")]
+    public async Task<ActionResult<IEnumerable<CityMapPin>>> Map(
+        [FromQuery] string? country, CancellationToken ct = default)
+    {
+        var cities = await _db.Cities.AsNoTracking()
+            .Where(c => (country == null || c.Country == country)
+                     && c.Latitude != null && c.Longitude != null)
+            .OrderBy(c => c.Province).ThenBy(c => c.City)
+            .Select(c => new CityMapPin(c.Id, c.Country, c.Province, c.City,
+                c.PopulationBucket, c.Latitude, c.Longitude))
+            .ToListAsync(ct);
+        return cities;
+    }
+
     /// <summary>Returns the city catalog enriched with per-product scrape status.</summary>
     [HttpGet]
     public async Task<ActionResult<IEnumerable<CityDto>>> List(

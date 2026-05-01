@@ -44,3 +44,31 @@ public record CreateManualLeadRequest(
     string? Website,
     string? Notes,
     Guid? SellerId);
+
+public record BulkImportRequest(
+    string RawText,
+    string ProductKey,
+    LeadSource Source = LeadSource.ManualMaps,
+    LeadStatus Status = LeadStatus.New,
+    bool AssignToCaller = true,
+    bool EnrichWithPlacesApi = true,
+    string? City = null,
+    Guid? SellerId = null);
+
+public record BulkImportItem(
+    string Name,
+    string? Phone,
+    string? Address,
+    double? Rating,
+    int? TotalReviews,
+    string Outcome,            // "inserted" | "duplicate" | "closed" | "error" | "skipped"
+    string? Reason = null,
+    Guid? LeadId = null);
+
+public record BulkImportResult(
+    int Parsed,
+    int Inserted,
+    int Duplicates,
+    int Closed,
+    int Errors,
+    List<BulkImportItem> Items);

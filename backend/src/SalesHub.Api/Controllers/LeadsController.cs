@@ -6,6 +6,7 @@ using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Api.Controllers;
 
@@ -16,10 +17,80 @@ public class LeadsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IMessageRenderer _renderer;
+    private readonly PipelineService _pipeline;
+    private readonly IPhoneNormalizer _phone;
+    private readonly IGooglePlacesEnricher _enricher;
 
-    public LeadsController(ApplicationDbContext db, IMessageRenderer renderer)
+    public LeadsController(
+        ApplicationDbContext db,
+        IMessageRenderer renderer,
+        PipelineService pipeline,
+        IPhoneNormalizer phone,
+        IGooglePlacesEnricher enricher)
     {
-        _db = db; _renderer = renderer;
+        _db = db; _renderer = renderer; _pipeline = pipeline; _phone = phone; _enricher = enricher;
+    }
+
+    public record AssignRequest(Guid SellerId, bool AutoQueue = true);
+
+    [HttpPost("{id:guid}/assign")]
+    public async Task<ActionResult<LeadDto>> Assign(Guid id, [FromBody] AssignRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var lead = await _db.Leads.Include(l => l.Product).FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (lead is null) return NotFound();
+
+        var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == req.SellerId, ct);
+        if (seller is null) return BadRequest(new { error = "Vendedor no encontrado" });
+        if (!seller.IsActive) return BadRequest(new { error = "Vendedor inactivo" });
+
+        lead.SellerId = seller.Id;
+        lead.AssignedAt = DateTimeOffset.UtcNow;
+        lead.Status = LeadStatus.Assigned;
+        if (lead.Product is not null)
+        {
+            lead.RenderedMessage = _renderer.Render(lead, lead.Product, seller);
+            lead.WhatsappLink = string.IsNullOrWhiteSpace(lead.WhatsappPhone)
+                ? null
+                : $"https://wa.me/{lead.WhatsappPhone}?text={Uri.EscapeDataString(lead.RenderedMessage ?? "")}";
+        }
+
+        // Si el admin pidió encolar, lo hacemos siempre que haya instancia + teléfono + mensaje.
+        // El OutboxSender va a chequear SendingEnabled + Status=Connected al momento de mandar,
+        // así que es seguro encolar aunque el seller esté momentáneamente desconectado o pausado:
+        // los items se quedan Scheduled hasta que el seller pueda mandar.
+        if (req.AutoQueue
+            && seller.EvolutionInstance is not null
+            && !string.IsNullOrWhiteSpace(lead.WhatsappPhone)
+            && lead.RenderedMessage is not null)
+        {
+            _db.Outbox.Add(new MessageOutbox
+            {
+                Id = Guid.NewGuid(),
+                LeadId = lead.Id,
+                SellerId = seller.Id,
+                EvolutionInstance = seller.EvolutionInstance.InstanceName,
+                WhatsappPhone = lead.WhatsappPhone,
+                Message = lead.RenderedMessage,
+                ScheduledAt = DateTimeOffset.UtcNow,
+                Status = OutboxStatus.Scheduled
+            });
+            lead.Status = LeadStatus.Queued;
+            lead.QueuedAt = DateTimeOffset.UtcNow;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        lead.Seller = seller;
+        return ToDto(lead);
+    }
+
+    [HttpPost("reassign-orphans")]
+    public async Task<ActionResult<PipelineService.ReassignOrphansResult>> ReassignOrphans(
+        [FromQuery] bool autoQueue = true, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var result = await _pipeline.ReassignOrphansAsync(autoQueue, ct);
+        return result;
     }
 
     public record MapLeadDto(
@@ -183,10 +254,15 @@ public class LeadsController : ControllerBase
         if (lead.SellerId != sellerId && !CurrentUser.IsAdmin(User)) return Forbid();
         if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return BadRequest(new { error = "Lead sin teléfono WhatsApp" });
 
-        var seller = lead.Seller!;
-        if (seller.EvolutionInstance is null || seller.EvolutionInstance.Status != InstanceStatus.Connected)
-            return BadRequest(new { error = "Evolution instance no conectada" });
+        if (lead.SellerId is null || lead.Seller is null)
+            return BadRequest(new { error = "Lead sin vendedor asignado. Asignalo primero." });
 
+        var seller = lead.Seller;
+        if (seller.EvolutionInstance is null)
+            return BadRequest(new { error = "El vendedor no tiene instancia de WhatsApp configurada." });
+
+        // No exigimos Status==Connected acá: el OutboxSender ya filtra al momento de mandar.
+        // Si está desconectado, el item se queda Scheduled hasta que reconecte.
         var msg = lead.RenderedMessage ?? (lead.Product is null ? "" : _renderer.Render(lead, lead.Product, seller));
         _db.Outbox.Add(new MessageOutbox
         {
@@ -222,6 +298,192 @@ public class LeadsController : ControllerBase
                 l.Status, l.SellerId, l.Seller != null ? l.Seller.DisplayName : null, l.CreatedAt))
             .ToListAsync(ct);
         return rows;
+    }
+
+    [HttpPost("bulk-import")]
+    public async Task<ActionResult<BulkImportResult>> BulkImport([FromBody] BulkImportRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.RawText))
+            return BadRequest(new { error = "Falta el texto a importar" });
+        if (string.IsNullOrWhiteSpace(req.ProductKey))
+            return BadRequest(new { error = "Falta el producto" });
+
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.ProductKey == req.ProductKey, ct);
+        if (product is null)
+            return BadRequest(new { error = $"Producto '{req.ProductKey}' no existe" });
+
+        var callerId = CurrentUser.Id(User);
+        var isAdmin = CurrentUser.IsAdmin(User);
+        Guid? sellerId = req.AssignToCaller
+            ? callerId
+            : (isAdmin ? req.SellerId : null);
+
+        Seller? seller = null;
+        if (sellerId is not null)
+        {
+            seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == sellerId.Value, ct);
+            if (seller is null) return BadRequest(new { error = "Vendedor no encontrado" });
+        }
+
+        var parsed = MapsTextParser.Parse(req.RawText);
+        var now = DateTimeOffset.UtcNow;
+        var items = new List<BulkImportItem>();
+
+        // Dedupe set para el mismo batch (varios items con mismo phone en el paste).
+        var seenInBatch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var p in parsed)
+        {
+            // Skip permanently closed lugares — no tiene sentido contactarlos.
+            if (string.Equals(p.BusinessStatus, "permanently_closed", StringComparison.OrdinalIgnoreCase))
+            {
+                items.Add(new BulkImportItem(p.Name, p.Phone, p.Address, p.Rating, p.TotalReviews, "closed", "Cerrado permanentemente"));
+                continue;
+            }
+
+            // Pre-dedupe POR NOMBRE para no gastar API call de Places en duplicados.
+            // (El paste rara vez trae el mismo lugar 2 veces, pero la base sí puede tenerlo
+            // de una corrida previa.)
+            var nameLower = p.Name.Trim().ToLower();
+            var nameBatchKey = $"name:{nameLower}";
+            if (!seenInBatch.Add(nameBatchKey))
+            {
+                items.Add(new BulkImportItem(p.Name, p.Phone, p.Address, p.Rating, p.TotalReviews, "duplicate", "Duplicado en el paste (mismo nombre)"));
+                continue;
+            }
+
+            var existsByName = await _db.Leads.AnyAsync(
+                l => l.ProductKey == product.ProductKey && l.Name.ToLower() == nameLower, ct);
+            if (existsByName)
+            {
+                items.Add(new BulkImportItem(p.Name, p.Phone, p.Address, p.Rating, p.TotalReviews, "duplicate", "Ya existe en la base (mismo nombre)"));
+                continue;
+            }
+
+            // Enriquecimiento opcional con Google Places: trae teléfono / website / lat-lng
+            // para ítems donde el listado pegado no incluyó esos datos. ~$0.04/lead.
+            string? enrichedPhone = p.Phone;
+            string? enrichedWebsite = null;
+            string? placeId = null;
+            double? lat = null, lng = null;
+            string? formattedAddress = p.Address;
+            var rating = p.Rating;
+            var reviews = p.TotalReviews;
+            var bizStatus = p.BusinessStatus;
+            var enrichmentNote = (string?)null;
+
+            if (req.EnrichWithPlacesApi)
+            {
+                var enriched = await _enricher.EnrichAsync(
+                    p.Name, p.Address, req.City, product.CountryName, product.Language, ct);
+                if (enriched is not null)
+                {
+                    placeId = enriched.PlaceId;
+                    if (string.IsNullOrWhiteSpace(enrichedPhone)) enrichedPhone = enriched.Phone;
+                    enrichedWebsite = enriched.Website;
+                    lat = enriched.Latitude; lng = enriched.Longitude;
+                    rating ??= enriched.Rating;
+                    reviews ??= enriched.TotalReviews;
+                    formattedAddress = enriched.FormattedAddress ?? formattedAddress;
+
+                    // Si Google reporta cerrado permanentemente, lo respetamos.
+                    if (string.Equals(enriched.BusinessStatus, "CLOSED_PERMANENTLY", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(enriched.BusinessStatus, "permanently_closed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        items.Add(new BulkImportItem(p.Name, enrichedPhone, formattedAddress, rating, reviews, "closed", "Cerrado permanentemente (Google)"));
+                        continue;
+                    }
+                    bizStatus ??= enriched.BusinessStatus;
+                }
+                else
+                {
+                    enrichmentNote = "no se encontró en Places";
+                }
+            }
+
+            var normalized = _phone.Normalize(enrichedPhone, product.PhonePrefix);
+
+            // Segundo dedupe: por placeId (más robusto) y por phone (si el enrich consiguió uno).
+            if (!string.IsNullOrWhiteSpace(placeId))
+            {
+                if (!seenInBatch.Add($"pid:{placeId}"))
+                {
+                    items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "duplicate", "Duplicado en el paste (place_id)"));
+                    continue;
+                }
+                var existsByPlace = await _db.Leads.AnyAsync(
+                    l => l.ProductKey == product.ProductKey && l.PlaceId == placeId, ct);
+                if (existsByPlace)
+                {
+                    items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "duplicate", "Ya existe en la base (place_id)"));
+                    continue;
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                if (!seenInBatch.Add($"phone:{normalized}"))
+                {
+                    items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "duplicate", "Duplicado en el paste (teléfono)"));
+                    continue;
+                }
+                var existsByPhone = await _db.Leads.AnyAsync(
+                    l => l.ProductKey == product.ProductKey && l.WhatsappPhone == normalized, ct);
+                if (existsByPhone)
+                {
+                    items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "duplicate", "Ya existe en la base (teléfono)"));
+                    continue;
+                }
+            }
+
+            try
+            {
+                var lead = new Lead
+                {
+                    Id = Guid.NewGuid(),
+                    ProductKey = product.ProductKey,
+                    Source = req.Source,
+                    Name = p.Name.Trim(),
+                    City = string.IsNullOrWhiteSpace(req.City) ? null : req.City.Trim(),
+                    WhatsappPhone = normalized,
+                    Website = enrichedWebsite,
+                    Address = formattedAddress,
+                    Latitude = lat,
+                    Longitude = lng,
+                    PlaceId = placeId,
+                    Rating = rating,
+                    TotalReviews = reviews,
+                    BusinessStatus = bizStatus,
+                    SearchQuery = "bulk-import",
+                    SearchCategory = p.Type,
+                    SellerId = sellerId,
+                    AssignedAt = sellerId is not null ? now : null,
+                    Status = sellerId is not null && req.Status == LeadStatus.New
+                        ? LeadStatus.Assigned
+                        : req.Status,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+
+                if (lead.Status >= LeadStatus.Sent) lead.SentAt = now;
+
+                _db.Leads.Add(lead);
+                await _db.SaveChangesAsync(ct);
+
+                items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "inserted", enrichmentNote, lead.Id));
+            }
+            catch (Exception ex)
+            {
+                items.Add(new BulkImportItem(p.Name, normalized, formattedAddress, rating, reviews, "error", ex.Message));
+            }
+        }
+
+        return new BulkImportResult(
+            Parsed: parsed.Count,
+            Inserted: items.Count(i => i.Outcome == "inserted"),
+            Duplicates: items.Count(i => i.Outcome == "duplicate"),
+            Closed: items.Count(i => i.Outcome == "closed"),
+            Errors: items.Count(i => i.Outcome == "error"),
+            Items: items);
     }
 
     [HttpPost]

@@ -95,6 +95,7 @@ export interface Seller {
   evolutionInstance?: string;
   instanceStatus?: InstanceStatus;
   verticalsWhitelist: string[];
+  regionsAssigned: string[];
   sendMode: SendMode;
   dailyCap: number;
   dailyVariancePct: number;

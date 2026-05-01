@@ -45,6 +45,7 @@ public class SellersController : ControllerBase
             Email = req.Email.ToLowerInvariant(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             VerticalsWhitelist = req.VerticalsWhitelist ?? new(),
+            RegionsAssigned = req.RegionsAssigned ?? new(),
             WhatsappPhone = req.WhatsappPhone,
             Role = req.Role,
             IsActive = true,
@@ -159,12 +160,29 @@ public class SellersController : ControllerBase
         var info = await _evo.GetInstanceStatusAsync(instanceName, ct);
 
         var now = DateTimeOffset.UtcNow;
+        // Map raw Evolution status to our enum so the DB reflects current state immediately
+        // (no lag waiting for the InstanceMonitor tick).
+        var mapped = info.Status switch
+        {
+            "open" or "connected" => InstanceStatus.Connected,
+            "connecting" or "qr" => InstanceStatus.Connecting,
+            "close" or "disconnected" or "not_found" => InstanceStatus.Disconnected,
+            _ => InstanceStatus.Unknown
+        };
         await _db.EvolutionInstances
             .Where(x => x.SellerId == id)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(e => e.LastQrCodeBase64, qr)
                 .SetProperty(e => e.QrCodeGeneratedAt, now)
-                .SetProperty(e => e.UpdatedAt, now), ct);
+                .SetProperty(e => e.UpdatedAt, now)
+                .SetProperty(e => e.Status, mapped)
+                .SetProperty(e => e.LastStatusCheckAt, now), ct);
+        if (mapped == InstanceStatus.Connected)
+        {
+            await _db.EvolutionInstances
+                .Where(x => x.SellerId == id && x.ConnectedAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.ConnectedAt, now), ct);
+        }
 
         return new QrCodeResponse(qr, info.Status);
     }
@@ -208,7 +226,7 @@ public class SellersController : ControllerBase
     private static SellerDto ToDto(Seller s) => new(
         s.Id, s.SellerKey, s.DisplayName, s.Email, s.Role.ToString(), s.IsActive, s.SendingEnabled,
         s.WhatsappPhone, s.EvolutionInstance?.InstanceName, s.EvolutionInstance?.Status,
-        s.VerticalsWhitelist, s.SendMode, s.DailyCap, s.DailyVariancePct, s.WarmupDays, s.WarmupStartedAt,
+        s.VerticalsWhitelist, s.RegionsAssigned, s.SendMode, s.DailyCap, s.DailyVariancePct, s.WarmupDays, s.WarmupStartedAt,
         s.ActiveHoursStart, s.ActiveHoursEnd, s.Timezone,
         s.DelayMinSeconds, s.DelayMaxSeconds, s.BurstSize, s.BurstPauseMinSeconds, s.BurstPauseMaxSeconds,
         s.PreSendTypingMinSeconds, s.PreSendTypingMaxSeconds, s.ReadIncomingFirst,
