@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.1.0
+// @version      0.2.0
 // @description  Captura negocios desde Google Maps (logueado) y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
+// @updateURL    https://sales.efcloud.tech/saleshub-capture.user.js
+// @downloadURL  https://sales.efcloud.tech/saleshub-capture.user.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_xmlhttpRequest
@@ -16,9 +18,19 @@
 (function () {
   'use strict';
 
+  // Default a backend (api.sales.efcloud.tech). Antes apuntaba al dominio del frontend
+  // (sales.efcloud.tech) que es GitHub Pages estático y devuelve 405 a los POST.
+  const DEFAULT_API = 'https://api.sales.efcloud.tech';
+
+  // Migración silenciosa: si el storage tiene el dominio viejo (frontend), lo reescribimos al nuevo (backend).
+  const storedApi = (GM_getValue('saleshub.api', '') || '').replace(/\/$/, '');
+  if (!storedApi || storedApi === 'https://sales.efcloud.tech' || storedApi === 'http://sales.efcloud.tech') {
+    GM_setValue('saleshub.api', DEFAULT_API);
+  }
+
   // -------- Config (editable desde el panel) ----------------------------
   const cfg = {
-    api: GM_getValue('saleshub.api', 'https://sales.efcloud.tech'),
+    api: GM_getValue('saleshub.api', DEFAULT_API),
     token: GM_getValue('saleshub.token', ''),
     productKey: GM_getValue('saleshub.productKey', ''),
     localityGid2: GM_getValue('saleshub.localityGid2', ''),
