@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.5.0
+// @version      0.6.0
 // @description  Captura negocios desde Google Maps y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
@@ -480,10 +480,10 @@
           ${missingPhones > 0 ? `
             <div class="alert warn" style="display:flex; align-items:center; gap:8px;">
               <div style="flex:1;">
-                <div><b>${missingPhones}</b> sin teléfono — Maps no los muestra en la lista.</div>
-                <div style="font-size:10px; color:#92400e; margin-top:2px;">Abro cada uno y leo el detalle (~${Math.ceil(missingPhones * 1.5)}s).</div>
+                <div><b>${missingPhones}</b> en buffer sin teléfono.</div>
+                <div style="font-size:10px; color:#92400e; margin-top:2px;">Backend los va a saltear. Click para abrir cada uno y leer el detalle (~${Math.ceil(missingPhones * 1.5)}s).</div>
               </div>
-              <button class="btn primary" id="sh-enrich" style="background:#b45309; border-color:#b45309;">🔍 Conseguir teléfonos</button>
+              <button class="btn primary" id="sh-enrich" style="background:#b45309; border-color:#b45309;">🔍 Buscar</button>
             </div>
           ` : ''}
           <div class="row">
@@ -734,35 +734,88 @@
     );
   }
 
+  function setAutoStatus(s) {
+    autoStatus = s;
+    const alertEl = panel.querySelector('.alert.ok span:nth-child(2)');
+    if (alertEl) alertEl.textContent = s;
+  }
+
+  // Espera a que el detalle abierto matchee el name esperado (post-click), evita
+  // leer datos viejos del lugar previo.
+  async function waitForDetailMatch(expectedName, timeoutMs = 8000) {
+    const start = Date.now();
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    const want = norm(expectedName);
+    let last = null;
+    while (Date.now() - start < timeoutMs) {
+      const it = readDetailPanel();
+      if (it && norm(it.name) === want) {
+        last = it;
+        // Esperamos hasta tener phone, o cortamos a los 1.5s aunque no haya.
+        if (it.phone || (Date.now() - start > 1500)) return it;
+      }
+      await sleep(180);
+    }
+    return last;
+  }
+
+  // Detecta rápido si Maps está mostrando teléfonos en el listado (algunas
+  // categorías sí, gimnasios no). Mira los primeros items visibles.
+  function listExposesPhones() {
+    const sample = readFeedList().slice(0, 8);
+    if (sample.length === 0) return null;
+    const withPhone = sample.filter(it => it.phone).length;
+    return withPhone / sample.length;
+  }
+
+  // Smart auto-capture:
+  // 1) Lee primeros items, detecta si vienen con teléfono
+  // 2a) Si vienen → modo rápido (scroll todo + leer lista)
+  // 2b) Si no → modo profundo incremental (click cada lugar, leer detalle, back, next)
   async function autoCapture() {
     const feed = getFeedEl();
-    if (!feed) return toast('No detecté la lista. Hacé una búsqueda en Maps primero (la columna "Resultados").', 'err');
+    if (!feed) return toast('No detecté la lista. Hacé una búsqueda en Maps primero (columna "Resultados").', 'err');
 
     autoCancel = false;
     autoRunning = true;
-    autoStatus = 'Iniciando scroll…';
+    setAutoStatus('Detectando si la lista trae teléfonos…');
     render();
 
+    // Cargamos un poquito para tener al menos ~5 items para evaluar.
+    feed.scrollTop = feed.scrollHeight;
+    await sleep(800);
+    feed.scrollTop = 0;
+    await sleep(300);
+
+    const ratio = listExposesPhones();
+    const useDeep = ratio === null || ratio < 0.5;
+
+    if (useDeep) {
+      setAutoStatus('Maps no muestra teléfonos en la lista — voy uno por uno.');
+      await sleep(600);
+      await deepIncrementalCapture();
+    } else {
+      setAutoStatus(`Teléfonos en la lista (${Math.round(ratio*100)}%) — modo rápido.`);
+      await sleep(400);
+      await fastListCapture();
+    }
+  }
+
+  // Modo rápido: scroll todo, leer lista, agregar al buffer.
+  async function fastListCapture() {
     const result = await autoScrollFeed((count, reachedEnd) => {
-      autoStatus = reachedEnd
+      setAutoStatus(reachedEnd
         ? `Cargando últimos… (${count} encontrados)`
-        : `Scrolleando… ${count} resultados cargados`;
-      // Re-render solo el alert para no perder el foco ni reconstruir todo.
-      const alertEl = panel.querySelector('.alert.ok span:nth-child(2)');
-      if (alertEl) alertEl.textContent = autoStatus;
+        : `Scrolleando… ${count} resultados cargados`);
     });
 
     if (!result.ok && result.reason === 'no-feed') {
       autoRunning = false; render();
       return toast('Perdí el listado mientras corría. Probá de nuevo.', 'err');
     }
-    if (!result.ok && result.reason === 'canceled') {
-      autoRunning = false; render();
-      return toast(`Cancelado a ${result.count ?? 0} items.`);
-    }
 
-    // Volver al tope para que el siguiente scan no se confunda y para UX.
-    feed.scrollTop = 0;
+    const feed = getFeedEl();
+    if (feed) feed.scrollTop = 0;
     await sleep(150);
 
     const all = readFeedList();
@@ -770,13 +823,94 @@
     all.forEach(it => { if (addToBuffer(it)) added++; });
 
     autoRunning = false;
-    autoStatus = '';
+    setAutoStatus('');
     render();
     pulseBuffer();
     toast(
+      autoCancel ? `Cancelado a ${added} agregados` :
       added > 0
-        ? `✓ ${added} agregados (${all.length - added} ya estaban, total listado: ${all.length})`
+        ? `✓ ${added} agregados (${all.length - added} ya estaban, total: ${all.length})`
         : `Ya tenías los ${all.length} del listado`,
+      added > 0 ? 'ok' : ''
+    );
+  }
+
+  // Modo profundo incremental: procesa items en orden DOM, scrollea cuando se acaban
+  // los visibles. Cada item: click → wait detail → read → addToBuffer → close → next.
+  async function deepIncrementalCapture() {
+    const processed = new Set();   // hrefs ya procesados
+    let added = 0;
+    let stableScrolls = 0;
+    const MAX_ITEMS = 200;         // tope de seguridad
+    const STABLE_THRESHOLD = 4;
+
+    while (!autoCancel && processed.size < MAX_ITEMS) {
+      const feed = getFeedEl();
+      if (!feed) {
+        autoRunning = false; render();
+        return toast('Perdí la lista — probá refrescar Maps', 'err');
+      }
+
+      const links = Array.from(feed.querySelectorAll('a[href*="/maps/place/"]'));
+      const next = links.find(a => {
+        const h = a.getAttribute('href');
+        return h && !processed.has(h);
+      });
+
+      if (!next) {
+        // Sin items nuevos a procesar → scrolleamos para cargar más.
+        const before = links.length;
+        const finalText = feed.innerText || '';
+        const reachedEnd = /llegado al final|reached the end|fin de la lista|no hay más resultados/i.test(finalText);
+
+        feed.scrollTop = feed.scrollHeight;
+        setAutoStatus(`${processed.size} procesados · cargando más…`);
+        await sleep(900);
+
+        const after = (getFeedEl()?.querySelectorAll('a[href*="/maps/place/"]') ?? []).length;
+        if (after === before) {
+          stableScrolls++;
+          if (stableScrolls >= STABLE_THRESHOLD || reachedEnd) break;
+        } else {
+          stableScrolls = 0;
+        }
+        continue;
+      }
+
+      const href = next.getAttribute('href');
+      processed.add(href);
+      const linkName = next.getAttribute('aria-label') || '(sin nombre)';
+
+      setAutoStatus(`${processed.size}: ${linkName.slice(0, 38)}${linkName.length > 38 ? '…' : ''}`);
+
+      next.scrollIntoView({ block: 'center' });
+      await sleep(150);
+      next.click();
+
+      const detail = await waitForDetailMatch(linkName, 8000);
+      if (detail && detail.name) {
+        if (addToBuffer(detail)) {
+          added++;
+          // Pulse cada agregado para feedback visual.
+          const bc = panel.querySelector('.buffer-count');
+          if (bc) { bc.textContent = String(buffer.length); bc.classList.remove('pulse'); void bc.offsetWidth; bc.classList.add('pulse'); }
+        }
+      }
+
+      closeDetail();
+      await waitForFeed(5000);
+      // Jitter para parecer humano y dar aire al render.
+      await sleep(450 + Math.random() * 500);
+    }
+
+    autoRunning = false;
+    setAutoStatus('');
+    render();
+    pulseBuffer();
+    toast(
+      autoCancel
+        ? `Cancelado — ${added} agregados (${processed.size} procesados)`
+        : `✓ ${added} agregados (${processed.size} procesados, ${added < processed.size ? `${processed.size - added} ya estaban` : 'todos nuevos'})`,
       added > 0 ? 'ok' : ''
     );
   }
