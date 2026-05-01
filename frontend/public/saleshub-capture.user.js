@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.3.0
+// @version      0.4.0
 // @description  Captura negocios desde Google Maps y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
@@ -57,6 +57,9 @@
   let lastResult = GM_getValue('saleshub.lastResult', null);
   let collapsed = GM_getValue('saleshub.collapsed', false);
   let preview = false;
+  let autoRunning = false;
+  let autoCancel = false;
+  let autoStatus = '';
 
   function persistBuffer() { GM_setValue('saleshub.buffer', buffer); }
 
@@ -145,6 +148,52 @@
     return null;
   }
 
+  // Devuelve el contenedor scrolleable de los resultados.
+  function getFeedEl() {
+    return document.querySelector('div[role="feed"]');
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // Auto-scrollea el feed hasta que Google deja de cargar más items.
+  // Detecta el final de dos formas: (a) el contador de items se estabiliza
+  // por N iteraciones, o (b) Maps muestra "Has llegado al final de la lista".
+  async function autoScrollFeed(onProgress) {
+    const feed = getFeedEl();
+    if (!feed) return { ok: false, reason: 'no-feed' };
+
+    let stable = 0;
+    let lastCount = -1;
+    const STABLE_THRESHOLD = 4;     // 4 ciclos sin items nuevos = fin
+    const STEP_MS = 900;            // espera entre scrolls
+    const MAX_ITERATIONS = 80;      // tope de seguridad ~72s
+
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      if (autoCancel) return { ok: false, reason: 'canceled', count: lastCount };
+
+      // Sentinel "Has llegado al final" / "Estás llegando al final".
+      const finalText = feed.innerText || '';
+      const reachedEnd = /llegado al final|reached the end|fin de la lista|end of the list/i.test(finalText);
+
+      const count = feed.querySelectorAll('a[href*="/maps/place/"]').length;
+      onProgress?.(count, reachedEnd);
+
+      if (count === lastCount) {
+        stable++;
+      } else {
+        stable = 0;
+        lastCount = count;
+      }
+      if (reachedEnd && stable >= 1) break;
+      if (stable >= STABLE_THRESHOLD) break;
+
+      // Scroll al fondo (varía levemente para evitar detección como bot).
+      feed.scrollTop = feed.scrollHeight;
+      await sleep(STEP_MS);
+    }
+    return { ok: true, count: lastCount };
+  }
+
   function readFeedList() {
     // Descendant selector — Google a veces anida las cards más profundo.
     const links = document.querySelectorAll('div[role="feed"] a[href*="/maps/place/"]');
@@ -224,6 +273,7 @@
     #sh-panel .buffer-count { background:#1e293b; color:#fff; border-radius:999px; padding:2px 8px; font-weight:600; font-size:11px; }
     #sh-panel .buffer-count.pulse { animation:sh-pulse .6s ease; }
     @keyframes sh-pulse { 0%{transform:scale(1)} 50%{transform:scale(1.25); background:#16a34a} 100%{transform:scale(1)} }
+    @keyframes sh-blink { 0%,100%{opacity:1} 50%{opacity:.3} }
     #sh-panel ul.preview { list-style:none; margin:0; padding:0; max-height:220px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px; }
     #sh-panel ul.preview li { padding:6px 8px; border-bottom:1px solid #f1f5f9; display:grid; grid-template-columns:1fr auto; gap:4px; font-size:11px; }
     #sh-panel ul.preview li:last-child { border-bottom:0; }
@@ -338,10 +388,21 @@
           </ul>
         ` : ''}
 
-        <div class="row">
-          <button class="btn primary" id="sh-add-list" style="flex:1;">📋 Capturar lista</button>
-          <button class="btn" id="sh-add-detail">📍 Este lugar</button>
-        </div>
+        ${autoRunning ? `
+          <div class="alert ok" style="display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#16a34a; animation:sh-blink 1s infinite;"></span>
+            <span style="flex:1;">${escapeHtml(autoStatus || 'Cargando…')}</span>
+            <button class="ghost" id="sh-cancel-auto" style="color:#991b1b;">cancelar</button>
+          </div>
+        ` : `
+          <div class="row">
+            <button class="btn primary" id="sh-auto" style="flex:1;">🔁 Auto-capturar todo</button>
+          </div>
+          <div class="row">
+            <button class="btn" id="sh-add-list" style="flex:1;">📋 Solo lo visible</button>
+            <button class="btn" id="sh-add-detail">📍 Este lugar</button>
+          </div>
+        `}
 
         <div class="row">
           <button class="btn success" id="sh-upload" style="flex:1;" ${buffer.length === 0 || !ready ? 'disabled' : ''}>
@@ -383,6 +444,9 @@
     };
 
     if ($('#sh-toggle-preview')) $('#sh-toggle-preview').onclick = () => { preview = !preview; render(); };
+
+    if ($('#sh-auto')) $('#sh-auto').onclick = autoCapture;
+    if ($('#sh-cancel-auto')) $('#sh-cancel-auto').onclick = () => { autoCancel = true; };
 
     if ($('#sh-add-list')) $('#sh-add-list').onclick = () => {
       const list = readFeedList();
@@ -502,6 +566,53 @@
       render();
       toast(`Error subiendo: ${err.message}`, 'err');
     }
+  }
+
+  async function autoCapture() {
+    const feed = getFeedEl();
+    if (!feed) return toast('No detecté la lista. Hacé una búsqueda en Maps primero (la columna "Resultados").', 'err');
+
+    autoCancel = false;
+    autoRunning = true;
+    autoStatus = 'Iniciando scroll…';
+    render();
+
+    const result = await autoScrollFeed((count, reachedEnd) => {
+      autoStatus = reachedEnd
+        ? `Cargando últimos… (${count} encontrados)`
+        : `Scrolleando… ${count} resultados cargados`;
+      // Re-render solo el alert para no perder el foco ni reconstruir todo.
+      const alertEl = panel.querySelector('.alert.ok span:nth-child(2)');
+      if (alertEl) alertEl.textContent = autoStatus;
+    });
+
+    if (!result.ok && result.reason === 'no-feed') {
+      autoRunning = false; render();
+      return toast('Perdí el listado mientras corría. Probá de nuevo.', 'err');
+    }
+    if (!result.ok && result.reason === 'canceled') {
+      autoRunning = false; render();
+      return toast(`Cancelado a ${result.count ?? 0} items.`);
+    }
+
+    // Volver al tope para que el siguiente scan no se confunda y para UX.
+    feed.scrollTop = 0;
+    await sleep(150);
+
+    const all = readFeedList();
+    let added = 0;
+    all.forEach(it => { if (addToBuffer(it)) added++; });
+
+    autoRunning = false;
+    autoStatus = '';
+    render();
+    pulseBuffer();
+    toast(
+      added > 0
+        ? `✓ ${added} agregados (${all.length - added} ya estaban, total listado: ${all.length})`
+        : `Ya tenías los ${all.length} del listado`,
+      added > 0 ? 'ok' : ''
+    );
   }
 
   function openAdvancedConfig() {
