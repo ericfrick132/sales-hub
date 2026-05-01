@@ -182,6 +182,10 @@ public class SearchJobsController : ControllerBase
 
         var now = DateTimeOffset.UtcNow;
         var created = 0; var duplicates = 0; var skipped = 0;
+        // Dedup intra-batch: el userscript a veces manda el mismo negocio dos veces
+        // (mismo phone, distinto nombre). Sin esto el SaveChanges explota por
+        // ix_leads_product_key_whatsapp_phone y todo el job se pierde.
+        var seenInBatch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in req.Items)
         {
@@ -189,6 +193,8 @@ public class SearchJobsController : ControllerBase
             var normalized = _phone.Normalize(item.Phone, product.PhonePrefix);
             // Sin teléfono no podemos contactar ni dedupear con confianza: skip.
             if (string.IsNullOrWhiteSpace(normalized)) { skipped++; continue; }
+
+            if (!seenInBatch.Add(normalized)) { duplicates++; continue; }
 
             var dup = await _db.Leads.AnyAsync(
                 l => l.ProductKey == product.ProductKey && l.WhatsappPhone == normalized, ct);
