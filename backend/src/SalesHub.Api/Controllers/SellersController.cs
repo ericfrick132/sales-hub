@@ -230,6 +230,5 @@ public class SellersController : ControllerBase
         s.ActiveHoursStart, s.ActiveHoursEnd, s.Timezone,
         s.DelayMinSeconds, s.DelayMaxSeconds, s.BurstSize, s.BurstPauseMinSeconds, s.BurstPauseMaxSeconds,
         s.PreSendTypingMinSeconds, s.PreSendTypingMaxSeconds, s.ReadIncomingFirst,
-        s.SkipDayProbabilityPct, s.TypoProbabilityPct,
-        s.RegionsAssigned ?? new List<string>());
+        s.SkipDayProbabilityPct, s.TypoProbabilityPct);
 }

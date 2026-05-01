@@ -114,7 +114,6 @@ export interface Seller {
   readIncomingFirst: boolean;
   skipDayProbabilityPct: number;
   typoProbabilityPct: number;
-  regionsAssigned: string[];
 }
 
 export interface SellerMetricRow {
