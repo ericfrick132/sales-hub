@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.4.0
+// @version      0.5.0
 // @description  Captura negocios desde Google Maps y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
@@ -102,17 +102,55 @@
   // Extractores DOM de Google Maps
   // ============================================================
 
+  function getDetailMain() {
+    return document.querySelector('div[role="main"][aria-label]:not([aria-label="Mapa"]):not([aria-label*="Map"]):not([aria-label*="Resultados"])')
+        || document.querySelector('[role="main"]:not([aria-label="Mapa"]):not([aria-label*="Resultados"])');
+  }
+
+  // Extracción de teléfono robusta: Google a veces usa data-item-id, a veces aria-label.
+  function extractPhone(main) {
+    // 1. <button data-item-id="phone:tel:+543511234567"> (formato más estable)
+    const phoneBtn = main.querySelector('button[data-item-id^="phone"], a[data-item-id^="phone"]');
+    if (phoneBtn) {
+      const did = phoneBtn.getAttribute('data-item-id') || '';
+      const m = did.match(/tel:(.+)$/);
+      if (m) return m[1];
+      const text = (phoneBtn.innerText || '').trim().replace(/\s+/g, ' ');
+      if (text) return text;
+    }
+    // 2. aria-label tradicional
+    const lbl = labelOf(main, /^Teléfono:\s*(.+)$/, /^Phone:\s*(.+)$/, /^Tel(?:éfono|ephone)?:\s*(.+)$/);
+    if (lbl) return lbl;
+    // 3. cualquier botón cuyo aria-label arranque con "Teléfono " (sin :)
+    const allLabels = main.querySelectorAll('[aria-label]');
+    for (const el of allLabels) {
+      const a = el.getAttribute('aria-label') || '';
+      const m = a.match(/^(?:Teléfono|Phone|Tel)\s*[:.]?\s*(.+)$/i);
+      if (m && /\d{4,}/.test(m[1])) return m[1].trim();
+    }
+    return null;
+  }
+
+  function extractAddress(main) {
+    const addrBtn = main.querySelector('button[data-item-id="address"]');
+    if (addrBtn) {
+      const t = (addrBtn.innerText || '').trim().replace(/\s+/g, ' ');
+      if (t) return t;
+    }
+    return labelOf(main, /^Dirección:\s*(.+)$/, /^Address:\s*(.+)$/);
+  }
+
   function readDetailPanel() {
-    const main = document.querySelector('div[role="main"][aria-label]:not([aria-label="Mapa"]):not([aria-label*="Map"])')
-              || document.querySelector('[role="main"]:not([aria-label="Mapa"])');
+    const main = getDetailMain();
     if (!main) return null;
     const name = main.getAttribute('aria-label') || main.querySelector('h1')?.innerText?.trim();
     if (!name) return null;
 
-    const phone = labelOf(main, /^Teléfono:\s*(.+)$/, /^Phone:\s*(.+)$/);
-    const address = labelOf(main, /^Dirección:\s*(.+)$/, /^Address:\s*(.+)$/);
+    const phone = extractPhone(main);
+    const address = extractAddress(main);
     const website = main.querySelector('a[data-item-id="authority"]')?.href
                  || main.querySelector('a[aria-label^="Sitio web"]')?.href
+                 || main.querySelector('a[aria-label^="Website"]')?.href
                  || null;
 
     const ratingNode = main.querySelector('[aria-label*="estrellas"], [aria-label*="stars"]');
@@ -154,6 +192,45 @@
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // Espera hasta que un panel de detalle distinto al name "ignore" aparezca con teléfono
+  // o hasta que se cumpla el timeout. Devuelve el item leído (o null).
+  async function waitForDetail(timeoutMs = 7000) {
+    const start = Date.now();
+    let last = null;
+    while (Date.now() - start < timeoutMs) {
+      const it = readDetailPanel();
+      if (it && it.name) {
+        last = it;
+        // Si tenemos teléfono ya, salimos rápido. Si no, esperamos un toque
+        // por si todavía está cargando.
+        if (it.phone) return it;
+      }
+      await sleep(200);
+    }
+    return last;
+  }
+
+  // Espera a que la lista vuelva a estar visible (ESC o back).
+  async function waitForFeed(timeoutMs = 5000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (getFeedEl()) return true;
+      await sleep(150);
+    }
+    return false;
+  }
+
+  // Cierra el detalle. Probamos botón "Atrás" del panel (más confiable) y como
+  // fallback ESC; con .click() el SPA de Maps maneja la navegación.
+  function closeDetail() {
+    const main = getDetailMain();
+    if (main) {
+      const back = main.querySelector('button[aria-label*="Atrás"], button[aria-label*="Back"], button[aria-label="Cerrar"]');
+      if (back) { back.click(); return; }
+    }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+  }
 
   // Auto-scrollea el feed hasta que Google deja de cargar más items.
   // Detecta el final de dos formas: (a) el contador de items se estabiliza
@@ -394,15 +471,26 @@
             <span style="flex:1;">${escapeHtml(autoStatus || 'Cargando…')}</span>
             <button class="ghost" id="sh-cancel-auto" style="color:#991b1b;">cancelar</button>
           </div>
-        ` : `
+        ` : (() => {
+          const missingPhones = buffer.filter(b => !b.phone).length;
+          return `
           <div class="row">
             <button class="btn primary" id="sh-auto" style="flex:1;">🔁 Auto-capturar todo</button>
           </div>
+          ${missingPhones > 0 ? `
+            <div class="alert warn" style="display:flex; align-items:center; gap:8px;">
+              <div style="flex:1;">
+                <div><b>${missingPhones}</b> sin teléfono — Maps no los muestra en la lista.</div>
+                <div style="font-size:10px; color:#92400e; margin-top:2px;">Abro cada uno y leo el detalle (~${Math.ceil(missingPhones * 1.5)}s).</div>
+              </div>
+              <button class="btn primary" id="sh-enrich" style="background:#b45309; border-color:#b45309;">🔍 Conseguir teléfonos</button>
+            </div>
+          ` : ''}
           <div class="row">
             <button class="btn" id="sh-add-list" style="flex:1;">📋 Solo lo visible</button>
             <button class="btn" id="sh-add-detail">📍 Este lugar</button>
           </div>
-        `}
+        `;})()}
 
         <div class="row">
           <button class="btn success" id="sh-upload" style="flex:1;" ${buffer.length === 0 || !ready ? 'disabled' : ''}>
@@ -446,6 +534,7 @@
     if ($('#sh-toggle-preview')) $('#sh-toggle-preview').onclick = () => { preview = !preview; render(); };
 
     if ($('#sh-auto')) $('#sh-auto').onclick = autoCapture;
+    if ($('#sh-enrich')) $('#sh-enrich').onclick = enrichMissingPhones;
     if ($('#sh-cancel-auto')) $('#sh-cancel-auto').onclick = () => { autoCancel = true; };
 
     if ($('#sh-add-list')) $('#sh-add-list').onclick = () => {
@@ -566,6 +655,83 @@
       render();
       toast(`Error subiendo: ${err.message}`, 'err');
     }
+  }
+
+  // Recorre el buffer y abre cada item sin teléfono en Maps para conseguirlo.
+  async function enrichMissingPhones() {
+    const feed = getFeedEl();
+    if (!feed) return toast('No detecté la lista. Volvé a la búsqueda primero.', 'err');
+
+    const missing = buffer
+      .map((b, i) => ({ b, i }))
+      .filter(({ b }) => !b.phone && b.name);
+    if (missing.length === 0) return toast('Todos los items ya tienen teléfono');
+
+    autoCancel = false;
+    autoRunning = true;
+    autoStatus = `Buscando teléfonos: 0/${missing.length}…`;
+    render();
+
+    // Indexamos los links del feed por nombre normalizado para encontrarlos rápido.
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    let enriched = 0;
+    let processed = 0;
+
+    for (const { b, i } of missing) {
+      if (autoCancel) break;
+      processed++;
+      autoStatus = `Buscando teléfonos: ${processed}/${missing.length} · ${b.name.slice(0, 40)}`;
+      const alertEl = panel.querySelector('.alert.ok span:nth-child(2)');
+      if (alertEl) alertEl.textContent = autoStatus;
+
+      // Re-query cada vuelta: el DOM puede haberse re-armado al volver del detalle.
+      const liveFeed = getFeedEl();
+      if (!liveFeed) {
+        toast('Perdí la lista — refrescá Maps y reintentá', 'err');
+        break;
+      }
+      const links = liveFeed.querySelectorAll('a[href*="/maps/place/"]');
+      let target = null;
+      for (const a of links) {
+        if (norm(a.getAttribute('aria-label')) === norm(b.name)) { target = a; break; }
+      }
+      if (!target) continue; // ítem fuera de la lista actual; lo saltamos
+
+      target.scrollIntoView({ block: 'center' });
+      await sleep(150);
+      target.click();
+      const detail = await waitForDetail(8000);
+
+      if (detail) {
+        if (detail.phone) {
+          buffer[i].phone = detail.phone;
+          enriched++;
+        }
+        buffer[i].address = detail.address || buffer[i].address;
+        buffer[i].website = detail.website || buffer[i].website;
+        buffer[i].latitude = detail.latitude ?? buffer[i].latitude;
+        buffer[i].longitude = detail.longitude ?? buffer[i].longitude;
+        if (detail.rating != null) buffer[i].rating = detail.rating;
+        if (detail.totalReviews != null) buffer[i].totalReviews = detail.totalReviews;
+        persistBuffer();
+      }
+
+      closeDetail();
+      await waitForFeed(5000);
+      // Jitter entre 500-1000ms para parecer humano y dar aire al render.
+      await sleep(500 + Math.random() * 500);
+    }
+
+    autoRunning = false;
+    autoStatus = '';
+    render();
+    pulseBuffer();
+    toast(
+      autoCancel
+        ? `Cancelado — ${enriched} teléfonos encontrados`
+        : `✓ ${enriched} teléfonos encontrados de ${processed} buscados`,
+      enriched > 0 ? 'ok' : ''
+    );
   }
 
   async function autoCapture() {
