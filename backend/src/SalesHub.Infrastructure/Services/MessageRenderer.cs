@@ -39,10 +39,19 @@ public class MessageRenderer : IMessageRenderer
             template = template.Substring(0, m.Index) + choice + template.Substring(m.Index + m.Length);
         }
 
+        // {category} = la categoría/búsqueda que originó el lead (ej. "arquitecta",
+        // "constructora", "gimnasio"). Útil para personalizar: "Vi tu {category}".
+        // Cae a la primera categoría del producto si el lead no tiene nada.
+        var category = !string.IsNullOrWhiteSpace(lead.SearchCategory)
+            ? lead.SearchCategory!
+            : (product.Categories?.FirstOrDefault() ?? "negocio");
+
         template = template
             .Replace("{name}", lead.Name)
             .Replace("{city}", string.IsNullOrWhiteSpace(lead.City) ? "tu ciudad" : lead.City)
             .Replace("{province}", lead.Province ?? string.Empty)
+            .Replace("{category}", category)
+            .Replace("{search_query}", lead.SearchQuery ?? string.Empty)
             .Replace("{price}", product.PriceDisplay ?? string.Empty)
             .Replace("{checkout_url}", product.CheckoutUrl ?? string.Empty)
             .Replace("{seller}", seller?.DisplayName ?? "Eric")

@@ -115,7 +115,8 @@ export default function Products() {
           <textarea className="input min-h-48 font-mono text-sm"
             value={draft.messageTemplate} onChange={(e) => onChange('messageTemplate', e.target.value)} />
           <div className="text-xs text-slate-400 mt-1">
-            Placeholders: <code>&#123;name&#125;</code>, <code>&#123;city&#125;</code>, <code>&#123;price&#125;</code>, <code>&#123;checkout_url&#125;</code>, <code>&#123;seller&#125;</code>.
+            Placeholders: <code>&#123;name&#125;</code>, <code>&#123;city&#125;</code>, <code>&#123;province&#125;</code>, <code>&#123;category&#125;</code>, <code>&#123;search_query&#125;</code>, <code>&#123;price&#125;</code>, <code>&#123;checkout_url&#125;</code>, <code>&#123;seller&#125;</code>.<br/>
+            <code>&#123;category&#125;</code> = la categoría que originó el lead (de la lista de arriba). Si el lead no la tiene, cae a la primera de la lista.<br/>
             Spin-text: <code>&#123;Hola!|Qué tal!|Buenas!&#125;</code>
           </div>
         </Field>
