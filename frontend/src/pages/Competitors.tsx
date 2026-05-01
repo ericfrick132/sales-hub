@@ -56,8 +56,8 @@ export default function Competitors() {
   }
 
   return (
-    <div className="grid grid-cols-12 gap-6">
-      <div className="col-span-4">
+    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
+      <div className="md:col-span-4">
         <h2 className="text-xl font-bold mb-2">Competencia (IG)</h2>
         <div className="card p-3 space-y-2 mb-3">
           <input className="input" placeholder="@handle" value={newHandle} onChange={(e) => setNewHandle(e.target.value)} />
@@ -77,7 +77,7 @@ export default function Competitors() {
         </div>
       </div>
 
-      <div className="col-span-8 space-y-4">
+      <div className="md:col-span-8 space-y-4">
         {!selected ? (
           <div className="card p-8 text-center text-slate-500">Seleccioná un handle</div>
         ) : (

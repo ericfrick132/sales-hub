@@ -57,9 +57,9 @@ export default function SellerDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3 flex-wrap">
         <Link to="/admin" className="text-sm text-slate-500 hover:text-slate-700">← Volver</Link>
-        <h1 className="text-2xl font-bold">{m.displayName}</h1>
+        <h1 className="text-xl md:text-2xl font-bold">{m.displayName}</h1>
         <span className={`text-xs rounded px-2 py-0.5 border ${
           m.instanceStatus === 'Connected'
             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -84,7 +84,7 @@ export default function SellerDetail() {
         <Card label="En cola" value={dash.data.queuedCount} />
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card p-4">
           <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Funnel total</div>
           <Stat label="Asignados" value={m.leadsAssigned} />
@@ -156,7 +156,7 @@ function DailyChart({ daily }: { daily: DailyActivity[] }) {
   const max = Math.max(1, ...ordered.map((d) => d.total));
   return (
     <div className="card p-4 overflow-x-auto">
-      <div className="flex items-end gap-1 h-40 min-w-[600px]">
+      <div className="flex items-end gap-1 h-40 min-w-[480px] md:min-w-[600px]">
         {ordered.map((d) => {
           const h = Math.max(2, Math.round((d.total / max) * 100));
           const tooltip = d.total === 0

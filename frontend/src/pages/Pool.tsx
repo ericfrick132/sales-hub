@@ -35,7 +35,7 @@ export default function Pool() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Pool de leads</h1>
+      <h1 className="text-xl md:text-2xl font-bold">Pool de leads</h1>
       <p className="text-sm text-slate-500">Leads sin asignar. Tomalos manualmente si querés más volumen.</p>
       <div className="flex gap-3 items-end">
         <div>

@@ -31,7 +31,8 @@ public record SellerDto(
     int PreSendTypingMaxSeconds,
     bool ReadIncomingFirst,
     int SkipDayProbabilityPct,
-    int TypoProbabilityPct);
+    int TypoProbabilityPct,
+    List<string> RegionsAssigned);
 
 public record CreateSellerRequest(
     string SellerKey,
@@ -64,6 +65,7 @@ public record UpdateSellerRequest(
     int? PreSendTypingMaxSeconds,
     bool? ReadIncomingFirst,
     int? SkipDayProbabilityPct,
-    int? TypoProbabilityPct);
+    int? TypoProbabilityPct,
+    List<string>? RegionsAssigned);
 
 public record ToggleSendingRequest(bool Enabled);

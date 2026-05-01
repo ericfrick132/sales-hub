@@ -50,27 +50,27 @@ export default function Pipeline() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Pipeline</h1>
-        <div className="flex gap-2">
-          <button className="btn-secondary" onClick={() => importCities('AR')}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h1 className="text-xl md:text-2xl font-bold">Pipeline</h1>
+        <div className="flex gap-2 flex-wrap">
+          <button className="btn-secondary text-sm" onClick={() => importCities('AR')}
             title="Descarga el catálogo completo de GeoNames (gratis) para poblar el dropdown de ciudades con lat/lng y población.">
             Importar ciudades AR
           </button>
-          <button className="btn-primary" onClick={() => setModal(true)}>Trigger corrida</button>
+          <button className="btn-primary text-sm" onClick={() => setModal(true)}>Trigger corrida</button>
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex gap-1 border-b border-slate-200 overflow-x-auto">
         {TABS.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm border-b-2 ${tab === t.key ? 'border-brand-600 text-brand-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            className={`px-4 py-2 text-sm border-b-2 whitespace-nowrap ${tab === t.key ? 'border-brand-600 text-brand-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
             {t.label}
           </button>
         ))}
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="card overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>

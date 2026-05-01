@@ -39,8 +39,8 @@ export default function Products() {
   }
 
   return (
-    <div className="grid grid-cols-12 gap-6">
-      <div className="col-span-4">
+    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
+      <div className="md:col-span-4">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xl font-bold">Aplicaciones</h2>
           <button className="btn-primary text-xs" onClick={() => { setSelected(null); setDraft(EMPTY); }}>+ Nuevo</button>
@@ -56,9 +56,9 @@ export default function Products() {
         </div>
       </div>
 
-      <div className="col-span-8 card p-5 space-y-3">
+      <div className="md:col-span-8 card p-4 md:p-5 space-y-3">
         <h3 className="font-semibold">{selected?.id ? `Editar: ${selected.displayName}` : 'Nuevo producto'}</h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="product_key">
             <input className="input" value={draft.productKey} onChange={(e) => onChange('productKey', e.target.value)} disabled={!!selected?.id} />
           </Field>
@@ -92,7 +92,7 @@ export default function Products() {
             Spin-text: <code>&#123;Hola!|Qué tal!|Buenas!&#125;</code>
           </div>
         </Field>
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={draft.active} onChange={(e) => onChange('active', e.target.checked)} />
             Activo
@@ -101,7 +101,7 @@ export default function Products() {
             <input type="checkbox" checked={draft.requiresAssistedSale} onChange={(e) => onChange('requiresAssistedSale', e.target.checked)} />
             Requiere venta asistida (demo con admin)
           </label>
-          <button className="btn-primary" onClick={save}>Guardar</button>
+          <button className="btn-primary ml-auto" onClick={save}>Guardar</button>
         </div>
       </div>
     </div>

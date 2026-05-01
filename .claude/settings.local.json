@@ -57,7 +57,13 @@
       "Bash(scp /tmp/fix_regions.sql root@64.227.3.140:/tmp/)",
       "Bash(npx tsc *)",
       "Bash(python3 -c \"import json,sys; print\\('\\\\n'.join\\(f'{k}: {v}' for k,v in json.load\\(sys.stdin\\)['scripts'].items\\(\\)\\)\\)\")",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(git commit *)",
+      "WebSearch",
+      "Bash(claude mcp *)",
+      "mcp__higgsfield__balance",
+      "mcp__higgsfield__generate_image",
+      "mcp__higgsfield__list_workspaces"
     ]
   }
 }

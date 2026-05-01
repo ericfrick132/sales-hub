@@ -75,6 +75,7 @@ public class SellersController : ControllerBase
         {
             if (req.IsActive is not null) seller.IsActive = req.IsActive.Value;
             if (req.VerticalsWhitelist is not null) seller.VerticalsWhitelist = req.VerticalsWhitelist;
+            if (req.RegionsAssigned is not null) seller.RegionsAssigned = req.RegionsAssigned;
         }
         if (req.DisplayName is not null) seller.DisplayName = req.DisplayName;
         if (req.WhatsappPhone is not null) seller.WhatsappPhone = req.WhatsappPhone;
@@ -211,5 +212,6 @@ public class SellersController : ControllerBase
         s.ActiveHoursStart, s.ActiveHoursEnd, s.Timezone,
         s.DelayMinSeconds, s.DelayMaxSeconds, s.BurstSize, s.BurstPauseMinSeconds, s.BurstPauseMaxSeconds,
         s.PreSendTypingMinSeconds, s.PreSendTypingMaxSeconds, s.ReadIncomingFirst,
-        s.SkipDayProbabilityPct, s.TypoProbabilityPct);
+        s.SkipDayProbabilityPct, s.TypoProbabilityPct,
+        s.RegionsAssigned ?? new List<string>());
 }

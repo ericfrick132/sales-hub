@@ -172,7 +172,10 @@ export default function PipelineTriggerModal({ open, onClose, onDone, defaultSou
   return (
     <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4 overflow-y-auto">
       <div className="card p-6 w-full max-w-xl space-y-4 my-8">
-        <h3 className="text-lg font-semibold">Trigger pipeline Apify</h3>
+        <h3 className="text-lg font-semibold">
+          Trigger pipeline
+          <span className="text-slate-400 font-normal"> · {SOURCE_OPTS.find(o => o.value === source)?.label ?? source}</span>
+        </h3>
 
         <div className="grid grid-cols-2 gap-3">
           <div>

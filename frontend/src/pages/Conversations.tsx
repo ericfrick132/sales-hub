@@ -71,9 +71,15 @@ export default function Conversations() {
     onError: (err: any) => toast.error(err.response?.data?.error ?? 'No se pudo enviar')
   });
 
+  const clearSelected = () => setParams({});
+
   return (
-    <div className="grid grid-cols-12 gap-4 h-[calc(100vh-8rem)]">
-      <div className="col-span-4 card overflow-y-auto">
+    <div className="flex flex-col md:grid md:grid-cols-12 gap-4 h-[calc(100vh-9rem)] md:h-[calc(100vh-8rem)]">
+      <div
+        className={clsx(
+          'md:col-span-4 card overflow-y-auto min-h-0',
+          selected ? 'hidden md:block' : 'flex-1 md:flex-none'
+        )}>
         <div className="p-3 border-b border-slate-100">
           <h2 className="font-semibold text-lg">Conversaciones</h2>
           <p className="text-xs text-slate-500">Leads que te respondieron o a los que ya escribiste.</p>
@@ -111,20 +117,32 @@ export default function Conversations() {
         ))}
       </div>
 
-      <div className="col-span-8 card flex flex-col overflow-hidden">
+      <div
+        className={clsx(
+          'md:col-span-8 card flex flex-col overflow-hidden min-h-0',
+          selected ? 'flex-1 md:flex-none' : 'hidden md:flex'
+        )}>
         {!selected ? (
           <div className="flex-1 grid place-items-center text-slate-500">Seleccioná una conversación</div>
         ) : thread.isLoading ? (
           <div className="flex-1 grid place-items-center text-slate-500">Cargando…</div>
         ) : thread.data ? (
           <>
-            <div className="p-3 border-b border-slate-100">
-              <div className="font-semibold">{thread.data.leadName}</div>
-              <div className="text-xs text-slate-500">
-                {thread.data.productKey} · {thread.data.status} · {thread.data.whatsappPhone ?? '—'}
+            <div className="p-3 border-b border-slate-100 flex items-start gap-2">
+              <button
+                type="button"
+                onClick={clearSelected}
+                className="md:hidden text-sm text-slate-500 hover:text-slate-700 mt-0.5">
+                ←
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold truncate">{thread.data.leadName}</div>
+                <div className="text-xs text-slate-500 truncate">
+                  {thread.data.productKey} · {thread.data.status} · {thread.data.whatsappPhone ?? '—'}
+                </div>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50">
+            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2 bg-slate-50">
               {thread.data.renderedInitialMessage && thread.data.messages.length === 0 && (
                 <div className="text-center text-xs text-slate-400 mb-4">
                   Mensaje inicial sugerido (aún no enviado):
@@ -137,7 +155,7 @@ export default function Conversations() {
                 <div key={m.id}
                   className={clsx('flex', m.direction === 'Outbound' ? 'justify-end' : 'justify-start')}>
                   <div className={clsx(
-                    'max-w-md rounded-lg px-3 py-2 text-sm whitespace-pre-wrap',
+                    'max-w-[85%] md:max-w-md rounded-lg px-3 py-2 text-sm whitespace-pre-wrap',
                     m.direction === 'Outbound' ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200'
                   )}>
                     <div>{m.text}</div>
@@ -161,7 +179,7 @@ export default function Conversations() {
                 disabled={sendMut.isPending}
               />
               <button className="btn-primary" disabled={sendMut.isPending || !reply.trim()}>
-                {sendMut.isPending ? 'Enviando…' : 'Enviar'}
+                {sendMut.isPending ? '…' : 'Enviar'}
               </button>
             </form>
           </>

@@ -52,7 +52,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Hoy</h1>
+      <h1 className="text-xl md:text-2xl font-bold">Hoy</h1>
 
       <MetricCards cards={[
         { label: 'Leads totales', value: data.totalLeads },
@@ -68,7 +68,7 @@ export default function AdminDashboard() {
           Click en el nombre para ver el detalle. Cada celda es la cantidad de leads cargados/asignados ese día.
           Hover para ver el desglose por aplicación.
         </p>
-        <div className="card overflow-x-auto">
+        <div className="card overflow-x-auto -mx-4 md:mx-0 rounded-none md:rounded-lg border-x-0 md:border-x">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -131,7 +131,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
         <div className="card p-5">
           <h3 className="font-semibold mb-3">Por aplicación</h3>
           <table className="w-full text-sm">
@@ -162,7 +162,7 @@ export default function AdminDashboard() {
 
       <div>
         <h2 className="text-lg font-semibold mb-2">Estado de envíos</h2>
-        <div className="card overflow-hidden">
+        <div className="card overflow-x-auto -mx-4 md:mx-0 rounded-none md:rounded-lg border-x-0 md:border-x">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>

@@ -84,12 +84,12 @@ export default function LeadDetail() {
 
   return (
     <div className="space-y-5 max-w-3xl">
-      <div className="flex items-center gap-3">
-        <button className="btn-secondary" onClick={() => nav(-1)}>← Volver</button>
-        <h1 className="text-2xl font-bold">{lead.name}</h1>
+      <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+        <button className="btn-secondary text-sm" onClick={() => nav(-1)}>← Volver</button>
+        <h1 className="text-xl md:text-2xl font-bold break-words min-w-0">{lead.name}</h1>
         <StatusBadge status={lead.status} />
         {!editing && (
-          <button className="btn-secondary ml-auto" onClick={startEdit}>Editar</button>
+          <button className="btn-secondary text-sm ml-auto" onClick={startEdit}>Editar</button>
         )}
       </div>
 
@@ -115,7 +115,7 @@ export default function LeadDetail() {
         </div>
       )}
 
-      <div className="card p-5 grid grid-cols-2 gap-4 text-sm">
+      <div className="card p-4 md:p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
         <div>
           <dt className="text-slate-500">Producto</dt>
           <dd className="font-medium">{lead.productName ?? lead.productKey}</dd>

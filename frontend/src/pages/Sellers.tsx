@@ -27,8 +27,8 @@ export default function Sellers() {
   }
 
   return (
-    <div className="grid grid-cols-12 gap-6">
-      <div className="col-span-4">
+    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
+      <div className="md:col-span-4">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xl font-bold">Vendedores</h2>
           <button className="btn-primary text-xs" onClick={() => setShowCreate(true)}>+ Nuevo</button>
@@ -49,15 +49,15 @@ export default function Sellers() {
         </div>
       </div>
 
-      <div className="col-span-8">
+      <div className="md:col-span-8">
         {selected ? (
           <div className="space-y-4">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-2 flex-wrap">
               <div>
                 <h2 className="text-xl font-bold">{selected.displayName}</h2>
-                <p className="text-sm text-slate-500">{selected.email}</p>
+                <p className="text-sm text-slate-500 break-all">{selected.email}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button className="btn-secondary text-xs"
                   onClick={async () => {
                     const pwd = prompt('Nueva contraseña:');
@@ -131,8 +131,8 @@ function CreateModal({ onClose, onDone, products }: { onClose: () => void; onDon
     } catch (err: any) { toast.error(err.response?.data?.error ?? 'Falló'); }
   }
   return (
-    <div className="fixed inset-0 bg-black/40 grid place-items-center z-50">
-      <div className="card p-6 w-full max-w-md space-y-3">
+    <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4">
+      <div className="card p-6 w-full max-w-md space-y-3 max-h-[90vh] overflow-y-auto">
         <h3 className="font-semibold">Nuevo vendedor</h3>
         <input className="input" placeholder="seller_key (ej juan)" value={form.sellerKey} onChange={(e) => setForm({ ...form, sellerKey: e.target.value })} />
         <input className="input" placeholder="Nombre" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />

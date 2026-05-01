@@ -77,7 +77,7 @@ export default function Connect() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <h1 className="text-2xl font-bold">Conectar WhatsApp</h1>
+      <h1 className="text-xl md:text-2xl font-bold">Conectar WhatsApp</h1>
       <p className="text-sm text-slate-500">
         Escaneá el QR con tu celular (Configuración → Dispositivos vinculados). Una vez conectado,
         activá el envío automático y SalesHub va a ir mandando leads respetando tus gauges humanizados.
@@ -85,7 +85,7 @@ export default function Connect() {
 
       <QrPanel sellerId={user.sellerId} currentStatus={m.instanceStatus} />
 
-      <div className="card p-6 flex items-center justify-between">
+      <div className="card p-4 md:p-6 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="font-semibold">Envío automático</div>
           <div className="text-sm text-slate-500">Cap hoy: {m.todaySent}/{m.todayCap} — En cola: {me.data.queuedCount}</div>
@@ -112,7 +112,7 @@ export default function Connect() {
         <p className="text-xs text-slate-500">
           Mensajes que SalesHub va a mandar (o ya mandó) por tu WhatsApp. Se actualiza cada 10s.
         </p>
-        <div className="card overflow-hidden">
+        <div className="card overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>

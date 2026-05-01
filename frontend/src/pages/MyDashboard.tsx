@@ -21,11 +21,11 @@ export default function MyDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between">
+      <div className="flex items-end justify-between gap-2 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Mi panel</h1>
+          <h1 className="text-xl md:text-2xl font-bold">Mi panel</h1>
         </div>
-        <Link to="/connect" className="btn-secondary">Conectar/Ver WhatsApp</Link>
+        <Link to="/connect" className="btn-secondary text-xs md:text-sm">Conectar/Ver WhatsApp</Link>
       </div>
 
       {user && (

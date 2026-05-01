@@ -129,13 +129,13 @@ export default function MyLeads() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Cargar lead</button>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h1 className="text-xl md:text-2xl font-bold">{title}</h1>
+        <button className="btn-primary text-sm" onClick={() => setShowAdd(true)}>+ Cargar lead</button>
       </div>
 
       {showTabs && (
-        <div className="flex gap-1 border-b border-slate-200">
+        <div className="flex gap-1 border-b border-slate-200 overflow-x-auto">
           {(['mine', 'pool'] as TabKey[]).map((t) => (
             <button
               key={t}
@@ -151,7 +151,7 @@ export default function MyLeads() {
         </div>
       )}
 
-      <div className="flex gap-3 items-end flex-wrap">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 items-end">
         {showStatusFilter && (
           <div>
             <label className="text-xs text-slate-500">Estado</label>
@@ -174,10 +174,12 @@ export default function MyLeads() {
             {SOURCE_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
-        <button className="btn-secondary" onClick={() => qc.invalidateQueries({ queryKey: ['leads'] })}>
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <button className="btn-secondary text-sm" onClick={() => qc.invalidateQueries({ queryKey: ['leads'] })}>
           Refrescar
         </button>
-        <div className="ml-auto text-xs text-slate-500 self-center">
+        <div className="text-xs text-slate-500">
           {leadsQ.isLoading ? '' : `${leads.length} lead${leads.length === 1 ? '' : 's'}`}
         </div>
       </div>
@@ -345,7 +347,7 @@ function AddLeadModal({ products, onClose, onSaved }: AddLeadModalProps) {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-500">Aplicación *</label>
               <select className="input w-full" value={productKey} onChange={(e) => setProductKey(e.target.value)} required>
@@ -359,7 +361,7 @@ function AddLeadModal({ products, onClose, onSaved }: AddLeadModalProps) {
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-500">Estado *</label>
               <select className="input w-full" value={leadStatus} onChange={(e) => setLeadStatus(e.target.value as LeadStatus)}>
