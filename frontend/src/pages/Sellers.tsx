@@ -62,7 +62,6 @@ export default function Sellers() {
                 <p className="text-sm text-slate-500 break-all">{selected.email}</p>
               </div>
               <div className="flex gap-2 flex-wrap">
-              <div className="flex gap-2">
                 <Link to={`/sellers/zones?seller=${selected.id}`} className="btn-secondary text-xs">
                   Editar zonas (mapa)
                 </Link>
