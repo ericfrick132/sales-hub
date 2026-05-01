@@ -254,17 +254,9 @@ public class PipelineService
 
                 if (autoQueue && seller.SendingEnabled && seller.EvolutionInstance is { Status: InstanceStatus.Connected } inst && !string.IsNullOrWhiteSpace(lead.WhatsappPhone))
                 {
-                    _db.Outbox.Add(new MessageOutbox
-                    {
-                        Id = Guid.NewGuid(),
-                        LeadId = lead.Id,
-                        SellerId = seller.Id,
-                        EvolutionInstance = inst.InstanceName,
-                        WhatsappPhone = lead.WhatsappPhone,
-                        Message = lead.RenderedMessage,
-                        ScheduledAt = DateTimeOffset.UtcNow,
-                        Status = OutboxStatus.Scheduled
-                    });
+                    OutboxEnqueueHelper.EnqueueLeadMessages(
+                        _db, _renderer, lead, product, seller,
+                        lead.WhatsappPhone, inst.InstanceName);
                     lead.Status = LeadStatus.Queued;
                     lead.QueuedAt = DateTimeOffset.UtcNow;
                 }
@@ -318,17 +310,9 @@ public class PipelineService
                 && seller.EvolutionInstance is { Status: InstanceStatus.Connected } inst
                 && !string.IsNullOrWhiteSpace(lead.WhatsappPhone))
             {
-                _db.Outbox.Add(new MessageOutbox
-                {
-                    Id = Guid.NewGuid(),
-                    LeadId = lead.Id,
-                    SellerId = seller.Id,
-                    EvolutionInstance = inst.InstanceName,
-                    WhatsappPhone = lead.WhatsappPhone,
-                    Message = lead.RenderedMessage,
-                    ScheduledAt = DateTimeOffset.UtcNow,
-                    Status = OutboxStatus.Scheduled
-                });
+                OutboxEnqueueHelper.EnqueueLeadMessages(
+                    _db, _renderer, lead, lead.Product, seller,
+                    lead.WhatsappPhone, inst.InstanceName);
                 lead.Status = LeadStatus.Queued;
                 lead.QueuedAt = DateTimeOffset.UtcNow;
                 queued++;

@@ -7,7 +7,10 @@ import type { Product } from '../lib/types';
 const EMPTY: Product = {
   id: '', productKey: '', displayName: '', active: true, country: 'AR', countryName: 'Argentina',
   regionCode: 'ar', language: 'es', phonePrefix: '54', categories: [], messageTemplate: '',
-  checkoutUrl: '', priceDisplay: '', dailyLimit: 60, triggerHours: [10, 14, 18], requiresAssistedSale: false,
+  openerTemplate: 'buenas',
+  checkoutUrl: '', priceDisplay: '', dailyLimit: 60, triggerHours: [10, 14, 18],
+  sendHourStart: 10, sendHourEnd: 20,
+  requiresAssistedSale: false,
   googlePlacesDailyLeadCap: 60
 };
 
@@ -84,7 +87,31 @@ export default function Products() {
           <input className="input" value={draft.triggerHours.join(', ')}
             onChange={(e) => onChange('triggerHours', e.target.value.split(',').map((s) => parseInt(s.trim())).filter((n) => !isNaN(n)))} />
         </Field>
-        <Field label="Mensaje template">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Hora inicio envíos (0-23)">
+            <input type="number" min={0} max={24} className="input"
+              value={draft.sendHourStart}
+              onChange={(e) => onChange('sendHourStart', Math.max(0, Math.min(24, +e.target.value)))} />
+          </Field>
+          <Field label="Hora fin envíos (1-24)">
+            <input type="number" min={0} max={24} className="input"
+              value={draft.sendHourEnd}
+              onChange={(e) => onChange('sendHourEnd', Math.max(0, Math.min(24, +e.target.value)))} />
+            <div className="text-xs text-slate-400 mt-1">
+              Si inicio ≥ fin, no aplica restricción de producto (queda solo la del vendedor).
+            </div>
+          </Field>
+        </div>
+        <Field label="Opener (mensaje corto previo, opcional)">
+          <textarea className="input min-h-12 font-mono text-sm"
+            placeholder="ej. buenas"
+            value={draft.openerTemplate} onChange={(e) => onChange('openerTemplate', e.target.value)} />
+          <div className="text-xs text-slate-400 mt-1">
+            Si está, se manda primero (ej. "buenas") y el mensaje principal sale después con el delay normal del vendedor.
+            Soporta los mismos placeholders y spin-text que el mensaje principal.
+          </div>
+        </Field>
+        <Field label="Mensaje template (principal)">
           <textarea className="input min-h-48 font-mono text-sm"
             value={draft.messageTemplate} onChange={(e) => onChange('messageTemplate', e.target.value)} />
           <div className="text-xs text-slate-400 mt-1">

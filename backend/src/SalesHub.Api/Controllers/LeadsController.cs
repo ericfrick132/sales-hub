@@ -62,19 +62,12 @@ public class LeadsController : ControllerBase
         if (req.AutoQueue
             && seller.EvolutionInstance is not null
             && !string.IsNullOrWhiteSpace(lead.WhatsappPhone)
-            && lead.RenderedMessage is not null)
+            && lead.RenderedMessage is not null
+            && lead.Product is not null)
         {
-            _db.Outbox.Add(new MessageOutbox
-            {
-                Id = Guid.NewGuid(),
-                LeadId = lead.Id,
-                SellerId = seller.Id,
-                EvolutionInstance = seller.EvolutionInstance.InstanceName,
-                WhatsappPhone = lead.WhatsappPhone,
-                Message = lead.RenderedMessage,
-                ScheduledAt = DateTimeOffset.UtcNow,
-                Status = OutboxStatus.Scheduled
-            });
+            OutboxEnqueueHelper.EnqueueLeadMessages(
+                _db, _renderer, lead, lead.Product, seller,
+                lead.WhatsappPhone, seller.EvolutionInstance.InstanceName);
             lead.Status = LeadStatus.Queued;
             lead.QueuedAt = DateTimeOffset.UtcNow;
         }
@@ -263,18 +256,13 @@ public class LeadsController : ControllerBase
 
         // No exigimos Status==Connected acá: el OutboxSender ya filtra al momento de mandar.
         // Si está desconectado, el item se queda Scheduled hasta que reconecte.
-        var msg = lead.RenderedMessage ?? (lead.Product is null ? "" : _renderer.Render(lead, lead.Product, seller));
-        _db.Outbox.Add(new MessageOutbox
-        {
-            Id = Guid.NewGuid(),
-            LeadId = lead.Id,
-            SellerId = seller.Id,
-            EvolutionInstance = seller.EvolutionInstance.InstanceName,
-            WhatsappPhone = lead.WhatsappPhone,
-            Message = msg,
-            ScheduledAt = req?.At ?? DateTimeOffset.UtcNow,
-            Status = OutboxStatus.Scheduled
-        });
+        if (lead.Product is null) return BadRequest(new { error = "Lead sin producto." });
+        if (string.IsNullOrWhiteSpace(lead.RenderedMessage))
+            lead.RenderedMessage = _renderer.Render(lead, lead.Product, seller);
+        OutboxEnqueueHelper.EnqueueLeadMessages(
+            _db, _renderer, lead, lead.Product, seller,
+            lead.WhatsappPhone!, seller.EvolutionInstance.InstanceName,
+            req?.At);
         lead.Status = LeadStatus.Queued;
         lead.QueuedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);

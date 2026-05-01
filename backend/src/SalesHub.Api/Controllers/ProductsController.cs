@@ -69,10 +69,13 @@ public class ProductsController : ControllerBase
         p.PhonePrefix = r.PhonePrefix;
         p.Categories = r.Categories;
         p.MessageTemplate = r.MessageTemplate;
+        p.OpenerTemplate = r.OpenerTemplate ?? string.Empty;
         p.CheckoutUrl = r.CheckoutUrl;
         p.PriceDisplay = r.PriceDisplay;
         p.DailyLimit = r.DailyLimit;
         p.TriggerHours = r.TriggerHours;
+        p.SendHourStart = Math.Clamp(r.SendHourStart, 0, 24);
+        p.SendHourEnd = Math.Clamp(r.SendHourEnd, 0, 24);
         p.RequiresAssistedSale = r.RequiresAssistedSale;
         p.GooglePlacesDailyLeadCap = r.GooglePlacesDailyLeadCap;
         return p;
@@ -80,6 +83,8 @@ public class ProductsController : ControllerBase
 
     private static ProductDto ToDto(Product p) => new(
         p.Id, p.ProductKey, p.DisplayName, p.Active, p.Country, p.CountryName, p.RegionCode, p.Language,
-        p.PhonePrefix, p.Categories, p.MessageTemplate, p.CheckoutUrl, p.PriceDisplay,
-        p.DailyLimit, p.TriggerHours, p.RequiresAssistedSale, p.GooglePlacesDailyLeadCap);
+        p.PhonePrefix, p.Categories, p.MessageTemplate, p.OpenerTemplate ?? string.Empty,
+        p.CheckoutUrl, p.PriceDisplay,
+        p.DailyLimit, p.TriggerHours, p.SendHourStart, p.SendHourEnd,
+        p.RequiresAssistedSale, p.GooglePlacesDailyLeadCap);
 }

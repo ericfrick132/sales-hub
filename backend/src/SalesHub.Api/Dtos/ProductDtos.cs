@@ -12,10 +12,13 @@ public record ProductDto(
     string PhonePrefix,
     List<string> Categories,
     string MessageTemplate,
+    string OpenerTemplate,
     string CheckoutUrl,
     string PriceDisplay,
     int DailyLimit,
     List<int> TriggerHours,
+    int SendHourStart,
+    int SendHourEnd,
     bool RequiresAssistedSale,
     int GooglePlacesDailyLeadCap);
 
@@ -30,9 +33,12 @@ public record CreateOrUpdateProductRequest(
     string PhonePrefix,
     List<string> Categories,
     string MessageTemplate,
+    string OpenerTemplate,
     string CheckoutUrl,
     string PriceDisplay,
     int DailyLimit,
     List<int> TriggerHours,
+    int SendHourStart,
+    int SendHourEnd,
     bool RequiresAssistedSale,
     int GooglePlacesDailyLeadCap);

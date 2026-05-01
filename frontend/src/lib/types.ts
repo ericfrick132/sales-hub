@@ -72,10 +72,13 @@ export interface Product {
   phonePrefix: string;
   categories: string[];
   messageTemplate: string;
+  openerTemplate: string;
   checkoutUrl: string;
   priceDisplay: string;
   dailyLimit: number;
   triggerHours: number[];
+  sendHourStart: number;
+  sendHourEnd: number;
   requiresAssistedSale: boolean;
   googlePlacesDailyLeadCap: number;
 }

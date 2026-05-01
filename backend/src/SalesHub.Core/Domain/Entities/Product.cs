@@ -16,12 +16,20 @@ public class Product
 
     public List<string> Categories { get; set; } = new();
     public string MessageTemplate { get; set; } = string.Empty;
+    // Mensaje "opener" opcional. Si está, se manda primero (ej. "buenas") y el
+    // mensaje principal sale después con el delay normal del seller. Vacío = un solo mensaje.
+    public string OpenerTemplate { get; set; } = string.Empty;
 
     public string CheckoutUrl { get; set; } = string.Empty;
     public string PriceDisplay { get; set; } = string.Empty;
 
     public int DailyLimit { get; set; } = 60;
     public List<int> TriggerHours { get; set; } = new();
+    // Ventana de horario en la que se permite enviar para este producto (0-24,
+    // hora local del seller). Default 0/24 = sin restricción a nivel producto;
+    // queda solo la del seller. Si Start>=End el sistema asume sin restricción.
+    public int SendHourStart { get; set; } = 0;
+    public int SendHourEnd { get; set; } = 24;
 
     // Cap of NEW leads per day from the free Google Places pipeline. 0 = no per-product cap
     // (only the global Google:PlacesDailyCap of runs/day applies).

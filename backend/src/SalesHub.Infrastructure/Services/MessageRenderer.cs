@@ -14,11 +14,21 @@ public class MessageRenderer : IMessageRenderer
     private static readonly Regex SpinRx = new(@"\{([^{}]*\|[^{}]*)\}", RegexOptions.Compiled);
 
     public string Render(Lead lead, Product product, Seller? seller = null)
-    {
-        var template = product.MessageTemplate ?? string.Empty;
+        => RenderTemplate(product.MessageTemplate ?? string.Empty, lead, product, seller);
 
-        // Spin-text first so placeholder substitution still works
-        var seed = lead.Id.GetHashCode();
+    public string? RenderOpener(Lead lead, Product product, Seller? seller = null)
+    {
+        if (string.IsNullOrWhiteSpace(product.OpenerTemplate)) return null;
+        var rendered = RenderTemplate(product.OpenerTemplate, lead, product, seller);
+        return string.IsNullOrWhiteSpace(rendered) ? null : rendered;
+    }
+
+    private static string RenderTemplate(string template, Lead lead, Product product, Seller? seller)
+    {
+        // Spin-text first so placeholder substitution still works.
+        // Seed estable por lead+template para que opener y main no terminen siempre con el mismo
+        // saludo (cambiamos un bit con el hash del template).
+        var seed = lead.Id.GetHashCode() ^ template.GetHashCode();
         var rnd = new Random(seed);
         while (true)
         {
@@ -29,7 +39,6 @@ public class MessageRenderer : IMessageRenderer
             template = template.Substring(0, m.Index) + choice + template.Substring(m.Index + m.Length);
         }
 
-        // Placeholders
         template = template
             .Replace("{name}", lead.Name)
             .Replace("{city}", string.IsNullOrWhiteSpace(lead.City) ? "tu ciudad" : lead.City)

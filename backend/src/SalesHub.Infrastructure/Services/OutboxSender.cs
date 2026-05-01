@@ -54,12 +54,29 @@ public class OutboxSender
             var local = TimeZoneInfo.ConvertTime(now, SafeTz(seller.Timezone)).DateTime;
             if (local.Hour < seller.ActiveHoursStart || local.Hour >= seller.ActiveHoursEnd) continue;
 
-            var next = await _db.Outbox
+            // Trae los próximos N candidatos y filtra por ventana de envío del PRODUCTO
+            // del lead (además de la ventana del seller que ya chequeamos arriba). Si un
+            // producto está fuera de su ventana, lo saltea y prueba el siguiente.
+            var candidates = await _db.Outbox
                 .Where(o => o.SellerId == seller.Id
                          && o.Status == OutboxStatus.Scheduled
                          && o.ScheduledAt <= now)
                 .OrderBy(o => o.ScheduledAt)
-                .FirstOrDefaultAsync(ct);
+                .Take(20)
+                .ToListAsync(ct);
+            MessageOutbox? next = null;
+            foreach (var cand in candidates)
+            {
+                var lead = await _db.Leads.AsNoTracking()
+                    .Include(l => l.Product)
+                    .FirstOrDefaultAsync(l => l.Id == cand.LeadId, ct);
+                var product = lead?.Product;
+                if (product is null) { next = cand; break; }
+                // Start>=End → sin restricción a nivel producto.
+                if (product.SendHourStart >= product.SendHourEnd) { next = cand; break; }
+                if (local.Hour >= product.SendHourStart && local.Hour < product.SendHourEnd) { next = cand; break; }
+                // Fuera de ventana del producto: probamos el siguiente candidato del mismo seller.
+            }
             if (next is null) continue;
 
             next.Status = OutboxStatus.Sending;
