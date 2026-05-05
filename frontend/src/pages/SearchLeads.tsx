@@ -38,15 +38,23 @@ export default function SearchLeads() {
   const token = useAuthStore((s) => s.token);
   const [setupOpen, setSetupOpen] = useState(false);
   const [productFilter, setProductFilter] = useState('');
+  const [cursor, setCursor] = useState(0);
 
   const next = useQuery({
     queryKey: ['capture-next'],
-    queryFn: async () => (await api.get<NextCapture[]>('/search-jobs/next', { params: { limit: 5 } })).data,
+    queryFn: async () => (await api.get<NextCapture[]>('/search-jobs/next', { params: { limit: 20 } })).data,
     // El upload pasa por fuera de React (Tampermonkey), así que re-fetcheamos
     // cuando el vendedor vuelve a la pestaña y cada 15s mientras está acá.
     refetchInterval: 15_000,
     refetchOnWindowFocus: true
   });
+
+  // Si el array se acorta (el vendedor capturó la zona actual), reseteamos
+  // el cursor para no quedar fuera de rango.
+  const list = next.data ?? [];
+  const safeCursor = list.length === 0 ? 0 : Math.min(cursor, list.length - 1);
+  const top = list[safeCursor];
+  const rest = list.filter((_, i) => i !== safeCursor).slice(0, 4);
 
   const captures = useQuery({
     queryKey: ['capture-history'],
@@ -54,9 +62,6 @@ export default function SearchLeads() {
     refetchInterval: 5_000,
     refetchOnWindowFocus: true
   });
-
-  const top = next.data?.[0];
-  const rest = (next.data ?? []).slice(1);
 
   // Si nunca capturó nada, abrimos setup automáticamente para que arme Tampermonkey.
   const hasAnyCapture = (captures.data ?? []).length > 0;
@@ -91,11 +96,7 @@ export default function SearchLeads() {
           </div>
         </div>
       ) : (
-        <a
-          href={top.mapsUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="block card p-6 md:p-8 bg-gradient-to-br from-brand-50 to-white border-brand-200 hover:shadow-md transition">
+        <div className="card p-6 md:p-8 bg-gradient-to-br from-brand-50 to-white border-brand-200">
           <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-brand-700 mb-2">
             <span className="bg-brand-600 text-white rounded-full px-2 py-0.5 text-[10px]">
               {top.priority === 'new' ? 'Nueva zona' : 'Refrescar'}
@@ -106,6 +107,9 @@ export default function SearchLeads() {
                 · última vez {daysAgo(top.lastCapturedAt)}d ({top.leadsLastTime} leads)
               </span>
             )}
+            <span className="ml-auto text-[10px] text-slate-400 normal-case tracking-normal">
+              Sugerencia {safeCursor + 1} de {list.length}
+            </span>
           </div>
           <div className="text-2xl md:text-3xl font-bold text-slate-900">
             {top.category ? <>{cap(top.category)} en {top.localityName}</> : <>{top.localityName}</>}
@@ -113,13 +117,33 @@ export default function SearchLeads() {
           <div className="text-sm text-slate-500 mt-1">
             {top.adminLevel1Name}, {top.countryName}
           </div>
-          <div className="mt-5 flex items-center gap-3">
-            <span className="btn-primary text-base px-5 py-2.5">Abrir en Maps →</span>
-            <span className="text-xs text-slate-500">
-              Click en cada negocio del listado, después <b>"+ Este lugar"</b> en el panel de SalesHub.
-            </span>
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <a
+              href={top.mapsUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-primary text-base px-5 py-2.5">
+              Abrir en Maps →
+            </a>
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              disabled={safeCursor === 0}
+              onClick={() => setCursor((c) => Math.max(0, c - 1))}>
+              ← Anterior
+            </button>
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              disabled={safeCursor >= list.length - 1}
+              onClick={() => setCursor((c) => c + 1)}>
+              Siguiente →
+            </button>
           </div>
-        </a>
+          <div className="text-xs text-slate-500 mt-3">
+            Click en cada negocio del listado, después <b>"+ Este lugar"</b> en el panel de SalesHub.
+          </div>
+        </div>
       )}
 
       {/* Otras opciones (chiquitas) — por si la sugerencia no le sirve. */}

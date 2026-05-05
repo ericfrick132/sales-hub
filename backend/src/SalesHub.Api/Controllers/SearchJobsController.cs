@@ -265,7 +265,30 @@ public class SearchJobsController : ControllerBase
             {
                 var owned = await _db.SellerLocalities
                     .AnyAsync(sl => sl.SellerId == sellerId && sl.LocalityGid2 == locality.Gid2, ct);
-                if (!owned) return Forbid();
+                if (!owned)
+                {
+                    // Antes devolvíamos 403 seco. El error real es accionable: ese
+                    // seller no tiene esa zona asignada. Pasamos info para que el
+                    // userscript muestre algo útil (zona y dueños actuales).
+                    var owners = await _db.SellerLocalities.AsNoTracking()
+                        .Where(sl => sl.LocalityGid2 == locality.Gid2)
+                        .Include(sl => sl.Seller)
+                        .Select(sl => sl.Seller!.DisplayName)
+                        .ToListAsync(ct);
+                    var ownersText = owners.Count == 0
+                        ? "nadie todavía"
+                        : string.Join(", ", owners);
+                    return BadRequest(new
+                    {
+                        error = $"La zona '{locality.Name}' no la tenés asignada. " +
+                                $"Hoy la tienen: {ownersText}. " +
+                                $"Pedile al admin que te la pinte en /map o cambiá de cuenta.",
+                        code = "locality_not_assigned",
+                        localityName = locality.Name,
+                        localityGid2 = locality.Gid2,
+                        owners
+                    });
+                }
             }
         }
 
