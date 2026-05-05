@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.8.0
+// @version      0.8.1
 // @description  Captura negocios desde Google Maps y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
@@ -164,8 +164,10 @@
           logRes(method, path, res.status, data, res.responseText);
           if (res.status >= 200 && res.status < 300) return resolve(data);
           let msg = data?.error || `HTTP ${res.status}`;
-          if (res.status === 401 || res.status === 403) {
+          if (res.status === 401) {
             msg = `Sesión expirada (${path})`;
+          } else if (res.status === 403) {
+            msg = `Sin permiso para esta zona/categoría. Logueado como ${cfg.user?.email ?? '(sin email)'}. Verificá que esa cuenta tenga la zona asignada en /map.`;
           } else if (res.status === 404 || res.status === 405) {
             msg = `URL del backend mal (${cfg.api}${path}). Click "Config" y corregí.`;
           } else if (res.status >= 500) {
@@ -195,13 +197,16 @@
     try {
       return await rawApiCall(method, path, body, cfg.token);
     } catch (err) {
-      if (err.status !== 401 && err.status !== 403) throw err;
+      // 403 = autenticado pero sin permiso (ej. zona no asignada al seller).
+      // No tiene sentido pedir re-login: el usuario ya está bien identificado,
+      // lo que falla es la autorización al recurso.
+      if (err.status !== 401) throw err;
 
       const fresh = GM_getValue('saleshub.token', '');
       if (fresh && fresh !== cfg.token) {
         cfg.token = fresh;
         try { return await rawApiCall(method, path, body, cfg.token); }
-        catch (err2) { if (err2.status !== 401 && err2.status !== 403) throw err2; }
+        catch (err2) { if (err2.status !== 401) throw err2; }
       }
 
       // Sigue 401 → token realmente vencido. Disparamos re-login.
@@ -544,7 +549,8 @@
       <div class="body">
         ${loggedIn
           ? `<div class="row">
-               <span class="status-ok">✓ ${escapeHtml(cfg.user.displayName)}</span>
+               <span class="status-ok" title="${escapeHtml(cfg.user.email ?? '')}">✓ ${escapeHtml(cfg.user.displayName)}</span>
+               <span style="font-size:10px; color:#64748b; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(cfg.user.email ?? '')}">${escapeHtml(cfg.user.email ?? '')}</span>
                <button class="ghost" id="sh-logout" style="margin-left:auto;">cerrar sesión</button>
              </div>`
           : `<div class="alert warn">⚠ No iniciaste sesión todavía. Sin esto no podés subir nada.</div>
