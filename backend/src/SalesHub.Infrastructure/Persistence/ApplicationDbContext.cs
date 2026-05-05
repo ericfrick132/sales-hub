@@ -23,6 +23,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Locality> Localities => Set<Locality>();
     public DbSet<SellerLocality> SellerLocalities => Set<SellerLocality>();
     public DbSet<SearchJob> SearchJobs => Set<SearchJob>();
+    public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

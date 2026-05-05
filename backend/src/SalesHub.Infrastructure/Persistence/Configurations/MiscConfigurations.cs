@@ -36,6 +36,9 @@ public class MessageOutboxConfiguration : IEntityTypeConfiguration<MessageOutbox
         b.HasIndex(x => new { x.SellerId, x.Status, x.ScheduledAt });
         b.HasOne(x => x.Lead).WithMany().HasForeignKey(x => x.LeadId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Seller).WithMany(s => s.OutboxItems).HasForeignKey(x => x.SellerId).OnDelete(DeleteBehavior.Cascade);
+        // Si el item lleva adjunto, lo referenciamos. SetNull para que borrar
+        // un MediaAsset no rompa históricos del outbox.
+        b.HasOne(x => x.MediaAsset).WithMany().HasForeignKey(x => x.MediaAssetId).OnDelete(DeleteBehavior.SetNull);
     }
 }
 

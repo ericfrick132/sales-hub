@@ -15,6 +15,9 @@ public class MessageOutbox
     public string EvolutionInstance { get; set; } = string.Empty;
     public string WhatsappPhone { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
+    /// <summary>Si está, el sender manda el archivo via Evolution sendMedia con Message como caption.</summary>
+    public Guid? MediaAssetId { get; set; }
+    public MediaAsset? MediaAsset { get; set; }
 
     public DateTimeOffset ScheduledAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? SentAt { get; set; }

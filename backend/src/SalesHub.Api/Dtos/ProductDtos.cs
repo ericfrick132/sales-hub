@@ -1,6 +1,6 @@
 namespace SalesHub.Api.Dtos;
 
-public record MessageStepDto(string Text, int DelaySeconds);
+public record MessageStepDto(string Text, int DelaySeconds, Guid? MediaAssetId);
 
 public record ProductDto(
     Guid Id,

@@ -40,10 +40,12 @@ public static class OutboxEnqueueHelper
             for (var i = 0; i < product.MessageSteps.Count; i++)
             {
                 var step = product.MessageSteps[i];
-                if (string.IsNullOrWhiteSpace(step.Text)) continue;
+                // Un step sin texto Y sin media no manda nada — lo skipeamos.
+                // Si tiene media, va aunque el texto esté vacío (sin caption).
+                if (string.IsNullOrWhiteSpace(step.Text) && step.MediaAssetId is null) continue;
 
                 if (i > 0) when = when.AddSeconds(Math.Max(0, step.DelaySeconds));
-                var rendered = i == 0 && !string.IsNullOrWhiteSpace(lead.RenderedMessage)
+                var rendered = i == 0 && !string.IsNullOrWhiteSpace(lead.RenderedMessage) && step.MediaAssetId is null
                     ? lead.RenderedMessage!
                     : renderer.RenderTemplate(step.Text, lead, product, seller);
 
@@ -55,6 +57,7 @@ public static class OutboxEnqueueHelper
                     EvolutionInstance = instanceName,
                     WhatsappPhone = whatsappPhone,
                     Message = rendered,
+                    MediaAssetId = step.MediaAssetId,
                     ScheduledAt = when,
                     Status = OutboxStatus.Scheduled
                 });

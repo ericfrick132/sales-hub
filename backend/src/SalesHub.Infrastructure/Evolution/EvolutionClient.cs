@@ -127,6 +127,34 @@ public class EvolutionClient : IEvolutionClient
         return true;
     }
 
+    public async Task<bool> SendMediaAsync(string instanceName, string jid, byte[] content, string mimeType, string fileName, string? caption, CancellationToken ct = default)
+    {
+        // Evolution acepta el archivo en base64 vía /message/sendMedia/{instance}.
+        // mediatype: "image" | "document" | "video" | "audio". Acá solo
+        // distinguimos imagen vs document (PDF y demás).
+        var mediaType = mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            ? "image"
+            : "document";
+        var body = new
+        {
+            number = jid,
+            mediatype = mediaType,
+            mimetype = mimeType,
+            caption = caption ?? string.Empty,
+            media = Convert.ToBase64String(content),
+            fileName
+        };
+        var resp = await _http.PostAsJsonAsync($"message/sendMedia/{Uri.EscapeDataString(instanceName)}", body, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var txt = await resp.Content.ReadAsStringAsync(ct);
+            _log.LogWarning("SendMedia {Instance} -> {Jid} ({Bytes}b {Mime}) failed: {Status} {Body}",
+                instanceName, jid, content.Length, mimeType, resp.StatusCode, txt);
+            return false;
+        }
+        return true;
+    }
+
     private class CheckResponseItem
     {
         [JsonPropertyName("number")] public string? number { get; set; }

@@ -83,13 +83,15 @@ public class ProductsController : ControllerBase
             .Where(s => s.Length > 0)
             .ToList();
         p.MessageSteps = (r.MessageSteps ?? new())
-            .Where(s => !string.IsNullOrWhiteSpace(s.Text))
+            // Un step válido tiene texto o media. Los vacíos se filtran.
+            .Where(s => !string.IsNullOrWhiteSpace(s.Text) || s.MediaAssetId is not null)
             .Select((s, i) => new Core.Domain.Entities.MessageStep
             {
-                Text = s.Text.Trim(),
+                Text = (s.Text ?? string.Empty).Trim(),
                 // Step 0 siempre arranca al asignar (delay 0). Los siguientes
                 // tienen el delay relativo al anterior.
-                DelaySeconds = i == 0 ? 0 : Math.Max(0, s.DelaySeconds)
+                DelaySeconds = i == 0 ? 0 : Math.Max(0, s.DelaySeconds),
+                MediaAssetId = s.MediaAssetId
             })
             .ToList();
         return p;
@@ -102,5 +104,5 @@ public class ProductsController : ControllerBase
         p.DailyLimit, p.TriggerHours, p.SendHourStart, p.SendHourEnd,
         p.RequiresAssistedSale, p.GooglePlacesDailyLeadCap,
         p.ReplyTemplates,
-        p.MessageSteps.Select(s => new MessageStepDto(s.Text, s.DelaySeconds)).ToList());
+        p.MessageSteps.Select(s => new MessageStepDto(s.Text, s.DelaySeconds, s.MediaAssetId)).ToList());
 }

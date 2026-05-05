@@ -96,7 +96,27 @@ public class OutboxSender
                 await _evo.SetPresenceTypingAsync(seller.EvolutionInstance.InstanceName, jid, typing, ct);
                 await Task.Delay(TimeSpan.FromSeconds(typing), ct);
 
-                var ok = await _evo.SendTextAsync(seller.EvolutionInstance.InstanceName, next.WhatsappPhone, next.Message, ct);
+                bool ok;
+                if (next.MediaAssetId is not null)
+                {
+                    // Cargamos el bytea fresh para no atar el lifecycle del file
+                    // a tracking del outbox row (los outbox rows pueden tener
+                    // muchas iteraciones).
+                    var asset = await _db.MediaAssets.AsNoTracking()
+                        .FirstOrDefaultAsync(m => m.Id == next.MediaAssetId, ct);
+                    if (asset is null)
+                    {
+                        throw new InvalidOperationException($"MediaAsset {next.MediaAssetId} no existe");
+                    }
+                    var caption = string.IsNullOrWhiteSpace(next.Message) ? null : next.Message;
+                    ok = await _evo.SendMediaAsync(
+                        seller.EvolutionInstance.InstanceName, next.WhatsappPhone,
+                        asset.Content, asset.MimeType, asset.FileName, caption, ct);
+                }
+                else
+                {
+                    ok = await _evo.SendTextAsync(seller.EvolutionInstance.InstanceName, next.WhatsappPhone, next.Message, ct);
+                }
                 if (!ok) throw new InvalidOperationException("Evolution rejected the send");
 
                 next.Status = OutboxStatus.Sent;

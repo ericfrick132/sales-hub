@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
-import type { MessageStep, Product } from '../lib/types';
+import type { MediaAsset, MessageStep, Product } from '../lib/types';
 
 const EMPTY: Product = {
   id: '', productKey: '', displayName: '', active: true, country: 'AR', countryName: 'Argentina',
@@ -105,6 +105,7 @@ export default function Products() {
           </Field>
         </div>
         <StepsEditor
+          productKey={selected?.productKey ?? draft.productKey}
           steps={draft.messageSteps ?? []}
           onChange={(steps) => onChange('messageSteps', steps)}
         />
@@ -160,7 +161,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <label className="block"><div className="text-xs text-slate-500 mb-1">{label}</div>{children}</label>;
 }
 
-function StepsEditor({ steps, onChange }: { steps: MessageStep[]; onChange: (s: MessageStep[]) => void }) {
+function StepsEditor({ productKey, steps, onChange }: { productKey: string; steps: MessageStep[]; onChange: (s: MessageStep[]) => void }) {
+  const qc = useQueryClient();
+  const mediaQ = useQuery({
+    queryKey: ['product-media', productKey],
+    enabled: !!productKey,
+    queryFn: async () => (await api.get<MediaAsset[]>(`/products/${productKey}/media`)).data
+  });
+  const mediaById = (mediaQ.data ?? []).reduce((acc, m) => { acc[m.id] = m; return acc; }, {} as Record<string, MediaAsset>);
+
   function update(i: number, patch: Partial<MessageStep>) {
     onChange(steps.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
   }
@@ -168,7 +177,6 @@ function StepsEditor({ steps, onChange }: { steps: MessageStep[]; onChange: (s: 
     onChange(steps.filter((_, idx) => idx !== i));
   }
   function add() {
-    // Default delay: 60s entre pasos. El primero siempre 0 (sale al asignar).
     onChange([...steps, { text: '', delaySeconds: steps.length === 0 ? 0 : 60 }]);
   }
   function move(i: number, dir: -1 | 1) {
@@ -176,9 +184,26 @@ function StepsEditor({ steps, onChange }: { steps: MessageStep[]; onChange: (s: 
     if (j < 0 || j >= steps.length) return;
     const next = [...steps];
     [next[i], next[j]] = [next[j], next[i]];
-    // Si movemos un paso al primer slot, su delay se fuerza a 0.
     if (j === 0) next[0] = { ...next[0], delaySeconds: 0 };
     onChange(next);
+  }
+  async function handleUpload(stepIndex: number, file: File) {
+    if (!productKey) {
+      toast.error('Guardá el producto primero antes de adjuntar archivos');
+      return;
+    }
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const { data } = await api.post<MediaAsset>(`/products/${productKey}/media`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      qc.invalidateQueries({ queryKey: ['product-media', productKey] });
+      update(stepIndex, { mediaAssetId: data.id });
+      toast.success(`Subido: ${data.fileName}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Falló la subida');
+    }
   }
 
   return (
@@ -200,36 +225,96 @@ function StepsEditor({ steps, onChange }: { steps: MessageStep[]; onChange: (s: 
         </div>
       )}
 
-      {steps.map((s, i) => (
-        <div key={i} className="border border-slate-200 rounded-md p-3 bg-slate-50/40 space-y-2">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="font-semibold text-slate-700">Paso {i + 1}</span>
-            {i === 0 ? (
-              <span className="text-slate-400">(sale al asignar — delay siempre 0)</span>
-            ) : (
-              <DelayInput
-                seconds={s.delaySeconds}
-                onChange={(sec) => update(i, { delaySeconds: sec })}
-              />
-            )}
-            <div className="ml-auto flex gap-1">
-              <button type="button" className="btn-secondary text-xs px-2 py-0.5"
-                disabled={i === 0} onClick={() => move(i, -1)} title="Subir">↑</button>
-              <button type="button" className="btn-secondary text-xs px-2 py-0.5"
-                disabled={i === steps.length - 1} onClick={() => move(i, 1)} title="Bajar">↓</button>
-              <button type="button" className="btn-secondary text-xs px-2 py-0.5 text-rose-600"
-                onClick={() => remove(i)} title="Eliminar">×</button>
+      {steps.map((s, i) => {
+        const asset = s.mediaAssetId ? mediaById[s.mediaAssetId] : null;
+        return (
+          <div key={i} className="border border-slate-200 rounded-md p-3 bg-slate-50/40 space-y-2">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-semibold text-slate-700">Paso {i + 1}</span>
+              {i === 0 ? (
+                <span className="text-slate-400">(sale al asignar — delay siempre 0)</span>
+              ) : (
+                <DelayInput
+                  seconds={s.delaySeconds}
+                  onChange={(sec) => update(i, { delaySeconds: sec })}
+                />
+              )}
+              <div className="ml-auto flex gap-1">
+                <button type="button" className="btn-secondary text-xs px-2 py-0.5"
+                  disabled={i === 0} onClick={() => move(i, -1)} title="Subir">↑</button>
+                <button type="button" className="btn-secondary text-xs px-2 py-0.5"
+                  disabled={i === steps.length - 1} onClick={() => move(i, 1)} title="Bajar">↓</button>
+                <button type="button" className="btn-secondary text-xs px-2 py-0.5 text-rose-600"
+                  onClick={() => remove(i)} title="Eliminar">×</button>
+              </div>
             </div>
+            <textarea
+              className="input min-h-20 font-mono text-sm w-full"
+              placeholder={asset
+                ? 'Caption opcional (texto que va con el archivo)'
+                : (i === 0 ? 'ej. {Hola!|Buenas!} {name}, ...' : 'ej. te dejo el link: {checkout_url}')}
+              value={s.text}
+              onChange={(e) => update(i, { text: e.target.value })}
+            />
+            <AttachmentSlot
+              asset={asset}
+              onPick={(file) => handleUpload(i, file)}
+              onRemove={() => update(i, { mediaAssetId: null })}
+            />
           </div>
-          <textarea
-            className="input min-h-20 font-mono text-sm w-full"
-            placeholder={i === 0 ? 'ej. {Hola!|Buenas!} {name}, ...' : 'ej. te dejo el link: {checkout_url}'}
-            value={s.text}
-            onChange={(e) => update(i, { text: e.target.value })}
-          />
-        </div>
-      ))}
+        );
+      })}
     </div>
+  );
+}
+
+function AttachmentSlot({ asset, onPick, onRemove }: {
+  asset: MediaAsset | null | undefined;
+  onPick: (file: File) => void;
+  onRemove: () => void;
+}) {
+  const inputId = `att-${Math.random().toString(36).slice(2, 8)}`;
+  const isImage = asset?.mimeType.startsWith('image/');
+  // Preview va directo al backend (no pasa por el axios client), así que armamos
+  // la URL completa con la base usada por el resto de la app.
+  const apiBase = (import.meta.env.VITE_API_URL ?? '/api').replace(/\/$/, '');
+  const previewUrl = asset ? `${apiBase}/media/${asset.id}` : null;
+
+  if (asset) {
+    return (
+      <div className="flex items-center gap-2 text-xs bg-white border border-slate-200 rounded p-2">
+        {isImage && previewUrl ? (
+          <img src={previewUrl} alt={asset.fileName} className="w-12 h-12 object-cover rounded border border-slate-200" />
+        ) : (
+          <div className="w-12 h-12 rounded border border-slate-200 grid place-items-center bg-slate-50 text-slate-400">
+            📄
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="font-medium truncate">{asset.fileName}</div>
+          <div className="text-slate-500 text-[11px]">
+            {asset.mimeType} · {(asset.sizeBytes / 1024).toFixed(0)} KB
+          </div>
+        </div>
+        <button type="button" className="btn-secondary text-xs text-rose-600" onClick={onRemove}>Quitar</button>
+      </div>
+    );
+  }
+
+  return (
+    <label htmlFor={inputId}
+      className="flex items-center gap-2 text-xs border border-dashed border-slate-300 rounded p-2 cursor-pointer hover:bg-slate-50">
+      <span className="text-lg">📎</span>
+      <span className="flex-1 text-slate-500">Adjuntar imagen o PDF (opcional)</span>
+      <input id={inputId} type="file" className="hidden"
+        accept="image/*,application/pdf"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onPick(f);
+          e.target.value = ''; // reset para permitir mismo file dos veces
+        }}
+      />
+    </label>
   );
 }
 

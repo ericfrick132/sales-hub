@@ -88,6 +88,16 @@ export interface Product {
 export interface MessageStep {
   text: string;
   delaySeconds: number;
+  mediaAssetId?: string | null;
+}
+
+export interface MediaAsset {
+  id: string;
+  productKey: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
 }
 
 export type InstanceStatus = 'Disconnected' | 'Connecting' | 'Connected' | 'Banned' | 'Unknown' | null;

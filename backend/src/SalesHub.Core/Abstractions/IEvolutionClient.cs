@@ -16,4 +16,6 @@ public interface IEvolutionClient
     Task SetPresenceTypingAsync(string instanceName, string jid, int durationSeconds, CancellationToken ct = default);
     Task MarkAllChatsReadAsync(string instanceName, CancellationToken ct = default);
     Task<bool> SendTextAsync(string instanceName, string jid, string message, CancellationToken ct = default);
+    /// <summary>Manda un archivo (imagen / pdf / cualquier mime) con caption opcional. Recibe el contenido en bytes.</summary>
+    Task<bool> SendMediaAsync(string instanceName, string jid, byte[] content, string mimeType, string fileName, string? caption, CancellationToken ct = default);
 }

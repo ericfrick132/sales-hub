@@ -10,4 +10,6 @@ public class MessageStep
 {
     public string Text { get; set; } = string.Empty;
     public int DelaySeconds { get; set; }
+    /// <summary>Si está, el step manda el archivo (imagen/PDF) y el Text se usa como caption.</summary>
+    public Guid? MediaAssetId { get; set; }
 }
