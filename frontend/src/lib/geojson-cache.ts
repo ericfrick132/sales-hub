@@ -21,6 +21,15 @@ export async function fetchCachedJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`status ${res.status}`);
   // Clonamos antes de leer: el body se consume una sola vez.
-  await cache.put(url, res.clone());
-  return res.json() as Promise<T>;
+  const clone = res.clone();
+  const json = (await res.json()) as T;
+  // Persistir es best-effort: si el browser rechaza por cuota (geojsons grandes
+  // pueden pasar varios MB) preferimos seguir y devolver el JSON ya parseado
+  // antes que romper el componente entero.
+  try {
+    await cache.put(url, clone);
+  } catch (err) {
+    console.warn('No se pudo cachear', url, err);
+  }
+  return json;
 }
