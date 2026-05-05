@@ -125,6 +125,107 @@ public class SearchJobsController : ControllerBase
         return rows;
     }
 
+    public record NextCaptureDto(
+        string ProductKey,
+        string ProductName,
+        string LocalityGid2,
+        string LocalityName,
+        string AdminLevel1Name,
+        string CountryName,
+        string Category,
+        string Query,
+        string MapsUrl,
+        // "new" si el vendedor nunca capturó esa combo, "stale" si la hizo hace > staleDays.
+        string Priority,
+        DateTimeOffset? LastCapturedAt,
+        int LeadsLastTime);
+
+    /// <summary>
+    /// Devuelve las próximas N combinaciones (locality × producto × categoría) que el
+    /// vendedor debería capturar ahora. Prioriza:
+    /// 1) las que nunca capturó,
+    /// 2) las que hizo hace > staleDays (default 30),
+    /// y oculta las recientes para no superponer trabajo. La idea es que el vendedor
+    /// haga click en una sola card grande y arranque, sin pensar.
+    /// </summary>
+    [HttpGet("next")]
+    public async Task<ActionResult<IEnumerable<NextCaptureDto>>> Next(
+        [FromQuery] int limit = 5,
+        [FromQuery] int staleDays = 30,
+        CancellationToken ct = default)
+    {
+        var sellerId = CurrentUser.Id(User);
+        var localities = await _db.SellerLocalities.AsNoTracking()
+            .Where(sl => sl.SellerId == sellerId)
+            .Include(sl => sl.Locality)
+            .Select(sl => sl.Locality!)
+            .ToListAsync(ct);
+        var products = await _db.Products.AsNoTracking().Where(p => p.Active).ToListAsync(ct);
+
+        // Histórico de jobs del seller, indexado por la combo (producto, gid2, categoría).
+        var history = await _db.SearchJobs.AsNoTracking()
+            .Where(j => j.SellerId == sellerId && j.LocalityGid2 != null)
+            .GroupBy(j => new { j.ProductKey, j.LocalityGid2, j.Category })
+            .Select(g => new
+            {
+                g.Key.ProductKey,
+                g.Key.LocalityGid2,
+                g.Key.Category,
+                LastAt = g.Max(j => j.FinishedAt ?? j.ScheduledAt),
+                LastLeads = g.OrderByDescending(j => j.ScheduledAt).First().LeadsCreated
+            })
+            .ToListAsync(ct);
+        var historyMap = history.ToDictionary(
+            h => $"{h.ProductKey}|{h.LocalityGid2}|{h.Category ?? string.Empty}",
+            h => (h.LastAt, h.LastLeads));
+
+        var now = DateTimeOffset.UtcNow;
+        var staleThreshold = now.AddDays(-Math.Max(1, staleDays));
+
+        var rows = new List<NextCaptureDto>();
+        foreach (var p in products)
+        {
+            var cats = p.Categories.Count > 0 ? p.Categories : new List<string> { string.Empty };
+            foreach (var loc in localities)
+            {
+                foreach (var cat in cats)
+                {
+                    var key = $"{p.ProductKey}|{loc.Gid2}|{cat}";
+                    historyMap.TryGetValue(key, out var h);
+                    var lastAt = h.LastAt == default ? (DateTimeOffset?)null : h.LastAt;
+                    string? priority = lastAt is null ? "new"
+                        : lastAt < staleThreshold ? "stale"
+                        : null; // reciente → ocultar
+                    if (priority is null) continue;
+
+                    var q = string.IsNullOrWhiteSpace(cat)
+                        ? $"{loc.Name}, {loc.CountryName}"
+                        : $"{cat} en {loc.Name}, {loc.CountryName}";
+                    var url = $"https://www.google.com/maps/search/{Uri.EscapeDataString(q)}/?hl=es-419"
+                        + $"#saleshub:productKey={p.ProductKey}|gid2={loc.Gid2}|cat={Uri.EscapeDataString(cat)}";
+
+                    rows.Add(new NextCaptureDto(
+                        p.ProductKey, p.DisplayName,
+                        loc.Gid2, loc.Name, loc.AdminLevel1Name, loc.CountryName,
+                        cat, q, url,
+                        priority, lastAt, h.LastLeads));
+                }
+            }
+        }
+
+        // Orden: nuevas primero, después stale por más viejo. Tiebreaker estable por gid2/cat
+        // para que la sugerencia no salte aleatoriamente cada refresh.
+        var sorted = rows
+            .OrderBy(r => r.Priority == "new" ? 0 : 1)
+            .ThenBy(r => r.LastCapturedAt ?? DateTimeOffset.MinValue)
+            .ThenBy(r => r.LocalityGid2)
+            .ThenBy(r => r.Category)
+            .Take(Math.Clamp(limit, 1, 50))
+            .ToList();
+
+        return sorted;
+    }
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<SearchJobDto>>> List(
         [FromQuery] int limit = 50, CancellationToken ct = default)

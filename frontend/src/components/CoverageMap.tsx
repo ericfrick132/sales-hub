@@ -4,6 +4,7 @@ import maplibregl, { Map as MlMap, MapMouseEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { api } from '../lib/api';
 import { fetchCachedJson } from '../lib/geojson-cache';
+import type { Product } from '../lib/types';
 
 const LOCALITIES_GEOJSON_URL = '/data/localities-latam.geojson';
 
@@ -37,10 +38,20 @@ type ProductMin = { productKey: string; displayName: string; categories?: string
 type Props = {
   productKey: string;
   onProductChange: (v: string) => void;
-  products: ProductMin[];
+  // Opcional. Si no se pasa, el componente fetchea solo.
+  products?: ProductMin[];
 };
 
-export default function CoverageMap({ productKey, onProductChange, products }: Props) {
+export default function CoverageMap({ productKey, onProductChange, products: productsProp }: Props) {
+  const productsQ = useQuery({
+    queryKey: ['products-min'],
+    queryFn: async () => (await api.get<Product[]>('/products')).data,
+    enabled: !productsProp,
+    staleTime: 5 * 60_000
+  });
+  const products: ProductMin[] = productsProp ?? (productsQ.data ?? []).map((p) => ({
+    productKey: p.productKey, displayName: p.displayName, categories: p.categories
+  }));
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MlMap | null>(null);
   const [mapReady, setMapReady] = useState(false);
