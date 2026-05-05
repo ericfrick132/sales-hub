@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.7.0
+// @version      0.7.1
 // @description  Captura negocios desde Google Maps y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
@@ -95,35 +95,67 @@
   // API
   // ============================================================
 
-  function apiCall(method, path, body) {
+  function rawApiCall(method, path, body, token) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method,
         url: `${cfg.api}${path}`,
         headers: {
           'Content-Type': 'application/json',
-          ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {})
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         data: body ? JSON.stringify(body) : null,
         onload: (res) => {
           let data = null;
           try { data = JSON.parse(res.responseText); } catch {}
           if (res.status >= 200 && res.status < 300) return resolve(data);
-          // Mensajes accionables por status.
           let msg = data?.error || `HTTP ${res.status}`;
           if (res.status === 401 || res.status === 403) {
-            msg = 'Sesión expirada — iniciá sesión otra vez';
+            msg = `Sesión expirada (${path})`;
           } else if (res.status === 404 || res.status === 405) {
-            msg = `URL del backend mal (${cfg.api}). Click "Config" y corregí.`;
+            msg = `URL del backend mal (${cfg.api}${path}). Click "Config" y corregí.`;
           } else if (res.status >= 500) {
             msg = `Backend caído (${res.status}). Avisá al admin.`;
           }
           reject({ status: res.status, message: msg, data });
         },
-        onerror: () => reject({ status: 0, message: 'Sin conexión al backend' }),
+        onerror: () => reject({ status: 0, message: `Sin conexión al backend (${cfg.api})` }),
         ontimeout: () => reject({ status: 0, message: 'Timeout — el backend no responde' })
       });
     });
+  }
+
+  // Wrapper: si el server devuelve 401 puede ser que en memoria tengamos un
+  // token viejo (otra pestaña ya hizo re-login y el storage tiene uno nuevo).
+  // Releemos del storage y reintentamos una vez. Si sigue mal, abrimos el
+  // prompt de login automáticamente — así el vendedor no tiene que ir a
+  // 'cerrar sesión' a mano.
+  async function apiCall(method, path, body) {
+    try {
+      return await rawApiCall(method, path, body, cfg.token);
+    } catch (err) {
+      if (err.status !== 401 && err.status !== 403) throw err;
+
+      const fresh = GM_getValue('saleshub.token', '');
+      if (fresh && fresh !== cfg.token) {
+        cfg.token = fresh;
+        try { return await rawApiCall(method, path, body, cfg.token); }
+        catch (err2) { if (err2.status !== 401 && err2.status !== 403) throw err2; }
+      }
+
+      // Sigue 401 → token realmente vencido. Disparamos re-login.
+      // Evitamos loops infinitos con un flag.
+      if (apiCall._reauthInFlight) throw err;
+      apiCall._reauthInFlight = true;
+      try {
+        toast('Sesión vencida, pedí re-login…', '');
+        await login();
+      } finally {
+        apiCall._reauthInFlight = false;
+      }
+      if (!cfg.token) throw err; // login cancelado/falló
+      return rawApiCall(method, path, body, cfg.token);
+    }
   }
 
   // ============================================================
