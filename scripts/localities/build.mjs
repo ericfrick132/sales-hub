@@ -120,12 +120,27 @@ async function main() {
     }
   }
 
-  const outGeo = path.join(ROOT, 'frontend', 'public', 'data', 'localities-latam.geojson');
+  const outDir = path.join(ROOT, 'frontend', 'public', 'data');
   const outImport = path.join(__dirname, 'localities-import.json');
-  await fs.mkdir(path.dirname(outGeo), { recursive: true });
-  await fs.writeFile(outGeo, JSON.stringify({ type: 'FeatureCollection', features: allFeatures }));
+  await fs.mkdir(outDir, { recursive: true });
+
+  // Per-country files. El frontend descarga solo los de los países donde
+  // hay productos activos en vez del LATAM entero (~91 MB → 1-20 MB por país).
+  const buckets = new Map();
+  for (const f of allFeatures) {
+    const cc = (f.properties?.countryCode || '').toLowerCase();
+    if (!cc) continue;
+    if (!buckets.has(cc)) buckets.set(cc, []);
+    buckets.get(cc).push(f);
+  }
+  for (const [cc, features] of buckets) {
+    const out = path.join(outDir, `localities-${cc}.geojson`);
+    await fs.writeFile(out, JSON.stringify({ type: 'FeatureCollection', features }));
+    console.log(`✓ ${cc}: ${features.length} features → ${path.relative(ROOT, out)}`);
+  }
+
   await fs.writeFile(outImport, JSON.stringify({ items: importItems }));
-  console.log(`\n✓ ${allFeatures.length} features → ${path.relative(ROOT, outGeo)}`);
+  console.log(`\n✓ ${allFeatures.length} features en ${buckets.size} países`);
   console.log(`✓ ${importItems.length} items     → ${path.relative(ROOT, outImport)}`);
   console.log(`\nSiguiente: node scripts/localities/import.mjs`);
 }

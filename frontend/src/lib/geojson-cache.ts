@@ -33,3 +33,30 @@ export async function fetchCachedJson<T>(url: string): Promise<T> {
   }
   return json;
 }
+
+type FC = { type: 'FeatureCollection'; features: Array<unknown> };
+
+/**
+ * Carga geojsons por país (cc en minúsculas, ISO2) y los combina en un único
+ * FeatureCollection. Pensado para que cada seller solo descargue los archivos
+ * de los países donde tiene actividad, en vez del LATAM entero.
+ */
+export async function fetchCountriesGeoJson(countries: string[]): Promise<FC> {
+  const unique = Array.from(new Set(countries.map((c) => c.toLowerCase()))).filter(Boolean);
+  if (unique.length === 0) return { type: 'FeatureCollection', features: [] };
+
+  const parts = await Promise.all(
+    unique.map((cc) =>
+      fetchCachedJson<FC>(`/data/localities-${cc}.geojson`).catch((err) => {
+        console.warn(`No se pudo cargar localities-${cc}.geojson`, err);
+        return { type: 'FeatureCollection', features: [] } as FC;
+      })
+    )
+  );
+
+  return {
+    type: 'FeatureCollection',
+    features: parts.flatMap((p) => p.features)
+  };
+}
+

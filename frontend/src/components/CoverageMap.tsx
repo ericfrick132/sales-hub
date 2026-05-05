@@ -3,10 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import maplibregl, { Map as MlMap, MapMouseEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { api } from '../lib/api';
-import { fetchCachedJson } from '../lib/geojson-cache';
+import { fetchCountriesGeoJson } from '../lib/geojson-cache';
 import type { Product } from '../lib/types';
-
-const LOCALITIES_GEOJSON_URL = '/data/localities-latam.geojson';
 
 type ProductCount = { productKey: string; productName?: string; count: number };
 type LastJob = {
@@ -112,38 +110,56 @@ export default function CoverageMap({ productKey, onProductChange, products: pro
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
     mapRef.current = map;
 
-    map.on('load', async () => {
+    map.on('load', () => setMapLoaded(true));
+    return () => { map.remove(); mapRef.current = null; };
+  }, []);
+
+  const [mapLoaded, setMapLoaded] = useState(false);
+
+  // Fetch geojson SOLO de los países donde hay productos. Antes cargábamos
+  // localities-latam.geojson (~91 MB). Ahora bajamos solo lo necesario
+  // (Argentina sola pesa ~5 MB).
+  const countryCodes = useMemo(() => {
+    const sourceList = productsProp
+      ? [] // si el padre nos pasó products tipados ProductMin, no traen country — usamos el query
+      : (productsQ.data ?? []).map((p) => p.country?.toLowerCase()).filter(Boolean) as string[];
+    return Array.from(new Set(sourceList));
+  }, [productsProp, productsQ.data]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded || countryCodes.length === 0) return;
+    let cancelled = false;
+    (async () => {
       try {
-        const gj = await fetchCachedJson<GeoJSON.FeatureCollection>(LOCALITIES_GEOJSON_URL);
-        map.addSource('localities', { type: 'geojson', data: gj, generateId: false });
-        map.addLayer({
-          id: 'localities-fill',
-          type: 'fill',
-          source: 'localities',
-          paint: { 'fill-color': 'rgba(0,0,0,0)', 'fill-opacity': 0.7 }
-        });
-        map.addLayer({
-          id: 'localities-outline',
-          type: 'line',
-          source: 'localities',
-          paint: { 'line-color': '#475569', 'line-width': 0.3, 'line-opacity': 0.5 }
-        });
-        map.addLayer({
-          id: 'localities-hover',
-          type: 'line',
-          source: 'localities',
-          paint: { 'line-color': '#0f172a', 'line-width': 2 },
-          filter: ['==', ['get', 'gid2'], '__none__']
-        });
+        const gj = await fetchCountriesGeoJson(countryCodes);
+        if (cancelled) return;
+        if (!map.getSource('localities')) {
+          map.addSource('localities', { type: 'geojson', data: gj as never, generateId: false });
+          map.addLayer({
+            id: 'localities-fill', type: 'fill', source: 'localities',
+            paint: { 'fill-color': 'rgba(0,0,0,0)', 'fill-opacity': 0.7 }
+          });
+          map.addLayer({
+            id: 'localities-outline', type: 'line', source: 'localities',
+            paint: { 'line-color': '#475569', 'line-width': 0.3, 'line-opacity': 0.5 }
+          });
+          map.addLayer({
+            id: 'localities-hover', type: 'line', source: 'localities',
+            paint: { 'line-color': '#0f172a', 'line-width': 2 },
+            filter: ['==', ['get', 'gid2'], '__none__']
+          });
+        } else {
+          (map.getSource('localities') as maplibregl.GeoJSONSource).setData(gj as never);
+        }
         setMapReady(true);
       } catch (err) {
         console.warn('No se pudo cargar GeoJSON localidades:', err);
         setGeojsonMissing(true);
       }
-    });
-
-    return () => { map.remove(); mapRef.current = null; };
-  }, []);
+    })();
+    return () => { cancelled = true; };
+  }, [mapLoaded, countryCodes]);
 
   // Heat-fill: gradient verde según leadsCount / maxCount.
   const fillExpression = useMemo(() => {
