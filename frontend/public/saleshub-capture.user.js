@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.7.1
+// @version      0.7.2
 // @description  Captura negocios desde Google Maps y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
@@ -95,8 +95,27 @@
   // API
   // ============================================================
 
+  // Log centralizado: GM_xmlhttpRequest no aparece en el Network tab del page,
+  // solo en el background del extension. Logueamos a la consola de Maps con
+  // prefijo [SalesHub] para que el admin pueda diagnosticar sin abrir el
+  // inspector del extension.
+  const LOG_PREFIX = '[SalesHub]';
+  function logReq(method, path, body) {
+    try {
+      const preview = body ? (JSON.stringify(body).length > 400 ? '<' + JSON.stringify(body).length + ' bytes>' : body) : null;
+      console.log(`${LOG_PREFIX} → ${method} ${path}`, preview ?? '');
+    } catch {}
+  }
+  function logRes(method, path, status, data, raw) {
+    const ok = status >= 200 && status < 300;
+    const tag = ok ? '✓' : '✗';
+    const detail = ok ? data : (data ?? raw?.slice(0, 500));
+    console[ok ? 'log' : 'error'](`${LOG_PREFIX} ${tag} ${method} ${path} → ${status}`, detail ?? '');
+  }
+
   function rawApiCall(method, path, body, token) {
     return new Promise((resolve, reject) => {
+      logReq(method, path, body);
       GM_xmlhttpRequest({
         method,
         url: `${cfg.api}${path}`,
@@ -108,6 +127,7 @@
         onload: (res) => {
           let data = null;
           try { data = JSON.parse(res.responseText); } catch {}
+          logRes(method, path, res.status, data, res.responseText);
           if (res.status >= 200 && res.status < 300) return resolve(data);
           let msg = data?.error || `HTTP ${res.status}`;
           if (res.status === 401 || res.status === 403) {
@@ -115,12 +135,19 @@
           } else if (res.status === 404 || res.status === 405) {
             msg = `URL del backend mal (${cfg.api}${path}). Click "Config" y corregí.`;
           } else if (res.status >= 500) {
-            msg = `Backend caído (${res.status}). Avisá al admin.`;
+            const detail = (data?.error || data?.title || '').slice(0, 120);
+            msg = `Backend HTTP ${res.status}${detail ? `: ${detail}` : ''} — mirá la consola con ${LOG_PREFIX}`;
           }
           reject({ status: res.status, message: msg, data });
         },
-        onerror: () => reject({ status: 0, message: `Sin conexión al backend (${cfg.api})` }),
-        ontimeout: () => reject({ status: 0, message: 'Timeout — el backend no responde' })
+        onerror: (e) => {
+          console.error(`${LOG_PREFIX} ✗ ${method} ${path} network error`, e);
+          reject({ status: 0, message: `Sin conexión al backend (${cfg.api})` });
+        },
+        ontimeout: () => {
+          console.error(`${LOG_PREFIX} ✗ ${method} ${path} timeout`);
+          reject({ status: 0, message: 'Timeout — el backend no responde' });
+        }
       });
     });
   }
