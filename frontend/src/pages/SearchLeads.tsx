@@ -42,13 +42,17 @@ export default function SearchLeads() {
   const next = useQuery({
     queryKey: ['capture-next'],
     queryFn: async () => (await api.get<NextCapture[]>('/search-jobs/next', { params: { limit: 5 } })).data,
-    refetchInterval: 30_000
+    // El upload pasa por fuera de React (Tampermonkey), así que re-fetcheamos
+    // cuando el vendedor vuelve a la pestaña y cada 15s mientras está acá.
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true
   });
 
   const captures = useQuery({
     queryKey: ['capture-history'],
     queryFn: async () => (await api.get<Capture[]>('/search-jobs', { params: { limit: 10 } })).data,
-    refetchInterval: 10_000
+    refetchInterval: 5_000,
+    refetchOnWindowFocus: true
   });
 
   const top = next.data?.[0];

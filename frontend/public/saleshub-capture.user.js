@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.7.2
+// @version      0.8.0
 // @description  Captura negocios desde Google Maps y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
@@ -68,15 +68,49 @@
     return Math.round((min + Math.random() * jit) * speedMul());
   }
 
-  // saleshub:productKey=...|gid2=...|cat=... en el hash autocompleta el contexto.
-  const hash = decodeURIComponent(location.hash || '');
-  const tag = hash.match(/saleshub:(.*)$/)?.[1];
-  if (tag) {
+  // saleshub:productKey=...|gid2=...|cat=... en el hash autocompleta el contexto
+  // y queda asociado al query actual de Maps. Maps borra el hash al routear, así
+  // que lo persistimos: mientras la query no cambie, mantenemos el contexto.
+  // Si el vendedor hace una búsqueda manual distinta, descartamos el contexto
+  // para no atribuir leads a la zona equivocada.
+  function readSearchContext() {
+    const hash = decodeURIComponent(location.hash || '');
+    const tag = hash.match(/saleshub:(.*)$/)?.[1];
+    if (!tag) return null;
+    const ctx = { query: getCurrentQueryRaw() };
     for (const part of tag.split('|')) {
       const [k, v] = part.split('=');
-      if (k === 'productKey' && v) cfg.productKey = v;
-      if (k === 'gid2' && v) cfg.localityGid2 = v;
-      if (k === 'cat' && v) cfg.category = v;
+      if (k === 'productKey' && v) ctx.productKey = v;
+      if (k === 'gid2' && v) ctx.localityGid2 = v;
+      if (k === 'cat' && v) ctx.category = v;
+    }
+    return ctx;
+  }
+  // Versión segura para llamar antes de que se defina arriba en el archivo:
+  // location.pathname siempre está disponible.
+  function getCurrentQueryRaw() {
+    const m = location.pathname.match(/\/maps\/search\/([^/]+)/);
+    if (m) return decodeURIComponent(m[1]).replace(/\+/g, ' ').toLowerCase().trim();
+    return '';
+  }
+
+  // Lee el hash al boot. Si lo encuentra, persiste y aplica.
+  const bootCtx = readSearchContext();
+  if (bootCtx) {
+    GM_setValue('saleshub.searchCtx', bootCtx);
+    if (bootCtx.productKey) { cfg.productKey = bootCtx.productKey; GM_setValue('saleshub.productKey', cfg.productKey); }
+    if (bootCtx.localityGid2) { cfg.localityGid2 = bootCtx.localityGid2; GM_setValue('saleshub.localityGid2', cfg.localityGid2); }
+    if (bootCtx.category) { cfg.category = bootCtx.category; GM_setValue('saleshub.category', cfg.category); }
+  } else {
+    // Sin hash: si la búsqueda actual no coincide con la del último contexto,
+    // limpiamos gid2/cat para evitar atribuir leads a una zona vieja.
+    const stored = GM_getValue('saleshub.searchCtx', null);
+    if (stored && getCurrentQueryRaw() && stored.query && getCurrentQueryRaw() !== stored.query) {
+      cfg.localityGid2 = '';
+      cfg.category = '';
+      GM_setValue('saleshub.localityGid2', '');
+      GM_setValue('saleshub.category', '');
+      GM_setValue('saleshub.searchCtx', null);
     }
   }
 
@@ -526,6 +560,16 @@
           ${getCurrentQuery() !== '(captura ad-hoc)'
             ? `<div class="row"><span class="pill">🔍 ${escapeHtml(getCurrentQuery())}</span></div>`
             : ''}
+          ${(cfg.localityGid2 || cfg.category) ? `
+            <div class="row" style="font-size:11px; color:#15803d; background:#ecfdf5; padding:4px 8px; border-radius:6px; border:1px solid #bbf7d0;">
+              🎯 ${cfg.category ? `<b>${escapeHtml(cfg.category)}</b>` : '(sin categoría)'} · zona <code style="font-size:10px;">${escapeHtml(cfg.localityGid2 || '—')}</code>
+              <button class="ghost" id="sh-clear-ctx" style="margin-left:auto; color:#7f1d1d;" title="Limpiar zona/categoría — útil si vas a hacer una búsqueda manual distinta">×</button>
+            </div>
+          ` : `
+            <div class="row" style="font-size:11px; color:#92400e; background:#fffbeb; padding:4px 8px; border-radius:6px; border:1px solid #fde68a;">
+              ⚠ Sin zona/categoría asignada. Los leads se suben pero no descuentan de las sugerencias. Abrí la búsqueda desde una card de SalesHub.
+            </div>
+          `}
         ` : ''}
 
         <div class="row">
@@ -677,6 +721,15 @@
 
     if ($('#sh-cfg')) $('#sh-cfg').onclick = openAdvancedConfig;
     if ($('#sh-speed')) $('#sh-speed').onclick = openSpeedPicker;
+    if ($('#sh-clear-ctx')) $('#sh-clear-ctx').onclick = () => {
+      cfg.localityGid2 = '';
+      cfg.category = '';
+      GM_setValue('saleshub.localityGid2', '');
+      GM_setValue('saleshub.category', '');
+      GM_setValue('saleshub.searchCtx', null);
+      toast('Contexto limpiado — la próxima subida no va a estar atribuída a una zona.');
+      render();
+    };
   }
 
   // ============================================================
