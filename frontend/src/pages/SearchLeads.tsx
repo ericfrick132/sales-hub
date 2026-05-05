@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuthStore } from '../lib/auth';
+import CoverageMap from '../components/CoverageMap';
+import type { Product } from '../lib/types';
 
 type Suggestion = {
   productKey: string;
@@ -44,6 +46,11 @@ export default function SearchLeads() {
     queryKey: ['capture-history'],
     queryFn: async () => (await api.get<Capture[]>('/search-jobs', { params: { limit: 30 } })).data,
     refetchInterval: 10_000
+  });
+
+  const productsQ = useQuery({
+    queryKey: ['products-min'],
+    queryFn: async () => (await api.get<Product[]>('/products')).data
   });
 
   const products = useMemo(() => {
@@ -164,6 +171,16 @@ export default function SearchLeads() {
           (rinde menos teléfonos porque Maps no los muestra todos en el listado — para teléfono confiable, usá "+ Este lugar").
         </div>
       </div>
+
+      <CoverageMap
+        productKey={productFilter}
+        onProductChange={setProductFilter}
+        products={(productsQ.data ?? []).map((p) => ({
+          productKey: p.productKey,
+          displayName: p.displayName,
+          categories: p.categories
+        }))}
+      />
 
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="text-sm font-semibold">Atajos para empezar</div>

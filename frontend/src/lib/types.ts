@@ -81,6 +81,7 @@ export interface Product {
   sendHourEnd: number;
   requiresAssistedSale: boolean;
   googlePlacesDailyLeadCap: number;
+  replyTemplates: string[];
 }
 
 export type InstanceStatus = 'Disconnected' | 'Connecting' | 'Connected' | 'Banned' | 'Unknown' | null;

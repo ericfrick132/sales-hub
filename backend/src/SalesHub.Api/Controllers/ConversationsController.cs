@@ -21,9 +21,11 @@ public class ConversationsController : ControllerBase
     }
 
     public record ConversationListItem(
-        Guid LeadId, string LeadName, string? City, string ProductKey, string Status,
+        Guid LeadId, string LeadName, string? City, string ProductKey, string? ProductName,
+        Guid? SellerId, string? SellerName, string Status,
         string? LastMessageText, MessageDirection? LastDirection,
-        DateTimeOffset? LastTimestamp, int UnreadCount);
+        DateTimeOffset? LastTimestamp, int UnreadCount,
+        DateTimeOffset? FirstReplyAt, DateTimeOffset? SentAt);
 
     public record ConversationMessageDto(
         Guid Id, MessageDirection Direction, string Text, DateTimeOffset Timestamp,
@@ -36,26 +38,63 @@ public class ConversationsController : ControllerBase
     public record SendReplyRequest(string Text);
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<ConversationListItem>>> List(CancellationToken ct)
+    public async Task<ActionResult<IEnumerable<ConversationListItem>>> List(
+        [FromQuery] string? productKey,
+        [FromQuery] Guid? sellerId,
+        [FromQuery(Name = "from")] DateTimeOffset? fromTs,
+        [FromQuery(Name = "to")] DateTimeOffset? toTs,
+        // bucket: "replied" (lead respondió alguna vez), "waiting" (mandamos último, esperando),
+        //         "cold" (sin respuesta + > coldDays sin actividad), "all" (default).
+        [FromQuery] string? bucket,
+        [FromQuery] int coldDays = 3,
+        [FromQuery] int limit = 200,
+        CancellationToken ct = default)
     {
-        var sellerId = CurrentUser.Id(User);
+        var callerId = CurrentUser.Id(User);
         var isAdmin = CurrentUser.IsAdmin(User);
 
-        // All leads assigned to me (or all if admin) — plus a summary of their latest msg.
-        var leadQ = _db.Leads.AsNoTracking();
-        if (!isAdmin) leadQ = leadQ.Where(l => l.SellerId == sellerId);
+        var leadQ = _db.Leads.AsNoTracking().Include(l => l.Product).Include(l => l.Seller).AsQueryable();
+        if (!isAdmin) leadQ = leadQ.Where(l => l.SellerId == callerId);
+        else if (sellerId is not null) leadQ = leadQ.Where(l => l.SellerId == sellerId);
+        if (!string.IsNullOrWhiteSpace(productKey)) leadQ = leadQ.Where(l => l.ProductKey == productKey);
 
         var items = await (from l in leadQ
                            let latest = _db.ConversationMessages.Where(m => m.LeadId == l.Id)
                                           .OrderByDescending(m => m.Timestamp).FirstOrDefault()
                            let unread = _db.ConversationMessages.Count(m => m.LeadId == l.Id
                                           && m.Direction == MessageDirection.Inbound && !m.IsRead)
-                           where latest != null // only leads with at least 1 message
+                           where latest != null
+                           where fromTs == null || latest.Timestamp >= fromTs
+                           where toTs == null || latest.Timestamp <= toTs
                            orderby unread descending, latest.Timestamp descending
                            select new ConversationListItem(
-                               l.Id, l.Name, l.City, l.ProductKey, l.Status.ToString(),
-                               latest.Text, latest.Direction, latest.Timestamp, unread))
-                       .Take(200).ToListAsync(ct);
+                               l.Id, l.Name, l.City, l.ProductKey,
+                               l.Product != null ? l.Product.DisplayName : null,
+                               l.SellerId,
+                               l.Seller != null ? l.Seller.DisplayName : null,
+                               l.Status.ToString(),
+                               latest.Text, latest.Direction, latest.Timestamp, unread,
+                               l.FirstReplyAt, l.SentAt))
+                       .Take(Math.Min(limit, 500)).ToListAsync(ct);
+
+        if (!string.IsNullOrWhiteSpace(bucket) && bucket != "all")
+        {
+            var now = DateTimeOffset.UtcNow;
+            items = bucket switch
+            {
+                // El lead nos contestó al menos una vez.
+                "replied" => items.Where(i => i.FirstReplyAt is not null).ToList(),
+                // Nosotros mandamos último → estamos esperando respuesta.
+                "waiting" => items.Where(i => i.LastDirection == MessageDirection.Outbound
+                                              && i.FirstReplyAt is null).ToList(),
+                // Sin respuesta y sin actividad reciente → follow-up.
+                "cold" => items.Where(i => i.FirstReplyAt is null
+                                           && i.LastTimestamp is not null
+                                           && (now - i.LastTimestamp.Value).TotalDays >= coldDays).ToList(),
+                _ => items
+            };
+        }
+
         return items;
     }
 

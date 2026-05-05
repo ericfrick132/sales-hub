@@ -78,6 +78,10 @@ public class ProductsController : ControllerBase
         p.SendHourEnd = Math.Clamp(r.SendHourEnd, 0, 24);
         p.RequiresAssistedSale = r.RequiresAssistedSale;
         p.GooglePlacesDailyLeadCap = r.GooglePlacesDailyLeadCap;
+        p.ReplyTemplates = (r.ReplyTemplates ?? new())
+            .Select(s => s?.Trim() ?? string.Empty)
+            .Where(s => s.Length > 0)
+            .ToList();
         return p;
     }
 
@@ -86,5 +90,6 @@ public class ProductsController : ControllerBase
         p.PhonePrefix, p.Categories, p.MessageTemplate, p.OpenerTemplate ?? string.Empty,
         p.CheckoutUrl, p.PriceDisplay,
         p.DailyLimit, p.TriggerHours, p.SendHourStart, p.SendHourEnd,
-        p.RequiresAssistedSale, p.GooglePlacesDailyLeadCap);
+        p.RequiresAssistedSale, p.GooglePlacesDailyLeadCap,
+        p.ReplyTemplates);
 }

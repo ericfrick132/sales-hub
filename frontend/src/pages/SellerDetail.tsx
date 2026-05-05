@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { Lead, SellerDashboard } from '../lib/types';
 import LeadTable from '../components/LeadTable';
+import ConversationsList from '../components/ConversationsList';
 
 interface DailyActivity {
   date: string;
@@ -119,6 +120,14 @@ export default function SellerDetail() {
         ) : (
           <DailyChart daily={myActivity.daily} />
         )}
+      </div>
+
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Conversaciones</h2>
+        <p className="text-xs text-slate-500">
+          Filtrá por producto, período o foco de follow-up. Click una para abrir el chat.
+        </p>
+        {id && <ConversationsList sellerId={id} initialBucket="all" />}
       </div>
 
       <div className="space-y-2">

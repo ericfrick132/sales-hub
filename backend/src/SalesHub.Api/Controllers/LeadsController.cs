@@ -114,6 +114,110 @@ public class LeadsController : ControllerBase
         return rows;
     }
 
+    public record GeoStatsProductCount(string ProductKey, string? ProductName, int Count);
+    public record GeoStatsLastJob(
+        Guid Id, string ProductKey, string? ProductName, string? Category,
+        string Query, int LeadsCreated, int RawItems,
+        Guid SellerId, string? SellerName, DateTimeOffset CapturedAt);
+    public record GeoStatsCellDto(
+        string LocalityGid2,
+        string LocalityName,
+        string AdminLevel1Name,
+        string CountryCode,
+        double CentroidLat,
+        double CentroidLng,
+        int LeadsCount,
+        IEnumerable<GeoStatsProductCount> Products,
+        GeoStatsLastJob? LastJob);
+
+    /// <summary>
+    /// Cobertura por localidad (GADM gid2): cuántos leads se cargaron en cada
+    /// zona, breakdown por producto y último search-job (qué query/categoría
+    /// trajo los últimos leads). Para pintar el mapa de "país completado".
+    /// </summary>
+    [HttpGet("geo-stats")]
+    public async Task<ActionResult<IEnumerable<GeoStatsCellDto>>> GeoStats(
+        [FromQuery] string? productKey,
+        [FromQuery] string? category,
+        [FromQuery] int days = 90,
+        [FromQuery] Guid? sellerId = null,
+        CancellationToken ct = default)
+    {
+        var isAdmin = CurrentUser.IsAdmin(User);
+        var callerId = CurrentUser.Id(User);
+        var since = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(days, 1, 365));
+
+        var leadsQ = _db.Leads.AsNoTracking()
+            .Where(l => l.LocalityGid2 != null && l.CreatedAt >= since);
+        if (!isAdmin) leadsQ = leadsQ.Where(l => l.SellerId == callerId);
+        else if (sellerId is not null) leadsQ = leadsQ.Where(l => l.SellerId == sellerId);
+        if (!string.IsNullOrWhiteSpace(productKey)) leadsQ = leadsQ.Where(l => l.ProductKey == productKey);
+        if (!string.IsNullOrWhiteSpace(category)) leadsQ = leadsQ.Where(l => l.SearchCategory == category);
+
+        // Aggregation: count per (gid2, productKey).
+        var perCell = await leadsQ
+            .GroupBy(l => new { l.LocalityGid2, l.ProductKey })
+            .Select(g => new { g.Key.LocalityGid2, g.Key.ProductKey, Count = g.Count() })
+            .ToListAsync(ct);
+
+        if (perCell.Count == 0) return new List<GeoStatsCellDto>();
+
+        var gidSet = perCell.Select(x => x.LocalityGid2!).Distinct().ToList();
+        var localities = await _db.Localities.AsNoTracking()
+            .Where(l => gidSet.Contains(l.Gid2))
+            .ToDictionaryAsync(l => l.Gid2, ct);
+
+        var productNames = await _db.Products.AsNoTracking()
+            .ToDictionaryAsync(p => p.ProductKey, p => p.DisplayName, ct);
+
+        // Last search job per gid2 (under same scope).
+        var jobsQ = _db.SearchJobs.AsNoTracking()
+            .Include(j => j.Seller)
+            .Where(j => j.LocalityGid2 != null && gidSet.Contains(j.LocalityGid2!));
+        if (!isAdmin) jobsQ = jobsQ.Where(j => j.SellerId == callerId);
+        else if (sellerId is not null) jobsQ = jobsQ.Where(j => j.SellerId == sellerId);
+        if (!string.IsNullOrWhiteSpace(productKey)) jobsQ = jobsQ.Where(j => j.ProductKey == productKey);
+        if (!string.IsNullOrWhiteSpace(category)) jobsQ = jobsQ.Where(j => j.Category == category);
+
+        var lastJobs = await jobsQ
+            .GroupBy(j => j.LocalityGid2!)
+            .Select(g => g.OrderByDescending(j => j.ScheduledAt).First())
+            .ToListAsync(ct);
+        var lastJobByGid = lastJobs.ToDictionary(j => j.LocalityGid2!);
+
+        var byGid = perCell.GroupBy(x => x.LocalityGid2!).Select(g =>
+        {
+            var gid = g.Key;
+            var products = g.Select(x => new GeoStatsProductCount(
+                x.ProductKey,
+                productNames.GetValueOrDefault(x.ProductKey),
+                x.Count)).OrderByDescending(p => p.Count).ToList();
+            var total = products.Sum(p => p.Count);
+            localities.TryGetValue(gid, out var loc);
+            GeoStatsLastJob? last = null;
+            if (lastJobByGid.TryGetValue(gid, out var j))
+            {
+                last = new GeoStatsLastJob(
+                    j.Id, j.ProductKey, productNames.GetValueOrDefault(j.ProductKey),
+                    j.Category, j.Query, j.LeadsCreated, j.RawItems,
+                    j.SellerId, j.Seller?.DisplayName,
+                    j.FinishedAt ?? j.ScheduledAt);
+            }
+            return new GeoStatsCellDto(
+                gid,
+                loc?.Name ?? gid,
+                loc?.AdminLevel1Name ?? string.Empty,
+                loc?.CountryCode ?? string.Empty,
+                loc?.CentroidLat ?? 0,
+                loc?.CentroidLng ?? 0,
+                total,
+                products,
+                last);
+        }).OrderByDescending(c => c.LeadsCount).ToList();
+
+        return byGid;
+    }
+
     [HttpGet("mine")]
     public async Task<ActionResult<IEnumerable<LeadDto>>> Mine(
         [FromQuery] LeadStatus? status, [FromQuery] string? productKey, [FromQuery] Guid? sellerId,

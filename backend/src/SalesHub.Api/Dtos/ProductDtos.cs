@@ -20,7 +20,8 @@ public record ProductDto(
     int SendHourStart,
     int SendHourEnd,
     bool RequiresAssistedSale,
-    int GooglePlacesDailyLeadCap);
+    int GooglePlacesDailyLeadCap,
+    List<string> ReplyTemplates);
 
 public record CreateOrUpdateProductRequest(
     string ProductKey,
@@ -41,4 +42,5 @@ public record CreateOrUpdateProductRequest(
     int SendHourStart,
     int SendHourEnd,
     bool RequiresAssistedSale,
-    int GooglePlacesDailyLeadCap);
+    int GooglePlacesDailyLeadCap,
+    List<string>? ReplyTemplates);

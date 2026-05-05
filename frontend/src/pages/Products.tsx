@@ -11,7 +11,8 @@ const EMPTY: Product = {
   checkoutUrl: '', priceDisplay: '', dailyLimit: 60, triggerHours: [10, 14, 18],
   sendHourStart: 10, sendHourEnd: 20,
   requiresAssistedSale: false,
-  googlePlacesDailyLeadCap: 60
+  googlePlacesDailyLeadCap: 60,
+  replyTemplates: []
 };
 
 export default function Products() {
@@ -109,6 +110,22 @@ export default function Products() {
           <div className="text-xs text-slate-400 mt-1">
             Si está, se manda primero (ej. "buenas") y el mensaje principal sale después con el delay normal del vendedor.
             Soporta los mismos placeholders y spin-text que el mensaje principal.
+          </div>
+        </Field>
+        <Field label="Respuestas rápidas (una por línea)">
+          <textarea
+            className="input min-h-24 text-sm"
+            placeholder={'¿Te interesa que te pase más info?\n¿Cuándo te queda bien una llamada?\nQuedo atento.'}
+            value={(draft.replyTemplates ?? []).join('\n')}
+            onChange={(e) =>
+              onChange(
+                'replyTemplates',
+                e.target.value.split('\n').map((s) => s.trim()).filter(Boolean)
+              )
+            }
+          />
+          <div className="text-xs text-slate-400 mt-1">
+            Aparecen como botones arriba del input en la pantalla de chat. Click → llena el campo de respuesta.
           </div>
         </Field>
         <Field label="Mensaje template (principal)">

@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
+import type { Product } from '../lib/types';
 
 type ListItem = {
   leadId: string;
@@ -47,6 +48,12 @@ export default function Conversations() {
     queryKey: ['conversations'],
     queryFn: async () => (await api.get<ListItem[]>('/conversations')).data,
     refetchInterval: 15000
+  });
+
+  const productsQ = useQuery({
+    queryKey: ['products-min'],
+    queryFn: async () => (await api.get<Product[]>('/products')).data,
+    staleTime: 5 * 60_000
   });
 
   const thread = useQuery({
@@ -168,6 +175,12 @@ export default function Conversations() {
               ))}
               <div ref={endRef} />
             </div>
+            <QuickReplyBar
+              templates={
+                productsQ.data?.find((p) => p.productKey === thread.data?.productKey)?.replyTemplates ?? []
+              }
+              onPick={(t) => setReply(t)}
+            />
             <form
               className="p-3 border-t border-slate-100 flex gap-2"
               onSubmit={(e) => { e.preventDefault(); if (reply.trim()) sendMut.mutate(); }}>
@@ -185,6 +198,27 @@ export default function Conversations() {
           </>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function QuickReplyBar({ templates, onPick }: { templates: string[]; onPick: (t: string) => void }) {
+  if (!templates || templates.length === 0) return null;
+  return (
+    <div className="px-3 pt-2 border-t border-slate-100 flex flex-wrap gap-1">
+      <span className="text-[11px] uppercase tracking-wide text-slate-400 self-center mr-1">
+        Respuestas rápidas:
+      </span>
+      {templates.map((t, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onPick(t)}
+          title={t}
+          className="text-xs px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 max-w-[260px] truncate">
+          {t.length > 40 ? t.slice(0, 40) + '…' : t}
+        </button>
+      ))}
     </div>
   );
 }

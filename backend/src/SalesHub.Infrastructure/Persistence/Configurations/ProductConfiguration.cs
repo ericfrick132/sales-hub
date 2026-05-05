@@ -26,6 +26,7 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         b.Property(x => x.OpenerTemplate).HasColumnType("text");
 
         b.Property(x => x.Categories).HasColumnType("text[]");
+        b.Property(x => x.ReplyTemplates).HasColumnType("text[]");
         b.Property(x => x.TriggerHours).HasColumnType("integer[]");
     }
 }
