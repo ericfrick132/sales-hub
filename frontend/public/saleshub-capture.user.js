@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.6.0
+// @version      0.7.0
 // @description  Captura negocios desde Google Maps y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
@@ -37,8 +37,36 @@
     user: GM_getValue('saleshub.user', null),
     productKey: GM_getValue('saleshub.productKey', ''),
     localityGid2: GM_getValue('saleshub.localityGid2', ''),
-    category: GM_getValue('saleshub.category', '')
+    category: GM_getValue('saleshub.category', ''),
+    // Preset de velocidad (ver SPEED_PROFILES). Default "humano" para no
+    // levantar sospecha en sesiones nuevas. El vendedor puede cambiarlo
+    // desde el panel.
+    speed: GM_getValue('saleshub.speed', 'human')
   };
+
+  // ============================================================
+  // Velocidad / "modo humano"
+  // ============================================================
+  // Cada preset multiplica todos los sleeps base por `mul`. Así Maps ve un
+  // ritmo de scroll/click similar a una persona real. El "rápido" sirve para
+  // probar; en producción debería usarse "human" o más lento.
+  const SPEED_PROFILES = {
+    fast:     { label: 'Rápido (riesgo de bloqueo)',  mul: 0.7 },
+    normal:   { label: 'Normal',                       mul: 1.0 },
+    human:    { label: 'Humano (recomendado)',         mul: 2.0 },
+    slow:     { label: 'Lento (sesión nueva / banneo)', mul: 4.0 },
+    paranoid: { label: 'Muy lento (Maps molesto)',     mul: 7.0 }
+  };
+  function speedMul() {
+    return SPEED_PROFILES[cfg.speed]?.mul ?? 1.0;
+  }
+  // Aplica el multiplicador del preset a un delay base.
+  function slow(ms) { return Math.round(ms * speedMul()); }
+  // Como slow(), pero con jitter aleatorio adicional para que el ritmo no
+  // sea perfectamente parejo (más humano).
+  function slowJitter(min, jit) {
+    return Math.round((min + Math.random() * jit) * speedMul());
+  }
 
   // saleshub:productKey=...|gid2=...|cat=... en el hash autocompleta el contexto.
   const hash = decodeURIComponent(location.hash || '');
@@ -242,8 +270,8 @@
     let stable = 0;
     let lastCount = -1;
     const STABLE_THRESHOLD = 4;     // 4 ciclos sin items nuevos = fin
-    const STEP_MS = 900;            // espera entre scrolls
-    const MAX_ITERATIONS = 80;      // tope de seguridad ~72s
+    const STEP_MS = slow(900);      // espera entre scrolls (escalada por preset)
+    const MAX_ITERATIONS = 80;      // tope de seguridad
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       if (autoCancel) return { ok: false, reason: 'canceled', count: lastCount };
@@ -473,15 +501,24 @@
           </div>
         ` : (() => {
           const missingPhones = buffer.filter(b => !b.phone).length;
+          // Heurística: si los primeros leads ya tenían teléfono asumimos que la
+          // categoría sí los expone — los faltantes son por-lead (negocios sin
+          // número publicado), no un problema sistémico que justifique enriquecer
+          // todo el buffer. Solo mostramos el aviso cuando los primeros también
+          // están vacíos, que es el caso donde Maps no muestra teléfonos en el
+          // listado y conviene abrir cada lugar.
+          const sample = buffer.slice(0, 5);
+          const sampleHasPhone = sample.length > 0 && sample.filter(b => b.phone).length / sample.length >= 0.5;
+          const showWarn = missingPhones > 0 && !sampleHasPhone;
           return `
           <div class="row">
             <button class="btn primary" id="sh-auto" style="flex:1;">🔁 Auto-capturar todo</button>
           </div>
-          ${missingPhones > 0 ? `
+          ${showWarn ? `
             <div class="alert warn" style="display:flex; align-items:center; gap:8px;">
               <div style="flex:1;">
                 <div><b>${missingPhones}</b> en buffer sin teléfono.</div>
-                <div style="font-size:10px; color:#92400e; margin-top:2px;">Backend los va a saltear. Click para abrir cada uno y leer el detalle (~${Math.ceil(missingPhones * 1.5)}s).</div>
+                <div style="font-size:10px; color:#92400e; margin-top:2px;">Maps no muestra teléfonos en el listado de esta categoría. Click para abrir cada uno y leer el detalle (~${Math.ceil(missingPhones * 1.5)}s).</div>
               </div>
               <button class="btn primary" id="sh-enrich" style="background:#b45309; border-color:#b45309;">🔍 Buscar</button>
             </div>
@@ -508,6 +545,9 @@
         ` : ''}
 
         <div class="row">
+          <button class="ghost" id="sh-speed" title="Cambiar velocidad de captura">
+            🐢 Velocidad: <b>${SPEED_PROFILES[cfg.speed]?.label ?? cfg.speed}</b>
+          </button>
           <button class="ghost" id="sh-cfg" style="margin-left:auto;">⚙ Config avanzada</button>
         </div>
       </div>
@@ -577,6 +617,7 @@
     });
 
     if ($('#sh-cfg')) $('#sh-cfg').onclick = openAdvancedConfig;
+    if ($('#sh-speed')) $('#sh-speed').onclick = openSpeedPicker;
   }
 
   // ============================================================
@@ -698,7 +739,7 @@
       if (!target) continue; // ítem fuera de la lista actual; lo saltamos
 
       target.scrollIntoView({ block: 'center' });
-      await sleep(150);
+      await sleep(slow(250));
       target.click();
       const detail = await waitForDetail(8000);
 
@@ -718,8 +759,8 @@
 
       closeDetail();
       await waitForFeed(5000);
-      // Jitter entre 500-1000ms para parecer humano y dar aire al render.
-      await sleep(500 + Math.random() * 500);
+      // Jitter para parecer humano (escalado por preset de velocidad).
+      await sleep(slowJitter(500, 500));
     }
 
     autoRunning = false;
@@ -783,20 +824,20 @@
 
     // Cargamos un poquito para tener al menos ~5 items para evaluar.
     feed.scrollTop = feed.scrollHeight;
-    await sleep(800);
+    await sleep(slow(800));
     feed.scrollTop = 0;
-    await sleep(300);
+    await sleep(slow(300));
 
     const ratio = listExposesPhones();
     const useDeep = ratio === null || ratio < 0.5;
 
     if (useDeep) {
       setAutoStatus('Maps no muestra teléfonos en la lista — voy uno por uno.');
-      await sleep(600);
+      await sleep(slow(600));
       await deepIncrementalCapture();
     } else {
       setAutoStatus(`Teléfonos en la lista (${Math.round(ratio*100)}%) — modo rápido.`);
-      await sleep(400);
+      await sleep(slow(400));
       await fastListCapture();
     }
   }
@@ -816,7 +857,7 @@
 
     const feed = getFeedEl();
     if (feed) feed.scrollTop = 0;
-    await sleep(150);
+    await sleep(slow(150));
 
     const all = readFeedList();
     let added = 0;
@@ -865,7 +906,7 @@
 
         feed.scrollTop = feed.scrollHeight;
         setAutoStatus(`${processed.size} procesados · cargando más…`);
-        await sleep(900);
+        await sleep(slow(900));
 
         const after = (getFeedEl()?.querySelectorAll('a[href*="/maps/place/"]') ?? []).length;
         if (after === before) {
@@ -884,7 +925,7 @@
       setAutoStatus(`${processed.size}: ${linkName.slice(0, 38)}${linkName.length > 38 ? '…' : ''}`);
 
       next.scrollIntoView({ block: 'center' });
-      await sleep(150);
+      await sleep(slow(250));
       next.click();
 
       const detail = await waitForDetailMatch(linkName, 8000);
@@ -899,8 +940,8 @@
 
       closeDetail();
       await waitForFeed(5000);
-      // Jitter para parecer humano y dar aire al render.
-      await sleep(450 + Math.random() * 500);
+      // Jitter humano (escalado por preset de velocidad).
+      await sleep(slowJitter(450, 500));
     }
 
     autoRunning = false;
@@ -913,6 +954,32 @@
         : `✓ ${added} agregados (${processed.size} procesados, ${added < processed.size ? `${processed.size - added} ya estaban` : 'todos nuevos'})`,
       added > 0 ? 'ok' : ''
     );
+  }
+
+  // Selector de velocidad. Mostramos las opciones numeradas y dejamos que el
+  // vendedor pegue el número en un prompt — no hay UI nativa de Tampermonkey
+  // para opciones múltiples.
+  function openSpeedPicker() {
+    const keys = Object.keys(SPEED_PROFILES);
+    const lines = keys.map((k, i) => {
+      const p = SPEED_PROFILES[k];
+      const mark = k === cfg.speed ? ' ← actual' : '';
+      return `${i + 1}. ${p.label} (×${p.mul})${mark}`;
+    }).join('\n');
+    const ans = prompt(
+      'Elegí velocidad de captura:\n\n' + lines + '\n\nEscribí el número (1-' + keys.length + '):',
+      String(keys.indexOf(cfg.speed) + 1)
+    );
+    if (ans == null) return;
+    const idx = parseInt(ans, 10) - 1;
+    if (idx < 0 || idx >= keys.length || isNaN(idx)) {
+      toast('Número inválido', 'err');
+      return;
+    }
+    cfg.speed = keys[idx];
+    GM_setValue('saleshub.speed', cfg.speed);
+    toast(`Velocidad: ${SPEED_PROFILES[cfg.speed].label}`, 'ok');
+    render();
   }
 
   function openAdvancedConfig() {
