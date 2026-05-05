@@ -6,6 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { isAdmin, useAuthStore } from '../lib/auth';
+import { fetchCachedJson } from '../lib/geojson-cache';
 import type { Product } from '../lib/types';
 
 // Polígonos LATAM generados por scripts/localities/build.mjs.
@@ -159,9 +160,7 @@ export default function MapPage() {
 
     map.on('load', async () => {
       try {
-        const res = await fetch(LOCALITIES_GEOJSON_URL);
-        if (!res.ok) throw new Error(`status ${res.status}`);
-        const gj = await res.json();
+        const gj = await fetchCachedJson<GeoJSON.FeatureCollection>(LOCALITIES_GEOJSON_URL);
         map.addSource('localities', { type: 'geojson', data: gj, generateId: false });
         map.addLayer({
           id: 'localities-fill',

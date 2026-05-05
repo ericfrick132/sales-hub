@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import maplibregl, { Map as MlMap, MapMouseEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { api } from '../lib/api';
+import { fetchCachedJson } from '../lib/geojson-cache';
 
 const LOCALITIES_GEOJSON_URL = '/data/localities-latam.geojson';
 
@@ -102,9 +103,7 @@ export default function CoverageMap({ productKey, onProductChange, products }: P
 
     map.on('load', async () => {
       try {
-        const res = await fetch(LOCALITIES_GEOJSON_URL);
-        if (!res.ok) throw new Error(`status ${res.status}`);
-        const gj = await res.json();
+        const gj = await fetchCachedJson<GeoJSON.FeatureCollection>(LOCALITIES_GEOJSON_URL);
         map.addSource('localities', { type: 'geojson', data: gj, generateId: false });
         map.addLayer({
           id: 'localities-fill',
