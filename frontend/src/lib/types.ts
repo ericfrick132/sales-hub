@@ -82,6 +82,12 @@ export interface Product {
   requiresAssistedSale: boolean;
   googlePlacesDailyLeadCap: number;
   replyTemplates: string[];
+  messageSteps: MessageStep[];
+}
+
+export interface MessageStep {
+  text: string;
+  delaySeconds: number;
 }
 
 export type InstanceStatus = 'Disconnected' | 'Connecting' | 'Connected' | 'Banned' | 'Unknown' | null;

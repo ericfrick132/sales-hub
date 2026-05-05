@@ -1,5 +1,7 @@
 namespace SalesHub.Api.Dtos;
 
+public record MessageStepDto(string Text, int DelaySeconds);
+
 public record ProductDto(
     Guid Id,
     string ProductKey,
@@ -21,7 +23,8 @@ public record ProductDto(
     int SendHourEnd,
     bool RequiresAssistedSale,
     int GooglePlacesDailyLeadCap,
-    List<string> ReplyTemplates);
+    List<string> ReplyTemplates,
+    List<MessageStepDto> MessageSteps);
 
 public record CreateOrUpdateProductRequest(
     string ProductKey,
@@ -43,4 +46,5 @@ public record CreateOrUpdateProductRequest(
     int SendHourEnd,
     bool RequiresAssistedSale,
     int GooglePlacesDailyLeadCap,
-    List<string>? ReplyTemplates);
+    List<string>? ReplyTemplates,
+    List<MessageStepDto>? MessageSteps);

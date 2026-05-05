@@ -82,6 +82,16 @@ public class ProductsController : ControllerBase
             .Select(s => s?.Trim() ?? string.Empty)
             .Where(s => s.Length > 0)
             .ToList();
+        p.MessageSteps = (r.MessageSteps ?? new())
+            .Where(s => !string.IsNullOrWhiteSpace(s.Text))
+            .Select((s, i) => new Core.Domain.Entities.MessageStep
+            {
+                Text = s.Text.Trim(),
+                // Step 0 siempre arranca al asignar (delay 0). Los siguientes
+                // tienen el delay relativo al anterior.
+                DelaySeconds = i == 0 ? 0 : Math.Max(0, s.DelaySeconds)
+            })
+            .ToList();
         return p;
     }
 
@@ -91,5 +101,6 @@ public class ProductsController : ControllerBase
         p.CheckoutUrl, p.PriceDisplay,
         p.DailyLimit, p.TriggerHours, p.SendHourStart, p.SendHourEnd,
         p.RequiresAssistedSale, p.GooglePlacesDailyLeadCap,
-        p.ReplyTemplates);
+        p.ReplyTemplates,
+        p.MessageSteps.Select(s => new MessageStepDto(s.Text, s.DelaySeconds)).ToList());
 }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
-import type { Product } from '../lib/types';
+import type { MessageStep, Product } from '../lib/types';
 
 const EMPTY: Product = {
   id: '', productKey: '', displayName: '', active: true, country: 'AR', countryName: 'Argentina',
@@ -12,7 +12,8 @@ const EMPTY: Product = {
   sendHourStart: 10, sendHourEnd: 20,
   requiresAssistedSale: false,
   googlePlacesDailyLeadCap: 60,
-  replyTemplates: []
+  replyTemplates: [],
+  messageSteps: []
 };
 
 export default function Products() {
@@ -103,15 +104,10 @@ export default function Products() {
             </div>
           </Field>
         </div>
-        <Field label="Opener (mensaje corto previo, opcional)">
-          <textarea className="input min-h-12 font-mono text-sm"
-            placeholder="ej. buenas"
-            value={draft.openerTemplate} onChange={(e) => onChange('openerTemplate', e.target.value)} />
-          <div className="text-xs text-slate-400 mt-1">
-            Si está, se manda primero (ej. "buenas") y el mensaje principal sale después con el delay normal del vendedor.
-            Soporta los mismos placeholders y spin-text que el mensaje principal.
-          </div>
-        </Field>
+        <StepsEditor
+          steps={draft.messageSteps ?? []}
+          onChange={(steps) => onChange('messageSteps', steps)}
+        />
         <Field label="Respuestas rápidas (una por línea)">
           <textarea
             className="input min-h-24 text-sm"
@@ -128,15 +124,22 @@ export default function Products() {
             Aparecen como botones arriba del input en la pantalla de chat. Click → llena el campo de respuesta.
           </div>
         </Field>
-        <Field label="Mensaje template (principal)">
-          <textarea className="input min-h-48 font-mono text-sm"
-            value={draft.messageTemplate} onChange={(e) => onChange('messageTemplate', e.target.value)} />
-          <div className="text-xs text-slate-400 mt-1">
-            Placeholders: <code>&#123;name&#125;</code>, <code>&#123;city&#125;</code>, <code>&#123;province&#125;</code>, <code>&#123;category&#125;</code>, <code>&#123;search_query&#125;</code>, <code>&#123;price&#125;</code>, <code>&#123;checkout_url&#125;</code>, <code>&#123;seller&#125;</code>.<br/>
-            <code>&#123;category&#125;</code> = la categoría que originó el lead (de la lista de arriba). Si el lead no la tiene, cae a la primera de la lista.<br/>
-            Spin-text: <code>&#123;Hola!|Qué tal!|Buenas!&#125;</code>
+        <details className="text-xs text-slate-500">
+          <summary className="cursor-pointer hover:text-slate-700">Legacy: opener + mensaje único (en desuso, dejar vacío si usás steps)</summary>
+          <div className="mt-2 space-y-2 pl-3 border-l-2 border-slate-200">
+            <Field label="Opener (legacy, no usar si tenés steps)">
+              <textarea className="input min-h-12 font-mono text-xs"
+                value={draft.openerTemplate} onChange={(e) => onChange('openerTemplate', e.target.value)} />
+            </Field>
+            <Field label="Mensaje template legacy">
+              <textarea className="input min-h-32 font-mono text-xs"
+                value={draft.messageTemplate} onChange={(e) => onChange('messageTemplate', e.target.value)} />
+              <div className="text-[11px] text-slate-400 mt-1">
+                Si messageSteps está vacío, se usan estos dos (opener + main). Si messageSteps tiene contenido, estos dos se ignoran. Migrá al editor de steps de arriba.
+              </div>
+            </Field>
           </div>
-        </Field>
+        </details>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={draft.active} onChange={(e) => onChange('active', e.target.checked)} />
@@ -155,4 +158,99 @@ export default function Products() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><div className="text-xs text-slate-500 mb-1">{label}</div>{children}</label>;
+}
+
+function StepsEditor({ steps, onChange }: { steps: MessageStep[]; onChange: (s: MessageStep[]) => void }) {
+  function update(i: number, patch: Partial<MessageStep>) {
+    onChange(steps.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  }
+  function remove(i: number) {
+    onChange(steps.filter((_, idx) => idx !== i));
+  }
+  function add() {
+    // Default delay: 60s entre pasos. El primero siempre 0 (sale al asignar).
+    onChange([...steps, { text: '', delaySeconds: steps.length === 0 ? 0 : 60 }]);
+  }
+  function move(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= steps.length) return;
+    const next = [...steps];
+    [next[i], next[j]] = [next[j], next[i]];
+    // Si movemos un paso al primer slot, su delay se fuerza a 0.
+    if (j === 0) next[0] = { ...next[0], delaySeconds: 0 };
+    onChange(next);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-medium">Cadencia de mensajes</div>
+          <div className="text-xs text-slate-500">
+            Se mandan en orden. Si el lead responde, los siguientes se cancelan.
+            Soporta <code>&#123;name&#125;</code>, <code>&#123;city&#125;</code>, <code>&#123;category&#125;</code>, etc. y spin-text.
+          </div>
+        </div>
+        <button type="button" className="btn-secondary text-xs" onClick={add}>+ Paso</button>
+      </div>
+
+      {steps.length === 0 && (
+        <div className="text-xs text-slate-500 border border-dashed border-slate-300 rounded p-3 text-center">
+          Sin pasos. Agregá uno o dejá vacío para usar el opener + mensaje legacy de abajo.
+        </div>
+      )}
+
+      {steps.map((s, i) => (
+        <div key={i} className="border border-slate-200 rounded-md p-3 bg-slate-50/40 space-y-2">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-semibold text-slate-700">Paso {i + 1}</span>
+            {i === 0 ? (
+              <span className="text-slate-400">(sale al asignar — delay siempre 0)</span>
+            ) : (
+              <DelayInput
+                seconds={s.delaySeconds}
+                onChange={(sec) => update(i, { delaySeconds: sec })}
+              />
+            )}
+            <div className="ml-auto flex gap-1">
+              <button type="button" className="btn-secondary text-xs px-2 py-0.5"
+                disabled={i === 0} onClick={() => move(i, -1)} title="Subir">↑</button>
+              <button type="button" className="btn-secondary text-xs px-2 py-0.5"
+                disabled={i === steps.length - 1} onClick={() => move(i, 1)} title="Bajar">↓</button>
+              <button type="button" className="btn-secondary text-xs px-2 py-0.5 text-rose-600"
+                onClick={() => remove(i)} title="Eliminar">×</button>
+            </div>
+          </div>
+          <textarea
+            className="input min-h-20 font-mono text-sm w-full"
+            placeholder={i === 0 ? 'ej. {Hola!|Buenas!} {name}, ...' : 'ej. te dejo el link: {checkout_url}'}
+            value={s.text}
+            onChange={(e) => update(i, { text: e.target.value })}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DelayInput({ seconds, onChange }: { seconds: number; onChange: (s: number) => void }) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return (
+    <div className="flex items-center gap-1 text-slate-600">
+      <span>esperar</span>
+      <input type="number" min={0} max={1440}
+        className="input w-14 text-xs px-1 py-0.5"
+        value={m}
+        onChange={(e) => onChange(Math.max(0, +e.target.value) * 60 + s)}
+      />
+      <span>min</span>
+      <input type="number" min={0} max={59}
+        className="input w-12 text-xs px-1 py-0.5"
+        value={s}
+        onChange={(e) => onChange(m * 60 + Math.max(0, Math.min(59, +e.target.value)))}
+      />
+      <span>seg</span>
+    </div>
+  );
 }

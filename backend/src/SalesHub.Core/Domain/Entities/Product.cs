@@ -18,6 +18,12 @@ public class Product
     // Plantillas de respuesta rápida que el seller ve como dropdown en el chat.
     // Cada string es un texto listo para mandar (sin placeholders por ahora).
     public List<string> ReplyTemplates { get; set; } = new();
+    // Cadencia de outreach inicial. Cuando el lead se asigna y queda Queued,
+    // se enqueuean estos N pasos en orden con su delay relativo al anterior.
+    // Se cortan automáticamente si el lead responde antes de que se envíen
+    // todos. Si está vacío, fallback al MessageTemplate + OpenerTemplate
+    // legacy (compat con productos viejos).
+    public List<MessageStep> MessageSteps { get; set; } = new();
     public string MessageTemplate { get; set; } = string.Empty;
     // Mensaje "opener" opcional. Si está, se manda primero (ej. "buenas") y el
     // mensaje principal sale después con el delay normal del seller. Vacío = un solo mensaje.

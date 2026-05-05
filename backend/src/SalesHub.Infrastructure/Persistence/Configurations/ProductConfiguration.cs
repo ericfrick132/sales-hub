@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SalesHub.Core.Domain.Entities;
@@ -28,5 +29,16 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         b.Property(x => x.Categories).HasColumnType("text[]");
         b.Property(x => x.ReplyTemplates).HasColumnType("text[]");
         b.Property(x => x.TriggerHours).HasColumnType("integer[]");
+
+        // jsonb para flexibilidad: agregar campos al MessageStep en el futuro
+        // (variantes A/B, condiciones) no requiere otra migration.
+        b.Property(x => x.MessageSteps)
+            .HasColumnName("message_steps")
+            .HasColumnType("jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v ?? new(), (JsonSerializerOptions?)null),
+                v => string.IsNullOrWhiteSpace(v)
+                    ? new List<MessageStep>()
+                    : JsonSerializer.Deserialize<List<MessageStep>>(v, (JsonSerializerOptions?)null) ?? new());
     }
 }

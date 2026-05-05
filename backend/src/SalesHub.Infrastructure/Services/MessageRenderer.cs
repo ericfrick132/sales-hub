@@ -14,16 +14,19 @@ public class MessageRenderer : IMessageRenderer
     private static readonly Regex SpinRx = new(@"\{([^{}]*\|[^{}]*)\}", RegexOptions.Compiled);
 
     public string Render(Lead lead, Product product, Seller? seller = null)
-        => RenderTemplate(product.MessageTemplate ?? string.Empty, lead, product, seller);
+        => RenderTemplateInternal(product.MessageTemplate ?? string.Empty, lead, product, seller);
 
     public string? RenderOpener(Lead lead, Product product, Seller? seller = null)
     {
         if (string.IsNullOrWhiteSpace(product.OpenerTemplate)) return null;
-        var rendered = RenderTemplate(product.OpenerTemplate, lead, product, seller);
+        var rendered = RenderTemplateInternal(product.OpenerTemplate, lead, product, seller);
         return string.IsNullOrWhiteSpace(rendered) ? null : rendered;
     }
 
-    private static string RenderTemplate(string template, Lead lead, Product product, Seller? seller)
+    public string RenderTemplate(string template, Lead lead, Product product, Seller? seller = null)
+        => RenderTemplateInternal(template, lead, product, seller);
+
+    private static string RenderTemplateInternal(string template, Lead lead, Product product, Seller? seller)
     {
         // Spin-text first so placeholder substitution still works.
         // Seed estable por lead+template para que opener y main no terminen siempre con el mismo

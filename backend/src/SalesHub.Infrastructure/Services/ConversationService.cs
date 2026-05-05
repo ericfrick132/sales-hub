@@ -96,12 +96,27 @@ public class ConversationService
         });
 
         // Update lead state: first reply triggers status transition.
-        if (lead.FirstReplyAt is null) lead.FirstReplyAt = incoming.Timestamp;
+        var isFirstReply = lead.FirstReplyAt is null;
+        if (isFirstReply) lead.FirstReplyAt = incoming.Timestamp;
         if (lead.Status is LeadStatus.Sent or LeadStatus.Queued or LeadStatus.Assigned)
         {
             lead.Status = LeadStatus.Replied;
         }
         lead.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // Cortar el drip: si el lead respondió, los siguientes steps de
+        // outreach inicial ya no tienen sentido (ahora la conversación queda
+        // a manos del seller). Solo cancelamos los pendientes — los que ya
+        // se mandaron quedan como Sent, no se tocan.
+        if (isFirstReply)
+        {
+            var pending = await _db.Outbox
+                .Where(o => o.LeadId == lead.Id && o.Status == OutboxStatus.Scheduled)
+                .ToListAsync(ct);
+            foreach (var o in pending) o.Status = OutboxStatus.Cancelled;
+            if (pending.Count > 0)
+                _log.LogInformation("Lead {Lead} respondió — {N} steps pendientes cancelados", lead.Id, pending.Count);
+        }
 
         await _db.SaveChangesAsync(ct);
         _log.LogInformation("Inbound msg stored: lead={Lead} text={Text}", lead.Id, incoming.Text[..Math.Min(50, incoming.Text.Length)]);
