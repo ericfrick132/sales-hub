@@ -394,12 +394,24 @@ public class LeadsController : ControllerBase
 
         if (seller.EvolutionInstance is null)
             return BadRequest(new { error = $"El vendedor {seller.DisplayName} no tiene WhatsApp configurado." });
+
+        // Si la DB dice Disconnected, re-verificamos live con Evolution antes
+        // de fallar — el InstanceMonitor puede tener el flag stale entre
+        // ticks. Si Evolution dice "open"/"connected", sincronizamos la DB y
+        // seguimos.
         if (seller.EvolutionInstance.Status != InstanceStatus.Connected)
         {
-            var hint = seller.Id == callerId
-                ? "Andá a /connect y escaneá el QR."
-                : $"Asegurate que el vendedor {seller.DisplayName} tenga WhatsApp Connected (status actual: {seller.EvolutionInstance.Status}).";
-            return BadRequest(new { error = $"WhatsApp del vendedor no está conectado. {hint}" });
+            var live = await _evo.GetInstanceStatusAsync(seller.EvolutionInstance.InstanceName, ct);
+            var liveConnected = live.Status is "open" or "connected";
+            if (!liveConnected)
+            {
+                var hint = seller.Id == callerId
+                    ? "Andá a /connect y escaneá el QR."
+                    : $"Asegurate que el vendedor {seller.DisplayName} tenga WhatsApp Connected (status real: {live.Status}).";
+                return BadRequest(new { error = $"WhatsApp del vendedor no está conectado. {hint}" });
+            }
+            seller.EvolutionInstance.Status = InstanceStatus.Connected;
+            await _db.SaveChangesAsync(ct);
         }
 
         // Cadencia: si la categoría del lead tiene override, esos steps; sino default.

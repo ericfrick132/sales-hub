@@ -61,7 +61,17 @@ public class TestSendController : ControllerBase
         var seller = await _db.Sellers.Include(s => s.EvolutionInstance)
             .FirstOrDefaultAsync(s => s.Id == req.SellerId, ct);
         if (seller?.EvolutionInstance is null) return BadRequest(new { error = "Vendedor sin instancia Evolution" });
-        if (seller.EvolutionInstance.Status != InstanceStatus.Connected) return BadRequest(new { error = "La instancia no está conectada" });
+
+        // Re-verificar live si la DB dice Disconnected — InstanceMonitor
+        // puede estar stale entre ticks.
+        if (seller.EvolutionInstance.Status != InstanceStatus.Connected)
+        {
+            var live = await _evo.GetInstanceStatusAsync(seller.EvolutionInstance.InstanceName, ct);
+            if (live.Status is not "open" and not "connected")
+                return BadRequest(new { error = $"La instancia no está conectada (status real: {live.Status})" });
+            seller.EvolutionInstance.Status = InstanceStatus.Connected;
+            await _db.SaveChangesAsync(ct);
+        }
 
         var instance = seller.EvolutionInstance.InstanceName;
 
