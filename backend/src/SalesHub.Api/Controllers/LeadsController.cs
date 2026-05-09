@@ -861,5 +861,6 @@ public class LeadsController : ControllerBase
         l.Id, l.ProductKey, l.Product?.DisplayName, l.Source, l.Name, l.City, l.Province,
         l.WhatsappPhone, l.Website, l.InstagramHandle, l.FacebookUrl, l.Rating, l.TotalReviews,
         l.Score, l.Status, l.SellerId, l.Seller?.DisplayName, l.RenderedMessage, l.WhatsappLink,
-        l.AssignedAt, l.SentAt, l.FirstReplyAt, l.Notes, l.CreatedAt);
+        l.AssignedAt, l.SentAt, l.FirstReplyAt, l.Notes, l.CreatedAt,
+        l.SearchCategory, l.SearchQuery);
 }

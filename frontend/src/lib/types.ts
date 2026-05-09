@@ -58,6 +58,8 @@ export interface Lead {
   firstReplyAt?: string;
   notes?: string;
   createdAt: string;
+  searchCategory?: string;
+  searchQuery?: string;
 }
 
 export interface Product {

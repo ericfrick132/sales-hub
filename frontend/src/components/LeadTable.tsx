@@ -98,6 +98,9 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
             <div className="text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
               <span>{fmtDateTime(l.sentAt ?? l.assignedAt ?? l.createdAt)}</span>
               <span>{l.productName ?? l.productKey}</span>
+              {l.searchCategory && (
+                <span className="bg-brand-50 text-brand-700 rounded px-1.5">{l.searchCategory}</span>
+              )}
               <span>{LEAD_SOURCE_LABEL[l.source] ?? l.source}</span>
             </div>
             {showSeller && (
@@ -154,6 +157,7 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
                 {showSeller && <th className="px-3 py-2 text-left">Vendedor</th>}
                 <th className="px-3 py-2 text-left">Negocio</th>
                 <th className="px-3 py-2 text-left">App</th>
+                <th className="px-3 py-2 text-left">Categoría</th>
                 <th className="px-3 py-2 text-left">Origen</th>
                 <th className="px-3 py-2 text-left">WhatsApp</th>
                 <th className="px-3 py-2 text-left">Estado</th>
@@ -183,6 +187,11 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
                     {l.city && <span className="ml-2 text-xs text-slate-400">{l.city}</span>}
                   </td>
                   <td className="px-3 py-2 text-slate-600">{l.productName ?? l.productKey}</td>
+                  <td className="px-3 py-2">
+                    {l.searchCategory ? (
+                      <span className="text-xs bg-brand-50 text-brand-700 rounded px-1.5 py-0.5">{l.searchCategory}</span>
+                    ) : <span className="text-xs text-slate-400">—</span>}
+                  </td>
                   <td className="px-3 py-2 text-slate-600">{LEAD_SOURCE_LABEL[l.source] ?? l.source}</td>
                   <td className="px-3 py-2">
                     {l.whatsappLink ? (

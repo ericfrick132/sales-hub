@@ -176,7 +176,8 @@ public class DashboardController : ControllerBase
             l.Id, l.ProductKey, l.Product?.DisplayName, l.Source, l.Name, l.City, l.Province,
             l.WhatsappPhone, l.Website, l.InstagramHandle, l.FacebookUrl, l.Rating, l.TotalReviews,
             l.Score, l.Status, l.SellerId, seller.DisplayName, l.RenderedMessage, l.WhatsappLink,
-            l.AssignedAt, l.SentAt, l.FirstReplyAt, l.Notes, l.CreatedAt)).ToList();
+            l.AssignedAt, l.SentAt, l.FirstReplyAt, l.Notes, l.CreatedAt,
+            l.SearchCategory, l.SearchQuery)).ToList();
         return new SellerDashboard(row, leads, queued, row.TodaySent, row.TodayCap);
     }
 

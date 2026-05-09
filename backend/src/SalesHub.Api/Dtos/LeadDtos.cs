@@ -26,7 +26,11 @@ public record LeadDto(
     DateTimeOffset? SentAt,
     DateTimeOffset? FirstReplyAt,
     string? Notes,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    /// <summary>Categoría de búsqueda con la que se capturó el lead (ej. "yoga", "barbería"). Null si fue carga manual.</summary>
+    string? SearchCategory,
+    /// <summary>Query libre que se tipeó en Maps (puede incluir ciudad). Útil para debug.</summary>
+    string? SearchQuery);
 
 public record UpdateLeadStatusRequest(LeadStatus Status, string? Notes);
 public record UpdateLeadInfoRequest(string? Name, string? WhatsappPhone);
