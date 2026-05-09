@@ -356,7 +356,8 @@ public class LeadsController : ControllerBase
     [HttpPost("{id:guid}/send-now")]
     public async Task<IActionResult> SendNow(Guid id, CancellationToken ct)
     {
-        const int InterStepDelayMs = 1500;
+        const int MaxStepDelaySeconds = 600; // 10 min cap para no colgar el HTTP
+        const int IntraStepDelayMs = 1500;   // texto previo + audio en mismo step (legacy)
 
         var callerId = CurrentUser.Id(User);
         var isAdmin = CurrentUser.IsAdmin(User);
@@ -370,9 +371,12 @@ public class LeadsController : ControllerBase
         if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return BadRequest(new { error = "Lead sin teléfono WhatsApp" });
         if (lead.Product is null) return BadRequest(new { error = "Lead sin producto" });
 
-        var seller = lead.Seller;
+        Seller? seller;
         // Si el lead no tiene seller asignado y el caller es seller, lo tomamos.
-        if (seller is null)
+        // Si el lead ya tiene uno, recargamos para garantizar que la instancia
+        // venga incluida (la lectura del lead.Seller con ThenInclude a veces
+        // no trae la instancia si el FK es viejo).
+        if (lead.SellerId is null)
         {
             if (isAdmin) return BadRequest(new { error = "Asigná el lead a un vendedor primero" });
             seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == callerId, ct);
@@ -380,8 +384,22 @@ public class LeadsController : ControllerBase
             lead.SellerId = seller.Id;
             lead.AssignedAt = DateTimeOffset.UtcNow;
         }
-        if (seller.EvolutionInstance is null || seller.EvolutionInstance.Status != InstanceStatus.Connected)
-            return BadRequest(new { error = "Conectá tu WhatsApp antes de enviar" });
+        else
+        {
+            seller = await _db.Sellers.Include(s => s.EvolutionInstance)
+                .FirstOrDefaultAsync(s => s.Id == lead.SellerId, ct);
+            if (seller is null) return BadRequest(new { error = "El vendedor asignado al lead no existe" });
+        }
+
+        if (seller.EvolutionInstance is null)
+            return BadRequest(new { error = $"El vendedor {seller.DisplayName} no tiene WhatsApp configurado." });
+        if (seller.EvolutionInstance.Status != InstanceStatus.Connected)
+        {
+            var hint = seller.Id == callerId
+                ? "Andá a /connect y escaneá el QR."
+                : $"Asegurate que el vendedor {seller.DisplayName} tenga WhatsApp Connected (status actual: {seller.EvolutionInstance.Status}).";
+            return BadRequest(new { error = $"WhatsApp del vendedor no está conectado. {hint}" });
+        }
 
         var steps = lead.Product.MessageSteps ?? new();
         var instance = seller.EvolutionInstance.InstanceName;
@@ -411,6 +429,14 @@ public class LeadsController : ControllerBase
                 var step = steps[i];
                 var hasMedia = step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 });
                 if (string.IsNullOrWhiteSpace(step.Text) && !hasMedia) continue;
+
+                // Esperar el delay configurado del paso (capeado a 10 min para
+                // no colgar el HTTP). El step 0 siempre arranca inmediato.
+                if (i > 0)
+                {
+                    var d = Math.Min(Math.Max(0, step.DelaySeconds), MaxStepDelaySeconds);
+                    if (d > 0) await Task.Delay(d * 1000, ct);
+                }
 
                 var rendered = string.IsNullOrWhiteSpace(step.Text)
                     ? string.Empty
@@ -443,7 +469,7 @@ public class LeadsController : ControllerBase
                                 if (!pre) return StatusCode(502, new { error = $"Falló el step {i + 1} (texto previo al audio)" });
                                 PersistSent(lead, seller, instance, rendered, null);
                                 sent++;
-                                await Task.Delay(InterStepDelayMs, ct);
+                                await Task.Delay(IntraStepDelayMs, ct);
                             }
                             var okv = await _evo.SendVoiceNoteAsync(instance, lead.WhatsappPhone!, asset.Content, ct);
                             if (!okv) return StatusCode(502, new { error = $"Falló el step {i + 1} (audio)" });
@@ -459,7 +485,6 @@ public class LeadsController : ControllerBase
                             sent++;
                         }
                     }
-                    if (i < steps.Count - 1) await Task.Delay(InterStepDelayMs, ct);
                 }
                 catch (Exception ex)
                 {

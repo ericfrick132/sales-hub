@@ -298,9 +298,9 @@ function TestSendPanel({ productId, defaultPrefix, hasSteps }: {
       </div>
 
       <div className="text-xs text-slate-500">
-        Se envían los pasos en orden con un delay corto fijo (no usa los delays reales del producto).
-        Si un paso tiene varias variantes de audio, se manda la <b>primera</b> para que la prueba
-        sea determinística.
+        Se envían los pasos en orden respetando el <b>delay configurado de cada paso</b>
+        (capeado a 10 min). Si un paso tiene varias variantes de audio, se manda la
+        <b>primera</b> para que la prueba sea determinística.
       </div>
 
       <button className="btn-primary" onClick={send} disabled={sending || !hasSteps}>

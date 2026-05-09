@@ -13,8 +13,9 @@ namespace SalesHub.Api.Controllers;
 /// arbitrario, sin pasar por el flujo de leads ni la cola humanizada. Útil
 /// para validar audios/textos/adjuntos antes de habilitar el envío real.
 ///
-/// Manda los steps en orden con un delay corto fijo entre uno y otro
-/// (ignoramos el delaySeconds real del producto — esto es para previewing).
+/// Manda los steps en orden RESPETANDO el delaySeconds configurado del paso,
+/// con un cap de 10 minutos para no colgar la request. Si tu delay real es
+/// mayor, usá el flujo real (asignar lead + queue) en vez del panel de prueba.
 /// Si el step tiene varios audios, mandamos el primero (no rotamos: la prueba
 /// quiere ser determinística).
 /// </summary>
@@ -23,7 +24,10 @@ namespace SalesHub.Api.Controllers;
 [Authorize]
 public class TestSendController : ControllerBase
 {
-    private const int InterStepDelayMs = 1500;
+    private const int MaxStepDelaySeconds = 600;
+    // Delay corto fijo entre el texto previo y el audio dentro de un mismo
+    // step (legacy; los steps nuevos no permiten texto + audio en el mismo).
+    private const int IntraStepDelayMs = 1500;
 
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
@@ -78,6 +82,14 @@ public class TestSendController : ControllerBase
             var hasMedia = step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 });
             if (string.IsNullOrWhiteSpace(step.Text) && !hasMedia) continue;
 
+            // Esperar el delay configurado del paso antes de enviarlo. El step 0
+            // siempre arranca inmediato. Capeo a 10 min para no colgar la request.
+            if (i > 0)
+            {
+                var d = Math.Min(Math.Max(0, step.DelaySeconds), MaxStepDelaySeconds);
+                if (d > 0) await Task.Delay(d * 1000, ct);
+            }
+
             var rendered = string.IsNullOrWhiteSpace(step.Text)
                 ? string.Empty
                 : _renderer.RenderTemplate(step.Text, fakeLead, product, seller);
@@ -110,7 +122,7 @@ public class TestSendController : ControllerBase
                         {
                             var pre = await _evo.SendTextAsync(instance, phone, rendered, ct);
                             if (!pre) return StatusCode(502, new { error = $"Falló el step {i + 1} (texto previo al audio)" });
-                            await Task.Delay(InterStepDelayMs, ct);
+                            await Task.Delay(IntraStepDelayMs, ct);
                         }
                         var okv = await _evo.SendVoiceNoteAsync(instance, phone, asset.Content, ct);
                         if (!okv) return StatusCode(502, new { error = $"Falló el step {i + 1} (audio)" });
@@ -123,7 +135,6 @@ public class TestSendController : ControllerBase
                     }
                 }
                 sentSteps++;
-                if (i < steps.Count - 1) await Task.Delay(InterStepDelayMs, ct);
             }
             catch (Exception ex)
             {
