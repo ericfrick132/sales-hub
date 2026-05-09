@@ -98,9 +98,15 @@ export default function MyZonesMap() {
     const ids = Array.from(gid2Set);
     map.setFilter('localities-fill', ['in', ['get', 'gid2'], ['literal', ids]]);
     map.setFilter('localities-outline', ['in', ['get', 'gid2'], ['literal', ids]]);
-    if (zones.length > 0) {
+    // Filtrar zonas con centroide inválido (NaN, null o (0,0) que en localidades
+    // LATAM siempre indica un row sin geocode). Si no quedan válidas, dejamos
+    // el viewport como estaba en vez de tirar maplibre con LngLat NaN.
+    const valid = zones.filter(z =>
+      Number.isFinite(z.centroidLat) && Number.isFinite(z.centroidLng)
+      && !(z.centroidLat === 0 && z.centroidLng === 0));
+    if (valid.length > 0) {
       const bounds = new maplibregl.LngLatBounds();
-      zones.forEach(z => bounds.extend([z.centroidLng, z.centroidLat]));
+      valid.forEach(z => bounds.extend([z.centroidLng, z.centroidLat]));
       map.fitBounds(bounds, { padding: 40, duration: 600, maxZoom: 11 });
     }
   }, [mapReady, zones, gid2Set]);
