@@ -62,11 +62,19 @@ public class TestSendController : ControllerBase
             .FirstOrDefaultAsync(s => s.Id == req.SellerId, ct);
         if (seller?.EvolutionInstance is null) return BadRequest(new { error = "Vendedor sin instancia Evolution" });
 
-        // Re-verificar live si la DB dice Disconnected — InstanceMonitor
-        // puede estar stale entre ticks.
+        // Re-verificar live + intento de despertar si la DB dice no-Connected.
+        // Misma lógica que send-now: las sesiones de Baileys entran en idle
+        // y vuelven con un instance/connect.
         if (seller.EvolutionInstance.Status != InstanceStatus.Connected)
         {
-            var live = await _evo.GetInstanceStatusAsync(seller.EvolutionInstance.InstanceName, ct);
+            var instanceName = seller.EvolutionInstance.InstanceName;
+            var live = await _evo.GetInstanceStatusAsync(instanceName, ct);
+            if (live.Status is not "open" and not "connected")
+            {
+                await _evo.GetQrCodeAsync(instanceName, ct);
+                await Task.Delay(800, ct);
+                live = await _evo.GetInstanceStatusAsync(instanceName, ct);
+            }
             if (live.Status is not "open" and not "connected")
                 return BadRequest(new { error = $"La instancia no está conectada (status real: {live.Status})" });
             seller.EvolutionInstance.Status = InstanceStatus.Connected;

@@ -395,15 +395,23 @@ public class LeadsController : ControllerBase
         if (seller.EvolutionInstance is null)
             return BadRequest(new { error = $"El vendedor {seller.DisplayName} no tiene WhatsApp configurado." });
 
-        // Si la DB dice Disconnected, re-verificamos live con Evolution antes
-        // de fallar — el InstanceMonitor puede tener el flag stale entre
-        // ticks. Si Evolution dice "open"/"connected", sincronizamos la DB y
-        // seguimos.
+        // Si la DB dice no-Connected, re-verificamos live. Y si Evolution
+        // también dice "close"/"disconnected", intentamos despertar la
+        // instancia con instance/connect (lo mismo que hace /connect en el
+        // frontend antes de mostrar el status). Las sesiones de Baileys
+        // entran en idle silencioso después de un rato sin uso, pero el
+        // WhatsApp sigue vinculado — el connect las reanima.
         if (seller.EvolutionInstance.Status != InstanceStatus.Connected)
         {
-            var live = await _evo.GetInstanceStatusAsync(seller.EvolutionInstance.InstanceName, ct);
-            var liveConnected = live.Status is "open" or "connected";
-            if (!liveConnected)
+            var instanceName = seller.EvolutionInstance.InstanceName;
+            var live = await _evo.GetInstanceStatusAsync(instanceName, ct);
+            if (live.Status is not "open" and not "connected")
+            {
+                await _evo.GetQrCodeAsync(instanceName, ct);
+                await Task.Delay(800, ct);
+                live = await _evo.GetInstanceStatusAsync(instanceName, ct);
+            }
+            if (live.Status is not "open" and not "connected")
             {
                 var hint = seller.Id == callerId
                     ? "Andá a /connect y escaneá el QR."
