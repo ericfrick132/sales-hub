@@ -140,6 +140,13 @@ public class EvolutionClient : IEvolutionClient
             ogg = await ConvertToOggOpusAsync(audio, ct);
             _log.LogInformation("ffmpeg ok: {InBytes}b → {OutBytes}b, signature={Sig}",
                 audio.Length, ogg.Length, BytesSignature(ogg));
+            // Diagnóstico temporal: dejar el último input/output para inspección.
+            try
+            {
+                await File.WriteAllBytesAsync("/tmp/saleshub-last-input.bin", audio, ct);
+                await File.WriteAllBytesAsync("/tmp/saleshub-last-output.ogg", ogg, ct);
+            }
+            catch { /* no-op */ }
         }
         catch (Exception ex)
         {
