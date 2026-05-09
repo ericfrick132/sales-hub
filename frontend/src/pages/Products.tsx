@@ -391,6 +391,27 @@ function StepsEditor({ productKey, steps, onChange }: { productKey: string; step
   function clearStepMedia(stepIndex: number) {
     update(stepIndex, { mediaAssetId: null, mediaAssetIds: [] });
   }
+  /// Saca el texto del paso de audio y lo mete en un paso NUEVO antes,
+  /// con delay 0. El paso de audio queda con su delay original — así el
+  /// seller controla cuánto tiempo pasa entre el texto y el audio.
+  function splitTextFromAudio(stepIndex: number) {
+    const cur = steps[stepIndex];
+    const audioOnly: MessageStep = { ...cur, text: '' };
+    const textStep: MessageStep = {
+      text: cur.text,
+      delaySeconds: stepIndex === 0 ? 0 : cur.delaySeconds,
+      mediaAssetId: null,
+      mediaAssetIds: []
+    };
+    // El paso de audio hereda el delay relativo al texto que acabamos de
+    // crear. Si era el primer paso, el texto queda en posición 0 (delay 0)
+    // y el audio en 1 con un delay default razonable.
+    if (stepIndex === 0) audioOnly.delaySeconds = 60;
+    else audioOnly.delaySeconds = 60;
+    const next = [...steps];
+    next.splice(stepIndex, 1, textStep, audioOnly);
+    onChange(next);
+  }
 
   return (
     <div className="space-y-2">
@@ -439,16 +460,37 @@ function StepsEditor({ productKey, steps, onChange }: { productKey: string; step
                   onClick={() => remove(i)} title="Eliminar">×</button>
               </div>
             </div>
-            <textarea
-              className="input min-h-20 font-mono text-sm w-full"
-              placeholder={firstAsset
-                ? (isAudioStep
-                    ? 'Texto opcional (sale como mensaje separado antes del audio)'
-                    : 'Caption opcional (texto que va con el archivo)')
-                : (i === 0 ? 'ej. {Hola!|Buenas!} {name}, ...' : 'ej. te dejo el link: {checkout_url}')}
-              value={s.text}
-              onChange={(e) => update(i, { text: e.target.value })}
-            />
+            {!isAudioStep && (
+              <textarea
+                className="input min-h-20 font-mono text-sm w-full"
+                placeholder={firstAsset
+                  ? 'Caption opcional (texto que va con el archivo)'
+                  : (i === 0 ? 'ej. {Hola!|Buenas!} {name}, ...' : 'ej. te dejo el link: {checkout_url}')}
+                value={s.text}
+                onChange={(e) => update(i, { text: e.target.value })}
+              />
+            )}
+            {isAudioStep && s.text.trim().length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs space-y-1">
+                <div className="text-amber-800">
+                  Este paso tiene texto + audio. Hoy el texto sale antes del audio sin delay
+                  configurable. Para tener delay propio, separá en dos pasos.
+                </div>
+                <details>
+                  <summary className="cursor-pointer text-amber-700 hover:text-amber-900">
+                    Texto actual (click para ver)
+                  </summary>
+                  <div className="font-mono whitespace-pre-wrap text-slate-700 mt-1 bg-white border border-amber-200 rounded p-2">
+                    {s.text}
+                  </div>
+                </details>
+                <button type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => splitTextFromAudio(i)}>
+                  Separar el texto en un paso aparte
+                </button>
+              </div>
+            )}
 
             {variantAssets.length === 0 && (
               <EmptyAttachment onPick={(file) => handleUpload(i, file)} />
