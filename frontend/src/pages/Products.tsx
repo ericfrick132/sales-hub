@@ -387,7 +387,9 @@ function StepsEditor({ productKey, steps, onChange }: { productKey: string; step
             <textarea
               className="input min-h-20 font-mono text-sm w-full"
               placeholder={asset
-                ? 'Caption opcional (texto que va con el archivo)'
+                ? (asset.mimeType.startsWith('audio/')
+                    ? 'Texto opcional (sale como mensaje separado antes del audio)'
+                    : 'Caption opcional (texto que va con el archivo)')
                 : (i === 0 ? 'ej. {Hola!|Buenas!} {name}, ...' : 'ej. te dejo el link: {checkout_url}')}
               value={s.text}
               onChange={(e) => update(i, { text: e.target.value })}
@@ -411,6 +413,7 @@ function AttachmentSlot({ asset, onPick, onRemove }: {
 }) {
   const inputId = `att-${Math.random().toString(36).slice(2, 8)}`;
   const isImage = asset?.mimeType.startsWith('image/');
+  const isAudio = asset?.mimeType.startsWith('audio/');
   // Preview va directo al backend (no pasa por el axios client), así que armamos
   // la URL completa con la base usada por el resto de la app.
   const apiBase = (import.meta.env.VITE_API_URL ?? '/api').replace(/\/$/, '');
@@ -418,21 +421,35 @@ function AttachmentSlot({ asset, onPick, onRemove }: {
 
   if (asset) {
     return (
-      <div className="flex items-center gap-2 text-xs bg-white border border-slate-200 rounded p-2">
-        {isImage && previewUrl ? (
-          <img src={previewUrl} alt={asset.fileName} className="w-12 h-12 object-cover rounded border border-slate-200" />
-        ) : (
-          <div className="w-12 h-12 rounded border border-slate-200 grid place-items-center bg-slate-50 text-slate-400">
-            📄
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-xs bg-white border border-slate-200 rounded p-2">
+          {isImage && previewUrl ? (
+            <img src={previewUrl} alt={asset.fileName} className="w-12 h-12 object-cover rounded border border-slate-200" />
+          ) : (
+            <div className="w-12 h-12 rounded border border-slate-200 grid place-items-center bg-slate-50 text-slate-400">
+              {isAudio ? '🎤' : '📄'}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="font-medium truncate">{asset.fileName}</div>
+            <div className="text-slate-500 text-[11px]">
+              {asset.mimeType} · {(asset.sizeBytes / 1024).toFixed(0)} KB
+              {isAudio && <span className="ml-1 text-emerald-700">· se envía como nota de voz</span>}
+            </div>
+            {isAudio && previewUrl && (
+              <audio controls preload="none" className="w-full mt-1 h-8">
+                <source src={previewUrl} type={asset.mimeType} />
+              </audio>
+            )}
+          </div>
+          <button type="button" className="btn-secondary text-xs text-rose-600" onClick={onRemove}>Quitar</button>
+        </div>
+        {isAudio && (
+          <div className="text-[11px] text-slate-400 pl-1">
+            WhatsApp no permite caption en notas de voz: si dejás texto en el paso, se manda
+            como mensaje separado ANTES del audio.
           </div>
         )}
-        <div className="flex-1 min-w-0">
-          <div className="font-medium truncate">{asset.fileName}</div>
-          <div className="text-slate-500 text-[11px]">
-            {asset.mimeType} · {(asset.sizeBytes / 1024).toFixed(0)} KB
-          </div>
-        </div>
-        <button type="button" className="btn-secondary text-xs text-rose-600" onClick={onRemove}>Quitar</button>
       </div>
     );
   }
@@ -441,9 +458,9 @@ function AttachmentSlot({ asset, onPick, onRemove }: {
     <label htmlFor={inputId}
       className="flex items-center gap-2 text-xs border border-dashed border-slate-300 rounded p-2 cursor-pointer hover:bg-slate-50">
       <span className="text-lg">📎</span>
-      <span className="flex-1 text-slate-500">Adjuntar imagen o PDF (opcional)</span>
+      <span className="flex-1 text-slate-500">Adjuntar audio (nota de voz), imagen o PDF (opcional)</span>
       <input id={inputId} type="file" className="hidden"
-        accept="image/*,application/pdf"
+        accept="audio/*,image/*,application/pdf"
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) onPick(f);

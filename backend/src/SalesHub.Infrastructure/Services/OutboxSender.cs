@@ -108,10 +108,28 @@ public class OutboxSender
                     {
                         throw new InvalidOperationException($"MediaAsset {next.MediaAssetId} no existe");
                     }
-                    var caption = string.IsNullOrWhiteSpace(next.Message) ? null : next.Message;
-                    ok = await _evo.SendMediaAsync(
-                        seller.EvolutionInstance.InstanceName, next.WhatsappPhone,
-                        asset.Content, asset.MimeType, asset.FileName, caption, ct);
+                    if (asset.MimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Audio → se manda como nota de voz (PTT), no como adjunto. WhatsApp
+                        // no soporta caption en notas de voz; si el step trae texto, lo
+                        // mandamos como mensaje separado ANTES del audio (orden natural:
+                        // primero contexto, después la nota de voz).
+                        if (!string.IsNullOrWhiteSpace(next.Message))
+                        {
+                            var pre = await _evo.SendTextAsync(seller.EvolutionInstance.InstanceName, next.WhatsappPhone, next.Message, ct);
+                            if (!pre) throw new InvalidOperationException("Evolution rechazó el texto previo al audio");
+                        }
+                        ok = await _evo.SendVoiceNoteAsync(
+                            seller.EvolutionInstance.InstanceName, next.WhatsappPhone,
+                            asset.Content, ct);
+                    }
+                    else
+                    {
+                        var caption = string.IsNullOrWhiteSpace(next.Message) ? null : next.Message;
+                        ok = await _evo.SendMediaAsync(
+                            seller.EvolutionInstance.InstanceName, next.WhatsappPhone,
+                            asset.Content, asset.MimeType, asset.FileName, caption, ct);
+                    }
                 }
                 else
                 {
