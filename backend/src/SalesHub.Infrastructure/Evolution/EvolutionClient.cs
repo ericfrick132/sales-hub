@@ -138,10 +138,12 @@ public class EvolutionClient : IEvolutionClient
         try
         {
             ogg = await ConvertToOggOpusAsync(audio, ct);
+            _log.LogInformation("ffmpeg ok: {InBytes}b → {OutBytes}b, signature={Sig}",
+                audio.Length, ogg.Length, BytesSignature(ogg));
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "ffmpeg convert failed; mando audio raw a Evolution con encoding=true como fallback");
+            _log.LogWarning(ex, "ffmpeg convert FAILED; mando audio raw a Evolution con encoding=true como fallback");
             ogg = audio;
         }
 
@@ -216,6 +218,19 @@ public class EvolutionClient : IEvolutionClient
         using var ms = new MemoryStream();
         await s.CopyToAsync(ms, ct);
         return ms.ToArray();
+    }
+
+    private static string BytesSignature(byte[] b)
+    {
+        var n = Math.Min(b.Length, 4);
+        var hex = new System.Text.StringBuilder(2 * n + n);
+        for (var i = 0; i < n; i++)
+        {
+            hex.Append(b[i].ToString("X2"));
+            if (i < n - 1) hex.Append(' ');
+        }
+        var ascii = System.Text.Encoding.ASCII.GetString(b, 0, n);
+        return $"{hex} ('{ascii}')";
     }
 
     public async Task<bool> SendMediaAsync(string instanceName, string jid, byte[] content, string mimeType, string fileName, string? caption, CancellationToken ct = default)
