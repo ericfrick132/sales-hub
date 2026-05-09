@@ -6,6 +6,22 @@
     <title>SalesHub</title>
   </head>
   <body class="bg-slate-50 text-slate-900">
+    <!--
+      Spa-github-pages: si llegamos vía 404.html, viene encodeado en ?/<path>.
+      Lo desempacamos y replaceState ANTES de cargar el bundle, así react-router
+      ve la ruta original y no /.
+    -->
+    <script>
+      (function (l) {
+        if (l.search && l.search.charAt(1) === '/') {
+          var decoded = l.search.slice(1).split('&').map(function (s) {
+            return s.replace(/~and~/g, '&');
+          }).join('?');
+          window.history.replaceState(null, '',
+            l.pathname.slice(0, -1) + decoded.replace(/~/g, '/') + l.hash);
+        }
+      })(window.location);
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

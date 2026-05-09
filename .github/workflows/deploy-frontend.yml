@@ -37,7 +37,29 @@ jobs:
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ vars.VITE_GOOGLE_OAUTH_CLIENT_ID }}
       - name: SPA 404 fallback + CNAME
         run: |
-          cp dist/index.html dist/404.html
+          # 404.html "spa-github-pages": redirige preservando el path como
+          # ?/<path>, así index.html lo desempaca en lugar de servir status 404
+          # con la SPA. Ver script en frontend/index.html.
+          cat > dist/404.html <<'HTML'
+          <!doctype html>
+          <html lang="es">
+          <head>
+          <meta charset="utf-8">
+          <title>SalesHub</title>
+          <script>
+            (function (l) {
+              l.replace(
+                l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+                '/?/' + l.pathname.slice(1).replace(/&/g, '~and~').replace(/\//g, '~') +
+                (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+                l.hash
+              );
+            })(window.location);
+          </script>
+          </head>
+          <body></body>
+          </html>
+          HTML
           echo "sales.efcloud.tech" > dist/CNAME
       - uses: actions/upload-pages-artifact@v3
         with:
