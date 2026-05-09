@@ -79,39 +79,6 @@ public static class DatabaseSeeder
             },
             new()
             {
-                Id = Guid.NewGuid(), ProductKey = "bookingpro_barber", DisplayName = "TurnosPro — Barbería",
-                Active = true, Country = "AR", CountryName = "Argentina", RegionCode = "ar",
-                Language = "es", PhonePrefix = "54",
-                Categories = new() { "barbería", "peluquería masculina", "barber shop" },
-                MessageTemplate = "{Hola!|Buenas!|Qué tal!} Soy {seller}. Vi {name} en {city}. ¿Cómo toman los turnos hoy? TurnosPro automatiza reservas + cobros + recordatorios por WhatsApp en un link.\n\n7 días gratis, sin tarjeta:\n{checkout_url}\n\nCualquier duda me escribís por acá!",
-                CheckoutUrl = "https://turnos-pro.com/register?vertical=barbershop",
-                PriceDisplay = "desde $15.000/mes", DailyLimit = 60,
-                TriggerHours = new() { 11, 15, 19 }
-            },
-            new()
-            {
-                Id = Guid.NewGuid(), ProductKey = "bookingpro_salon", DisplayName = "TurnosPro — Salón",
-                Active = true, Country = "AR", CountryName = "Argentina", RegionCode = "ar",
-                Language = "es", PhonePrefix = "54",
-                Categories = new() { "peluquería", "salón de belleza", "estética", "spa", "manicuría" },
-                MessageTemplate = "{Hola!|Buenas!} Soy {seller}. Vi {name} en {city}. ¿Siguen tomando turnos por WhatsApp o cuaderno?\n\nTurnosPro los toma online, manda recordatorios automáticos y cobra señas por Mercado Pago. 7 días gratis, sin tarjeta:\n{checkout_url}",
-                CheckoutUrl = "https://turnos-pro.com/register?vertical=beautysalon",
-                PriceDisplay = "desde $15.000/mes", DailyLimit = 60,
-                TriggerHours = new() { 11, 15, 19 }
-            },
-            new()
-            {
-                Id = Guid.NewGuid(), ProductKey = "bookingpro_aesthetics", DisplayName = "TurnosPro — Estética",
-                Active = false, Country = "AR", CountryName = "Argentina", RegionCode = "ar",
-                Language = "es", PhonePrefix = "54",
-                Categories = new() { "centro de estética", "dermatología estética", "spa facial" },
-                MessageTemplate = "Hola! Soy {seller}. Vi {name} en {city}. ¿Cómo gestionan la agenda del centro? TurnosPro: turnos + cobros + recordatorios. 7 días gratis: {checkout_url}",
-                CheckoutUrl = "https://turnos-pro.com/register?vertical=aesthetics",
-                PriceDisplay = "desde $20.000/mes", DailyLimit = 40,
-                TriggerHours = new() { 12, 16 }
-            },
-            new()
-            {
                 Id = Guid.NewGuid(), ProductKey = "unistock", DisplayName = "UniStock",
                 Active = true, Country = "AR", CountryName = "Argentina", RegionCode = "ar",
                 Language = "es", PhonePrefix = "54",

@@ -73,8 +73,7 @@ export default function Products() {
           <Field label="Nombre"><input className="input" value={draft.displayName} onChange={(e) => onChange('displayName', e.target.value)} /></Field>
         </div>
         <Field label="Categorías de búsqueda Google Maps (coma)">
-          <input className="input" value={draft.categories.join(', ')}
-            onChange={(e) => onChange('categories', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} />
+          <CategoriesInput value={draft.categories} onChange={(v) => onChange('categories', v)} />
         </Field>
 
         {/* Resto colapsado — casi nunca se toca después de crear */}
@@ -346,6 +345,37 @@ function TestSendPanel({ productId, defaultPrefix, hasSteps, categories, overrid
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><div className="text-xs text-slate-500 mb-1">{label}</div>{children}</label>;
+}
+
+/// Input de lista separada por comas. Como ReplyTemplatesEditor: mantiene el
+/// texto crudo mientras el seller tipea (de otra forma split+trim+join se
+/// come la coma final apenas la apretás y no podés agregar más items).
+function CategoriesInput({ value, onChange }: {
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [raw, setRaw] = useState(() => value.join(', '));
+  useEffect(() => {
+    const canonical = value.join(', ');
+    setRaw((prev) => {
+      // Si lo que el seller está tipeando, una vez normalizado, equivale al
+      // canónico, no pisamos el draft (preserva commas trailing y espacios).
+      const norm = prev.split(',').map((s) => s.trim()).filter(Boolean).join(', ');
+      return norm === canonical ? prev : canonical;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.join(',')]);
+
+  function commit(text: string) {
+    onChange(text.split(',').map((s) => s.trim()).filter(Boolean));
+  }
+
+  return (
+    <input className="input" value={raw}
+      onChange={(e) => setRaw(e.target.value)}
+      onBlur={() => commit(raw)}
+    />
+  );
 }
 
 /// Mantiene el texto crudo del textarea mientras el seller tipea (no podés
