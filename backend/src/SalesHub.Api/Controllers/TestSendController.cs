@@ -2,93 +2,136 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Abstractions;
+using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Api.Controllers;
 
 /// <summary>
-/// Envío 1-a-1 ad-hoc desde el panel de admin. Sirve para testear que Evolution
-/// está respondiendo, probar mensajes de voz / imágenes / PDFs antes de
-/// activarlos en el flujo automático.
+/// Probar la cadencia configurada del producto disparándola contra un número
+/// arbitrario, sin pasar por el flujo de leads ni la cola humanizada. Útil
+/// para validar audios/textos/adjuntos antes de habilitar el envío real.
+///
+/// Manda los steps en orden con un delay corto fijo entre uno y otro
+/// (ignoramos el delaySeconds real del producto — esto es para previewing).
+/// Si el step tiene varios audios, mandamos el primero (no rotamos: la prueba
+/// quiere ser determinística).
 /// </summary>
 [ApiController]
 [Route("api/test-send")]
 [Authorize]
 public class TestSendController : ControllerBase
 {
+    private const int InterStepDelayMs = 1500;
+
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
+    private readonly IMessageRenderer _renderer;
+    private readonly ILogger<TestSendController> _log;
 
-    public TestSendController(ApplicationDbContext db, IEvolutionClient evo)
+    public TestSendController(ApplicationDbContext db, IEvolutionClient evo, IMessageRenderer renderer, ILogger<TestSendController> log)
     {
-        _db = db; _evo = evo;
+        _db = db; _evo = evo; _renderer = renderer; _log = log;
     }
 
-    public record TestTextRequest(Guid SellerId, string Phone, string Text);
+    public record CadenceRequest(Guid ProductId, Guid SellerId, string Phone);
 
-    /// <summary>Manda un mensaje de texto.</summary>
-    [HttpPost("text")]
-    public async Task<IActionResult> SendText([FromBody] TestTextRequest req, CancellationToken ct)
+    [HttpPost("cadence")]
+    public async Task<IActionResult> SendCadence([FromBody] CadenceRequest req, CancellationToken ct)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
-        var (instance, phone, err) = await ResolveAsync(req.SellerId, req.Phone, ct);
-        if (err is not null) return BadRequest(new { error = err });
-        if (string.IsNullOrWhiteSpace(req.Text)) return BadRequest(new { error = "Texto vacío" });
+        if (req.ProductId == Guid.Empty) return BadRequest(new { error = "productId requerido" });
+        if (req.SellerId == Guid.Empty) return BadRequest(new { error = "sellerId requerido" });
 
-        var ok = await _evo.SendTextAsync(instance!, phone!, req.Text, ct);
-        if (!ok) return StatusCode(502, new { error = "Falló el envío vía Evolution" });
-        return Ok(new { ok = true });
-    }
+        var phone = new string((req.Phone ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (string.IsNullOrEmpty(phone)) return BadRequest(new { error = "Número inválido (incluí prefijo de país)" });
 
-    /// <summary>Manda un audio como nota de voz (PTT). Multipart: file=audio.</summary>
-    [HttpPost("voice")]
-    [RequestSizeLimit(50_000_000)]
-    public async Task<IActionResult> SendVoice([FromForm] Guid sellerId, [FromForm] string phone, IFormFile file, CancellationToken ct)
-    {
-        if (!CurrentUser.IsAdmin(User)) return Forbid();
-        if (file is null || file.Length == 0) return BadRequest(new { error = "Falta archivo de audio" });
-        var (instance, normalized, err) = await ResolveAsync(sellerId, phone, ct);
-        if (err is not null) return BadRequest(new { error = err });
-
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms, ct);
-
-        var ok = await _evo.SendVoiceNoteAsync(instance!, normalized!, ms.ToArray(), ct);
-        if (!ok) return StatusCode(502, new { error = "Falló el envío vía Evolution" });
-        return Ok(new { ok = true });
-    }
-
-    /// <summary>Manda imagen / PDF / documento. Multipart: file + caption opcional.</summary>
-    [HttpPost("media")]
-    [RequestSizeLimit(50_000_000)]
-    public async Task<IActionResult> SendMedia([FromForm] Guid sellerId, [FromForm] string phone, IFormFile file, [FromForm] string? caption, CancellationToken ct)
-    {
-        if (!CurrentUser.IsAdmin(User)) return Forbid();
-        if (file is null || file.Length == 0) return BadRequest(new { error = "Falta archivo" });
-        var (instance, normalized, err) = await ResolveAsync(sellerId, phone, ct);
-        if (err is not null) return BadRequest(new { error = err });
-
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms, ct);
-
-        var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType;
-        var ok = await _evo.SendMediaAsync(instance!, normalized!, ms.ToArray(), mime, file.FileName, caption, ct);
-        if (!ok) return StatusCode(502, new { error = "Falló el envío vía Evolution" });
-        return Ok(new { ok = true });
-    }
-
-    private async Task<(string? instance, string? phone, string? error)> ResolveAsync(Guid sellerId, string? phoneRaw, CancellationToken ct)
-    {
-        if (sellerId == Guid.Empty) return (null, null, "sellerId requerido");
-        var phone = new string((phoneRaw ?? string.Empty).Where(char.IsDigit).ToArray());
-        if (string.IsNullOrEmpty(phone)) return (null, null, "Número inválido (incluí prefijo de país)");
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == req.ProductId, ct);
+        if (product is null) return NotFound(new { error = "Producto no existe" });
 
         var seller = await _db.Sellers.Include(s => s.EvolutionInstance)
-            .FirstOrDefaultAsync(s => s.Id == sellerId, ct);
-        if (seller?.EvolutionInstance is null) return (null, null, "Vendedor sin instancia Evolution");
-        if (seller.EvolutionInstance.Status != InstanceStatus.Connected) return (null, null, "La instancia no está conectada");
+            .FirstOrDefaultAsync(s => s.Id == req.SellerId, ct);
+        if (seller?.EvolutionInstance is null) return BadRequest(new { error = "Vendedor sin instancia Evolution" });
+        if (seller.EvolutionInstance.Status != InstanceStatus.Connected) return BadRequest(new { error = "La instancia no está conectada" });
 
-        return (seller.EvolutionInstance.InstanceName, phone, null);
+        var steps = product.MessageSteps ?? new();
+        if (steps.Count == 0) return BadRequest(new { error = "El producto no tiene cadencia configurada" });
+
+        var instance = seller.EvolutionInstance.InstanceName;
+
+        // Lead "fake" para que el renderer pueda llenar placeholders. Usamos
+        // valores neutros que sirven para preview.
+        var fakeLead = new Lead
+        {
+            Name = "(prueba)",
+            City = "",
+            Province = "",
+            ProductKey = product.ProductKey,
+            WhatsappPhone = phone
+        };
+
+        var sentSteps = 0;
+        for (var i = 0; i < steps.Count; i++)
+        {
+            var step = steps[i];
+            var hasMedia = step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 });
+            if (string.IsNullOrWhiteSpace(step.Text) && !hasMedia) continue;
+
+            var rendered = string.IsNullOrWhiteSpace(step.Text)
+                ? string.Empty
+                : _renderer.RenderTemplate(step.Text, fakeLead, product, seller);
+
+            // Resolver el asset del step:
+            // - Si tiene variantes, mandamos la primera (test determinístico, no rota).
+            // - Si tiene mediaAssetId legacy, ese.
+            // - Si no, solo texto.
+            Guid? mediaAssetId = step.MediaAssetIds is { Count: > 0 } ? step.MediaAssetIds[0] : step.MediaAssetId;
+
+            try
+            {
+                if (mediaAssetId is null)
+                {
+                    if (!string.IsNullOrWhiteSpace(rendered))
+                    {
+                        var ok = await _evo.SendTextAsync(instance, phone, rendered, ct);
+                        if (!ok) return StatusCode(502, new { error = $"Falló el step {i + 1} (texto)" });
+                    }
+                }
+                else
+                {
+                    var asset = await _db.MediaAssets.AsNoTracking()
+                        .FirstOrDefaultAsync(m => m.Id == mediaAssetId, ct);
+                    if (asset is null) return BadRequest(new { error = $"Step {i + 1}: media no existe" });
+
+                    if (asset.MimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!string.IsNullOrWhiteSpace(rendered))
+                        {
+                            var pre = await _evo.SendTextAsync(instance, phone, rendered, ct);
+                            if (!pre) return StatusCode(502, new { error = $"Falló el step {i + 1} (texto previo al audio)" });
+                            await Task.Delay(InterStepDelayMs, ct);
+                        }
+                        var okv = await _evo.SendVoiceNoteAsync(instance, phone, asset.Content, ct);
+                        if (!okv) return StatusCode(502, new { error = $"Falló el step {i + 1} (audio)" });
+                    }
+                    else
+                    {
+                        var caption = string.IsNullOrWhiteSpace(rendered) ? null : rendered;
+                        var okm = await _evo.SendMediaAsync(instance, phone, asset.Content, asset.MimeType, asset.FileName, caption, ct);
+                        if (!okm) return StatusCode(502, new { error = $"Falló el step {i + 1} (adjunto)" });
+                    }
+                }
+                sentSteps++;
+                if (i < steps.Count - 1) await Task.Delay(InterStepDelayMs, ct);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "TestSend cadence step {Step} failed", i + 1);
+                return StatusCode(502, new { error = $"Step {i + 1}: {ex.Message}" });
+            }
+        }
+
+        return Ok(new { ok = true, sentSteps, totalSteps = steps.Count });
     }
 }

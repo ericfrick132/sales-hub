@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -44,9 +44,21 @@ export default function Conversations() {
   const [reply, setReply] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
 
+  const [productFilter, setProductFilter] = useState('');
+  const [days, setDays] = useState(30);
+  const fromTs = useMemo(() => {
+    if (!days) return undefined;
+    return new Date(Date.now() - days * 86400_000).toISOString();
+  }, [days]);
+
   const list = useQuery({
-    queryKey: ['conversations'],
-    queryFn: async () => (await api.get<ListItem[]>('/conversations')).data,
+    queryKey: ['conversations', productFilter, days],
+    queryFn: async () => (await api.get<ListItem[]>('/conversations', {
+      params: {
+        productKey: productFilter || undefined,
+        from: fromTs
+      }
+    })).data,
     refetchInterval: 15000
   });
 
@@ -87,9 +99,38 @@ export default function Conversations() {
           'md:col-span-4 card overflow-y-auto min-h-0',
           selected ? 'hidden md:block' : 'flex-1 md:flex-none'
         )}>
-        <div className="p-3 border-b border-slate-100">
-          <h2 className="font-semibold text-lg">Conversaciones</h2>
-          <p className="text-xs text-slate-500">Leads que te respondieron o a los que ya escribiste.</p>
+        <div className="p-3 border-b border-slate-100 space-y-2">
+          <div>
+            <h2 className="font-semibold text-lg">Conversaciones</h2>
+            <p className="text-xs text-slate-500">Leads que te respondieron o a los que ya escribiste.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <div className="flex-1 min-w-[120px]">
+              <label className="text-[11px] text-slate-500 block">Producto</label>
+              <select
+                className="input text-sm w-full"
+                value={productFilter}
+                onChange={(e) => setProductFilter(e.target.value)}>
+                <option value="">Todos</option>
+                {(productsQ.data ?? []).map((p) => (
+                  <option key={p.productKey} value={p.productKey}>{p.displayName}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[120px]">
+              <label className="text-[11px] text-slate-500 block">Período</label>
+              <select
+                className="input text-sm w-full"
+                value={days}
+                onChange={(e) => setDays(Number(e.target.value))}>
+                <option value={0}>Sin límite</option>
+                <option value={7}>7 días</option>
+                <option value={30}>30 días</option>
+                <option value={90}>90 días</option>
+                <option value={365}>1 año</option>
+              </select>
+            </div>
+          </div>
         </div>
         {list.isLoading && <div className="p-4 text-sm text-slate-500">Cargando…</div>}
         {list.data?.length === 0 && (

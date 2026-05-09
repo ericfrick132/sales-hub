@@ -2,8 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import QrPanel from '../components/QrPanel';
+import GaugeEditor from '../components/GaugeEditor';
 import { useAuthStore } from '../lib/auth';
-import type { SellerDashboard } from '../lib/types';
+import type { Seller, SellerDashboard } from '../lib/types';
 
 type OutboxStatus = 'Scheduled' | 'Sending' | 'Sent' | 'Failed' | 'Canceled';
 
@@ -61,6 +62,21 @@ export default function Connect() {
     queryFn: async () => (await api.get<OutboxItem[]>('/dashboard/outbox', { params: { limit: 80 } })).data,
     refetchInterval: 10000
   });
+  const meSeller = useQuery({
+    queryKey: ['seller-me'],
+    queryFn: async () => (await api.get<Seller>('/sellers/me')).data
+  });
+
+  async function saveGauges(patch: Partial<Seller>) {
+    try {
+      await api.put(`/sellers/${user.sellerId}`, patch);
+      toast.success('Gauges guardados');
+      qc.invalidateQueries({ queryKey: ['seller-me'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-me'] });
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? 'No se pudo guardar');
+    }
+  }
 
   async function toggleSending(enabled: boolean) {
     try {
@@ -98,6 +114,21 @@ export default function Connect() {
             <div className={`absolute top-0.5 ${m.sendingEnabled ? 'left-5' : 'left-0.5'} w-5 h-5 bg-white rounded-full transition-all`} />
           </div>
         </label>
+      </div>
+
+      <div className="card p-4 md:p-6">
+        <div className="mb-3">
+          <div className="font-semibold">Velocidad de envío</div>
+          <div className="text-xs text-slate-500">
+            Más conservador = menos chance de baneo. El default es Equilibrado;
+            si recién conectaste tu WhatsApp, conviene arrancar en Cauteloso unos días.
+          </div>
+        </div>
+        {meSeller.isLoading || !meSeller.data ? (
+          <div className="text-sm text-slate-500">Cargando…</div>
+        ) : (
+          <GaugeEditor seller={meSeller.data} onSave={saveGauges} />
+        )}
       </div>
 
       <div className="space-y-2">

@@ -30,6 +30,17 @@ public class SellersController : ControllerBase
         return sellers.Select(ToDto).ToList();
     }
 
+    /// <summary>Devuelve el seller logueado (para que él mismo lea sus gauges sin admin).</summary>
+    [HttpGet("me")]
+    public async Task<ActionResult<SellerDto>> Me(CancellationToken ct)
+    {
+        var id = CurrentUser.Id(User);
+        if (id == Guid.Empty) return Forbid();
+        var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (seller is null) return NotFound();
+        return ToDto(seller);
+    }
+
     [HttpPost]
     public async Task<ActionResult<SellerDto>> Create([FromBody] CreateSellerRequest req, CancellationToken ct)
     {
