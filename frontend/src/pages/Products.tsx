@@ -371,6 +371,17 @@ function ReplyTemplatesEditor({ value, onChange }: {
   );
 }
 
+/// Deep copy de un array de MessageStep para que los overrides empiecen como
+/// copia independiente del default — modificar uno no toca el otro.
+function cloneSteps(src: MessageStep[]): MessageStep[] {
+  return (src ?? []).map((s) => ({
+    text: s.text,
+    delaySeconds: s.delaySeconds,
+    mediaAssetId: s.mediaAssetId ?? null,
+    mediaAssetIds: [...(s.mediaAssetIds ?? [])]
+  }));
+}
+
 function CadencesEditor({
   productKey, categories, defaultSteps, overrides, onChangeDefault, onChangeOverrides
 }: {
@@ -389,7 +400,10 @@ function CadencesEditor({
 
   function addOverride(cat: string) {
     if (!cat || overriddenCats.has(cat)) return;
-    onChangeOverrides([...overrides, { category: cat, steps: [] }]);
+    // Pre-cargamos con una copia profunda del default. El seller arranca
+    // editando lo que ya tenía y solo cambia lo específico (típicamente el
+    // texto del primer paso o el audio).
+    onChangeOverrides([...overrides, { category: cat, steps: cloneSteps(defaultSteps) }]);
     setActiveTab(cat);
   }
   function removeOverride(cat: string) {
@@ -399,6 +413,11 @@ function CadencesEditor({
   }
   function updateOverrideSteps(cat: string, steps: MessageStep[]) {
     onChangeOverrides(overrides.map((o) => o.category === cat ? { ...o, steps } : o));
+  }
+  function importDefaultIntoActive() {
+    if (activeTab === '') return;
+    if (!confirm(`Reemplazar los pasos de "${activeTab}" con los del default? Lo editado se pierde.`)) return;
+    updateOverrideSteps(activeTab, cloneSteps(defaultSteps));
   }
 
   const stepsForActiveTab = activeTab === '' ? defaultSteps : (overrideMap.get(activeTab) ?? []);
@@ -439,15 +458,23 @@ function CadencesEditor({
       </div>
 
       {activeTab !== '' && (
-        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded p-2 text-xs">
+        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded p-2 text-xs gap-2 flex-wrap">
           <span>
             Cadencia <b>{activeTab}</b> — solo se usa cuando el lead viene de esa búsqueda.
           </span>
-          <button type="button"
-            className="text-rose-600 hover:underline"
-            onClick={() => removeOverride(activeTab)}>
-            Quitar override
-          </button>
+          <div className="flex gap-3">
+            <button type="button"
+              className="text-emerald-700 hover:underline"
+              title="Reemplaza los pasos actuales con una copia de los del default"
+              onClick={importDefaultIntoActive}>
+              ⤓ Importar del default
+            </button>
+            <button type="button"
+              className="text-rose-600 hover:underline"
+              onClick={() => removeOverride(activeTab)}>
+              Quitar override
+            </button>
+          </div>
         </div>
       )}
 
