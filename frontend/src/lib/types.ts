@@ -83,6 +83,7 @@ export interface Product {
   googlePlacesDailyLeadCap: number;
   replyTemplates: string[];
   messageSteps: MessageStep[];
+  categoryCadences: CategoryCadence[];
 }
 
 export interface MessageStep {
@@ -91,6 +92,13 @@ export interface MessageStep {
   mediaAssetId?: string | null;
   /** Si es audio, podés cargar varias variantes y la app rota round-robin entre ellas. */
   mediaAssetIds?: string[];
+}
+
+/** Override de cadencia para una categoría puntual del producto. Si está, sus
+ *  steps reemplazan al messageSteps default cuando el lead tiene esa categoría. */
+export interface CategoryCadence {
+  category: string;
+  steps: MessageStep[];
 }
 
 export interface MediaAsset {

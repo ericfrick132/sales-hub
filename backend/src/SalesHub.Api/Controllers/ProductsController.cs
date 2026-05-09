@@ -143,21 +143,36 @@ public class ProductsController : ControllerBase
             .Select(s => s?.Trim() ?? string.Empty)
             .Where(s => s.Length > 0)
             .ToList();
-        p.MessageSteps = (r.MessageSteps ?? new())
-            // Un step válido tiene texto o media (legacy o variantes nuevas).
+        p.MessageSteps = MapSteps(r.MessageSteps);
+        p.CategoryCadences = (r.CategoryCadences ?? new())
+            .Where(c => !string.IsNullOrWhiteSpace(c.Category))
+            .GroupBy(c => c.Category.Trim())
+            .Select(g => new CategoryCadence
+            {
+                Category = g.Key,
+                Steps = MapSteps(g.Last().Steps)  // si hay duplicados, último gana
+            })
+            // Tirar overrides vacíos: si la categoría no tiene ningún step,
+            // que caiga al default. No vale la pena guardar el override.
+            .Where(c => c.Steps.Count > 0)
+            .ToList();
+        return p;
+    }
+
+    private static List<Core.Domain.Entities.MessageStep> MapSteps(List<MessageStepDto>? src) =>
+        (src ?? new())
             .Where(s => !string.IsNullOrWhiteSpace(s.Text) || s.MediaAssetId is not null || (s.MediaAssetIds is { Count: > 0 }))
             .Select((s, i) => new Core.Domain.Entities.MessageStep
             {
                 Text = (s.Text ?? string.Empty).Trim(),
-                // Step 0 siempre arranca al asignar (delay 0). Los siguientes
-                // tienen el delay relativo al anterior.
                 DelaySeconds = i == 0 ? 0 : Math.Max(0, s.DelaySeconds),
                 MediaAssetId = s.MediaAssetId,
                 MediaAssetIds = (s.MediaAssetIds ?? new()).Where(g => g != Guid.Empty).Distinct().ToList()
             })
             .ToList();
-        return p;
-    }
+
+    private static List<MessageStepDto> StepsToDto(List<Core.Domain.Entities.MessageStep> src) =>
+        src.Select(s => new MessageStepDto(s.Text, s.DelaySeconds, s.MediaAssetId, s.MediaAssetIds)).ToList();
 
     private static ProductDto ToDto(Product p) => new(
         p.Id, p.ProductKey, p.DisplayName, p.Active, p.Country, p.CountryName, p.RegionCode, p.Language,
@@ -166,5 +181,6 @@ public class ProductsController : ControllerBase
         p.DailyLimit, p.TriggerHours, p.SendHourStart, p.SendHourEnd,
         p.RequiresAssistedSale, p.GooglePlacesDailyLeadCap,
         p.ReplyTemplates,
-        p.MessageSteps.Select(s => new MessageStepDto(s.Text, s.DelaySeconds, s.MediaAssetId, s.MediaAssetIds)).ToList());
+        StepsToDto(p.MessageSteps),
+        p.CategoryCadences.Select(c => new CategoryCadenceDto(c.Category, StepsToDto(c.Steps))).ToList());
 }

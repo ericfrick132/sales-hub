@@ -8,6 +8,8 @@ namespace SalesHub.Core.Domain.Entities;
 public class MessageStepRotation
 {
     public Guid ProductId { get; set; }
+    /// <summary>Categoría override del producto, o "" para la cadencia default.</summary>
+    public string Category { get; set; } = string.Empty;
     public int StepIndex { get; set; }
     public int LastIndex { get; set; }
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

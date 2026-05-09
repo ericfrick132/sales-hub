@@ -24,6 +24,12 @@ public class Product
     // todos. Si está vacío, fallback al MessageTemplate + OpenerTemplate
     // legacy (compat con productos viejos).
     public List<MessageStep> MessageSteps { get; set; } = new();
+    // Overrides por categoría de búsqueda (lead.SearchCategory). Si una
+    // categoría tiene override con steps configurados, esos steps se usan
+    // en lugar del MessageSteps default. Si no hay override, cae al default.
+    // Útil para que "yoga" tenga audios y textos distintos a "gimnasio"
+    // dentro del mismo producto.
+    public List<CategoryCadence> CategoryCadences { get; set; } = new();
     public string MessageTemplate { get; set; } = string.Empty;
     // Mensaje "opener" opcional. Si está, se manda primero (ej. "buenas") y el
     // mensaje principal sale después con el delay normal del seller. Vacío = un solo mensaje.

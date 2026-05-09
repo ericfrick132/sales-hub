@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
-import type { MediaAsset, MessageStep, Product, Seller } from '../lib/types';
+import type { CategoryCadence, MediaAsset, MessageStep, Product, Seller } from '../lib/types';
 
 const EMPTY: Product = {
   id: '', productKey: '', displayName: '', active: true, country: 'AR', countryName: 'Argentina',
@@ -13,7 +13,8 @@ const EMPTY: Product = {
   requiresAssistedSale: false,
   googlePlacesDailyLeadCap: 60,
   replyTemplates: [],
-  messageSteps: []
+  messageSteps: [],
+  categoryCadences: []
 };
 
 export default function Products() {
@@ -104,10 +105,13 @@ export default function Products() {
             </div>
           </Field>
         </div>
-        <StepsEditor
+        <CadencesEditor
           productKey={selected?.productKey ?? draft.productKey}
-          steps={draft.messageSteps ?? []}
-          onChange={(steps) => onChange('messageSteps', steps)}
+          categories={draft.categories}
+          defaultSteps={draft.messageSteps ?? []}
+          overrides={draft.categoryCadences ?? []}
+          onChangeDefault={(steps) => onChange('messageSteps', steps)}
+          onChangeOverrides={(over) => onChange('categoryCadences', over)}
         />
         <Field label="Respuestas rápidas (una por línea)">
           <ReplyTemplatesEditor
@@ -145,7 +149,9 @@ export default function Products() {
         <TestSendPanel
           productId={selected?.id ?? ''}
           defaultPrefix={draft.phonePrefix}
-          hasSteps={(draft.messageSteps ?? []).length > 0}
+          categories={draft.categories}
+          overrideCats={(draft.categoryCadences ?? []).map((c) => c.category)}
+          hasSteps={(draft.messageSteps ?? []).length > 0 || (draft.categoryCadences ?? []).some((c) => c.steps.length > 0)}
         />
       </div>
     </div>
@@ -226,10 +232,12 @@ function AudioStatsPanel({ productKey }: { productKey: string }) {
   );
 }
 
-function TestSendPanel({ productId, defaultPrefix, hasSteps }: {
+function TestSendPanel({ productId, defaultPrefix, hasSteps, categories, overrideCats }: {
   productId: string;
   defaultPrefix: string;
   hasSteps: boolean;
+  categories: string[];
+  overrideCats: string[];
 }) {
   const sellersQ = useQuery({
     queryKey: ['sellers-admin'],
@@ -239,6 +247,7 @@ function TestSendPanel({ productId, defaultPrefix, hasSteps }: {
 
   const [sellerId, setSellerId] = useState('');
   const [phone, setPhone] = useState('');
+  const [category, setCategory] = useState('');
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -256,7 +265,7 @@ function TestSendPanel({ productId, defaultPrefix, hasSteps }: {
     try {
       const { data } = await api.post<{ sentSteps: number; totalSteps: number }>(
         '/test-send/cadence',
-        { productId, sellerId, phone: cleaned }
+        { productId, sellerId, phone: cleaned, category: category || null }
       );
       toast.success(`Enviados ${data.sentSteps}/${data.totalSteps} pasos`);
     } catch (err: any) {
@@ -288,12 +297,28 @@ function TestSendPanel({ productId, defaultPrefix, hasSteps }: {
           <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)}
             placeholder={`${defaultPrefix}9XXXXXXXXX`} />
         </Field>
+        {categories.length > 0 && (
+          <Field label="Categoría a probar">
+            <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">Default (sin categoría)</option>
+              {categories.map((c) => {
+                const hasOverride = overrideCats.includes(c);
+                return (
+                  <option key={c} value={c}>
+                    {c} {hasOverride ? '· override propio' : '· cae al default'}
+                  </option>
+                );
+              })}
+            </select>
+          </Field>
+        )}
       </div>
 
       <div className="text-xs text-slate-500">
         Se envían los pasos en orden respetando el <b>delay configurado de cada paso</b>
         (capeado a 10 min). Si un paso tiene varias variantes de audio, se manda la
-        <b>primera</b> para que la prueba sea determinística.
+        <b>primera</b> para que la prueba sea determinística. La categoría seleccionada
+        decide qué cadencia se dispara (override propio o default).
       </div>
 
       <button className="btn-primary" onClick={send} disabled={sending || !hasSteps}>
@@ -343,6 +368,101 @@ function ReplyTemplatesEditor({ value, onChange }: {
       onChange={(e) => setRaw(e.target.value)}
       onBlur={() => commit(raw)}
     />
+  );
+}
+
+function CadencesEditor({
+  productKey, categories, defaultSteps, overrides, onChangeDefault, onChangeOverrides
+}: {
+  productKey: string;
+  categories: string[];
+  defaultSteps: MessageStep[];
+  overrides: CategoryCadence[];
+  onChangeDefault: (s: MessageStep[]) => void;
+  onChangeOverrides: (o: CategoryCadence[]) => void;
+}) {
+  // Tab activa: '' = default; otro string = nombre de la categoría override.
+  const [activeTab, setActiveTab] = useState<string>('');
+  const overrideMap = new Map(overrides.map((o) => [o.category, o.steps]));
+  const overriddenCats = new Set(overrides.map((o) => o.category));
+  const availableCategoriesToAdd = categories.filter((c) => !overriddenCats.has(c));
+
+  function addOverride(cat: string) {
+    if (!cat || overriddenCats.has(cat)) return;
+    onChangeOverrides([...overrides, { category: cat, steps: [] }]);
+    setActiveTab(cat);
+  }
+  function removeOverride(cat: string) {
+    if (!confirm(`Quitar el override de "${cat}"? Los leads de esa categoría van a volver a usar el default.`)) return;
+    onChangeOverrides(overrides.filter((o) => o.category !== cat));
+    if (activeTab === cat) setActiveTab('');
+  }
+  function updateOverrideSteps(cat: string, steps: MessageStep[]) {
+    onChangeOverrides(overrides.map((o) => o.category === cat ? { ...o, steps } : o));
+  }
+
+  const stepsForActiveTab = activeTab === '' ? defaultSteps : (overrideMap.get(activeTab) ?? []);
+  const onChangeForActiveTab = activeTab === ''
+    ? onChangeDefault
+    : (s: MessageStep[]) => updateOverrideSteps(activeTab, s);
+
+  const noOverrideCats = categories.filter((c) => !overriddenCats.has(c));
+
+  return (
+    <div className="space-y-3">
+      <div className="border-b border-slate-200">
+        <div className="flex items-center gap-1 flex-wrap">
+          <button type="button"
+            className={`text-xs px-3 py-1.5 -mb-px border-b-2 ${activeTab === '' ? 'border-brand-600 text-brand-700 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            onClick={() => setActiveTab('')}>
+            Default
+            <span className="ml-1 text-[10px] text-slate-400">({defaultSteps.length})</span>
+          </button>
+          {overrides.map((o) => (
+            <button key={o.category} type="button"
+              className={`text-xs px-3 py-1.5 -mb-px border-b-2 ${activeTab === o.category ? 'border-brand-600 text-brand-700 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+              onClick={() => setActiveTab(o.category)}>
+              {o.category}
+              <span className="ml-1 text-[10px] text-emerald-700">({o.steps.length})</span>
+            </button>
+          ))}
+          {availableCategoriesToAdd.length > 0 && (
+            <select
+              className="ml-auto text-xs px-2 py-1 border border-slate-200 rounded bg-white text-slate-600"
+              value=""
+              onChange={(e) => { if (e.target.value) addOverride(e.target.value); e.target.selectedIndex = 0; }}>
+              <option value="">+ Override de categoría</option>
+              {availableCategoriesToAdd.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+        </div>
+      </div>
+
+      {activeTab !== '' && (
+        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded p-2 text-xs">
+          <span>
+            Cadencia <b>{activeTab}</b> — solo se usa cuando el lead viene de esa búsqueda.
+          </span>
+          <button type="button"
+            className="text-rose-600 hover:underline"
+            onClick={() => removeOverride(activeTab)}>
+            Quitar override
+          </button>
+        </div>
+      )}
+
+      {activeTab === '' && noOverrideCats.length > 0 && (
+        <div className="text-[11px] text-slate-500">
+          Categorías sin override (caen al default): {noOverrideCats.join(', ')}
+        </div>
+      )}
+
+      <StepsEditor
+        productKey={productKey}
+        steps={stepsForActiveTab}
+        onChange={onChangeForActiveTab}
+      />
+    </div>
   );
 }
 

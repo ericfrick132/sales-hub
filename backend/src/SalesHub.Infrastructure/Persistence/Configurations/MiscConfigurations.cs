@@ -57,6 +57,7 @@ public class MessageStepRotationConfiguration : IEntityTypeConfiguration<Message
     public void Configure(EntityTypeBuilder<MessageStepRotation> b)
     {
         b.ToTable("message_step_rotations");
-        b.HasKey(x => new { x.ProductId, x.StepIndex });
+        b.Property(x => x.Category).HasMaxLength(64).IsRequired();
+        b.HasKey(x => new { x.ProductId, x.Category, x.StepIndex });
     }
 }

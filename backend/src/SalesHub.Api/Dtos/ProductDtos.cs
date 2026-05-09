@@ -2,6 +2,8 @@ namespace SalesHub.Api.Dtos;
 
 public record MessageStepDto(string Text, int DelaySeconds, Guid? MediaAssetId, List<Guid>? MediaAssetIds);
 
+public record CategoryCadenceDto(string Category, List<MessageStepDto> Steps);
+
 public record ProductDto(
     Guid Id,
     string ProductKey,
@@ -24,7 +26,8 @@ public record ProductDto(
     bool RequiresAssistedSale,
     int GooglePlacesDailyLeadCap,
     List<string> ReplyTemplates,
-    List<MessageStepDto> MessageSteps);
+    List<MessageStepDto> MessageSteps,
+    List<CategoryCadenceDto> CategoryCadences);
 
 public record CreateOrUpdateProductRequest(
     string ProductKey,
@@ -47,4 +50,5 @@ public record CreateOrUpdateProductRequest(
     bool RequiresAssistedSale,
     int GooglePlacesDailyLeadCap,
     List<string>? ReplyTemplates,
-    List<MessageStepDto>? MessageSteps);
+    List<MessageStepDto>? MessageSteps,
+    List<CategoryCadenceDto>? CategoryCadences);

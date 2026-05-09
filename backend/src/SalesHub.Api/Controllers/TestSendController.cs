@@ -5,6 +5,7 @@ using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Api.Controllers;
 
@@ -42,7 +43,7 @@ public class TestSendController : ControllerBase
         _db = db; _evo = evo; _renderer = renderer; _log = log;
     }
 
-    public record CadenceRequest(Guid ProductId, Guid SellerId, string Phone);
+    public record CadenceRequest(Guid ProductId, Guid SellerId, string Phone, string? Category);
 
     [HttpPost("cadence")]
     public async Task<IActionResult> SendCadence([FromBody] CadenceRequest req, CancellationToken ct)
@@ -62,21 +63,28 @@ public class TestSendController : ControllerBase
         if (seller?.EvolutionInstance is null) return BadRequest(new { error = "Vendedor sin instancia Evolution" });
         if (seller.EvolutionInstance.Status != InstanceStatus.Connected) return BadRequest(new { error = "La instancia no está conectada" });
 
-        var steps = product.MessageSteps ?? new();
-        if (steps.Count == 0) return BadRequest(new { error = "El producto no tiene cadencia configurada" });
-
         var instance = seller.EvolutionInstance.InstanceName;
 
         // Lead "fake" para que el renderer pueda llenar placeholders. Usamos
-        // valores neutros que sirven para preview.
+        // valores neutros que sirven para preview. SearchCategory dispara la
+        // selección de cadencia override (si el seller eligió categoría).
         var fakeLead = new Lead
         {
             Name = "(prueba)",
             City = "",
             Province = "",
             ProductKey = product.ProductKey,
-            WhatsappPhone = phone
+            WhatsappPhone = phone,
+            SearchCategory = req.Category
         };
+
+        var (steps, _) = OutboxEnqueueHelper.ResolveStepsForLead(fakeLead, product);
+        if (steps.Count == 0) return BadRequest(new
+        {
+            error = string.IsNullOrWhiteSpace(req.Category)
+                ? "El producto no tiene cadencia configurada"
+                : $"El producto no tiene cadencia configurada para la categoría '{req.Category}' ni default"
+        });
 
         var jid = $"{phone}@s.whatsapp.net";
         var sentSteps = 0;

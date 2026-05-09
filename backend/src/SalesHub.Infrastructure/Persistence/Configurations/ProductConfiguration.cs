@@ -40,5 +40,15 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
                 v => string.IsNullOrWhiteSpace(v)
                     ? new List<MessageStep>()
                     : JsonSerializer.Deserialize<List<MessageStep>>(v, (JsonSerializerOptions?)null) ?? new());
+
+        // Overrides de cadencia por categoría. También jsonb por la misma razón.
+        b.Property(x => x.CategoryCadences)
+            .HasColumnName("category_cadences")
+            .HasColumnType("jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v ?? new(), (JsonSerializerOptions?)null),
+                v => string.IsNullOrWhiteSpace(v)
+                    ? new List<CategoryCadence>()
+                    : JsonSerializer.Deserialize<List<CategoryCadence>>(v, (JsonSerializerOptions?)null) ?? new());
     }
 }

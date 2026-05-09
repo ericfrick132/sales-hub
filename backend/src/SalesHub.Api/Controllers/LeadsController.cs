@@ -402,7 +402,8 @@ public class LeadsController : ControllerBase
             return BadRequest(new { error = $"WhatsApp del vendedor no está conectado. {hint}" });
         }
 
-        var steps = lead.Product.MessageSteps ?? new();
+        // Cadencia: si la categoría del lead tiene override, esos steps; sino default.
+        var (steps, _) = OutboxEnqueueHelper.ResolveStepsForLead(lead, lead.Product);
         var instance = seller.EvolutionInstance.InstanceName;
 
         // Cancelamos los outbox rows pendientes del lead para no duplicar.
