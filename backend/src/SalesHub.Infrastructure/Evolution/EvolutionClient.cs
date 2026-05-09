@@ -127,6 +127,28 @@ public class EvolutionClient : IEvolutionClient
         return true;
     }
 
+    public async Task<bool> SendVoiceNoteAsync(string instanceName, string jid, byte[] audio, CancellationToken ct = default)
+    {
+        // /message/sendWhatsAppAudio fuerza el envío como PTT (nota de voz). Evolution
+        // convierte el container/codec si hace falta cuando encoding=true.
+        var body = new
+        {
+            number = jid,
+            audio = Convert.ToBase64String(audio),
+            encoding = true,
+            delay = 0
+        };
+        var resp = await _http.PostAsJsonAsync($"message/sendWhatsAppAudio/{Uri.EscapeDataString(instanceName)}", body, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var txt = await resp.Content.ReadAsStringAsync(ct);
+            _log.LogWarning("SendVoiceNote {Instance} -> {Jid} ({Bytes}b) failed: {Status} {Body}",
+                instanceName, jid, audio.Length, resp.StatusCode, txt);
+            return false;
+        }
+        return true;
+    }
+
     public async Task<bool> SendMediaAsync(string instanceName, string jid, byte[] content, string mimeType, string fileName, string? caption, CancellationToken ct = default)
     {
         // Evolution acepta el archivo en base64 vía /message/sendMedia/{instance}.

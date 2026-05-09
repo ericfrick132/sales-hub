@@ -18,4 +18,8 @@ public interface IEvolutionClient
     Task<bool> SendTextAsync(string instanceName, string jid, string message, CancellationToken ct = default);
     /// <summary>Manda un archivo (imagen / pdf / cualquier mime) con caption opcional. Recibe el contenido en bytes.</summary>
     Task<bool> SendMediaAsync(string instanceName, string jid, byte[] content, string mimeType, string fileName, string? caption, CancellationToken ct = default);
+
+    /// <summary>Manda audio como nota de voz (PTT) usando el endpoint sendWhatsAppAudio.
+    /// Evolution convierte a OGG/Opus si hace falta. Recibe el archivo en bytes (mp3/m4a/ogg/wav).</summary>
+    Task<bool> SendVoiceNoteAsync(string instanceName, string jid, byte[] audio, CancellationToken ct = default);
 }

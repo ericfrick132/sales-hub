@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
-import type { MediaAsset, MessageStep, Product } from '../lib/types';
+import type { MediaAsset, MessageStep, Product, Seller } from '../lib/types';
 
 const EMPTY: Product = {
   id: '', productKey: '', displayName: '', active: true, country: 'AR', countryName: 'Argentina',
@@ -152,7 +152,143 @@ export default function Products() {
           </label>
           <button className="btn-primary ml-auto" onClick={save}>Guardar</button>
         </div>
+
+        <TestSendPanel defaultPrefix={draft.phonePrefix} />
       </div>
+    </div>
+  );
+}
+
+function TestSendPanel({ defaultPrefix }: { defaultPrefix: string }) {
+  type Kind = 'text' | 'voice' | 'image' | 'document';
+
+  const sellersQ = useQuery({
+    queryKey: ['sellers-admin'],
+    queryFn: async () => (await api.get<Seller[]>('/sellers')).data
+  });
+  const connected = (sellersQ.data ?? []).filter((s) => s.instanceStatus === 'Connected');
+
+  const [sellerId, setSellerId] = useState('');
+  const [phone, setPhone] = useState('');
+  const [kind, setKind] = useState<Kind>('text');
+  const [text, setText] = useState('Mensaje de prueba');
+  const [caption, setCaption] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [sending, setSending] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!sellerId && connected.length > 0) setSellerId(connected[0].id);
+  }, [connected, sellerId]);
+  useEffect(() => {
+    setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [kind]);
+
+  const accept = kind === 'voice' ? 'audio/*'
+    : kind === 'image' ? 'image/*'
+    : kind === 'document' ? 'application/pdf,application/*' : '';
+
+  async function send() {
+    if (!sellerId) return toast.error('Elegí un vendedor con instancia conectada');
+    const cleaned = phone.replace(/[^\d]/g, '');
+    if (!cleaned) return toast.error('Número inválido (incluí prefijo de país)');
+    if (kind === 'text' && !text.trim()) return toast.error('Texto vacío');
+    if (kind !== 'text' && !file) return toast.error('Seleccioná un archivo');
+
+    setSending(true);
+    try {
+      if (kind === 'text') {
+        await api.post('/test-send/text', { sellerId, phone: cleaned, text });
+      } else if (kind === 'voice') {
+        const fd = new FormData();
+        fd.append('sellerId', sellerId);
+        fd.append('phone', cleaned);
+        fd.append('file', file!);
+        await api.post('/test-send/voice', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      } else {
+        const fd = new FormData();
+        fd.append('sellerId', sellerId);
+        fd.append('phone', cleaned);
+        fd.append('file', file!);
+        if (caption) fd.append('caption', caption);
+        await api.post('/test-send/media', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      }
+      toast.success('Enviado');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Falló');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="border-t border-slate-200 pt-4 mt-2 space-y-3">
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <h4 className="font-semibold text-sm">Probar envío de WhatsApp</h4>
+        <span className="text-xs text-slate-400">
+          envía desde la instancia del vendedor a un número arbitrario (no toca leads)
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Vendedor (instancia conectada)">
+          <select className="input" value={sellerId} onChange={(e) => setSellerId(e.target.value)}>
+            {connected.length === 0 && <option value="">— sin instancias conectadas —</option>}
+            {connected.map((s) => (
+              <option key={s.id} value={s.id}>{s.displayName} ({s.evolutionInstance})</option>
+            ))}
+          </select>
+        </Field>
+        <Field label={`Número destino (con prefijo, ej. ${defaultPrefix}9...)`}>
+          <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)}
+            placeholder={`${defaultPrefix}9XXXXXXXXX`} />
+        </Field>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {(['text', 'voice', 'image', 'document'] as Kind[]).map((k) => (
+          <button key={k} type="button"
+            className={`px-3 py-1.5 rounded text-sm ${kind === k ? 'bg-brand-600 text-white' : 'bg-slate-100 hover:bg-slate-200'}`}
+            onClick={() => setKind(k)}>
+            {k === 'text' ? 'Texto' : k === 'voice' ? 'Audio (nota de voz)' : k === 'image' ? 'Imagen' : 'PDF'}
+          </button>
+        ))}
+      </div>
+
+      {kind === 'text' && (
+        <Field label="Texto">
+          <textarea className="input min-h-20" value={text} onChange={(e) => setText(e.target.value)} />
+        </Field>
+      )}
+
+      {kind !== 'text' && (
+        <div className="space-y-2">
+          <Field label={kind === 'voice' ? 'Archivo de audio (mp3/m4a/ogg/wav — se envía como nota de voz)'
+            : kind === 'image' ? 'Imagen' : 'PDF'}>
+            <input ref={fileInputRef} type="file" accept={accept}
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            {file && <div className="text-xs text-slate-500 mt-1">
+              {file.name} — {(file.size / 1024).toFixed(0)} KB · {file.type || 'tipo desconocido'}
+            </div>}
+            {kind === 'voice' && (
+              <div className="text-xs text-slate-400 mt-1">
+                Evolution convierte el audio a OGG/Opus y lo envía como PTT (nota de voz)
+                en el chat de WhatsApp.
+              </div>
+            )}
+          </Field>
+          {kind !== 'voice' && (
+            <Field label="Caption (opcional)">
+              <input className="input" value={caption} onChange={(e) => setCaption(e.target.value)} />
+            </Field>
+          )}
+        </div>
+      )}
+
+      <button className="btn-primary" onClick={send} disabled={sending}>
+        {sending ? 'Enviando...' : 'Enviar prueba'}
+      </button>
     </div>
   );
 }
