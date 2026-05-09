@@ -19,7 +19,12 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                 table: "products",
                 type: "jsonb",
                 nullable: false,
-                defaultValue: "");
+                defaultValueSql: "'[]'::jsonb");
+
+            // Normaliza filas que pudieran quedar con default vacío de un
+            // intento previo de la migration ("" → {}). Idempotente: si ya
+            // están como '[]' no hace nada.
+            migrationBuilder.Sql("UPDATE products SET category_cadences = '[]'::jsonb WHERE category_cadences::text !~ '^\\['");
 
             migrationBuilder.AddColumn<string>(
                 name: "category",

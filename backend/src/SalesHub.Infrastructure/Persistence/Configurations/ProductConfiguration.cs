@@ -42,13 +42,21 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
                     : JsonSerializer.Deserialize<List<MessageStep>>(v, (JsonSerializerOptions?)null) ?? new());
 
         // Overrides de cadencia por categoría. También jsonb por la misma razón.
+        // Deserialize con try/catch porque migrations viejas pueden haber dejado
+        // basura en la columna ({} en vez de []) — preferimos lista vacía a
+        // explotar al cargar el producto.
         b.Property(x => x.CategoryCadences)
             .HasColumnName("category_cadences")
             .HasColumnType("jsonb")
             .HasConversion(
                 v => JsonSerializer.Serialize(v ?? new(), (JsonSerializerOptions?)null),
-                v => string.IsNullOrWhiteSpace(v)
-                    ? new List<CategoryCadence>()
-                    : JsonSerializer.Deserialize<List<CategoryCadence>>(v, (JsonSerializerOptions?)null) ?? new());
+                v => DeserializeCategoryCadences(v));
+    }
+
+    private static List<CategoryCadence> DeserializeCategoryCadences(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || !json.TrimStart().StartsWith('[')) return new();
+        try { return JsonSerializer.Deserialize<List<CategoryCadence>>(json) ?? new(); }
+        catch { return new(); }
     }
 }
