@@ -64,47 +64,63 @@ export default function Products() {
 
       <div className="md:col-span-8 card p-4 md:p-5 space-y-3">
         <h3 className="font-semibold">{selected?.id ? `Editar: ${selected.displayName}` : 'Nuevo producto'}</h3>
+
+        {/* Lo esencial siempre visible: identificador + nombre + categorías */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="product_key">
             <input className="input" value={draft.productKey} onChange={(e) => onChange('productKey', e.target.value)} disabled={!!selected?.id} />
           </Field>
           <Field label="Nombre"><input className="input" value={draft.displayName} onChange={(e) => onChange('displayName', e.target.value)} /></Field>
-          <Field label="País (code)"><input className="input" value={draft.country} onChange={(e) => onChange('country', e.target.value)} /></Field>
-          <Field label="País (nombre)"><input className="input" value={draft.countryName} onChange={(e) => onChange('countryName', e.target.value)} /></Field>
-          <Field label="Region code (maps)"><input className="input" value={draft.regionCode} onChange={(e) => onChange('regionCode', e.target.value)} /></Field>
-          <Field label="Idioma"><input className="input" value={draft.language} onChange={(e) => onChange('language', e.target.value)} /></Field>
-          <Field label="Prefix teléfono"><input className="input" value={draft.phonePrefix} onChange={(e) => onChange('phonePrefix', e.target.value)} /></Field>
-          <Field label="Checkout URL"><input className="input" value={draft.checkoutUrl} onChange={(e) => onChange('checkoutUrl', e.target.value)} /></Field>
-          <Field label="Precio display"><input className="input" value={draft.priceDisplay} onChange={(e) => onChange('priceDisplay', e.target.value)} /></Field>
-          <Field label="Daily limit"><input type="number" className="input" value={draft.dailyLimit} onChange={(e) => onChange('dailyLimit', +e.target.value)} /></Field>
-          <Field label="Leads/día Google Places (0 = sin tope)">
-            <input type="number" className="input" value={draft.googlePlacesDailyLeadCap}
-              onChange={(e) => onChange('googlePlacesDailyLeadCap', +e.target.value)} />
-          </Field>
         </div>
         <Field label="Categorías de búsqueda Google Maps (coma)">
           <input className="input" value={draft.categories.join(', ')}
             onChange={(e) => onChange('categories', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} />
         </Field>
-        <Field label="Trigger hours (coma, 0-23)">
-          <input className="input" value={draft.triggerHours.join(', ')}
-            onChange={(e) => onChange('triggerHours', e.target.value.split(',').map((s) => parseInt(s.trim())).filter((n) => !isNaN(n)))} />
-        </Field>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Hora inicio envíos (0-23)">
-            <input type="number" min={0} max={24} className="input"
-              value={draft.sendHourStart}
-              onChange={(e) => onChange('sendHourStart', Math.max(0, Math.min(24, +e.target.value)))} />
-          </Field>
-          <Field label="Hora fin envíos (1-24)">
-            <input type="number" min={0} max={24} className="input"
-              value={draft.sendHourEnd}
-              onChange={(e) => onChange('sendHourEnd', Math.max(0, Math.min(24, +e.target.value)))} />
-            <div className="text-xs text-slate-400 mt-1">
-              Si inicio ≥ fin, no aplica restricción de producto (queda solo la del vendedor).
+
+        {/* Resto colapsado — casi nunca se toca después de crear */}
+        <details className="border border-slate-200 rounded p-2">
+          <summary className="cursor-pointer text-sm text-slate-600 hover:text-slate-900 font-medium">
+            Configuración avanzada
+            <span className="ml-2 text-xs text-slate-400 font-normal">
+              país · idioma · checkout · caps · ventana horaria
+            </span>
+          </summary>
+          <div className="mt-3 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="País (code)"><input className="input" value={draft.country} onChange={(e) => onChange('country', e.target.value)} /></Field>
+              <Field label="País (nombre)"><input className="input" value={draft.countryName} onChange={(e) => onChange('countryName', e.target.value)} /></Field>
+              <Field label="Region code (maps)"><input className="input" value={draft.regionCode} onChange={(e) => onChange('regionCode', e.target.value)} /></Field>
+              <Field label="Idioma"><input className="input" value={draft.language} onChange={(e) => onChange('language', e.target.value)} /></Field>
+              <Field label="Prefix teléfono"><input className="input" value={draft.phonePrefix} onChange={(e) => onChange('phonePrefix', e.target.value)} /></Field>
+              <Field label="Checkout URL"><input className="input" value={draft.checkoutUrl} onChange={(e) => onChange('checkoutUrl', e.target.value)} /></Field>
+              <Field label="Precio display"><input className="input" value={draft.priceDisplay} onChange={(e) => onChange('priceDisplay', e.target.value)} /></Field>
+              <Field label="Daily limit"><input type="number" className="input" value={draft.dailyLimit} onChange={(e) => onChange('dailyLimit', +e.target.value)} /></Field>
+              <Field label="Leads/día Google Places (0 = sin tope)">
+                <input type="number" className="input" value={draft.googlePlacesDailyLeadCap}
+                  onChange={(e) => onChange('googlePlacesDailyLeadCap', +e.target.value)} />
+              </Field>
             </div>
-          </Field>
-        </div>
+            <Field label="Trigger hours (coma, 0-23)">
+              <input className="input" value={draft.triggerHours.join(', ')}
+                onChange={(e) => onChange('triggerHours', e.target.value.split(',').map((s) => parseInt(s.trim())).filter((n) => !isNaN(n)))} />
+            </Field>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Hora inicio envíos (0-23)">
+                <input type="number" min={0} max={24} className="input"
+                  value={draft.sendHourStart}
+                  onChange={(e) => onChange('sendHourStart', Math.max(0, Math.min(24, +e.target.value)))} />
+              </Field>
+              <Field label="Hora fin envíos (1-24)">
+                <input type="number" min={0} max={24} className="input"
+                  value={draft.sendHourEnd}
+                  onChange={(e) => onChange('sendHourEnd', Math.max(0, Math.min(24, +e.target.value)))} />
+                <div className="text-xs text-slate-400 mt-1">
+                  Si inicio ≥ fin, no aplica restricción de producto (queda solo la del vendedor).
+                </div>
+              </Field>
+            </div>
+          </div>
+        </details>
         <CadencesEditor
           productKey={selected?.productKey ?? draft.productKey}
           categories={draft.categories}
