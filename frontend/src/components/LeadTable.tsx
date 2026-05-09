@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -31,6 +32,7 @@ const daysSince = (iso?: string) => {
 
 export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Props) {
   const qc = useQueryClient();
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   if (leads.length === 0) {
     return <div className="card p-8 text-center text-slate-500">{emptyText ?? 'No hay leads'}</div>;
@@ -44,6 +46,23 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
       qc.invalidateQueries({ queryKey: ['my-dashboard'] });
     } catch {
       toast.error('No se pudo actualizar el estado');
+    }
+  };
+
+  const sendNow = async (l: Lead) => {
+    if (!l.whatsappPhone) { toast.error('Lead sin teléfono WhatsApp'); return; }
+    if (!confirm(`¿Mandar la cadencia ahora a ${l.name} (${l.whatsappPhone})?`)) return;
+    setSendingId(l.id);
+    try {
+      const { data } = await api.post<{ sent: number }>(`/leads/${l.id}/send-now`);
+      toast.success(`Mandados ${data.sent} mensaje${data.sent === 1 ? '' : 's'}`);
+      qc.invalidateQueries({ queryKey: ['my-leads'] });
+      qc.invalidateQueries({ queryKey: ['admin-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['my-dashboard'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'No se pudo enviar');
+    } finally {
+      setSendingId(null);
     }
   };
 
@@ -105,11 +124,21 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
               ) : (
                 <span className="text-xs text-slate-500 truncate">{l.whatsappPhone ?? '—'}</span>
               )}
-              {onClaim && !l.sellerId && (
-                <button onClick={() => onClaim(l.id)} className="btn-secondary py-1 px-2 text-xs ml-auto">
-                  Tomar
-                </button>
-              )}
+              <div className="ml-auto flex gap-2">
+                {l.whatsappPhone && (
+                  <button
+                    onClick={() => sendNow(l)}
+                    disabled={sendingId === l.id}
+                    className="bg-brand-600 text-white rounded py-1 px-2 text-xs disabled:opacity-50">
+                    {sendingId === l.id ? 'Enviando...' : 'Enviar ahora'}
+                  </button>
+                )}
+                {onClaim && !l.sellerId && (
+                  <button onClick={() => onClaim(l.id)} className="btn-secondary py-1 px-2 text-xs">
+                    Tomar
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -128,7 +157,7 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
                 <th className="px-3 py-2 text-left">Origen</th>
                 <th className="px-3 py-2 text-left">WhatsApp</th>
                 <th className="px-3 py-2 text-left">Estado</th>
-                {onClaim && <th className="px-3 py-2"></th>}
+                <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -166,15 +195,23 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
                   <td className="px-3 py-2">
                     <StatusSelect l={l} />
                   </td>
-                  {onClaim && (
-                    <td className="px-3 py-2 text-right">
-                      {!l.sellerId && (
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <div className="flex gap-1 justify-end">
+                      {l.whatsappPhone && (
+                        <button
+                          onClick={() => sendNow(l)}
+                          disabled={sendingId === l.id}
+                          className="bg-brand-600 text-white rounded py-1 px-2 text-xs disabled:opacity-50">
+                          {sendingId === l.id ? '...' : 'Enviar ahora'}
+                        </button>
+                      )}
+                      {onClaim && !l.sellerId && (
                         <button onClick={() => onClaim(l.id)} className="btn-secondary py-1 px-2 text-xs">
                           Tomar
                         </button>
                       )}
-                    </td>
-                  )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

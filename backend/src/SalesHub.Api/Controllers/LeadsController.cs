@@ -20,15 +20,20 @@ public class LeadsController : ControllerBase
     private readonly PipelineService _pipeline;
     private readonly IPhoneNormalizer _phone;
     private readonly IGooglePlacesEnricher _enricher;
+    private readonly IEvolutionClient _evo;
+    private readonly ILogger<LeadsController> _log;
 
     public LeadsController(
         ApplicationDbContext db,
         IMessageRenderer renderer,
         PipelineService pipeline,
         IPhoneNormalizer phone,
-        IGooglePlacesEnricher enricher)
+        IGooglePlacesEnricher enricher,
+        IEvolutionClient evo,
+        ILogger<LeadsController> log)
     {
         _db = db; _renderer = renderer; _pipeline = pipeline; _phone = phone; _enricher = enricher;
+        _evo = evo; _log = log;
     }
 
     public record AssignRequest(Guid SellerId, bool AutoQueue = true);
@@ -339,6 +344,169 @@ public class LeadsController : ControllerBase
         lead.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return ToDto(lead);
+    }
+
+    /// <summary>
+    /// "Enviar ahora": dispara la cadencia del producto al lead inmediatamente,
+    /// salteándose la cola humanizada (cap diario, ventana horaria, delays
+    /// largos). Igualmente persiste todo: cada step queda como MessageOutbox
+    /// Sent (para que las stats por audio cuenten) + ConversationMessage
+    /// outbound + el lead pasa a Sent.
+    /// </summary>
+    [HttpPost("{id:guid}/send-now")]
+    public async Task<IActionResult> SendNow(Guid id, CancellationToken ct)
+    {
+        const int InterStepDelayMs = 1500;
+
+        var callerId = CurrentUser.Id(User);
+        var isAdmin = CurrentUser.IsAdmin(User);
+
+        var lead = await _db.Leads
+            .Include(l => l.Product)
+            .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
+            .FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (lead is null) return NotFound();
+        if (!isAdmin && lead.SellerId != callerId) return Forbid();
+        if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return BadRequest(new { error = "Lead sin teléfono WhatsApp" });
+        if (lead.Product is null) return BadRequest(new { error = "Lead sin producto" });
+
+        var seller = lead.Seller;
+        // Si el lead no tiene seller asignado y el caller es seller, lo tomamos.
+        if (seller is null)
+        {
+            if (isAdmin) return BadRequest(new { error = "Asigná el lead a un vendedor primero" });
+            seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == callerId, ct);
+            if (seller is null) return BadRequest(new { error = "Vendedor inválido" });
+            lead.SellerId = seller.Id;
+            lead.AssignedAt = DateTimeOffset.UtcNow;
+        }
+        if (seller.EvolutionInstance is null || seller.EvolutionInstance.Status != InstanceStatus.Connected)
+            return BadRequest(new { error = "Conectá tu WhatsApp antes de enviar" });
+
+        var steps = lead.Product.MessageSteps ?? new();
+        var instance = seller.EvolutionInstance.InstanceName;
+
+        // Cancelamos los outbox rows pendientes del lead para no duplicar.
+        var pending = await _db.Outbox
+            .Where(o => o.LeadId == lead.Id && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending))
+            .ToListAsync(ct);
+        foreach (var p in pending) p.Status = OutboxStatus.Cancelled;
+
+        var sent = 0;
+        // Si el producto no tiene steps, fallback al template legacy.
+        if (steps.Count == 0)
+        {
+            var msg = !string.IsNullOrWhiteSpace(lead.RenderedMessage)
+                ? lead.RenderedMessage!
+                : _renderer.Render(lead, lead.Product, seller);
+            var ok = await _evo.SendTextAsync(instance, lead.WhatsappPhone!, msg, ct);
+            if (!ok) return StatusCode(502, new { error = "Falló el envío" });
+            PersistSent(lead, seller, instance, msg, mediaAssetId: null);
+            sent = 1;
+        }
+        else
+        {
+            for (var i = 0; i < steps.Count; i++)
+            {
+                var step = steps[i];
+                var hasMedia = step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 });
+                if (string.IsNullOrWhiteSpace(step.Text) && !hasMedia) continue;
+
+                var rendered = string.IsNullOrWhiteSpace(step.Text)
+                    ? string.Empty
+                    : _renderer.RenderTemplate(step.Text, lead, lead.Product, seller);
+
+                Guid? mediaAssetId = step.MediaAssetIds is { Count: > 0 } ? step.MediaAssetIds[0] : step.MediaAssetId;
+
+                try
+                {
+                    if (mediaAssetId is null)
+                    {
+                        if (!string.IsNullOrWhiteSpace(rendered))
+                        {
+                            var ok = await _evo.SendTextAsync(instance, lead.WhatsappPhone!, rendered, ct);
+                            if (!ok) return StatusCode(502, new { error = $"Falló el step {i + 1} (texto)" });
+                            PersistSent(lead, seller, instance, rendered, null);
+                            sent++;
+                        }
+                    }
+                    else
+                    {
+                        var asset = await _db.MediaAssets.AsNoTracking().FirstOrDefaultAsync(m => m.Id == mediaAssetId, ct);
+                        if (asset is null) return BadRequest(new { error = $"Step {i + 1}: media no existe" });
+
+                        if (asset.MimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!string.IsNullOrWhiteSpace(rendered))
+                            {
+                                var pre = await _evo.SendTextAsync(instance, lead.WhatsappPhone!, rendered, ct);
+                                if (!pre) return StatusCode(502, new { error = $"Falló el step {i + 1} (texto previo al audio)" });
+                                PersistSent(lead, seller, instance, rendered, null);
+                                sent++;
+                                await Task.Delay(InterStepDelayMs, ct);
+                            }
+                            var okv = await _evo.SendVoiceNoteAsync(instance, lead.WhatsappPhone!, asset.Content, ct);
+                            if (!okv) return StatusCode(502, new { error = $"Falló el step {i + 1} (audio)" });
+                            PersistSent(lead, seller, instance, $"[audio: {asset.FileName}]", asset.Id);
+                            sent++;
+                        }
+                        else
+                        {
+                            var caption = string.IsNullOrWhiteSpace(rendered) ? null : rendered;
+                            var okm = await _evo.SendMediaAsync(instance, lead.WhatsappPhone!, asset.Content, asset.MimeType, asset.FileName, caption, ct);
+                            if (!okm) return StatusCode(502, new { error = $"Falló el step {i + 1} (adjunto)" });
+                            PersistSent(lead, seller, instance, caption ?? $"[{asset.MimeType}: {asset.FileName}]", asset.Id);
+                            sent++;
+                        }
+                    }
+                    if (i < steps.Count - 1) await Task.Delay(InterStepDelayMs, ct);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "send-now lead {Lead} step {Step} failed", lead.Id, i + 1);
+                    return StatusCode(502, new { error = $"Step {i + 1}: {ex.Message}" });
+                }
+            }
+        }
+
+        if (sent > 0)
+        {
+            lead.Status = LeadStatus.Sent;
+            lead.SentAt = DateTimeOffset.UtcNow;
+        }
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { ok = true, sent });
+    }
+
+    private void PersistSent(Lead lead, Seller seller, string instance, string text, Guid? mediaAssetId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        _db.Outbox.Add(new MessageOutbox
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = seller.Id,
+            EvolutionInstance = instance,
+            WhatsappPhone = lead.WhatsappPhone!,
+            Message = text,
+            MediaAssetId = mediaAssetId,
+            ScheduledAt = now,
+            SentAt = now,
+            Status = OutboxStatus.Sent,
+            Attempts = 1
+        });
+        _db.ConversationMessages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = seller.Id,
+            Direction = MessageDirection.Outbound,
+            Status = MessageDeliveryStatus.Sent,
+            Text = text,
+            EvolutionInstance = instance,
+            Timestamp = now,
+            IsRead = true
+        });
     }
 
     [HttpPost("{id:guid}/queue")]
