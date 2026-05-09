@@ -110,16 +110,9 @@ export default function Products() {
           onChange={(steps) => onChange('messageSteps', steps)}
         />
         <Field label="Respuestas rápidas (una por línea)">
-          <textarea
-            className="input min-h-24 text-sm font-mono"
-            placeholder={'¿Te interesa que te pase más info?\n/precio = Mensual: $5000\\nAnual: $50000\\nDemo: gratis 30 días\n/checkout = Te paso el link: {checkout_url}'}
-            value={(draft.replyTemplates ?? []).join('\n')}
-            onChange={(e) =>
-              onChange(
-                'replyTemplates',
-                e.target.value.split('\n').map((s) => s.trim()).filter(Boolean)
-              )
-            }
+          <ReplyTemplatesEditor
+            value={draft.replyTemplates ?? []}
+            onChange={(v) => onChange('replyTemplates', v)}
           />
           <div className="text-xs text-slate-400 mt-1 space-y-0.5">
             <div>Aparecen como botones arriba del input en la pantalla de chat.</div>
@@ -312,6 +305,45 @@ function TestSendPanel({ productId, defaultPrefix, hasSteps }: {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><div className="text-xs text-slate-500 mb-1">{label}</div>{children}</label>;
+}
+
+/// Mantiene el texto crudo del textarea mientras el seller tipea (no podés
+/// hacer .trim() en cada keystroke porque te bloquea el espacio al final).
+/// Solo limpiamos las líneas al perder el focus o al cambiar de paso.
+function ReplyTemplatesEditor({ value, onChange }: {
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [raw, setRaw] = useState<string>(() => value.join('\n'));
+  // Si el seller selecciona otro producto, refrescamos el textarea con el
+  // nuevo valor canónico. Comparamos por contenido para no pisar lo que el
+  // seller está editando ahora.
+  useEffect(() => {
+    const canonical = value.join('\n');
+    setRaw((prev) => {
+      // Si lo único que difiere es trailing whitespace, dejamos el draft.
+      if (prev.split('\n').map((s) => s.trim()).filter(Boolean).join('\n') === canonical) {
+        return prev;
+      }
+      return canonical;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.join('\n')]);
+
+  function commit(text: string) {
+    const lines = text.split('\n').map((s) => s.trim()).filter(Boolean);
+    onChange(lines);
+  }
+
+  return (
+    <textarea
+      className="input min-h-24 text-sm font-mono"
+      placeholder={'¿Te interesa que te pase más info?\n/precio = Mensual: $5000\\nAnual: $50000\\nDemo: gratis 30 días\n/checkout = Te paso el link: {checkout_url}'}
+      value={raw}
+      onChange={(e) => setRaw(e.target.value)}
+      onBlur={() => commit(raw)}
+    />
+  );
 }
 
 function StepsEditor({ productKey, steps, onChange }: { productKey: string; steps: MessageStep[]; onChange: (s: MessageStep[]) => void }) {
