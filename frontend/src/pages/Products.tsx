@@ -111,8 +111,8 @@ export default function Products() {
         />
         <Field label="Respuestas rápidas (una por línea)">
           <textarea
-            className="input min-h-24 text-sm"
-            placeholder={'¿Te interesa que te pase más info?\n¿Cuándo te queda bien una llamada?\nQuedo atento.'}
+            className="input min-h-24 text-sm font-mono"
+            placeholder={'¿Te interesa que te pase más info?\n/precio = Mensual: $5000\\nAnual: $50000\\nDemo: gratis 30 días\n/checkout = Te paso el link: {checkout_url}'}
             value={(draft.replyTemplates ?? []).join('\n')}
             onChange={(e) =>
               onChange(
@@ -121,8 +121,16 @@ export default function Products() {
               )
             }
           />
-          <div className="text-xs text-slate-400 mt-1">
-            Aparecen como botones arriba del input en la pantalla de chat. Click → llena el campo de respuesta.
+          <div className="text-xs text-slate-400 mt-1 space-y-0.5">
+            <div>Aparecen como botones arriba del input en la pantalla de chat.</div>
+            <div>
+              Sintaxis comando: <code>/clave = contenido</code> — al tipear <code>/clave</code> seguido de espacio
+              en el input, se reemplaza por el contenido.
+            </div>
+            <div>
+              Salto de línea en el contenido: usá <code>\n</code> literal (ej.{' '}
+              <code>/precio = línea1\nlínea2</code>).
+            </div>
           </div>
         </Field>
         <details className="text-xs text-slate-500">

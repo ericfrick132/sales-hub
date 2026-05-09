@@ -216,26 +216,41 @@ export default function Conversations() {
               ))}
               <div ref={endRef} />
             </div>
-            <QuickReplyBar
-              templates={
+            {(() => {
+              const replies = parseQuickReplies(
                 productsQ.data?.find((p) => p.productKey === thread.data?.productKey)?.replyTemplates ?? []
-              }
-              onPick={(t) => setReply(t)}
-            />
-            <form
-              className="p-3 border-t border-slate-100 flex gap-2"
-              onSubmit={(e) => { e.preventDefault(); if (reply.trim()) sendMut.mutate(); }}>
-              <input
-                className="input flex-1"
-                placeholder="Escribí tu respuesta…"
-                value={reply}
-                onChange={(e) => setReply(e.target.value)}
-                disabled={sendMut.isPending}
-              />
-              <button className="btn-primary" disabled={sendMut.isPending || !reply.trim()}>
-                {sendMut.isPending ? '…' : 'Enviar'}
-              </button>
-            </form>
+              );
+              return (
+                <>
+                  <QuickReplyBar replies={replies} onPick={(t) => setReply(t)} />
+                  <form
+                    className="p-3 border-t border-slate-100 flex gap-2"
+                    onSubmit={(e) => { e.preventDefault(); if (reply.trim()) sendMut.mutate(); }}>
+                    <input
+                      className="input flex-1"
+                      placeholder={replies.some(r => r.trigger)
+                        ? `Escribí tu respuesta… (probá /${replies.find(r => r.trigger)!.trigger})`
+                        : 'Escribí tu respuesta…'}
+                      value={reply}
+                      onChange={(e) => setReply(expandSlash(e.target.value, replies))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Tab') {
+                          const expanded = expandSlash(reply + ' ', replies);
+                          if (expanded !== reply + ' ') {
+                            e.preventDefault();
+                            setReply(expanded);
+                          }
+                        }
+                      }}
+                      disabled={sendMut.isPending}
+                    />
+                    <button className="btn-primary" disabled={sendMut.isPending || !reply.trim()}>
+                      {sendMut.isPending ? '…' : 'Enviar'}
+                    </button>
+                  </form>
+                </>
+              );
+            })()}
           </>
         ) : null}
       </div>
@@ -243,21 +258,63 @@ export default function Conversations() {
   );
 }
 
-function QuickReplyBar({ templates, onPick }: { templates: string[]; onPick: (t: string) => void }) {
-  if (!templates || templates.length === 0) return null;
+type QuickReply = { trigger?: string; content: string; raw: string };
+
+/// Parsea cada línea de replyTemplates. Si arranca con "/<comando> = ..." se
+/// considera slash command (tipeable como atajo). Si no, es solo botón.
+/// Soporta "\n" literal en el contenido → newline real.
+function parseQuickReplies(lines: string[]): QuickReply[] {
+  return (lines ?? [])
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line): QuickReply => {
+      const m = /^\/([a-zA-Z0-9_-]+)\s*[:=]\s*(.+)$/s.exec(line);
+      if (m) {
+        return {
+          trigger: m[1].toLowerCase(),
+          content: m[2].replace(/\\n/g, '\n'),
+          raw: line
+        };
+      }
+      return { content: line.replace(/\\n/g, '\n'), raw: line };
+    });
+}
+
+/// Si `value` termina en `/<trigger> ` (espacio), reemplaza por el contenido
+/// del comando match. Si no, devuelve el value sin cambios.
+function expandSlash(value: string, replies: QuickReply[]): string {
+  const m = /(^|\s)\/([a-zA-Z0-9_-]+)(\s)$/.exec(value);
+  if (!m) return value;
+  const trigger = m[2].toLowerCase();
+  const r = replies.find((x) => x.trigger === trigger);
+  if (!r) return value;
+  // Reemplaza desde donde empieza el "/", preservando lo de antes.
+  const start = m.index + (m[1] === '' ? 0 : m[1].length);
+  return value.slice(0, start) + r.content;
+}
+
+function QuickReplyBar({ replies, onPick }: { replies: QuickReply[]; onPick: (t: string) => void }) {
+  if (!replies || replies.length === 0) return null;
   return (
     <div className="px-3 pt-2 border-t border-slate-100 flex flex-wrap gap-1">
       <span className="text-[11px] uppercase tracking-wide text-slate-400 self-center mr-1">
         Respuestas rápidas:
       </span>
-      {templates.map((t, i) => (
+      {replies.map((r, i) => (
         <button
           key={i}
           type="button"
-          onClick={() => onPick(t)}
-          title={t}
-          className="text-xs px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 max-w-[260px] truncate">
-          {t.length > 40 ? t.slice(0, 40) + '…' : t}
+          onClick={() => onPick(r.content)}
+          title={r.trigger ? `/${r.trigger}\n\n${r.content}` : r.content}
+          className={clsx(
+            'text-xs px-2 py-1 rounded border max-w-[260px] truncate',
+            r.trigger
+              ? 'border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100 font-mono'
+              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+          )}>
+          {r.trigger
+            ? `/${r.trigger}`
+            : (r.content.length > 40 ? r.content.slice(0, 40) + '…' : r.content)}
         </button>
       ))}
     </div>
