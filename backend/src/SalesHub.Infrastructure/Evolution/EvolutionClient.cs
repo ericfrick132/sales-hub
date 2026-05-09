@@ -146,19 +146,29 @@ public class EvolutionClient : IEvolutionClient
 
     public async Task<PreparedVoiceNote> PrepareVoiceNoteAsync(byte[] input, CancellationToken ct = default)
     {
-        // WhatsApp solo reproduce notas de voz si vienen en container OGG con codec
-        // Opus (mono, ~16-48kHz). Lo convertimos server-side con ffmpeg para que
-        // sea determinístico (mp3, m4a, wav → ogg/opus).
+        // WhatsApp solo reproduce notas de voz si vienen en container OGG con
+        // codec Opus (mono, ~16-48kHz). Convertimos con ffmpeg para garantizarlo.
+        // Además aplicamos tweaks aleatorios (bitrate variable, padding/silencio,
+        // micro atempo) en cada envío para que dos audios "iguales" tengan hash
+        // distinto y Meta no nos flaggee por repetición.
         byte[] ogg;
         try
         {
-            ogg = await ConvertToOggOpusAsync(input, ct);
-            _log.LogDebug("ffmpeg ok: {InBytes}b → {OutBytes}b", input.Length, ogg.Length);
+            ogg = await ConvertToOggOpusAsync(input, withTweaks: true, ct);
+            _log.LogDebug("ffmpeg ok (tweaks on): {InBytes}b → {OutBytes}b", input.Length, ogg.Length);
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "ffmpeg convert FAILED; uso input raw como fallback");
-            ogg = input;
+            _log.LogWarning(ex, "ffmpeg con tweaks FALLÓ — retry sin tweaks");
+            try
+            {
+                ogg = await ConvertToOggOpusAsync(input, withTweaks: false, ct);
+            }
+            catch (Exception ex2)
+            {
+                _log.LogWarning(ex2, "ffmpeg sin tweaks también falló — uso input raw como fallback");
+                ogg = input;
+            }
         }
         var dur = await ProbeDurationSecondsAsync(ogg, ct);
         return new PreparedVoiceNote(ogg, dur);
@@ -221,7 +231,7 @@ public class EvolutionClient : IEvolutionClient
         }
     }
 
-    private static async Task<byte[]> ConvertToOggOpusAsync(byte[] input, CancellationToken ct)
+    private static async Task<byte[]> ConvertToOggOpusAsync(byte[] input, bool withTweaks, CancellationToken ct)
     {
         // Pasamos input por archivo temporal en vez de stdin: containers MP4/M4A
         // tienen el moov atom al final y ffmpeg necesita poder hacer seek para
@@ -230,36 +240,65 @@ public class EvolutionClient : IEvolutionClient
         await File.WriteAllBytesAsync(tempIn, input, ct);
         try
         {
+            // Tweaks anti-hash: bitrate aleatorio, micro silencio al final,
+            // atempo casi-1 (perceptiblemente igual). Cada envío genera bytes
+            // distintos. Solo los aplicamos si withTweaks=true; en el retry
+            // por error ffmpeg los sacamos para volver al baseline conocido.
+            string bitrate = "32k";
+            string? afFilter = null;
+            if (withTweaks)
+            {
+                var rng = Random.Shared;
+                bitrate = new[] { "24k", "28k", "32k", "36k", "40k" }[rng.Next(5)];
+                var padMs = 50 + rng.Next(0, 200);                  // 50–250ms silencio al final
+                var atempo = 0.99 + (rng.NextDouble() * 0.02);      // 0.99–1.01 (±1% velocidad)
+                afFilter = string.Format(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    "apad=pad_dur=0.{0},atempo={1:0.000}",
+                    padMs.ToString("D3"),
+                    atempo);
+            }
+
+            var args = new List<string>
+            {
+                "-hide_banner", "-loglevel", "error",
+                "-i", tempIn,
+                "-vn",
+                // Strippeamos metadata del input — los Voice Memos de iOS arrastran
+                // M4A major_brand, voice-memo-uuid, title, etc. Eso confunde a
+                // Baileys/WhatsApp al parsear el OGG y termina mostrando "no se
+                // puede abrir" aunque el codec sea opus. +bitexact además evita
+                // metadata de timestamp.
+                "-map_metadata", "-1",
+                "-fflags", "+bitexact"
+            };
+            if (afFilter is not null)
+            {
+                args.Add("-af");
+                args.Add(afFilter);
+            }
+            args.AddRange(new[]
+            {
+                "-c:a", "libopus",
+                "-b:a", bitrate,
+                "-ac", "1",
+                // libopus opera internamente a 48kHz; pedirle 16k no sirve y
+                // genera ambigüedad en el OpusHead. Forzamos 48k mono.
+                "-ar", "48000",
+                "-application", "voip",
+                "-f", "ogg",
+                "pipe:1"
+            });
+
             var psi = new ProcessStartInfo
             {
                 FileName = "ffmpeg",
-                ArgumentList =
-                {
-                    "-hide_banner", "-loglevel", "error",
-                    "-i", tempIn,
-                    "-vn",
-                    // Strippeamos metadata del input — los Voice Memos de iOS arrastran
-                    // M4A major_brand, voice-memo-uuid, title, etc. Eso confunde a
-                    // Baileys/WhatsApp al parsear el OGG y termina mostrando "no se
-                    // puede abrir" aunque el codec sea opus. +bitexact además evita
-                    // metadata de timestamp.
-                    "-map_metadata", "-1",
-                    "-fflags", "+bitexact",
-                    "-c:a", "libopus",
-                    "-b:a", "32k",
-                    "-ac", "1",
-                    // libopus opera internamente a 48kHz; pedirle 16k no sirve y
-                    // genera ambigüedad en el OpusHead. Forzamos 48k mono.
-                    "-ar", "48000",
-                    "-application", "voip",
-                    "-f", "ogg",
-                    "pipe:1"
-                },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            foreach (var a in args) psi.ArgumentList.Add(a);
 
             using var proc = Process.Start(psi)
                 ?? throw new InvalidOperationException("No se pudo iniciar ffmpeg");
