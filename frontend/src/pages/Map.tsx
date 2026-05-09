@@ -35,6 +35,14 @@ type MapLead = {
   sellerId?: string;
 };
 
+// ISO2 (lowercase) de los países que cubre /scripts/localities/build.mjs.
+// El admin descarga todos para poder dibujar zonas en cualquier país, incluso
+// sin productos activos allá (ej. Uruguay).
+const ALL_LATAM_CC = [
+  'ar', 'br', 'cl', 'uy', 'py', 'bo', 'pe', 'ec', 'co', 've',
+  'mx', 'cr', 'pa', 'gt', 'hn', 'sv', 'ni', 'do'
+];
+
 const PRODUCT_COLORS: Record<string, string> = {
   gymhero: '#1e8dff',
   bookingpro_barber: '#f59e0b',
@@ -163,16 +171,19 @@ export default function MapPage() {
     return () => { map.remove(); mapRef.current = null; };
   }, []);
 
-  // Cargar geojson solo de los países donde hay productos activos. Para admin
-  // eso suele ser todos los países LATAM con verticales asignadas, lo que en la
-  // práctica son 1-3 archivos chicos en vez del LATAM entero (~91 MB).
+  // Cargar geojson solo de los países necesarios.
+  // - Sellers: el país de los productos activos (típicamente 1 archivo).
+  // - Admin: TODOS los países LATAM disponibles, así puede asignar zonas en
+  //   países donde aún no hay producto activo (ej. Uruguay sin app todavía,
+  //   pero con sellers que cubren UY).
   const countryCodes = useMemo(() => {
+    if (admin) return ALL_LATAM_CC;
     const ccs = (products.data ?? [])
       .filter(p => p.active)
       .map(p => p.country?.toLowerCase())
       .filter(Boolean) as string[];
     return Array.from(new Set(ccs));
-  }, [products.data]);
+  }, [admin, products.data]);
 
   useEffect(() => {
     const map = mapRef.current;
