@@ -13,7 +13,55 @@ public static class DatabaseSeeder
         await SeedCitiesAsync(db, ct);
         await SeedAdminAsync(db, adminEmail, adminPassword, ct);
         await SeedSampleSellersAsync(db, ct);
+        await BackfillCategoryOverridesAsync(db, ct);
     }
+
+    /// <summary>
+    /// Para productos que ya tienen categorías y MessageSteps default
+    /// configurado pero todavía no tienen CategoryCadences, crea un
+    /// override por cada categoría con copia de los MessageSteps. Esto da
+    /// al admin un punto de partida — abrir un producto y ver una tab
+    /// por cada vertical, ya pre-poblada con la cadencia default —
+    /// sin tener que clickear "+ Override" 9 veces.
+    ///
+    /// Skip si:
+    /// - El producto ya tiene CategoryCadences (ya configurado).
+    /// - No tiene Categories (no hay verticales que personalizar).
+    /// - MessageSteps vacío (no hay nada para clonar; los overrides
+    ///   vacíos se filtrarían en el próximo save desde el frontend).
+    /// </summary>
+    private static async Task BackfillCategoryOverridesAsync(ApplicationDbContext db, CancellationToken ct)
+    {
+        var products = await db.Products.ToListAsync(ct);
+        var changed = false;
+        foreach (var p in products)
+        {
+            if (p.CategoryCadences is { Count: > 0 }) continue;
+            if (p.Categories is null or { Count: 0 }) continue;
+            var defaultSteps = p.MessageSteps ?? new();
+            if (defaultSteps.Count == 0) continue;
+
+            p.CategoryCadences = p.Categories
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Select(c => new CategoryCadence
+                {
+                    Category = c.Trim(),
+                    Steps = CloneSteps(defaultSteps)
+                })
+                .ToList();
+            changed = true;
+        }
+        if (changed) await db.SaveChangesAsync(ct);
+    }
+
+    private static List<MessageStep> CloneSteps(List<MessageStep> src) =>
+        src.Select(s => new MessageStep
+        {
+            Text = s.Text,
+            DelaySeconds = s.DelaySeconds,
+            MediaAssetId = s.MediaAssetId,
+            MediaAssetIds = new List<Guid>(s.MediaAssetIds ?? new())
+        }).ToList();
 
     private static async Task SeedSampleSellersAsync(ApplicationDbContext db, CancellationToken ct)
     {
