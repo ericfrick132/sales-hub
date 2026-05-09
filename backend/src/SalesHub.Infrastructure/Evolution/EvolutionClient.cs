@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -129,12 +130,26 @@ public class EvolutionClient : IEvolutionClient
 
     public async Task<bool> SendVoiceNoteAsync(string instanceName, string jid, byte[] audio, CancellationToken ct = default)
     {
-        // /message/sendWhatsAppAudio fuerza el envío como PTT (nota de voz). Evolution
-        // convierte el container/codec si hace falta cuando encoding=true.
+        // WhatsApp solo reproduce notas de voz si vienen en container OGG con codec
+        // Opus (mono, ~16-48kHz). Si dejamos que Evolution se ocupe con encoding=true
+        // a veces no convierte y el destinatario ve "no se puede abrir". Lo hacemos
+        // server-side con ffmpeg para que sea determinístico (mp3, m4a, wav → ogg/opus).
+        byte[] ogg;
+        try
+        {
+            ogg = await ConvertToOggOpusAsync(audio, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "ffmpeg convert failed; mando audio raw a Evolution con encoding=true como fallback");
+            ogg = audio;
+        }
+
+        // /message/sendWhatsAppAudio fuerza envío como PTT.
         var body = new
         {
             number = jid,
-            audio = Convert.ToBase64String(audio),
+            audio = Convert.ToBase64String(ogg),
             encoding = true,
             delay = 0
         };
@@ -143,10 +158,64 @@ public class EvolutionClient : IEvolutionClient
         {
             var txt = await resp.Content.ReadAsStringAsync(ct);
             _log.LogWarning("SendVoiceNote {Instance} -> {Jid} ({Bytes}b) failed: {Status} {Body}",
-                instanceName, jid, audio.Length, resp.StatusCode, txt);
+                instanceName, jid, ogg.Length, resp.StatusCode, txt);
             return false;
         }
         return true;
+    }
+
+    private static async Task<byte[]> ConvertToOggOpusAsync(byte[] input, CancellationToken ct)
+    {
+        // ffmpeg en stdin → stdout. -application voip optimiza para voz.
+        // 16kHz mono opus es lo que producen los clientes de WhatsApp.
+        var psi = new ProcessStartInfo
+        {
+            FileName = "ffmpeg",
+            ArgumentList =
+            {
+                "-hide_banner", "-loglevel", "error",
+                "-i", "pipe:0",
+                "-vn",
+                "-c:a", "libopus",
+                "-b:a", "32k",
+                "-ac", "1",
+                "-ar", "16000",
+                "-application", "voip",
+                "-f", "ogg",
+                "pipe:1"
+            },
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var proc = Process.Start(psi)
+            ?? throw new InvalidOperationException("No se pudo iniciar ffmpeg");
+
+        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, ct);
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+
+        await proc.StandardInput.BaseStream.WriteAsync(input, ct);
+        proc.StandardInput.Close();
+
+        var output = await stdoutTask;
+        await proc.WaitForExitAsync(ct);
+
+        if (proc.ExitCode != 0 || output.Length == 0)
+        {
+            var err = await stderrTask;
+            throw new InvalidOperationException($"ffmpeg exit {proc.ExitCode}: {err}");
+        }
+        return output;
+    }
+
+    private static async Task<byte[]> ReadAllBytesAsync(Stream s, CancellationToken ct)
+    {
+        using var ms = new MemoryStream();
+        await s.CopyToAsync(ms, ct);
+        return ms.ToArray();
     }
 
     public async Task<bool> SendMediaAsync(string instanceName, string jid, byte[] content, string mimeType, string fileName, string? caption, CancellationToken ct = default)
