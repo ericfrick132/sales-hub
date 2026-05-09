@@ -91,35 +91,32 @@ public class OutboxSender
                     await _evo.MarkAllChatsReadAsync(seller.EvolutionInstance.InstanceName, ct);
                 }
 
-                var typing = Random.Shared.Next(seller.PreSendTypingMinSeconds, seller.PreSendTypingMaxSeconds + 1);
                 var jid = $"{next.WhatsappPhone}@s.whatsapp.net";
-                // Si el outbox row es de audio, usamos "recording…" en vez de
-                // "escribiendo…" para que el indicador en el chat del lead
-                // matchee con lo que va a llegar.
-                var isAudio = next.MediaAssetId is not null
-                    && (await _db.MediaAssets.AsNoTracking()
-                        .Where(m => m.Id == next.MediaAssetId)
-                        .Select(m => m.MimeType)
-                        .FirstOrDefaultAsync(ct))?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true;
-                if (isAudio)
-                    await _evo.SetPresenceRecordingAsync(seller.EvolutionInstance.InstanceName, jid, typing, ct);
-                else
-                    await _evo.SetPresenceTypingAsync(seller.EvolutionInstance.InstanceName, jid, typing, ct);
-                await Task.Delay(TimeSpan.FromSeconds(typing), ct);
-
-                bool ok;
+                MediaAsset? asset = null;
+                var isAudio = false;
                 if (next.MediaAssetId is not null)
                 {
-                    // Cargamos el bytea fresh para no atar el lifecycle del file
-                    // a tracking del outbox row (los outbox rows pueden tener
-                    // muchas iteraciones).
-                    var asset = await _db.MediaAssets.AsNoTracking()
+                    asset = await _db.MediaAssets.AsNoTracking()
                         .FirstOrDefaultAsync(m => m.Id == next.MediaAssetId, ct);
                     if (asset is null)
-                    {
                         throw new InvalidOperationException($"MediaAsset {next.MediaAssetId} no existe");
-                    }
-                    if (asset.MimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase))
+                    isAudio = asset.MimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);
+                }
+
+                // Para texto/imagen/PDF: pre-typing humanizado como "escribiendo…".
+                // Para audio: skip — el "grabando audio…" lo mostramos justo
+                // antes de enviar, con la duración exacta del audio.
+                if (!isAudio)
+                {
+                    var typing = Random.Shared.Next(seller.PreSendTypingMinSeconds, seller.PreSendTypingMaxSeconds + 1);
+                    await _evo.SetPresenceTypingAsync(seller.EvolutionInstance.InstanceName, jid, typing, ct);
+                    await Task.Delay(TimeSpan.FromSeconds(typing), ct);
+                }
+
+                bool ok;
+                if (asset is not null)
+                {
+                    if (isAudio)
                     {
                         // Audio → se manda como nota de voz (PTT), no como adjunto. WhatsApp
                         // no soporta caption en notas de voz; si el step trae texto, lo
@@ -130,9 +127,22 @@ public class OutboxSender
                             var pre = await _evo.SendTextAsync(seller.EvolutionInstance.InstanceName, next.WhatsappPhone, next.Message, ct);
                             if (!pre) throw new InvalidOperationException("Evolution rechazó el texto previo al audio");
                         }
-                        ok = await _evo.SendVoiceNoteAsync(
+                        // Convertimos a OGG/Opus + duración real, mostramos
+                        // "grabando audio…" por exactamente esa duración, y recién
+                        // después enviamos.
+                        var prep = await _evo.PrepareVoiceNoteAsync(asset.Content, ct);
+                        var dur = Math.Max(1, prep.DurationSeconds);
+                        var rem = dur;
+                        while (rem > 0)
+                        {
+                            var chunk = Math.Min(25, rem);
+                            await _evo.SetPresenceRecordingAsync(seller.EvolutionInstance.InstanceName, jid, chunk, ct);
+                            await Task.Delay(chunk * 1000, ct);
+                            rem -= chunk;
+                        }
+                        ok = await _evo.SendPreparedVoiceNoteAsync(
                             seller.EvolutionInstance.InstanceName, next.WhatsappPhone,
-                            asset.Content, ct);
+                            prep.OggBytes, ct);
                     }
                     else
                     {

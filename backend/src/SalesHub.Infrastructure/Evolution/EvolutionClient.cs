@@ -140,22 +140,32 @@ public class EvolutionClient : IEvolutionClient
 
     public async Task<bool> SendVoiceNoteAsync(string instanceName, string jid, byte[] audio, CancellationToken ct = default)
     {
+        var prepared = await PrepareVoiceNoteAsync(audio, ct);
+        return await SendPreparedVoiceNoteAsync(instanceName, jid, prepared.OggBytes, ct);
+    }
+
+    public async Task<PreparedVoiceNote> PrepareVoiceNoteAsync(byte[] input, CancellationToken ct = default)
+    {
         // WhatsApp solo reproduce notas de voz si vienen en container OGG con codec
-        // Opus (mono, ~16-48kHz). Si dejamos que Evolution se ocupe con encoding=true
-        // a veces no convierte y el destinatario ve "no se puede abrir". Lo hacemos
-        // server-side con ffmpeg para que sea determinístico (mp3, m4a, wav → ogg/opus).
+        // Opus (mono, ~16-48kHz). Lo convertimos server-side con ffmpeg para que
+        // sea determinístico (mp3, m4a, wav → ogg/opus).
         byte[] ogg;
         try
         {
-            ogg = await ConvertToOggOpusAsync(audio, ct);
-            _log.LogDebug("ffmpeg ok: {InBytes}b → {OutBytes}b", audio.Length, ogg.Length);
+            ogg = await ConvertToOggOpusAsync(input, ct);
+            _log.LogDebug("ffmpeg ok: {InBytes}b → {OutBytes}b", input.Length, ogg.Length);
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "ffmpeg convert FAILED; mando audio raw a Evolution con encoding=true como fallback");
-            ogg = audio;
+            _log.LogWarning(ex, "ffmpeg convert FAILED; uso input raw como fallback");
+            ogg = input;
         }
+        var dur = await ProbeDurationSecondsAsync(ogg, ct);
+        return new PreparedVoiceNote(ogg, dur);
+    }
 
+    public async Task<bool> SendPreparedVoiceNoteAsync(string instanceName, string jid, byte[] ogg, CancellationToken ct = default)
+    {
         // /message/sendWhatsAppAudio fuerza envío como PTT.
         var body = new
         {
@@ -173,6 +183,42 @@ public class EvolutionClient : IEvolutionClient
             return false;
         }
         return true;
+    }
+
+    private static async Task<int> ProbeDurationSecondsAsync(byte[] ogg, CancellationToken ct)
+    {
+        // ffprobe retorna duración en segundos (float) en stdout.
+        var tempIn = Path.Combine(Path.GetTempPath(), $"saleshub-probe-{Guid.NewGuid():N}.ogg");
+        await File.WriteAllBytesAsync(tempIn, ogg, ct);
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "ffprobe",
+                ArgumentList = {
+                    "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    tempIn
+                },
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var proc = Process.Start(psi)
+                ?? throw new InvalidOperationException("No se pudo iniciar ffprobe");
+            var stdout = await proc.StandardOutput.ReadToEndAsync(ct);
+            await proc.WaitForExitAsync(ct);
+            if (proc.ExitCode != 0) return 0;
+            if (double.TryParse(stdout.Trim(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d))
+                return (int)Math.Ceiling(d);
+            return 0;
+        }
+        finally
+        {
+            try { File.Delete(tempIn); } catch { /* best-effort */ }
+        }
     }
 
     private static async Task<byte[]> ConvertToOggOpusAsync(byte[] input, CancellationToken ct)

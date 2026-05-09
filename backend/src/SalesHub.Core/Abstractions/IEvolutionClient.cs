@@ -24,4 +24,16 @@ public interface IEvolutionClient
     /// <summary>Manda audio como nota de voz (PTT) usando el endpoint sendWhatsAppAudio.
     /// Evolution convierte a OGG/Opus si hace falta. Recibe el archivo en bytes (mp3/m4a/ogg/wav).</summary>
     Task<bool> SendVoiceNoteAsync(string instanceName, string jid, byte[] audio, CancellationToken ct = default);
+
+    /// <summary>Convierte el audio a OGG/Opus mono y devuelve los bytes listos
+    /// para mandar + la duración real en segundos (ffprobe). Útil para mostrar
+    /// el indicador "grabando audio…" en el chat por exactamente la duración
+    /// del audio antes de enviarlo.</summary>
+    Task<PreparedVoiceNote> PrepareVoiceNoteAsync(byte[] input, CancellationToken ct = default);
+
+    /// <summary>Envía bytes ya convertidos a OGG/Opus (output de PrepareVoiceNoteAsync)
+    /// como nota de voz, sin re-transcodear.</summary>
+    Task<bool> SendPreparedVoiceNoteAsync(string instanceName, string jid, byte[] ogg, CancellationToken ct = default);
 }
+
+public record PreparedVoiceNote(byte[] OggBytes, int DurationSeconds);

@@ -433,29 +433,15 @@ public class LeadsController : ControllerBase
                 if (string.IsNullOrWhiteSpace(step.Text) && !hasMedia) continue;
 
                 Guid? mediaAssetId = step.MediaAssetIds is { Count: > 0 } ? step.MediaAssetIds[0] : step.MediaAssetId;
-                var stepIsAudio = mediaAssetId is not null
-                    && (await _db.MediaAssets.AsNoTracking()
-                        .Where(m => m.Id == mediaAssetId)
-                        .Select(m => m.MimeType)
-                        .FirstOrDefaultAsync(ct))?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true;
 
-                // Esperar el delay configurado del paso (capeado a 10 min para
-                // no colgar el HTTP). El step 0 siempre arranca inmediato.
-                // Mientras esperamos, mostramos "grabando audio…" o
-                // "escribiendo…" en el chat del lead, refrescando cada 25s
-                // porque WhatsApp esconde el indicador antes.
+                // Delay del paso: silencioso (la persona aún no empezó nada).
+                // El indicador "grabando audio…" / "escribiendo…" lo mostramos
+                // recién cuando estamos a punto de enviar — y para audio dura
+                // exactamente la duración del archivo.
                 if (i > 0)
                 {
                     var d = Math.Min(Math.Max(0, step.DelaySeconds), MaxStepDelaySeconds);
-                    var remaining = d;
-                    while (remaining > 0)
-                    {
-                        var chunk = Math.Min(PresenceChunkSeconds, remaining);
-                        if (stepIsAudio) await _evo.SetPresenceRecordingAsync(instance, jid, chunk, ct);
-                        else await _evo.SetPresenceTypingAsync(instance, jid, chunk, ct);
-                        await Task.Delay(chunk * 1000, ct);
-                        remaining -= chunk;
-                    }
+                    if (d > 0) await Task.Delay(d * 1000, ct);
                 }
 
                 var rendered = string.IsNullOrWhiteSpace(step.Text)
@@ -489,7 +475,20 @@ public class LeadsController : ControllerBase
                                 sent++;
                                 await Task.Delay(IntraStepDelayMs, ct);
                             }
-                            var okv = await _evo.SendVoiceNoteAsync(instance, lead.WhatsappPhone!, asset.Content, ct);
+                            // Convertimos a OGG/Opus y obtenemos duración real.
+                            // Mostramos "grabando audio…" por exactamente esa
+                            // duración, esperamos, y recién ahí enviamos.
+                            var prep = await _evo.PrepareVoiceNoteAsync(asset.Content, ct);
+                            var dur = Math.Max(1, prep.DurationSeconds);
+                            var rem = dur;
+                            while (rem > 0)
+                            {
+                                var chunk = Math.Min(PresenceChunkSeconds, rem);
+                                await _evo.SetPresenceRecordingAsync(instance, jid, chunk, ct);
+                                await Task.Delay(chunk * 1000, ct);
+                                rem -= chunk;
+                            }
+                            var okv = await _evo.SendPreparedVoiceNoteAsync(instance, lead.WhatsappPhone!, prep.OggBytes, ct);
                             if (!okv) return StatusCode(502, new { error = $"Falló el step {i + 1} (audio)" });
                             PersistSent(lead, seller, instance, $"[audio: {asset.FileName}]", asset.Id);
                             sent++;
