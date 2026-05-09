@@ -138,15 +138,7 @@ public class EvolutionClient : IEvolutionClient
         try
         {
             ogg = await ConvertToOggOpusAsync(audio, ct);
-            _log.LogInformation("ffmpeg ok: {InBytes}b → {OutBytes}b, signature={Sig}",
-                audio.Length, ogg.Length, BytesSignature(ogg));
-            // Diagnóstico temporal: dejar el último input/output para inspección.
-            try
-            {
-                await File.WriteAllBytesAsync("/tmp/saleshub-last-input.bin", audio, ct);
-                await File.WriteAllBytesAsync("/tmp/saleshub-last-output.ogg", ogg, ct);
-            }
-            catch { /* no-op */ }
+            _log.LogDebug("ffmpeg ok: {InBytes}b → {OutBytes}b", audio.Length, ogg.Length);
         }
         catch (Exception ex)
         {
@@ -190,10 +182,19 @@ public class EvolutionClient : IEvolutionClient
                     "-hide_banner", "-loglevel", "error",
                     "-i", tempIn,
                     "-vn",
+                    // Strippeamos metadata del input — los Voice Memos de iOS arrastran
+                    // M4A major_brand, voice-memo-uuid, title, etc. Eso confunde a
+                    // Baileys/WhatsApp al parsear el OGG y termina mostrando "no se
+                    // puede abrir" aunque el codec sea opus. +bitexact además evita
+                    // metadata de timestamp.
+                    "-map_metadata", "-1",
+                    "-fflags", "+bitexact",
                     "-c:a", "libopus",
                     "-b:a", "32k",
                     "-ac", "1",
-                    "-ar", "16000",
+                    // libopus opera internamente a 48kHz; pedirle 16k no sirve y
+                    // genera ambigüedad en el OpusHead. Forzamos 48k mono.
+                    "-ar", "48000",
                     "-application", "voip",
                     "-f", "ogg",
                     "pipe:1"
@@ -233,18 +234,6 @@ public class EvolutionClient : IEvolutionClient
         return ms.ToArray();
     }
 
-    private static string BytesSignature(byte[] b)
-    {
-        var n = Math.Min(b.Length, 4);
-        var hex = new System.Text.StringBuilder(2 * n + n);
-        for (var i = 0; i < n; i++)
-        {
-            hex.Append(b[i].ToString("X2"));
-            if (i < n - 1) hex.Append(' ');
-        }
-        var ascii = System.Text.Encoding.ASCII.GetString(b, 0, n);
-        return $"{hex} ('{ascii}')";
-    }
 
     public async Task<bool> SendMediaAsync(string instanceName, string jid, byte[] content, string mimeType, string fileName, string? caption, CancellationToken ct = default)
     {
