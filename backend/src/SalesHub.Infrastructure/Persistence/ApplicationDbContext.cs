@@ -24,6 +24,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<SellerLocality> SellerLocalities => Set<SellerLocality>();
     public DbSet<SearchJob> SearchJobs => Set<SearchJob>();
     public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
+    public DbSet<MessageStepRotation> MessageStepRotations => Set<MessageStepRotation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

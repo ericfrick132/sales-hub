@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Api.Dtos;
 using SalesHub.Core.Domain.Entities;
+using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Api.Controllers;
@@ -57,6 +58,66 @@ public class ProductsController : ControllerBase
         return NoContent();
     }
 
+    public record AudioStatRow(
+        Guid MediaAssetId,
+        string FileName,
+        string MimeType,
+        int Sent,
+        int Replied,
+        int Interested,
+        int DemoScheduled,
+        int Closed);
+
+    /// <summary>Performance por audio del producto. Solo cuenta outbox rows
+    /// efectivamente enviados (Status = Sent) cuyo asset pertenece al producto.</summary>
+    [HttpGet("{productKey}/audio-stats")]
+    public async Task<ActionResult<IEnumerable<AudioStatRow>>> AudioStats(string productKey, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        var assets = await _db.MediaAssets.AsNoTracking()
+            .Where(m => m.ProductKey == productKey && m.MimeType.StartsWith("audio/"))
+            .Select(m => new { m.Id, m.FileName, m.MimeType })
+            .ToListAsync(ct);
+        if (assets.Count == 0) return new List<AudioStatRow>();
+
+        var assetIds = assets.Select(a => a.Id).ToList();
+
+        // Outbox sent rows with one of these assets, joined to lead status.
+        var sentRows = await _db.Outbox.AsNoTracking()
+            .Where(o => o.MediaAssetId != null
+                     && assetIds.Contains(o.MediaAssetId!.Value)
+                     && o.Status == OutboxStatus.Sent)
+            .Join(_db.Leads.AsNoTracking(), o => o.LeadId, l => l.Id, (o, l) => new
+            {
+                AssetId = o.MediaAssetId!.Value,
+                LeadStatus = l.Status,
+                Replied = l.FirstReplyAt != null
+            })
+            .ToListAsync(ct);
+
+        var grouped = sentRows.GroupBy(r => r.AssetId).ToDictionary(g => g.Key, g => g.ToList());
+
+        return assets.Select(a =>
+        {
+            var rows = grouped.TryGetValue(a.Id, out var list) ? list : new();
+            return new AudioStatRow(
+                MediaAssetId: a.Id,
+                FileName: a.FileName,
+                MimeType: a.MimeType,
+                Sent: rows.Count,
+                Replied: rows.Count(r => r.Replied),
+                Interested: rows.Count(r => r.LeadStatus == LeadStatus.Interested
+                                         || r.LeadStatus == LeadStatus.DemoScheduled
+                                         || r.LeadStatus == LeadStatus.Closed),
+                DemoScheduled: rows.Count(r => r.LeadStatus == LeadStatus.DemoScheduled
+                                             || r.LeadStatus == LeadStatus.Closed),
+                Closed: rows.Count(r => r.LeadStatus == LeadStatus.Closed));
+        })
+        .OrderByDescending(r => r.Sent)
+        .ToList();
+    }
+
     private static Product Map(Product p, CreateOrUpdateProductRequest r)
     {
         p.ProductKey = r.ProductKey;
@@ -83,15 +144,16 @@ public class ProductsController : ControllerBase
             .Where(s => s.Length > 0)
             .ToList();
         p.MessageSteps = (r.MessageSteps ?? new())
-            // Un step válido tiene texto o media. Los vacíos se filtran.
-            .Where(s => !string.IsNullOrWhiteSpace(s.Text) || s.MediaAssetId is not null)
+            // Un step válido tiene texto o media (legacy o variantes nuevas).
+            .Where(s => !string.IsNullOrWhiteSpace(s.Text) || s.MediaAssetId is not null || (s.MediaAssetIds is { Count: > 0 }))
             .Select((s, i) => new Core.Domain.Entities.MessageStep
             {
                 Text = (s.Text ?? string.Empty).Trim(),
                 // Step 0 siempre arranca al asignar (delay 0). Los siguientes
                 // tienen el delay relativo al anterior.
                 DelaySeconds = i == 0 ? 0 : Math.Max(0, s.DelaySeconds),
-                MediaAssetId = s.MediaAssetId
+                MediaAssetId = s.MediaAssetId,
+                MediaAssetIds = (s.MediaAssetIds ?? new()).Where(g => g != Guid.Empty).Distinct().ToList()
             })
             .ToList();
         return p;
@@ -104,5 +166,5 @@ public class ProductsController : ControllerBase
         p.DailyLimit, p.TriggerHours, p.SendHourStart, p.SendHourEnd,
         p.RequiresAssistedSale, p.GooglePlacesDailyLeadCap,
         p.ReplyTemplates,
-        p.MessageSteps.Select(s => new MessageStepDto(s.Text, s.DelaySeconds, s.MediaAssetId)).ToList());
+        p.MessageSteps.Select(s => new MessageStepDto(s.Text, s.DelaySeconds, s.MediaAssetId, s.MediaAssetIds)).ToList());
 }

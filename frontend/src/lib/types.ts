@@ -89,6 +89,8 @@ export interface MessageStep {
   text: string;
   delaySeconds: number;
   mediaAssetId?: string | null;
+  /** Si es audio, podés cargar varias variantes y la app rota round-robin entre ellas. */
+  mediaAssetIds?: string[];
 }
 
 export interface MediaAsset {

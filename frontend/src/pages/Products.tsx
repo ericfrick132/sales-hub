@@ -153,7 +153,85 @@ export default function Products() {
           <button className="btn-primary ml-auto" onClick={save}>Guardar</button>
         </div>
 
+        {selected?.productKey && (
+          <AudioStatsPanel productKey={selected.productKey} />
+        )}
+
         <TestSendPanel defaultPrefix={draft.phonePrefix} />
+      </div>
+    </div>
+  );
+}
+
+interface AudioStatRow {
+  mediaAssetId: string;
+  fileName: string;
+  mimeType: string;
+  sent: number;
+  replied: number;
+  interested: number;
+  demoScheduled: number;
+  closed: number;
+}
+
+function AudioStatsPanel({ productKey }: { productKey: string }) {
+  const statsQ = useQuery({
+    queryKey: ['audio-stats', productKey],
+    queryFn: async () => (await api.get<AudioStatRow[]>(`/products/${productKey}/audio-stats`)).data,
+    refetchInterval: 60_000
+  });
+  const rows = statsQ.data ?? [];
+  if (rows.length === 0) return null;
+
+  const pct = (n: number, d: number) => d === 0 ? '—' : `${((n / d) * 100).toFixed(1)}%`;
+  // Best performer = mayor reply rate, con mínimo 5 envíos para evitar ruido.
+  const eligible = rows.filter(r => r.sent >= 5);
+  const best = eligible.length === 0 ? null
+    : eligible.reduce((a, b) => (a.replied / a.sent) >= (b.replied / b.sent) ? a : b);
+
+  return (
+    <div className="border-t border-slate-200 pt-4 mt-2 space-y-2">
+      <h4 className="font-semibold text-sm flex items-center gap-2">
+        <span>Performance de audios</span>
+        <span className="text-xs text-slate-400 font-normal">tasa de respuesta y conversión por archivo</span>
+      </h4>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="text-slate-500">
+            <tr>
+              <th className="text-left py-1 pr-2">Archivo</th>
+              <th className="text-right py-1 px-2">Enviados</th>
+              <th className="text-right py-1 px-2">Respondieron</th>
+              <th className="text-right py-1 px-2">Interesados</th>
+              <th className="text-right py-1 px-2">Demos</th>
+              <th className="text-right py-1 px-2">Cerrados</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const isBest = best?.mediaAssetId === r.mediaAssetId;
+              return (
+                <tr key={r.mediaAssetId} className={`border-t border-slate-100 ${isBest ? 'bg-emerald-50' : ''}`}>
+                  <td className="py-1 pr-2">
+                    <div className="flex items-center gap-1">
+                      {isBest && <span title="Mejor respuesta (≥5 envíos)">🏆</span>}
+                      <span className="truncate max-w-[200px]" title={r.fileName}>{r.fileName}</span>
+                    </div>
+                  </td>
+                  <td className="text-right py-1 px-2 font-mono">{r.sent}</td>
+                  <td className="text-right py-1 px-2 font-mono">
+                    {r.replied} <span className="text-slate-400">({pct(r.replied, r.sent)})</span>
+                  </td>
+                  <td className="text-right py-1 px-2 font-mono">
+                    {r.interested} <span className="text-slate-400">({pct(r.interested, r.sent)})</span>
+                  </td>
+                  <td className="text-right py-1 px-2 font-mono">{r.demoScheduled}</td>
+                  <td className="text-right py-1 px-2 font-mono">{r.closed}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -335,11 +413,36 @@ function StepsEditor({ productKey, steps, onChange }: { productKey: string; step
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       qc.invalidateQueries({ queryKey: ['product-media', productKey] });
-      update(stepIndex, { mediaAssetId: data.id });
+      // Audios → lista de variantes para A/B testing. Imágenes/PDFs → uno solo.
+      if (data.mimeType.startsWith('audio/')) {
+        const current = steps[stepIndex];
+        const existing = current.mediaAssetIds && current.mediaAssetIds.length > 0
+          ? current.mediaAssetIds
+          : (current.mediaAssetId ? [current.mediaAssetId] : []);
+        update(stepIndex, {
+          mediaAssetIds: [...existing, data.id],
+          mediaAssetId: null
+        });
+      } else {
+        update(stepIndex, { mediaAssetId: data.id, mediaAssetIds: [] });
+      }
       toast.success(`Subido: ${data.fileName}`);
     } catch (err: any) {
       toast.error(err?.response?.data?.error ?? 'Falló la subida');
     }
+  }
+
+  function removeVariant(stepIndex: number, assetId: string) {
+    const s = steps[stepIndex];
+    const list = (s.mediaAssetIds ?? []).filter(id => id !== assetId);
+    update(stepIndex, {
+      mediaAssetIds: list,
+      // Si vaciamos la lista y había un legacy, también lo limpiamos.
+      mediaAssetId: s.mediaAssetId === assetId ? null : s.mediaAssetId
+    });
+  }
+  function clearStepMedia(stepIndex: number) {
+    update(stepIndex, { mediaAssetId: null, mediaAssetIds: [] });
   }
 
   return (
@@ -362,7 +465,12 @@ function StepsEditor({ productKey, steps, onChange }: { productKey: string; step
       )}
 
       {steps.map((s, i) => {
-        const asset = s.mediaAssetId ? mediaById[s.mediaAssetId] : null;
+        const variantIds = (s.mediaAssetIds && s.mediaAssetIds.length > 0)
+          ? s.mediaAssetIds
+          : (s.mediaAssetId ? [s.mediaAssetId] : []);
+        const variantAssets = variantIds.map(id => mediaById[id]).filter(Boolean);
+        const isAudioStep = variantAssets.length > 0 && variantAssets[0].mimeType.startsWith('audio/');
+        const firstAsset = variantAssets[0];
         return (
           <div key={i} className="border border-slate-200 rounded-md p-3 bg-slate-50/40 space-y-2">
             <div className="flex items-center gap-2 text-xs">
@@ -386,19 +494,45 @@ function StepsEditor({ productKey, steps, onChange }: { productKey: string; step
             </div>
             <textarea
               className="input min-h-20 font-mono text-sm w-full"
-              placeholder={asset
-                ? (asset.mimeType.startsWith('audio/')
+              placeholder={firstAsset
+                ? (isAudioStep
                     ? 'Texto opcional (sale como mensaje separado antes del audio)'
                     : 'Caption opcional (texto que va con el archivo)')
                 : (i === 0 ? 'ej. {Hola!|Buenas!} {name}, ...' : 'ej. te dejo el link: {checkout_url}')}
               value={s.text}
               onChange={(e) => update(i, { text: e.target.value })}
             />
-            <AttachmentSlot
-              asset={asset}
-              onPick={(file) => handleUpload(i, file)}
-              onRemove={() => update(i, { mediaAssetId: null })}
-            />
+
+            {variantAssets.length === 0 && (
+              <EmptyAttachment onPick={(file) => handleUpload(i, file)} />
+            )}
+
+            {variantAssets.length > 0 && !isAudioStep && (
+              <AttachmentRow
+                asset={firstAsset}
+                onRemove={() => clearStepMedia(i)}
+              />
+            )}
+
+            {isAudioStep && (
+              <div className="space-y-1">
+                <div className="text-[11px] text-slate-500 px-1 flex items-center gap-2">
+                  <span>🎤 {variantAssets.length} variante{variantAssets.length === 1 ? '' : 's'} de audio</span>
+                  {variantAssets.length > 1 && (
+                    <span className="text-emerald-700">· se rotan en round-robin</span>
+                  )}
+                </div>
+                {variantAssets.map((a, idx) => (
+                  <AttachmentRow
+                    key={a.id}
+                    asset={a}
+                    label={`Variante ${idx + 1}`}
+                    onRemove={() => removeVariant(i, a.id)}
+                  />
+                ))}
+                <AddVariantButton onPick={(file) => handleUpload(i, file)} />
+              </div>
+            )}
           </div>
         );
       })}
@@ -406,54 +540,45 @@ function StepsEditor({ productKey, steps, onChange }: { productKey: string; step
   );
 }
 
-function AttachmentSlot({ asset, onPick, onRemove }: {
-  asset: MediaAsset | null | undefined;
-  onPick: (file: File) => void;
+function AttachmentRow({ asset, onRemove, label }: {
+  asset: MediaAsset;
   onRemove: () => void;
+  label?: string;
 }) {
-  const inputId = `att-${Math.random().toString(36).slice(2, 8)}`;
-  const isImage = asset?.mimeType.startsWith('image/');
-  const isAudio = asset?.mimeType.startsWith('audio/');
-  // Preview va directo al backend (no pasa por el axios client), así que armamos
-  // la URL completa con la base usada por el resto de la app.
+  const isImage = asset.mimeType.startsWith('image/');
+  const isAudio = asset.mimeType.startsWith('audio/');
   const apiBase = (import.meta.env.VITE_API_URL ?? '/api').replace(/\/$/, '');
-  const previewUrl = asset ? `${apiBase}/media/${asset.id}` : null;
-
-  if (asset) {
-    return (
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 text-xs bg-white border border-slate-200 rounded p-2">
-          {isImage && previewUrl ? (
-            <img src={previewUrl} alt={asset.fileName} className="w-12 h-12 object-cover rounded border border-slate-200" />
-          ) : (
-            <div className="w-12 h-12 rounded border border-slate-200 grid place-items-center bg-slate-50 text-slate-400">
-              {isAudio ? '🎤' : '📄'}
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="font-medium truncate">{asset.fileName}</div>
-            <div className="text-slate-500 text-[11px]">
-              {asset.mimeType} · {(asset.sizeBytes / 1024).toFixed(0)} KB
-              {isAudio && <span className="ml-1 text-emerald-700">· se envía como nota de voz</span>}
-            </div>
-            {isAudio && previewUrl && (
-              <audio controls preload="none" className="w-full mt-1 h-8">
-                <source src={previewUrl} type={asset.mimeType} />
-              </audio>
-            )}
-          </div>
-          <button type="button" className="btn-secondary text-xs text-rose-600" onClick={onRemove}>Quitar</button>
+  const previewUrl = `${apiBase}/media/${asset.id}`;
+  return (
+    <div className="flex items-center gap-2 text-xs bg-white border border-slate-200 rounded p-2">
+      {isImage ? (
+        <img src={previewUrl} alt={asset.fileName} className="w-12 h-12 object-cover rounded border border-slate-200" />
+      ) : (
+        <div className="w-12 h-12 rounded border border-slate-200 grid place-items-center bg-slate-50 text-slate-400">
+          {isAudio ? '🎤' : '📄'}
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="font-medium truncate">
+          {label && <span className="text-slate-500 mr-1">{label}:</span>}
+          {asset.fileName}
+        </div>
+        <div className="text-slate-500 text-[11px]">
+          {asset.mimeType} · {(asset.sizeBytes / 1024).toFixed(0)} KB
         </div>
         {isAudio && (
-          <div className="text-[11px] text-slate-400 pl-1">
-            WhatsApp no permite caption en notas de voz: si dejás texto en el paso, se manda
-            como mensaje separado ANTES del audio.
-          </div>
+          <audio controls preload="none" className="w-full mt-1 h-8">
+            <source src={previewUrl} type={asset.mimeType} />
+          </audio>
         )}
       </div>
-    );
-  }
+      <button type="button" className="btn-secondary text-xs text-rose-600" onClick={onRemove}>Quitar</button>
+    </div>
+  );
+}
 
+function EmptyAttachment({ onPick }: { onPick: (file: File) => void }) {
+  const inputId = `att-${Math.random().toString(36).slice(2, 8)}`;
   return (
     <label htmlFor={inputId}
       className="flex items-center gap-2 text-xs border border-dashed border-slate-300 rounded p-2 cursor-pointer hover:bg-slate-50">
@@ -464,7 +589,24 @@ function AttachmentSlot({ asset, onPick, onRemove }: {
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) onPick(f);
-          e.target.value = ''; // reset para permitir mismo file dos veces
+          e.target.value = '';
+        }}
+      />
+    </label>
+  );
+}
+
+function AddVariantButton({ onPick }: { onPick: (file: File) => void }) {
+  const inputId = `var-${Math.random().toString(36).slice(2, 8)}`;
+  return (
+    <label htmlFor={inputId}
+      className="flex items-center justify-center gap-1 text-xs border border-dashed border-slate-300 rounded p-2 cursor-pointer hover:bg-slate-50 text-slate-500">
+      <span>+ Agregar otra variante de audio</span>
+      <input id={inputId} type="file" className="hidden" accept="audio/*"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onPick(f);
+          e.target.value = '';
         }}
       />
     </label>

@@ -51,3 +51,12 @@ public class SellerDailyStatsConfiguration : IEntityTypeConfiguration<SellerDail
         b.HasOne(x => x.Seller).WithMany(s => s.DailyStats).HasForeignKey(x => x.SellerId).OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+public class MessageStepRotationConfiguration : IEntityTypeConfiguration<MessageStepRotation>
+{
+    public void Configure(EntityTypeBuilder<MessageStepRotation> b)
+    {
+        b.ToTable("message_step_rotations");
+        b.HasKey(x => new { x.ProductId, x.StepIndex });
+    }
+}
