@@ -168,49 +168,55 @@ public class EvolutionClient : IEvolutionClient
 
     private static async Task<byte[]> ConvertToOggOpusAsync(byte[] input, CancellationToken ct)
     {
-        // ffmpeg en stdin → stdout. -application voip optimiza para voz.
-        // 16kHz mono opus es lo que producen los clientes de WhatsApp.
-        var psi = new ProcessStartInfo
+        // Pasamos input por archivo temporal en vez de stdin: containers MP4/M4A
+        // tienen el moov atom al final y ffmpeg necesita poder hacer seek para
+        // leerlos. Por pipe el demuxer falla y exit != 0.
+        var tempIn = Path.Combine(Path.GetTempPath(), $"saleshub-audio-{Guid.NewGuid():N}");
+        await File.WriteAllBytesAsync(tempIn, input, ct);
+        try
         {
-            FileName = "ffmpeg",
-            ArgumentList =
+            var psi = new ProcessStartInfo
             {
-                "-hide_banner", "-loglevel", "error",
-                "-i", "pipe:0",
-                "-vn",
-                "-c:a", "libopus",
-                "-b:a", "32k",
-                "-ac", "1",
-                "-ar", "16000",
-                "-application", "voip",
-                "-f", "ogg",
-                "pipe:1"
-            },
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+                FileName = "ffmpeg",
+                ArgumentList =
+                {
+                    "-hide_banner", "-loglevel", "error",
+                    "-i", tempIn,
+                    "-vn",
+                    "-c:a", "libopus",
+                    "-b:a", "32k",
+                    "-ac", "1",
+                    "-ar", "16000",
+                    "-application", "voip",
+                    "-f", "ogg",
+                    "pipe:1"
+                },
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
 
-        using var proc = Process.Start(psi)
-            ?? throw new InvalidOperationException("No se pudo iniciar ffmpeg");
+            using var proc = Process.Start(psi)
+                ?? throw new InvalidOperationException("No se pudo iniciar ffmpeg");
 
-        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, ct);
-        var stderrTask = proc.StandardError.ReadToEndAsync();
+            var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, ct);
+            var stderrTask = proc.StandardError.ReadToEndAsync();
 
-        await proc.StandardInput.BaseStream.WriteAsync(input, ct);
-        proc.StandardInput.Close();
+            var output = await stdoutTask;
+            await proc.WaitForExitAsync(ct);
 
-        var output = await stdoutTask;
-        await proc.WaitForExitAsync(ct);
-
-        if (proc.ExitCode != 0 || output.Length == 0)
-        {
-            var err = await stderrTask;
-            throw new InvalidOperationException($"ffmpeg exit {proc.ExitCode}: {err}");
+            if (proc.ExitCode != 0 || output.Length == 0)
+            {
+                var err = await stderrTask;
+                throw new InvalidOperationException($"ffmpeg exit {proc.ExitCode}: {err}");
+            }
+            return output;
         }
-        return output;
+        finally
+        {
+            try { File.Delete(tempIn); } catch { /* best-effort */ }
+        }
     }
 
     private static async Task<byte[]> ReadAllBytesAsync(Stream s, CancellationToken ct)
