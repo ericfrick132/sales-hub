@@ -14,6 +14,8 @@ public interface IEvolutionClient
     Task<IReadOnlyList<WhatsappCheckResult>> CheckNumbersAsync(string instanceName, IEnumerable<string> phoneNumbers, CancellationToken ct = default);
 
     Task SetPresenceTypingAsync(string instanceName, string jid, int durationSeconds, CancellationToken ct = default);
+    /// <summary>Manda presence "recording" (graba audio…) — igual que typing pero la versión de notas de voz.</summary>
+    Task SetPresenceRecordingAsync(string instanceName, string jid, int durationSeconds, CancellationToken ct = default);
     Task MarkAllChatsReadAsync(string instanceName, CancellationToken ct = default);
     Task<bool> SendTextAsync(string instanceName, string jid, string message, CancellationToken ct = default);
     /// <summary>Manda un archivo (imagen / pdf / cualquier mime) con caption opcional. Recibe el contenido en bytes.</summary>

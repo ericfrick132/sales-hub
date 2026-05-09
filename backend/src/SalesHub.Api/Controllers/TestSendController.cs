@@ -28,6 +28,9 @@ public class TestSendController : ControllerBase
     // Delay corto fijo entre el texto previo y el audio dentro de un mismo
     // step (legacy; los steps nuevos no permiten texto + audio en el mismo).
     private const int IntraStepDelayMs = 1500;
+    // Cliente de WhatsApp suele dejar de mostrar "recording…" después de
+    // ~25-30s aunque sigamos diciéndoselo a Evolution. Refrescamos en chunks.
+    private const int PresenceChunkSeconds = 25;
 
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
@@ -75,6 +78,7 @@ public class TestSendController : ControllerBase
             WhatsappPhone = phone
         };
 
+        var jid = $"{phone}@s.whatsapp.net";
         var sentSteps = 0;
         for (var i = 0; i < steps.Count; i++)
         {
@@ -82,23 +86,24 @@ public class TestSendController : ControllerBase
             var hasMedia = step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 });
             if (string.IsNullOrWhiteSpace(step.Text) && !hasMedia) continue;
 
+            Guid? mediaAssetId = step.MediaAssetIds is { Count: > 0 } ? step.MediaAssetIds[0] : step.MediaAssetId;
+            var stepIsAudio = mediaAssetId is not null
+                && (await _db.MediaAssets.AsNoTracking()
+                    .Where(m => m.Id == mediaAssetId)
+                    .Select(m => m.MimeType)
+                    .FirstOrDefaultAsync(ct))?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true;
+
             // Esperar el delay configurado del paso antes de enviarlo. El step 0
             // siempre arranca inmediato. Capeo a 10 min para no colgar la request.
             if (i > 0)
             {
                 var d = Math.Min(Math.Max(0, step.DelaySeconds), MaxStepDelaySeconds);
-                if (d > 0) await Task.Delay(d * 1000, ct);
+                if (d > 0) await WaitWithPresenceAsync(instance, jid, d, stepIsAudio, ct);
             }
 
             var rendered = string.IsNullOrWhiteSpace(step.Text)
                 ? string.Empty
                 : _renderer.RenderTemplate(step.Text, fakeLead, product, seller);
-
-            // Resolver el asset del step:
-            // - Si tiene variantes, mandamos la primera (test determinístico, no rota).
-            // - Si tiene mediaAssetId legacy, ese.
-            // - Si no, solo texto.
-            Guid? mediaAssetId = step.MediaAssetIds is { Count: > 0 } ? step.MediaAssetIds[0] : step.MediaAssetId;
 
             try
             {
@@ -144,5 +149,25 @@ public class TestSendController : ControllerBase
         }
 
         return Ok(new { ok = true, sentSteps, totalSteps = steps.Count });
+    }
+
+    /// <summary>
+    /// Espera <paramref name="totalSeconds"/> mostrando presence "recording" o
+    /// "composing" en el chat del lead. WhatsApp esconde el indicador después
+    /// de ~25s, así que refrescamos en chunks.
+    /// </summary>
+    private async Task WaitWithPresenceAsync(string instance, string jid, int totalSeconds, bool isAudio, CancellationToken ct)
+    {
+        var remaining = totalSeconds;
+        while (remaining > 0)
+        {
+            var chunk = Math.Min(PresenceChunkSeconds, remaining);
+            if (isAudio)
+                await _evo.SetPresenceRecordingAsync(instance, jid, chunk, ct);
+            else
+                await _evo.SetPresenceTypingAsync(instance, jid, chunk, ct);
+            await Task.Delay(chunk * 1000, ct);
+            remaining -= chunk;
+        }
     }
 }

@@ -93,7 +93,18 @@ public class OutboxSender
 
                 var typing = Random.Shared.Next(seller.PreSendTypingMinSeconds, seller.PreSendTypingMaxSeconds + 1);
                 var jid = $"{next.WhatsappPhone}@s.whatsapp.net";
-                await _evo.SetPresenceTypingAsync(seller.EvolutionInstance.InstanceName, jid, typing, ct);
+                // Si el outbox row es de audio, usamos "recording…" en vez de
+                // "escribiendo…" para que el indicador en el chat del lead
+                // matchee con lo que va a llegar.
+                var isAudio = next.MediaAssetId is not null
+                    && (await _db.MediaAssets.AsNoTracking()
+                        .Where(m => m.Id == next.MediaAssetId)
+                        .Select(m => m.MimeType)
+                        .FirstOrDefaultAsync(ct))?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true;
+                if (isAudio)
+                    await _evo.SetPresenceRecordingAsync(seller.EvolutionInstance.InstanceName, jid, typing, ct);
+                else
+                    await _evo.SetPresenceTypingAsync(seller.EvolutionInstance.InstanceName, jid, typing, ct);
                 await Task.Delay(TimeSpan.FromSeconds(typing), ct);
 
                 bool ok;

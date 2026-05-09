@@ -358,6 +358,7 @@ public class LeadsController : ControllerBase
     {
         const int MaxStepDelaySeconds = 600; // 10 min cap para no colgar el HTTP
         const int IntraStepDelayMs = 1500;   // texto previo + audio en mismo step (legacy)
+        const int PresenceChunkSeconds = 25; // refresh del indicador "recording…" / "escribiendo…"
 
         var callerId = CurrentUser.Id(User);
         var isAdmin = CurrentUser.IsAdmin(User);
@@ -424,25 +425,42 @@ public class LeadsController : ControllerBase
         }
         else
         {
+            var jid = $"{lead.WhatsappPhone}@s.whatsapp.net";
             for (var i = 0; i < steps.Count; i++)
             {
                 var step = steps[i];
                 var hasMedia = step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 });
                 if (string.IsNullOrWhiteSpace(step.Text) && !hasMedia) continue;
 
+                Guid? mediaAssetId = step.MediaAssetIds is { Count: > 0 } ? step.MediaAssetIds[0] : step.MediaAssetId;
+                var stepIsAudio = mediaAssetId is not null
+                    && (await _db.MediaAssets.AsNoTracking()
+                        .Where(m => m.Id == mediaAssetId)
+                        .Select(m => m.MimeType)
+                        .FirstOrDefaultAsync(ct))?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true;
+
                 // Esperar el delay configurado del paso (capeado a 10 min para
                 // no colgar el HTTP). El step 0 siempre arranca inmediato.
+                // Mientras esperamos, mostramos "grabando audio…" o
+                // "escribiendo…" en el chat del lead, refrescando cada 25s
+                // porque WhatsApp esconde el indicador antes.
                 if (i > 0)
                 {
                     var d = Math.Min(Math.Max(0, step.DelaySeconds), MaxStepDelaySeconds);
-                    if (d > 0) await Task.Delay(d * 1000, ct);
+                    var remaining = d;
+                    while (remaining > 0)
+                    {
+                        var chunk = Math.Min(PresenceChunkSeconds, remaining);
+                        if (stepIsAudio) await _evo.SetPresenceRecordingAsync(instance, jid, chunk, ct);
+                        else await _evo.SetPresenceTypingAsync(instance, jid, chunk, ct);
+                        await Task.Delay(chunk * 1000, ct);
+                        remaining -= chunk;
+                    }
                 }
 
                 var rendered = string.IsNullOrWhiteSpace(step.Text)
                     ? string.Empty
                     : _renderer.RenderTemplate(step.Text, lead, lead.Product, seller);
-
-                Guid? mediaAssetId = step.MediaAssetIds is { Count: > 0 } ? step.MediaAssetIds[0] : step.MediaAssetId;
 
                 try
                 {

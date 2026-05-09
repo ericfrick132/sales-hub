@@ -101,6 +101,16 @@ public class EvolutionClient : IEvolutionClient
         catch (Exception ex) { _log.LogDebug(ex, "Presence error (non-fatal)"); }
     }
 
+    public async Task SetPresenceRecordingAsync(string instanceName, string jid, int durationSeconds, CancellationToken ct = default)
+    {
+        try
+        {
+            await _http.PostAsJsonAsync($"chat/sendPresence/{Uri.EscapeDataString(instanceName)}",
+                new { number = jid, delay = durationSeconds * 1000, presence = "recording" }, ct);
+        }
+        catch (Exception ex) { _log.LogDebug(ex, "Presence error (non-fatal)"); }
+    }
+
     public async Task MarkAllChatsReadAsync(string instanceName, CancellationToken ct = default)
     {
         try
