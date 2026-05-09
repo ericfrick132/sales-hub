@@ -46,7 +46,9 @@ export default function Layout() {
     : [
         { to: '/dashboard', label: 'Hoy' },
         { to: '/leads', label: 'Mis leads' },
-        { to: '/leads/search', label: 'Capturar de Maps' }
+        { to: '/conversations', label: 'Conversaciones', badge: unread.data },
+        { to: '/leads/search', label: 'Capturar de Maps' },
+        { to: '/connect', label: 'WhatsApp' }
       ];
 
   const adminLinks: NavItem[] = [

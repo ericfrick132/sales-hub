@@ -94,6 +94,21 @@ public class LocalitiesController : ControllerBase
         return rows;
     }
 
+    /// <summary>Las zonas asignadas al seller logueado. Se usa en /dashboard
+    /// para mostrarle al vendedor su territorio sin pedir permisos de admin.</summary>
+    [HttpGet("sellers/me/localities")]
+    public async Task<ActionResult<IEnumerable<LocalityDto>>> MyLocalities(CancellationToken ct)
+    {
+        var sellerId = CurrentUser.Id(User);
+        if (sellerId == Guid.Empty) return Forbid();
+        var rows = await _db.SellerLocalities.AsNoTracking()
+            .Where(sl => sl.SellerId == sellerId)
+            .Select(sl => sl.Locality!)
+            .Select(l => new LocalityDto(l.Gid2, l.Name, l.AdminLevel1Name, l.CountryCode, l.CentroidLat, l.CentroidLng))
+            .ToListAsync(ct);
+        return rows;
+    }
+
     /// <summary>Bulk-replace the locality assignments for a seller (M:N). The frontend
     /// sends the full desired set after a paint session and we diff against the current rows.</summary>
     [HttpPut("admin/sellers/{sellerId:guid}/localities")]
