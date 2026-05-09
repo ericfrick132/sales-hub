@@ -7,7 +7,7 @@ import type { MediaAsset, MessageStep, Product, Seller } from '../lib/types';
 const EMPTY: Product = {
   id: '', productKey: '', displayName: '', active: true, country: 'AR', countryName: 'Argentina',
   regionCode: 'ar', language: 'es', phonePrefix: '54', categories: [], messageTemplate: '',
-  openerTemplate: 'buenas',
+  openerTemplate: '',
   checkoutUrl: '', priceDisplay: '', dailyLimit: 60, triggerHours: [10, 14, 18],
   sendHourStart: 10, sendHourEnd: 20,
   requiresAssistedSale: false,
@@ -133,22 +133,6 @@ export default function Products() {
             </div>
           </div>
         </Field>
-        <details className="text-xs text-slate-500">
-          <summary className="cursor-pointer hover:text-slate-700">Legacy: opener + mensaje único (en desuso, dejar vacío si usás steps)</summary>
-          <div className="mt-2 space-y-2 pl-3 border-l-2 border-slate-200">
-            <Field label="Opener (legacy, no usar si tenés steps)">
-              <textarea className="input min-h-12 font-mono text-xs"
-                value={draft.openerTemplate} onChange={(e) => onChange('openerTemplate', e.target.value)} />
-            </Field>
-            <Field label="Mensaje template legacy">
-              <textarea className="input min-h-32 font-mono text-xs"
-                value={draft.messageTemplate} onChange={(e) => onChange('messageTemplate', e.target.value)} />
-              <div className="text-[11px] text-slate-400 mt-1">
-                Si messageSteps está vacío, se usan estos dos (opener + main). Si messageSteps tiene contenido, estos dos se ignoran. Migrá al editor de steps de arriba.
-              </div>
-            </Field>
-          </div>
-        </details>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={draft.active} onChange={(e) => onChange('active', e.target.checked)} />
