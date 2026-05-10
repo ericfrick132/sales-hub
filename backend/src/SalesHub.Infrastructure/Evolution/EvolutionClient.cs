@@ -59,7 +59,41 @@ public class EvolutionClient : IEvolutionClient
             }
             status = new InstanceConnectionInfo("connecting", null, null);
         }
+        // Asegurarnos de que el webhook esté seteado, sea instancia nueva o
+        // ya creada anteriormente sin webhook (idempotente). Sin esto, los
+        // inbound de los leads nunca llegan al backend y la conversación se
+        // ve "muda" en /conversations.
+        await SetWebhookAsync(instanceName, ct);
         return status;
+    }
+
+    private async Task SetWebhookAsync(string instanceName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_opts.WebhookUrl)) return;
+        try
+        {
+            var body = new
+            {
+                webhook = new
+                {
+                    url = _opts.WebhookUrl,
+                    enabled = true,
+                    events = new[] { "MESSAGES_UPSERT" },
+                    webhookByEvents = false,
+                    webhookBase64 = false
+                }
+            };
+            var resp = await _http.PostAsJsonAsync($"webhook/set/{Uri.EscapeDataString(instanceName)}", body, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var text = await resp.Content.ReadAsStringAsync(ct);
+                _log.LogWarning("SetWebhook {Instance} failed: {Status} {Body}", instanceName, resp.StatusCode, text);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "SetWebhook {Instance} threw — non-fatal", instanceName);
+        }
     }
 
     public async Task<string?> GetQrCodeAsync(string instanceName, CancellationToken ct = default)
