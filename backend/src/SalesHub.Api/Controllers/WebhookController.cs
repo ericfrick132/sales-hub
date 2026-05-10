@@ -29,6 +29,10 @@ public class WebhookController : ControllerBase
             if (eventName is not ("messages.upsert" or "MESSAGES_UPSERT"))
                 return Ok(new { skipped = true, @event = eventName });
 
+            // Diag temporal: dump payload para debuggear LIDs / IDs raros.
+            try { await System.IO.File.WriteAllTextAsync("/tmp/saleshub-last-webhook.json", payload.GetRawText(), ct); }
+            catch { /* no-op */ }
+
             var instance = payload.TryGetProperty("instance", out var i) ? i.GetString() : null;
             if (instance is null) return Ok(new { skipped = true, reason = "no instance" });
 
@@ -71,6 +75,27 @@ public class WebhookController : ControllerBase
         // Skip groups.
         if (remoteJid.EndsWith("@g.us", StringComparison.Ordinal)) return null;
 
+        // WhatsApp introdujo Linked IDs (xxx@lid) que NO son teléfonos reales.
+        // El número verdadero viene en otro campo del key: senderPn,
+        // participantPn o, a falta de eso, msg.senderPn / msg.participant.
+        // Lo extraemos y lo usamos como FromPhone, dejando el LID en FromJid
+        // por si se necesita más adelante.
+        string? phoneOverride = null;
+        if (remoteJid.EndsWith("@lid", StringComparison.Ordinal))
+        {
+            phoneOverride = TryGetString(key, "senderPn")
+                ?? TryGetString(key, "participantPn")
+                ?? TryGetString(key, "remoteJidAlt")
+                ?? TryGetString(msg, "senderPn")
+                ?? TryGetString(msg, "participantPn");
+            // Strip "@s.whatsapp.net" si vino con sufijo.
+            if (phoneOverride is not null)
+            {
+                var at = phoneOverride.IndexOf('@');
+                if (at >= 0) phoneOverride = phoneOverride[..at];
+            }
+        }
+
         string? text = null;
         if (msg.TryGetProperty("message", out var body))
         {
@@ -86,6 +111,12 @@ public class WebhookController : ControllerBase
         var timestamp = ts > 0 ? DateTimeOffset.FromUnixTimeSeconds(ts) : DateTimeOffset.UtcNow;
 
         return new ConversationService.IncomingMessage(
-            instance, remoteJid, null, messageId, text!, timestamp, msg.GetRawText());
+            instance, remoteJid, phoneOverride, messageId, text!, timestamp, msg.GetRawText());
     }
+
+    private static string? TryGetString(JsonElement el, string prop) =>
+        el.ValueKind == JsonValueKind.Object
+            && el.TryGetProperty(prop, out var v)
+            && v.ValueKind == JsonValueKind.String
+            ? v.GetString() : null;
 }
