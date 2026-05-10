@@ -54,7 +54,8 @@ export default function Layout() {
   const adminLinks: NavItem[] = [
     { to: '/pipeline', label: 'Captación' },
     { to: '/sellers', label: 'Vendedores' },
-    { to: '/products', label: 'Aplicaciones' }
+    { to: '/products', label: 'Aplicaciones' },
+    { to: '/audio-analytics', label: 'Audios y estrategias' }
   ];
 
   const sidebar = (

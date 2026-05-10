@@ -157,10 +157,6 @@ export default function Products() {
           <button className="btn-primary ml-auto" onClick={save}>Guardar</button>
         </div>
 
-        {selected?.productKey && (
-          <AudioStatsPanel productKey={selected.productKey} />
-        )}
-
         <TestSendPanel
           productId={selected?.id ?? ''}
           defaultPrefix={draft.phonePrefix}
@@ -168,80 +164,6 @@ export default function Products() {
           overrideCats={(draft.categoryCadences ?? []).map((c) => c.category)}
           hasSteps={(draft.messageSteps ?? []).length > 0 || (draft.categoryCadences ?? []).some((c) => c.steps.length > 0)}
         />
-      </div>
-    </div>
-  );
-}
-
-interface AudioStatRow {
-  mediaAssetId: string;
-  fileName: string;
-  mimeType: string;
-  sent: number;
-  replied: number;
-  interested: number;
-  demoScheduled: number;
-  closed: number;
-}
-
-function AudioStatsPanel({ productKey }: { productKey: string }) {
-  const statsQ = useQuery({
-    queryKey: ['audio-stats', productKey],
-    queryFn: async () => (await api.get<AudioStatRow[]>(`/products/${productKey}/audio-stats`)).data,
-    refetchInterval: 60_000
-  });
-  const rows = statsQ.data ?? [];
-  if (rows.length === 0) return null;
-
-  const pct = (n: number, d: number) => d === 0 ? '—' : `${((n / d) * 100).toFixed(1)}%`;
-  // Best performer = mayor reply rate, con mínimo 5 envíos para evitar ruido.
-  const eligible = rows.filter(r => r.sent >= 5);
-  const best = eligible.length === 0 ? null
-    : eligible.reduce((a, b) => (a.replied / a.sent) >= (b.replied / b.sent) ? a : b);
-
-  return (
-    <div className="border-t border-slate-200 pt-4 mt-2 space-y-2">
-      <h4 className="font-semibold text-sm flex items-center gap-2">
-        <span>Performance de audios</span>
-        <span className="text-xs text-slate-400 font-normal">tasa de respuesta y conversión por archivo</span>
-      </h4>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead className="text-slate-500">
-            <tr>
-              <th className="text-left py-1 pr-2">Archivo</th>
-              <th className="text-right py-1 px-2">Enviados</th>
-              <th className="text-right py-1 px-2">Respondieron</th>
-              <th className="text-right py-1 px-2">Interesados</th>
-              <th className="text-right py-1 px-2">Demos</th>
-              <th className="text-right py-1 px-2">Cerrados</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const isBest = best?.mediaAssetId === r.mediaAssetId;
-              return (
-                <tr key={r.mediaAssetId} className={`border-t border-slate-100 ${isBest ? 'bg-emerald-50' : ''}`}>
-                  <td className="py-1 pr-2">
-                    <div className="flex items-center gap-1">
-                      {isBest && <span title="Mejor respuesta (≥5 envíos)">🏆</span>}
-                      <span className="truncate max-w-[200px]" title={r.fileName}>{r.fileName}</span>
-                    </div>
-                  </td>
-                  <td className="text-right py-1 px-2 font-mono">{r.sent}</td>
-                  <td className="text-right py-1 px-2 font-mono">
-                    {r.replied} <span className="text-slate-400">({pct(r.replied, r.sent)})</span>
-                  </td>
-                  <td className="text-right py-1 px-2 font-mono">
-                    {r.interested} <span className="text-slate-400">({pct(r.interested, r.sent)})</span>
-                  </td>
-                  <td className="text-right py-1 px-2 font-mono">{r.demoScheduled}</td>
-                  <td className="text-right py-1 px-2 font-mono">{r.closed}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
       </div>
     </div>
   );
