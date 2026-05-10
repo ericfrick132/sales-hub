@@ -125,23 +125,32 @@ public class DashboardController : ControllerBase
     public record OutboxItemDto(
         Guid Id, Guid LeadId, string LeadName, string ProductKey, string? ProductName,
         string WhatsappPhone, string Message, OutboxStatus Status,
-        DateTimeOffset ScheduledAt, DateTimeOffset? SentAt, int Attempts, string? Error);
+        DateTimeOffset ScheduledAt, DateTimeOffset? SentAt, int Attempts, string? Error,
+        string? SearchCategory, bool HasMedia, string? MediaMimeType, string? City);
 
     [HttpGet("outbox")]
     public async Task<ActionResult<IEnumerable<OutboxItemDto>>> Outbox(
-        [FromQuery] OutboxStatus? status, [FromQuery] int limit = 100, CancellationToken ct = default)
+        [FromQuery] OutboxStatus? status, [FromQuery] int limit = 100,
+        [FromQuery] string? order = null, CancellationToken ct = default)
     {
         var id = CurrentUser.Id(User);
         var q = _db.Outbox.AsNoTracking()
             .Include(o => o.Lead).ThenInclude(l => l!.Product)
+            .Include(o => o.MediaAsset)
             .Where(o => o.SellerId == id);
         if (status is not null) q = q.Where(o => o.Status == status);
-        q = q.OrderByDescending(o => o.SentAt ?? o.ScheduledAt).Take(Math.Min(limit, 500));
+        // order=upcoming → próximos primero (asc por ScheduledAt). Default = desc por última actividad.
+        q = order == "upcoming"
+            ? q.OrderBy(o => o.ScheduledAt)
+            : q.OrderByDescending(o => o.SentAt ?? o.ScheduledAt);
+        q = q.Take(Math.Min(limit, 500));
         var rows = await q.ToListAsync(ct);
         return rows.Select(o => new OutboxItemDto(
             o.Id, o.LeadId, o.Lead?.Name ?? "—", o.Lead?.ProductKey ?? "",
             o.Lead?.Product?.DisplayName, o.WhatsappPhone, o.Message,
-            o.Status, o.ScheduledAt, o.SentAt, o.Attempts, o.Error)).ToList();
+            o.Status, o.ScheduledAt, o.SentAt, o.Attempts, o.Error,
+            o.Lead?.SearchCategory, o.MediaAssetId is not null,
+            o.MediaAsset?.MimeType, o.Lead?.City)).ToList();
     }
 
     [HttpGet("seller/{id:guid}")]

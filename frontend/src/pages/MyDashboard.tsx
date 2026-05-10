@@ -8,6 +8,7 @@ import LeadTable from '../components/LeadTable';
 import SendingControl from '../components/SendingControl';
 import ConversationsList from '../components/ConversationsList';
 import MyZonesMap from '../components/MyZonesMap';
+import UpcomingSends from '../components/UpcomingSends';
 
 export default function MyDashboard() {
   const user = useAuthStore((s) => s.user);
@@ -47,6 +48,8 @@ export default function MyDashboard() {
         { label: 'Cerrados', value: `${m.leadsClosed} (${(m.closeRate*100).toFixed(0)}%)` },
         { label: 'En cola', value: data.queuedCount, hint: 'Mensajes programados' }
       ]} />
+
+      <UpcomingSends />
 
       <div>
         <h2 className="text-lg font-semibold mb-2">Mis conversaciones</h2>
