@@ -649,99 +649,173 @@ function StepsEditor({ productKey, steps, onChange }: { productKey: string; step
         </div>
       )}
 
-      {steps.map((s, i) => {
-        const variantIds = (s.mediaAssetIds && s.mediaAssetIds.length > 0)
-          ? s.mediaAssetIds
-          : (s.mediaAssetId ? [s.mediaAssetId] : []);
-        const variantAssets = variantIds.map(id => mediaById[id]).filter(Boolean);
-        const isAudioStep = variantAssets.length > 0 && variantAssets[0].mimeType.startsWith('audio/');
-        const firstAsset = variantAssets[0];
-        return (
-          <div key={i} className="border border-slate-200 rounded-md p-3 bg-slate-50/40 space-y-2">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="font-semibold text-slate-700">Paso {i + 1}</span>
-              {i === 0 ? (
-                <span className="text-slate-400">(sale al asignar — delay siempre 0)</span>
-              ) : (
-                <DelayInput
-                  seconds={s.delaySeconds}
-                  onChange={(sec) => update(i, { delaySeconds: sec })}
-                />
-              )}
-              <div className="ml-auto flex gap-1">
-                <button type="button" className="btn-secondary text-xs px-2 py-0.5"
-                  disabled={i === 0} onClick={() => move(i, -1)} title="Subir">↑</button>
-                <button type="button" className="btn-secondary text-xs px-2 py-0.5"
-                  disabled={i === steps.length - 1} onClick={() => move(i, 1)} title="Bajar">↓</button>
-                <button type="button" className="btn-secondary text-xs px-2 py-0.5 text-rose-600"
-                  onClick={() => remove(i)} title="Eliminar">×</button>
-              </div>
-            </div>
-            {!isAudioStep && (
-              <textarea
-                className="input min-h-20 font-mono text-sm w-full"
-                placeholder={firstAsset
-                  ? 'Caption opcional (texto que va con el archivo)'
-                  : (i === 0 ? 'ej. {Hola!|Buenas!} {name}, ...' : 'ej. te dejo el link: {checkout_url}')}
-                value={s.text}
-                onChange={(e) => update(i, { text: e.target.value })}
-              />
-            )}
-            {isAudioStep && s.text.trim().length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs space-y-1">
-                <div className="text-amber-800">
-                  Este paso tiene texto + audio. Hoy el texto sale antes del audio sin delay
-                  configurable. Para tener delay propio, separá en dos pasos.
-                </div>
-                <details>
-                  <summary className="cursor-pointer text-amber-700 hover:text-amber-900">
-                    Texto actual (click para ver)
-                  </summary>
-                  <div className="font-mono whitespace-pre-wrap text-slate-700 mt-1 bg-white border border-amber-200 rounded p-2">
-                    {s.text}
-                  </div>
-                </details>
-                <button type="button"
-                  className="btn-secondary text-xs"
-                  onClick={() => splitTextFromAudio(i)}>
-                  Separar el texto en un paso aparte
-                </button>
-              </div>
-            )}
+      {steps.map((s, i) => (
+        <StepRow
+          key={i}
+          step={s}
+          index={i}
+          totalSteps={steps.length}
+          mediaById={mediaById}
+          onUpdate={(patch) => update(i, patch)}
+          onMove={(dir) => move(i, dir)}
+          onRemove={() => remove(i)}
+          onUpload={(file) => handleUpload(i, file)}
+          onRemoveVariant={(assetId) => removeVariant(i, assetId)}
+          onClearMedia={() => clearStepMedia(i)}
+        />
+      ))}
+    </div>
+  );
+}
 
-            {variantAssets.length === 0 && (
-              <EmptyAttachment onPick={(file) => handleUpload(i, file)} />
-            )}
+type StepKind = 'text' | 'audio' | 'image' | 'document';
+const KIND_LABEL: Record<StepKind, string> = {
+  text: '💬 Texto',
+  audio: '🎤 Audio',
+  image: '🖼️ Imagen',
+  document: '📄 PDF'
+};
 
-            {variantAssets.length > 0 && !isAudioStep && (
-              <AttachmentRow
-                asset={firstAsset}
-                onRemove={() => clearStepMedia(i)}
-              />
-            )}
+function StepRow({
+  step: s, index: i, totalSteps, mediaById,
+  onUpdate, onMove, onRemove, onUpload, onRemoveVariant, onClearMedia
+}: {
+  step: MessageStep;
+  index: number;
+  totalSteps: number;
+  mediaById: Record<string, MediaAsset>;
+  onUpdate: (patch: Partial<MessageStep>) => void;
+  onMove: (dir: -1 | 1) => void;
+  onRemove: () => void;
+  onUpload: (file: File) => void;
+  onRemoveVariant: (assetId: string) => void;
+  onClearMedia: () => void;
+}) {
+  const variantIds = (s.mediaAssetIds && s.mediaAssetIds.length > 0)
+    ? s.mediaAssetIds
+    : (s.mediaAssetId ? [s.mediaAssetId] : []);
+  const variantAssets = variantIds.map(id => mediaById[id]).filter(Boolean);
+  const firstAsset = variantAssets[0];
 
-            {isAudioStep && (
-              <div className="space-y-1">
-                <div className="text-[11px] text-slate-500 px-1 flex items-center gap-2">
-                  <span>🎤 {variantAssets.length} variante{variantAssets.length === 1 ? '' : 's'} de audio</span>
-                  {variantAssets.length > 1 && (
-                    <span className="text-emerald-700">· se rotan en round-robin</span>
-                  )}
-                </div>
-                {variantAssets.map((a, idx) => (
-                  <AttachmentRow
-                    key={a.id}
-                    asset={a}
-                    label={`Variante ${idx + 1}`}
-                    onRemove={() => removeVariant(i, a.id)}
-                  />
-                ))}
-                <AddVariantButton onPick={(file) => handleUpload(i, file)} />
-              </div>
+  const detectedFromAsset: StepKind = !firstAsset ? 'text'
+    : firstAsset.mimeType.startsWith('audio/') ? 'audio'
+    : firstAsset.mimeType.startsWith('image/') ? 'image'
+    : 'document';
+
+  // Si el seller eligió un tipo (ej. Audio) pero todavía no subió asset, lo
+  // recordamos en state local. El render sigue ese intent. Cuando sube algo
+  // o si vuelve a Texto, lo reseteamos.
+  const [intentKind, setIntentKind] = useState<StepKind | null>(null);
+  const kind: StepKind = intentKind ?? detectedFromAsset;
+  // Si el asset detected coincide con intentKind, ya no hace falta el override.
+  useEffect(() => {
+    if (intentKind && intentKind === detectedFromAsset) setIntentKind(null);
+  }, [intentKind, detectedFromAsset]);
+
+  function setKind(k: StepKind) {
+    if (k === kind) return;
+    if (k === 'text') {
+      if (firstAsset && !confirm('Pasar este paso a Texto va a quitar el adjunto. ¿Seguir?')) return;
+      onUpdate({ mediaAssetId: null, mediaAssetIds: [] });
+      setIntentKind(null);
+      return;
+    }
+    if (firstAsset && firstAsset.mimeType.startsWith(
+      k === 'audio' ? 'audio/' : k === 'image' ? 'image/' : 'application/'
+    )) {
+      // El asset existente sirve para el nuevo tipo: no tocar nada.
+      setIntentKind(null);
+      return;
+    }
+    if (firstAsset && !confirm('Cambiar el tipo de paso va a quitar el adjunto actual. ¿Seguir?')) return;
+    onUpdate({ mediaAssetId: null, mediaAssetIds: [] });
+    setIntentKind(k);
+  }
+
+  return (
+    <div className="border border-slate-200 rounded-md p-3 bg-slate-50/40 space-y-2">
+      <div className="flex items-center gap-2 text-xs flex-wrap">
+        <span className="font-semibold text-slate-700">Paso {i + 1}</span>
+        {i === 0 ? (
+          <span className="text-slate-400">(sale al asignar — delay siempre 0)</span>
+        ) : (
+          <DelayInput
+            seconds={s.delaySeconds}
+            onChange={(sec) => onUpdate({ delaySeconds: sec })}
+          />
+        )}
+        <div className="ml-auto flex gap-1">
+          <button type="button" className="btn-secondary text-xs px-2 py-0.5"
+            disabled={i === 0} onClick={() => onMove(-1)} title="Subir">↑</button>
+          <button type="button" className="btn-secondary text-xs px-2 py-0.5"
+            disabled={i === totalSteps - 1} onClick={() => onMove(1)} title="Bajar">↓</button>
+          <button type="button" className="btn-secondary text-xs px-2 py-0.5 text-rose-600"
+            onClick={onRemove} title="Eliminar">×</button>
+        </div>
+      </div>
+
+      <div className="flex gap-1 flex-wrap">
+        {(['text', 'audio', 'image', 'document'] as StepKind[]).map((k) => (
+          <button key={k} type="button"
+            className={`text-xs px-2 py-1 rounded border ${kind === k
+              ? 'bg-brand-600 text-white border-brand-600'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+            onClick={() => setKind(k)}>
+            {KIND_LABEL[k]}
+          </button>
+        ))}
+      </div>
+
+      {kind === 'text' && (
+        <textarea
+          className="input min-h-20 font-mono text-sm w-full"
+          placeholder={i === 0 ? 'ej. {Hola!|Buenas!} {name}, ...' : 'ej. te dejo el link: {checkout_url}'}
+          value={s.text}
+          onChange={(e) => onUpdate({ text: e.target.value })}
+        />
+      )}
+
+      {kind === 'audio' && (
+        <div className="space-y-1">
+          <div className="text-[11px] text-slate-500 px-1 flex items-center gap-2">
+            <span>🎤 {variantAssets.length} variante{variantAssets.length === 1 ? '' : 's'} de audio</span>
+            {variantAssets.length > 1 && (
+              <span className="text-emerald-700">· se rotan en round-robin</span>
             )}
           </div>
-        );
-      })}
+          {variantAssets.map((a, idx) => (
+            <AttachmentRow
+              key={a.id}
+              asset={a}
+              label={`Variante ${idx + 1}`}
+              onRemove={() => onRemoveVariant(a.id)}
+            />
+          ))}
+          <AddVariantButton onPick={onUpload} />
+        </div>
+      )}
+
+      {(kind === 'image' || kind === 'document') && (
+        <div className="space-y-2">
+          {firstAsset ? (
+            <AttachmentRow asset={firstAsset} onRemove={onClearMedia} />
+          ) : (
+            <EmptyAttachment
+              accept={kind === 'image' ? 'image/*' : 'application/pdf,application/*'}
+              label={kind === 'image' ? 'Subir imagen' : 'Subir PDF'}
+              onPick={onUpload}
+            />
+          )}
+          {firstAsset && (
+            <textarea
+              className="input min-h-12 text-sm w-full"
+              placeholder="Caption opcional (texto que va con el archivo)"
+              value={s.text}
+              onChange={(e) => onUpdate({ text: e.target.value })}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -783,15 +857,19 @@ function AttachmentRow({ asset, onRemove, label }: {
   );
 }
 
-function EmptyAttachment({ onPick }: { onPick: (file: File) => void }) {
+function EmptyAttachment({ onPick, accept, label }: {
+  onPick: (file: File) => void;
+  accept?: string;
+  label?: string;
+}) {
   const inputId = `att-${Math.random().toString(36).slice(2, 8)}`;
   return (
     <label htmlFor={inputId}
       className="flex items-center gap-2 text-xs border border-dashed border-slate-300 rounded p-2 cursor-pointer hover:bg-slate-50">
       <span className="text-lg">📎</span>
-      <span className="flex-1 text-slate-500">Adjuntar audio (nota de voz), imagen o PDF (opcional)</span>
+      <span className="flex-1 text-slate-500">{label ?? 'Adjuntar archivo'}</span>
       <input id={inputId} type="file" className="hidden"
-        accept="audio/*,image/*,application/pdf"
+        accept={accept ?? 'audio/*,image/*,application/pdf'}
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) onPick(f);
