@@ -38,6 +38,13 @@ public class WebhookController : ControllerBase
 
             if (!payload.TryGetProperty("data", out var data)) return Ok(new { skipped = true });
 
+            // El payload top-level trae "sender" con el JID real del cliente
+            // (xxxxx@s.whatsapp.net) incluso cuando data.key.remoteJid viene
+            // como "xxxxx@lid". Lo usamos como fallback para resolver el
+            // teléfono real.
+            var topSender = payload.TryGetProperty("sender", out var sEl) && sEl.ValueKind == JsonValueKind.String
+                ? sEl.GetString() : null;
+
             // Evolution may deliver single message or array under data.messages/data.
             var messages = new List<JsonElement>();
             if (data.ValueKind == JsonValueKind.Array) messages.AddRange(data.EnumerateArray());
@@ -47,7 +54,7 @@ public class WebhookController : ControllerBase
             int handled = 0;
             foreach (var msg in messages)
             {
-                var incoming = ParseMessage(instance, msg);
+                var incoming = ParseMessage(instance, msg, topSender);
                 if (incoming is null) continue;
                 if (await _conv.HandleIncomingAsync(incoming, ct)) handled++;
             }
@@ -60,7 +67,7 @@ public class WebhookController : ControllerBase
         }
     }
 
-    private static ConversationService.IncomingMessage? ParseMessage(string instance, JsonElement msg)
+    private static ConversationService.IncomingMessage? ParseMessage(string instance, JsonElement msg, string? topSender)
     {
         // Only inbound messages (fromMe=false).
         if (msg.TryGetProperty("key", out var key))
@@ -76,10 +83,9 @@ public class WebhookController : ControllerBase
         if (remoteJid.EndsWith("@g.us", StringComparison.Ordinal)) return null;
 
         // WhatsApp introdujo Linked IDs (xxx@lid) que NO son teléfonos reales.
-        // El número verdadero viene en otro campo del key: senderPn,
-        // participantPn o, a falta de eso, msg.senderPn / msg.participant.
-        // Lo extraemos y lo usamos como FromPhone, dejando el LID en FromJid
-        // por si se necesita más adelante.
+        // El número verdadero viene en otros campos. Probamos varias rutas
+        // y al final caemos al payload.sender top-level (que en Evolution
+        // v2.2.3 trae el JID real con teléfono incluso para chats LID).
         string? phoneOverride = null;
         if (remoteJid.EndsWith("@lid", StringComparison.Ordinal))
         {
@@ -87,8 +93,8 @@ public class WebhookController : ControllerBase
                 ?? TryGetString(key, "participantPn")
                 ?? TryGetString(key, "remoteJidAlt")
                 ?? TryGetString(msg, "senderPn")
-                ?? TryGetString(msg, "participantPn");
-            // Strip "@s.whatsapp.net" si vino con sufijo.
+                ?? TryGetString(msg, "participantPn")
+                ?? topSender;
             if (phoneOverride is not null)
             {
                 var at = phoneOverride.IndexOf('@');
