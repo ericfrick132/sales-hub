@@ -29,6 +29,7 @@ export type GeoStatsCell = {
   leadsCount: number;
   products: ProductCount[];
   lastJob: LastJob | null;
+  assignedSellers: string[];
 };
 
 type ProductMin = { productKey: string; displayName: string; categories?: string[] };
@@ -192,8 +193,11 @@ export default function CoverageMap({ productKey, onProductChange, products: pro
       const head = `<div class="font-semibold">${escapeHtml(props.name)}</div>
         <div class="text-slate-500 text-[11px]">${escapeHtml(props.adm1Name ?? '')}${props.countryName ? `, ${escapeHtml(props.countryName)}` : ''}</div>`;
       let body = '';
+      const assignLine = cell?.assignedSellers?.length
+        ? `<div class="text-blue-700 mt-1">Asignada a: ${escapeHtml(cell.assignedSellers.join(', '))}</div>`
+        : '';
       if (!cell || cell.leadsCount === 0) {
-        body = `<div class="text-slate-500 mt-1">Sin leads cargados todavía.</div>`;
+        body = `${assignLine}<div class="text-slate-500 mt-1">Sin leads cargados todavía.</div>`;
       } else {
         const products = cell.products
           .slice(0, 4)
@@ -214,6 +218,7 @@ export default function CoverageMap({ productKey, onProductChange, products: pro
             </div>`
           : '';
         body = `<div class="mt-1">
+          ${assignLine}
           <div class="font-semibold text-emerald-700">${cell.leadsCount} leads</div>
           ${products}
           ${jobBlock}

@@ -71,9 +71,20 @@ export default function MapPage() {
   const [assignTarget, setAssignTarget] = useState<string | null>(null);
   // Multi-select: el usuario click + ctrl/cmd va sumando zonas a este set.
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [shiftHeld, setShiftHeld] = useState(false);
 
   // Estado canónico (M:N seller↔gid2). Se refresca tras cada PATCH al backend.
   const [assignments, setAssignments] = useState<Record<string, Set<string>>>({});
+
+  // Trackear tecla Shift para el modo "selección por provincia".
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(e.type === 'keydown');
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); };
+  }, []);
 
   const products = useQuery({
     queryKey: ['products-min'],
@@ -139,7 +150,7 @@ export default function MapPage() {
       }
       stops.push(gid2, color);
     }
-    stops.push('rgba(0,0,0,0)');
+    stops.push('rgba(148,163,184,0.22)');
     return stops;
   }, [ownersByGid2, editing, assignTarget, sellersById]);
 
@@ -202,6 +213,11 @@ export default function MapPage() {
           map.addLayer({
             id: 'localities-outline', type: 'line', source: 'localities',
             paint: { 'line-color': '#475569', 'line-width': 0.4, 'line-opacity': 0.6 }
+          });
+          map.addLayer({
+            id: 'province-hover', type: 'fill', source: 'localities',
+            paint: { 'fill-color': '#94a3b8', 'fill-opacity': 0.28 },
+            filter: ['==', ['get', 'adm1Name'], '__none__']
           });
           map.addLayer({
             id: 'localities-hover', type: 'line', source: 'localities',
@@ -301,33 +317,69 @@ export default function MapPage() {
     };
   }, [mapReady, editing, ownersByGid2, sellersById]);
 
-  // Click handler en modo edición. Sin modificador: reemplaza la selección.
-  // Con Ctrl/Cmd o Shift: toggle (suma/saca).
+  // Hover en modo edición: Shift highlight toda la provincia.
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !mapReady || !editing || !m.getLayer('province-hover')) return;
+    const onMove = (e: MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+      const f = e.features?.[0];
+      const adm1 = (f?.properties as { adm1Name?: string } | undefined)?.adm1Name;
+      if (shiftHeld && adm1) {
+        m.setFilter('province-hover', ['==', ['get', 'adm1Name'], adm1]);
+      } else {
+        m.setFilter('province-hover', ['==', ['get', 'adm1Name'], '__none__']);
+      }
+    };
+    const onLeave = () => m.setFilter('province-hover', ['==', ['get', 'adm1Name'], '__none__']);
+    m.on('mousemove', 'localities-fill', onMove);
+    m.on('mouseleave', 'localities-fill', onLeave);
+    return () => {
+      m.off('mousemove', 'localities-fill', onMove);
+      m.off('mouseleave', 'localities-fill', onLeave);
+      m.setFilter('province-hover', ['==', ['get', 'adm1Name'], '__none__']);
+    };
+  }, [mapReady, editing, shiftHeld]);
+
+  // Click handler en modo edición.
+  // Sin modificador: selección individual (toggle si era la única).
+  // Ctrl/Cmd: toggle individual.
+  // Shift: selecciona TODAS las localidades de la misma provincia (adm1Name).
   useEffect(() => {
     const m = mapRef.current;
     if (!m || !mapReady || !editing) return;
     const onClick = (e: MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[]; originalEvent: MouseEvent }) => {
       const f = e.features?.[0];
-      const gid2 = (f?.properties as { gid2?: string } | undefined)?.gid2;
+      const props = f?.properties as { gid2?: string; adm1Name?: string } | undefined;
+      const gid2 = props?.gid2;
       if (!gid2) return;
-      const additive = e.originalEvent.ctrlKey || e.originalEvent.metaKey || e.originalEvent.shiftKey;
-      setSelected(prev => {
-        const next = new Set(prev);
-        if (additive) {
-          if (next.has(gid2)) next.delete(gid2);
-          else next.add(gid2);
-        } else {
-          // Click sin modificador: si ya estaba selccionada sola, deselecciona;
-          // si no, queda como única selección.
-          if (next.size === 1 && next.has(gid2)) {
-            next.clear();
-          } else {
-            next.clear();
-            next.add(gid2);
+
+      if (e.originalEvent.shiftKey && props?.adm1Name) {
+        // Seleccionar toda la provincia
+        const provinceFeatures = m.querySourceFeatures('localities', {
+          filter: ['==', ['get', 'adm1Name'], props.adm1Name]
+        });
+        setSelected(prev => {
+          const next = new Set(prev);
+          for (const pf of provinceFeatures) {
+            const pid = (pf.properties as { gid2?: string }).gid2;
+            if (pid) next.add(pid);
           }
-        }
-        return next;
-      });
+          return next;
+        });
+      } else if (e.originalEvent.ctrlKey || e.originalEvent.metaKey) {
+        setSelected(prev => {
+          const next = new Set(prev);
+          if (next.has(gid2)) next.delete(gid2); else next.add(gid2);
+          return next;
+        });
+      } else {
+        setSelected(prev => {
+          const next = new Set(prev);
+          if (next.size === 1 && next.has(gid2)) next.clear();
+          else { next.clear(); next.add(gid2); }
+          return next;
+        });
+      }
     };
     m.on('click', 'localities-fill', onClick);
     return () => { m.off('click', 'localities-fill', onClick); };
@@ -409,8 +461,8 @@ export default function MapPage() {
               <div className="border border-slate-200 rounded-md p-2 mb-3 bg-slate-50">
                 <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">Asignar zonas</div>
                 <div className="text-xs text-slate-600 mb-2">
-                  Click sobre el mapa selecciona una zona. <b>Ctrl/Cmd+click</b> suma o saca zonas
-                  de la selección.
+                  Click selecciona una zona. <b>Ctrl/Cmd+click</b> suma/saca individual.{' '}
+                  <b>Shift+click</b> selecciona toda la provincia.
                 </div>
                 <label className="text-xs text-slate-500">Vendedor</label>
                 <select

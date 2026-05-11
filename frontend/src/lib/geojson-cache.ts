@@ -1,7 +1,7 @@
 // Cache persistente cliente para archivos pesados (geojson de localidades).
 // Usa la Cache API del browser, que sobrevive a recargas y no toca la cuota
 // chica de localStorage. Bumpear CACHE_VERSION cuando regeneramos el dataset.
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `saleshub-static-${CACHE_VERSION}`;
 
 export async function fetchCachedJson<T>(url: string): Promise<T> {

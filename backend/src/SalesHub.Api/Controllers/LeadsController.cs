@@ -133,7 +133,8 @@ public class LeadsController : ControllerBase
         double CentroidLng,
         int LeadsCount,
         IEnumerable<GeoStatsProductCount> Products,
-        GeoStatsLastJob? LastJob);
+        GeoStatsLastJob? LastJob,
+        IEnumerable<string> AssignedSellers);
 
     /// <summary>
     /// Cobertura por localidad (GADM gid2): cuántos leads se cargaron en cada
@@ -190,6 +191,15 @@ public class LeadsController : ControllerBase
             .ToListAsync(ct);
         var lastJobByGid = lastJobs.ToDictionary(j => j.LocalityGid2!);
 
+        // Sellers assigned to each locality in the result set.
+        var assignedByGid = await _db.SellerLocalities.AsNoTracking()
+            .Where(sl => gidSet.Contains(sl.LocalityGid2))
+            .Select(sl => new { sl.LocalityGid2, sl.Seller!.DisplayName })
+            .ToListAsync(ct);
+        var assignedMap = assignedByGid
+            .GroupBy(x => x.LocalityGid2)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.DisplayName).OrderBy(n => n).ToList());
+
         var byGid = perCell.GroupBy(x => x.LocalityGid2!).Select(g =>
         {
             var gid = g.Key;
@@ -217,7 +227,8 @@ public class LeadsController : ControllerBase
                 loc?.CentroidLng ?? 0,
                 total,
                 products,
-                last);
+                last,
+                assignedMap.GetValueOrDefault(gid) ?? new List<string>());
         }).OrderByDescending(c => c.LeadsCount).ToList();
 
         return byGid;
