@@ -73,7 +73,7 @@ export default function MapPage() {
   const [assignTarget, setAssignTarget] = useState<string | null>(null);
   // Multi-select: el usuario click + ctrl/cmd va sumando zonas a este set.
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [shiftHeld, setShiftHeld] = useState(false);
+  const altHeldRef = useRef(false);
 
   // Estado canónico (M:N seller↔gid2). Se refresca tras cada PATCH al backend.
   const [assignments, setAssignments] = useState<Record<string, Set<string>>>({});
@@ -81,7 +81,7 @@ export default function MapPage() {
   // Trackear tecla Shift para el modo "selección por provincia".
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') setShiftHeld(e.type === 'keydown');
+      if (e.key === 'Alt') altHeldRef.current = e.type === 'keydown';
     };
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKey);
@@ -338,7 +338,7 @@ export default function MapPage() {
     const onMove = (e: MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
       const f = e.features?.[0];
       const adm1 = (f?.properties as { adm1Name?: string } | undefined)?.adm1Name;
-      if (shiftHeld && adm1) {
+      if (altHeldRef.current && adm1) {
         m.setFilter('province-hover', ['==', ['get', 'adm1Name'], adm1]);
       } else {
         m.setFilter('province-hover', ['==', ['get', 'adm1Name'], '__none__']);
@@ -352,22 +352,22 @@ export default function MapPage() {
       m.off('mouseleave', 'localities-fill', onLeave);
       m.setFilter('province-hover', ['==', ['get', 'adm1Name'], '__none__']);
     };
-  }, [mapReady, editing, shiftHeld]);
+  }, [mapReady, editing]);
 
   // Click handler en modo edición.
   // Sin modificador: selección individual (toggle si era la única).
   // Ctrl/Cmd: toggle individual.
-  // Shift: selecciona TODAS las localidades de la misma provincia (adm1Name).
+  // Alt+click: selecciona TODAS las localidades de la misma provincia (adm1Name).
   useEffect(() => {
     const m = mapRef.current;
     if (!m || !mapReady || !editing) return;
-    const onClick = (e: MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[]; originalEvent: MouseEvent }) => {
+    const onClick = (e: MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
       const f = e.features?.[0];
       const props = f?.properties as { gid2?: string; adm1Name?: string } | undefined;
       const gid2 = props?.gid2;
       if (!gid2) return;
 
-      if (e.originalEvent.shiftKey && props?.adm1Name) {
+      if (altHeldRef.current && props?.adm1Name) {
         // Seleccionar toda la provincia usando el índice pre-computado.
         const gid2s = adm1Index.current.get(props.adm1Name) ?? [];
         setSelected(prev => {
@@ -375,7 +375,7 @@ export default function MapPage() {
           for (const pid of gid2s) next.add(pid);
           return next;
         });
-      } else if (e.originalEvent.ctrlKey || e.originalEvent.metaKey) {
+      } else if ((e.originalEvent as MouseEvent).ctrlKey || (e.originalEvent as MouseEvent).metaKey) {
         setSelected(prev => {
           const next = new Set(prev);
           if (next.has(gid2)) next.delete(gid2); else next.add(gid2);
@@ -471,7 +471,7 @@ export default function MapPage() {
                 <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">Asignar zonas</div>
                 <div className="text-xs text-slate-600 mb-2">
                   Click selecciona una zona. <b>Ctrl/Cmd+click</b> suma/saca individual.{' '}
-                  <b>Shift+click</b> selecciona toda la provincia.
+                  <b>Alt+click</b> selecciona toda la provincia.
                 </div>
                 <label className="text-xs text-slate-500">Vendedor</label>
                 <select
