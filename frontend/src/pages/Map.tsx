@@ -64,6 +64,8 @@ export default function MapPage() {
   const [mapReady, setMapReady] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [geojsonMissing, setGeojsonMissing] = useState(false);
+  // Índice adm1Name → gid2[] construido al cargar el geojson.
+  const adm1Index = useRef<Map<string, string[]>>(new Map());
 
   const [productKey, setProductKey] = useState('');
   const [editing, setEditing] = useState(false);
@@ -204,6 +206,18 @@ export default function MapPage() {
       try {
         const gj = await fetchCountriesGeoJson(countryCodes);
         if (cancelled) return;
+        // Construir índice adm1→gid2[] para la selección por provincia.
+        const idx = new Map<string, string[]>();
+        for (const f of (gj as { features: Array<{ properties?: { gid2?: string; adm1Name?: string } }> }).features) {
+          const adm1 = f.properties?.adm1Name;
+          const gid2 = f.properties?.gid2;
+          if (adm1 && gid2) {
+            const arr = idx.get(adm1) ?? [];
+            arr.push(gid2);
+            idx.set(adm1, arr);
+          }
+        }
+        adm1Index.current = idx;
         if (!map.getSource('localities')) {
           map.addSource('localities', { type: 'geojson', data: gj as never, generateId: false });
           map.addLayer({
@@ -354,16 +368,11 @@ export default function MapPage() {
       if (!gid2) return;
 
       if (e.originalEvent.shiftKey && props?.adm1Name) {
-        // Seleccionar toda la provincia
-        const provinceFeatures = m.querySourceFeatures('localities', {
-          filter: ['==', ['get', 'adm1Name'], props.adm1Name]
-        });
+        // Seleccionar toda la provincia usando el índice pre-computado.
+        const gid2s = adm1Index.current.get(props.adm1Name) ?? [];
         setSelected(prev => {
           const next = new Set(prev);
-          for (const pf of provinceFeatures) {
-            const pid = (pf.properties as { gid2?: string }).gid2;
-            if (pid) next.add(pid);
-          }
+          for (const pid of gid2s) next.add(pid);
           return next;
         });
       } else if (e.originalEvent.ctrlKey || e.originalEvent.metaKey) {
