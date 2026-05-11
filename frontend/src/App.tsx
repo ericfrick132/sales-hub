@@ -19,6 +19,7 @@ import Trends from './pages/Trends';
 import MapPage from './pages/Map';
 import Conversations from './pages/Conversations';
 import SearchLeads from './pages/SearchLeads';
+import AudioAnalytics from './pages/AudioAnalytics';
 
 function SellerZonesRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="/sellers/:id/zones" element={<SellerZonesRedirect />} />
             <Route path="/admin/sellers/:id" element={<SellerDetail />} />
             <Route path="/products" element={<Products />} />
+            <Route path="/audio-analytics" element={<AudioAnalytics />} />
             <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/competitors" element={<Competitors />} />
             <Route path="/trends" element={<Trends />} />
