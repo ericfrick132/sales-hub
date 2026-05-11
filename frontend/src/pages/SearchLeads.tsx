@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuthStore } from '../lib/auth';
 import CoverageMap from '../components/CoverageMap';
+import MyZonesMap from '../components/MyZonesMap';
 
 type NextCapture = {
   productKey: string;
@@ -234,6 +235,8 @@ export default function SearchLeads() {
           )}
         </div>
       </div>
+
+      <MyZonesMap />
 
       <CoverageMap
         productKey={productFilter}
