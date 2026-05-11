@@ -41,7 +41,7 @@ export default function SearchLeads() {
 
   const next = useQuery({
     queryKey: ['capture-next'],
-    queryFn: async () => (await api.get<NextCapture[]>('/search-jobs/next', { params: { limit: 20 } })).data,
+    queryFn: async () => (await api.get<NextCapture[]>('/search-jobs/next', { params: { limit: 500 } })).data,
     // El upload pasa por fuera de React (Tampermonkey), así que re-fetcheamos
     // cuando el vendedor vuelve a la pestaña y cada 15s mientras está acá.
     refetchInterval: 15_000,

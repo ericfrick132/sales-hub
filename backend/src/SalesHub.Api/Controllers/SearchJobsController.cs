@@ -224,7 +224,7 @@ public class SearchJobsController : ControllerBase
             .ThenBy(r => r.LastCapturedAt ?? DateTimeOffset.MinValue)
             .ThenBy(r => r.LocalityGid2)
             .ThenBy(r => r.Category)
-            .Take(Math.Clamp(limit, 1, 50))
+            .Take(Math.Clamp(limit, 1, 1000))
             .ToList();
 
         return sorted;
