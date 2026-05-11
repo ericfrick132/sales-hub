@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuthStore } from '../lib/auth';
-import CoverageMap from '../components/CoverageMap';
 import MyZonesMap from '../components/MyZonesMap';
 
 type NextCapture = {
@@ -38,7 +37,6 @@ const SCRIPT_URL = '/saleshub-capture.user.js';
 export default function SearchLeads() {
   const token = useAuthStore((s) => s.token);
   const [setupOpen, setSetupOpen] = useState(false);
-  const [productFilter, setProductFilter] = useState('');
   const [cursor, setCursor] = useState(0);
 
   const next = useQuery({
@@ -237,11 +235,6 @@ export default function SearchLeads() {
       </div>
 
       <MyZonesMap />
-
-      <CoverageMap
-        productKey={productFilter}
-        onProductChange={setProductFilter}
-      />
     </div>
   );
 }

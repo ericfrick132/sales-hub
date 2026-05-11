@@ -155,12 +155,16 @@ public class SearchJobsController : ControllerBase
         CancellationToken ct = default)
     {
         var sellerId = CurrentUser.Id(User);
+        var seller = await _db.Sellers.AsNoTracking().FirstAsync(s => s.Id == sellerId, ct);
         var localities = await _db.SellerLocalities.AsNoTracking()
             .Where(sl => sl.SellerId == sellerId)
             .Include(sl => sl.Locality)
             .Select(sl => sl.Locality!)
             .ToListAsync(ct);
-        var products = await _db.Products.AsNoTracking().Where(p => p.Active).ToListAsync(ct);
+        var productsQ = _db.Products.AsNoTracking().Where(p => p.Active);
+        if (seller.VerticalsWhitelist.Count > 0)
+            productsQ = productsQ.Where(p => seller.VerticalsWhitelist.Contains(p.ProductKey));
+        var products = await productsQ.ToListAsync(ct);
 
         // Histórico de jobs del seller, indexado por la combo (producto, gid2, categoría).
         var history = await _db.SearchJobs.AsNoTracking()
