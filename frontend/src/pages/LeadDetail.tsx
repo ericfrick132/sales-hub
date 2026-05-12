@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
-import { LEAD_STATUS_LABEL, type Lead, type LeadStatus, type Seller } from '../lib/types';
+import { LEAD_STATUS_LABEL, type Lead, type LeadPreview, type LeadStatus, type Seller } from '../lib/types';
 import StatusBadge from '../components/StatusBadge';
 import { isAdmin, useAuthStore } from '../lib/auth';
 
@@ -27,6 +27,12 @@ export default function LeadDetail() {
     queryKey: ['sellers-for-assign'],
     enabled: admin,
     queryFn: async () => (await api.get<Seller[]>('/sellers')).data
+  });
+
+  const previewQ = useQuery({
+    queryKey: ['lead-preview', id],
+    enabled: !!id,
+    queryFn: async () => (await api.get<LeadPreview>(`/leads/${id}/preview`)).data
   });
 
   const [notes, setNotes] = useState('');
@@ -183,12 +189,8 @@ export default function LeadDetail() {
         </div>
       </div>
 
-      {lead.renderedMessage && (
-        <div className="card p-5">
-          <h3 className="font-semibold mb-2">Mensaje sugerido</h3>
-          <pre className="whitespace-pre-wrap text-sm bg-slate-50 p-3 rounded border border-slate-200">{lead.renderedMessage}</pre>
-        </div>
-      )}
+      <MessagePreview preview={previewQ.data} loading={previewQ.isLoading} fallback={lead.renderedMessage} />
+
 
       <div className="card p-5 space-y-3">
         <h3 className="font-semibold">Actualizar estado</h3>
@@ -266,4 +268,94 @@ export default function LeadDetail() {
       </div>
     </div>
   );
+}
+
+function MessagePreview({
+  preview,
+  loading,
+  fallback
+}: {
+  preview: LeadPreview | undefined;
+  loading: boolean;
+  fallback?: string;
+}) {
+  if (loading && !preview) {
+    return (
+      <div className="card p-5">
+        <h3 className="font-semibold mb-2">Mensaje a enviar</h3>
+        <div className="text-sm text-slate-500">Cargando…</div>
+      </div>
+    );
+  }
+
+  // Producto sin steps: caemos al template legacy.
+  if (!preview?.hasSteps) {
+    const legacy = preview?.legacyMessage ?? fallback;
+    if (!legacy) return null;
+    return (
+      <div className="card p-5">
+        <h3 className="font-semibold mb-2">Mensaje a enviar</h3>
+        <pre className="whitespace-pre-wrap text-sm bg-slate-50 p-3 rounded border border-slate-200">{legacy}</pre>
+        <div className="text-xs text-slate-400 mt-2">
+          Template legacy del producto. Si configurás steps en admin, esto se reemplaza por la cadencia.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card p-5 space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="font-semibold">Mensaje a enviar</h3>
+        <div className="text-xs text-slate-500">
+          Cadencia: {preview.category ? <span className="font-medium">{preview.category}</span> : 'default'} ·
+          {' '}{preview.steps.length} paso{preview.steps.length === 1 ? '' : 's'}
+        </div>
+      </div>
+      <ol className="space-y-2">
+        {preview.steps.map((s, idx) => (
+          <li key={s.index} className="border border-slate-200 rounded-md bg-slate-50">
+            <div className="flex items-center justify-between gap-2 px-3 pt-2 text-xs text-slate-500">
+              <span className="font-medium text-slate-600">Paso {idx + 1}</span>
+              <span>
+                {idx > 0 && s.delaySeconds > 0 && (
+                  <span className="mr-2">+{formatDelay(s.delaySeconds)}</span>
+                )}
+                {s.mediaKind && (
+                  <span className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-600">
+                    {mediaLabel(s.mediaKind)}{s.mediaFileName ? `: ${s.mediaFileName}` : ''}
+                    {s.mediaVariantsCount && s.mediaVariantsCount > 1
+                      ? ` (×${s.mediaVariantsCount})`
+                      : ''}
+                  </span>
+                )}
+              </span>
+            </div>
+            {s.text ? (
+              <pre className="whitespace-pre-wrap text-sm px-3 pb-3 pt-1">{s.text}</pre>
+            ) : (
+              <div className="px-3 pb-3 pt-1 text-xs italic text-slate-400">(sin texto — sólo media)</div>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function mediaLabel(kind: string) {
+  switch (kind) {
+    case 'audio': return 'audio';
+    case 'image': return 'imagen';
+    case 'pdf': return 'PDF';
+    case 'video': return 'video';
+    default: return 'adjunto';
+  }
+}
+
+function formatDelay(seconds: number) {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
 }

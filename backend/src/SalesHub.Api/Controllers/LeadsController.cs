@@ -254,6 +254,86 @@ public class LeadsController : ControllerBase
         return (await q.ToListAsync(ct)).Select(ToDto).ToList();
     }
 
+    /// <summary>
+    /// Devuelve la cadencia que efectivamente se mandaría a este lead, renderizada
+    /// con los placeholders del producto. Usa <see cref="OutboxEnqueueHelper.ResolveStepsForLead"/>
+    /// para respetar el override por categoría (mismo motor que el envío real).
+    /// Si el producto no tiene steps, devuelve <c>HasSteps=false</c> + el template legacy.
+    /// </summary>
+    [HttpGet("{id:guid}/preview")]
+    public async Task<ActionResult<LeadPreviewDto>> Preview(Guid id, CancellationToken ct)
+    {
+        var callerId = CurrentUser.Id(User);
+        var lead = await _db.Leads
+            .Include(l => l.Product)
+            .Include(l => l.Seller)
+            .FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (lead is null) return NotFound();
+        if (!CurrentUser.IsAdmin(User) && lead.SellerId != callerId) return Forbid();
+        if (lead.Product is null) return BadRequest(new { error = "Lead sin producto" });
+
+        var (steps, category) = OutboxEnqueueHelper.ResolveStepsForLead(lead, lead.Product);
+
+        if (steps.Count == 0)
+        {
+            var legacy = !string.IsNullOrWhiteSpace(lead.RenderedMessage)
+                ? lead.RenderedMessage!
+                : _renderer.Render(lead, lead.Product, lead.Seller);
+            return new LeadPreviewDto(false, string.Empty, legacy, new List<LeadPreviewStepDto>());
+        }
+
+        // Resolver nombres + tipos de los assets que aparecen en algún step.
+        // Tomamos sólo la PRIMERA variante de cada step para el preview (la rotación
+        // round-robin se decide al enqueue real, acá queremos algo determinístico).
+        var firstAssetIds = steps
+            .Select(s => s.MediaAssetIds is { Count: > 0 } ? s.MediaAssetIds[0] : s.MediaAssetId)
+            .Where(g => g is not null)
+            .Select(g => g!.Value)
+            .Distinct()
+            .ToList();
+        var assetById = firstAssetIds.Count == 0
+            ? new Dictionary<Guid, (string FileName, string MimeType)>()
+            : await _db.MediaAssets.AsNoTracking()
+                .Where(a => firstAssetIds.Contains(a.Id))
+                .Select(a => new { a.Id, a.FileName, a.MimeType })
+                .ToDictionaryAsync(a => a.Id, a => (a.FileName, a.MimeType), ct);
+
+        var result = new List<LeadPreviewStepDto>();
+        for (var i = 0; i < steps.Count; i++)
+        {
+            var step = steps[i];
+            var hasMulti = step.MediaAssetIds is { Count: > 0 };
+            var firstAsset = hasMulti ? step.MediaAssetIds[0] : step.MediaAssetId;
+            int? variants = hasMulti
+                ? step.MediaAssetIds.Count
+                : (step.MediaAssetId is not null ? 1 : (int?)null);
+
+            string? kind = null;
+            string? fileName = null;
+            if (firstAsset is not null && assetById.TryGetValue(firstAsset.Value, out var info))
+            {
+                fileName = info.FileName;
+                var mt = info.MimeType ?? string.Empty;
+                if (mt.StartsWith("audio/", StringComparison.OrdinalIgnoreCase)) kind = "audio";
+                else if (mt.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) kind = "image";
+                else if (mt.Equals("application/pdf", StringComparison.OrdinalIgnoreCase)) kind = "pdf";
+                else if (mt.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) kind = "video";
+                else kind = "file";
+            }
+
+            var rendered = string.IsNullOrWhiteSpace(step.Text)
+                ? string.Empty
+                : _renderer.RenderTemplate(step.Text, lead, lead.Product, lead.Seller);
+
+            // Mismo skip que OutboxEnqueueHelper: step sin texto y sin media = no se manda.
+            if (string.IsNullOrWhiteSpace(rendered) && kind is null) continue;
+
+            result.Add(new LeadPreviewStepDto(i, rendered, step.DelaySeconds, kind, fileName, variants));
+        }
+
+        return new LeadPreviewDto(true, category, null, result);
+    }
+
     [HttpGet("pool")]
     public async Task<ActionResult<IEnumerable<LeadDto>>> Pool(
         [FromQuery] string? productKey, [FromQuery] int limit = 200, CancellationToken ct = default)

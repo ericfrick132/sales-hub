@@ -103,6 +103,26 @@ export interface CategoryCadence {
   steps: MessageStep[];
 }
 
+export interface LeadPreviewStep {
+  index: number;
+  text: string;
+  delaySeconds: number;
+  /** "audio" | "image" | "pdf" | "video" | "file" | null si es texto puro. */
+  mediaKind?: string | null;
+  mediaFileName?: string | null;
+  /** Cuántas variantes hay configuradas en este step (rotación). */
+  mediaVariantsCount?: number | null;
+}
+
+export interface LeadPreview {
+  hasSteps: boolean;
+  /** "" cuando es la cadencia default del producto. */
+  category: string;
+  /** Solo cuando hasSteps=false: el MessageTemplate legacy renderizado. */
+  legacyMessage?: string | null;
+  steps: LeadPreviewStep[];
+}
+
 export interface MediaAsset {
   id: string;
   productKey: string;

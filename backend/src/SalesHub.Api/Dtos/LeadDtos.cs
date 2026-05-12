@@ -32,6 +32,25 @@ public record LeadDto(
     /// <summary>Query libre que se tipeó en Maps (puede incluir ciudad). Útil para debug.</summary>
     string? SearchQuery);
 
+public record LeadPreviewStepDto(
+    int Index,
+    string Text,
+    int DelaySeconds,
+    /// <summary>"audio" | "image" | "pdf" | "video" | "file" | null si es texto puro.</summary>
+    string? MediaKind,
+    string? MediaFileName,
+    /// <summary>Cuántas variantes hay configuradas en este step (rotación). Null si no hay media.</summary>
+    int? MediaVariantsCount);
+
+public record LeadPreviewDto(
+    /// <summary>true si el producto tiene cadencia de steps configurada para este lead.</summary>
+    bool HasSteps,
+    /// <summary>Categoría efectiva usada para resolver la cadencia ("" = default del producto).</summary>
+    string Category,
+    /// <summary>Mensaje legacy renderizado (MessageTemplate). Sólo se setea si HasSteps=false.</summary>
+    string? LegacyMessage,
+    List<LeadPreviewStepDto> Steps);
+
 public record UpdateLeadStatusRequest(LeadStatus Status, string? Notes);
 public record UpdateLeadInfoRequest(string? Name, string? WhatsappPhone);
 public record QueueLeadRequest(DateTimeOffset? At);
