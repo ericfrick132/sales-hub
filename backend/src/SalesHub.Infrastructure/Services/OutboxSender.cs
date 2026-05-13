@@ -63,13 +63,24 @@ public class OutboxSender
             // Trae los próximos N candidatos y filtra por ventana de envío del PRODUCTO
             // del lead (además de la ventana del seller que ya chequeamos arriba). Si un
             // producto está fuera de su ventana, lo saltea y prueba el siguiente.
-            var candidates = await _db.Outbox
-                .Where(o => o.SellerId == seller.Id
-                         && o.Status == OutboxStatus.Scheduled
-                         && o.ScheduledAt <= now)
-                .OrderBy(o => o.ScheduledAt)
-                .Take(20)
-                .ToListAsync(ct);
+            //
+            // Orden: PRIORIZAR leads "en progreso" (con algún step ya Sent) sobre leads
+            // frescos. Sin esto, con muchos leads encolados a la vez todos los step 0
+            // (con ScheduledAt anterior por construcción) se mandan antes que cualquier
+            // step 1 — la cadencia queda rota: cada lead recibe sólo el primer mensaje
+            // hasta que todos los demás leads también recibieron el suyo. Con esta
+            // prioridad, una vez que un lead arrancó, el sender termina su cadencia
+            // antes de pasar al siguiente.
+            var candidates = await (
+                from o in _db.Outbox
+                where o.SellerId == seller.Id
+                   && o.Status == OutboxStatus.Scheduled
+                   && o.ScheduledAt <= now
+                let leadInProgress = _db.Outbox.Any(x =>
+                    x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
+                orderby leadInProgress descending, o.ScheduledAt
+                select o
+            ).Take(20).ToListAsync(ct);
             MessageOutbox? next = null;
             foreach (var cand in candidates)
             {
@@ -276,6 +287,24 @@ public class OutboxSender
                 {
                     // Retry later (random 5-15m).
                     next.ScheduledAt = DateTimeOffset.UtcNow.AddMinutes(Random.Shared.Next(5, 16));
+                }
+                else if (next.StepIndex is not null)
+                {
+                    // Failed permanente: cancelar los steps siguientes del mismo lead. Sin esto,
+                    // si step 0 (texto intro) muere, los audios igual saldrían más tarde sin
+                    // contexto — el lead recibe "[audio]" sin haber recibido nunca el mensaje
+                    // que lo introducía.
+                    var laterSteps = await _db.Outbox
+                        .Where(o => o.LeadId == next.LeadId
+                                 && o.Status == OutboxStatus.Scheduled
+                                 && o.StepIndex != null
+                                 && o.StepIndex > next.StepIndex.Value)
+                        .ToListAsync(ct);
+                    foreach (var ls in laterSteps)
+                    {
+                        ls.Status = OutboxStatus.Cancelled;
+                        ls.Error = $"Cancelled: step {next.StepIndex.Value} failed";
+                    }
                 }
                 await _db.SaveChangesAsync(ct);
             }
