@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
-import type { Product } from '../lib/types';
+import type { Product, Seller } from '../lib/types';
 import { isAdmin, useAuthStore } from '../lib/auth';
 
 type ListItem = {
@@ -52,6 +52,7 @@ export default function Conversations() {
   const endRef = useRef<HTMLDivElement>(null);
 
   const [productFilter, setProductFilter] = useState('');
+  const [sellerFilter, setSellerFilter] = useState('');
   const [days, setDays] = useState(30);
   const fromTs = useMemo(() => {
     if (!days) return undefined;
@@ -59,10 +60,11 @@ export default function Conversations() {
   }, [days]);
 
   const list = useQuery({
-    queryKey: ['conversations', productFilter, days],
+    queryKey: ['conversations', productFilter, sellerFilter, days],
     queryFn: async () => (await api.get<ListItem[]>('/conversations', {
       params: {
         productKey: productFilter || undefined,
+        sellerId: sellerFilter || undefined,
         from: fromTs
       }
     })).data,
@@ -72,6 +74,13 @@ export default function Conversations() {
   const productsQ = useQuery({
     queryKey: ['products-min'],
     queryFn: async () => (await api.get<Product[]>('/products')).data,
+    staleTime: 5 * 60_000
+  });
+
+  const sellersQ = useQuery({
+    queryKey: ['sellers-for-conv-filter'],
+    enabled: admin,
+    queryFn: async () => (await api.get<Seller[]>('/sellers')).data,
     staleTime: 5 * 60_000
   });
 
@@ -124,6 +133,20 @@ export default function Conversations() {
                 ))}
               </select>
             </div>
+            {admin && (
+              <div className="flex-1 min-w-[120px]">
+                <label className="text-[11px] text-slate-500 block">Vendedor</label>
+                <select
+                  className="input text-sm w-full"
+                  value={sellerFilter}
+                  onChange={(e) => setSellerFilter(e.target.value)}>
+                  <option value="">Todos</option>
+                  {(sellersQ.data ?? []).filter((s) => s.isActive).map((s) => (
+                    <option key={s.id} value={s.id}>{s.displayName}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex-1 min-w-[120px]">
               <label className="text-[11px] text-slate-500 block">Período</label>
               <select
@@ -154,9 +177,14 @@ export default function Conversations() {
               selected === c.leadId && 'bg-brand-50'
             )}>
             <div className="flex justify-between items-start gap-2">
-              <div className="font-medium truncate">{c.leadName}</div>
+              <div className="font-medium truncate flex-1 min-w-0">{c.leadName}</div>
+              {admin && c.sellerName && (
+                <span className="text-[11px] bg-brand-100 text-brand-700 rounded px-1.5 py-0.5 font-medium shrink-0">
+                  {c.sellerName}
+                </span>
+              )}
               {c.unreadCount > 0 && (
-                <span className="badge bg-rose-500 text-white text-xs">{c.unreadCount}</span>
+                <span className="badge bg-rose-500 text-white text-xs shrink-0">{c.unreadCount}</span>
               )}
             </div>
             <div className="text-xs text-slate-500 truncate">
@@ -166,11 +194,6 @@ export default function Conversations() {
               {c.lastMessageText?.slice(0, 80) ?? '(sin mensajes)'}
             </div>
             <div className="text-xs text-slate-400 mt-0.5 flex gap-2 flex-wrap">
-              {admin && c.sellerName && (
-                <span className="bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 text-[10px]">
-                  {c.sellerName}
-                </span>
-              )}
               <span>{c.productKey}</span>
               {c.city && <span>· {c.city}</span>}
               <span className="ml-auto">{c.lastTimestamp ? new Date(c.lastTimestamp).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : ''}</span>
