@@ -140,11 +140,26 @@ public class DashboardController : ControllerBase
         [FromQuery] string? order = null, CancellationToken ct = default)
     {
         var id = CurrentUser.Id(User);
+        // Misma whitelist del seller que aplica el OutboxSender al enviar. Sin esto, el
+        // dashboard mostraba rows que en realidad nunca van a salir (porque el sender los
+        // skipea), confundiendo al seller. Aplica sólo a rows Scheduled — los Sent/Failed
+        // históricos se ven igual independiente de la whitelist actual.
+        var sellerVerticals = await _db.Sellers.AsNoTracking()
+            .Where(s => s.Id == id)
+            .Select(s => s.VerticalsWhitelist)
+            .FirstOrDefaultAsync(ct);
+        var hasWhitelist = sellerVerticals is { Count: > 0 };
+
         var q = _db.Outbox.AsNoTracking()
             .Include(o => o.Lead).ThenInclude(l => l!.Product)
             .Include(o => o.MediaAsset)
             .Where(o => o.SellerId == id);
         if (status is not null) q = q.Where(o => o.Status == status);
+        if (hasWhitelist)
+        {
+            q = q.Where(o => o.Status != OutboxStatus.Scheduled
+                          || (o.Lead != null && sellerVerticals!.Contains(o.Lead.ProductKey)));
+        }
         // order=upcoming → próximos primero (asc por ScheduledAt). Default = desc por última actividad.
         q = order == "upcoming"
             ? q.OrderBy(o => o.ScheduledAt)
@@ -294,7 +309,16 @@ public class DashboardController : ControllerBase
             .OrderByDescending(l => l.AssignedAt)
             .Take(200)
             .ToListAsync(ct);
-        var queued = await _db.Outbox.CountAsync(o => o.SellerId == id && o.Status == OutboxStatus.Scheduled, ct);
+        // Misma whitelist que el sender + el endpoint /outbox: contamos sólo los rows
+        // que efectivamente van a salir. Si el producto del lead no está en la whitelist,
+        // el sender los skipea y no deben contar como "En cola" en el dashboard.
+        var queuedQ = _db.Outbox.Where(o => o.SellerId == id && o.Status == OutboxStatus.Scheduled);
+        if (seller.VerticalsWhitelist is { Count: > 0 })
+        {
+            var wl = seller.VerticalsWhitelist;
+            queuedQ = queuedQ.Where(o => o.Lead != null && wl.Contains(o.Lead.ProductKey));
+        }
+        var queued = await queuedQ.CountAsync(ct);
         var leads = active.Select(l => new LeadDto(
             l.Id, l.ProductKey, l.Product?.DisplayName, l.Source, l.Name, l.City, l.Province,
             l.WhatsappPhone, l.Website, l.InstagramHandle, l.FacebookUrl, l.Rating, l.TotalReviews,
