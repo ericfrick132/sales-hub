@@ -126,7 +126,13 @@ public class DashboardController : ControllerBase
         Guid Id, Guid LeadId, string LeadName, string ProductKey, string? ProductName,
         string WhatsappPhone, string Message, OutboxStatus Status,
         DateTimeOffset ScheduledAt, DateTimeOffset? SentAt, int Attempts, string? Error,
-        string? SearchCategory, bool HasMedia, string? MediaMimeType, string? City);
+        string? SearchCategory, bool HasMedia, string? MediaMimeType, string? City,
+        /// <summary>
+        /// Hora estimada real de envío considerando la config del seller (cap diario, ventana
+        /// horaria, warmup, skip-day, jitter entre mensajes). Null si el envío está pausado
+        /// (SendingEnabled=false o instancia no conectada) — en ese caso no se puede proyectar.
+        /// </summary>
+        DateTimeOffset? ProjectedAt);
 
     [HttpGet("outbox")]
     public async Task<ActionResult<IEnumerable<OutboxItemDto>>> Outbox(
@@ -145,12 +151,120 @@ public class DashboardController : ControllerBase
             : q.OrderByDescending(o => o.SentAt ?? o.ScheduledAt);
         q = q.Take(Math.Min(limit, 500));
         var rows = await q.ToListAsync(ct);
+
+        // Proyección de hora real de envío sólo para upcoming/Scheduled — para el resto
+        // (Sent, Failed, Cancelled) la hora real es SentAt o no aplica.
+        Dictionary<Guid, DateTimeOffset> projections = new();
+        if (order == "upcoming" && rows.Count > 0 && rows.Any(o => o.Status == OutboxStatus.Scheduled))
+        {
+            var seller = await _db.Sellers.AsNoTracking()
+                .Include(s => s.EvolutionInstance)
+                .FirstOrDefaultAsync(s => s.Id == id, ct);
+            if (seller is not null)
+            {
+                projections = await ProjectDispatchesAsync(seller, rows, ct);
+            }
+        }
+
         return rows.Select(o => new OutboxItemDto(
             o.Id, o.LeadId, o.Lead?.Name ?? "—", o.Lead?.ProductKey ?? "",
             o.Lead?.Product?.DisplayName, o.WhatsappPhone, o.Message,
             o.Status, o.ScheduledAt, o.SentAt, o.Attempts, o.Error,
             o.Lead?.SearchCategory, o.MediaAssetId is not null,
-            o.MediaAsset?.MimeType, o.Lead?.City)).ToList();
+            o.MediaAsset?.MimeType, o.Lead?.City,
+            projections.TryGetValue(o.Id, out var p) ? p : (DateTimeOffset?)null)).ToList();
+    }
+
+    /// <summary>
+    /// Simula el OutboxSender hacia adelante para estimar a qué hora real va a salir cada
+    /// item Scheduled. Considera:
+    ///   - ventana horaria del seller (ActiveHoursStart/End en su timezone)
+    ///   - cap diario con warmup ramp (ISendScheduler.ComputeTodayCap)
+    ///   - skip-day determinístico (ISendScheduler.IsSkipDay)
+    ///   - jitter entre mensajes (promedio de DelayMin/Max)
+    ///   - ScheduledAt como piso (el item nunca sale antes de su scheduled)
+    /// No considera (deliberadamente, para mantener la proyección simple):
+    ///   - burst pauses
+    ///   - ventana horaria por producto (asume seller-wide)
+    ///   - typing/recording overhead (segundos, negligible vs. jitter de minutos)
+    ///   - reintentos
+    /// Devuelve {} si el seller no puede mandar (SendingEnabled=false o instancia
+    /// no conectada) — el frontend muestra "envío pausado".
+    /// </summary>
+    private async Task<Dictionary<Guid, DateTimeOffset>> ProjectDispatchesAsync(
+        Seller seller, List<MessageOutbox> items, CancellationToken ct)
+    {
+        var result = new Dictionary<Guid, DateTimeOffset>();
+        if (!seller.SendingEnabled) return result;
+        if (seller.EvolutionInstance is null || seller.EvolutionInstance.Status != InstanceStatus.Connected)
+            return result;
+
+        var tz = SafeTz(seller.Timezone);
+        var nowUtc = DateTimeOffset.UtcNow;
+        var nowLocal = TimeZoneInfo.ConvertTime(nowUtc, tz).DateTime;
+
+        // Promedio del jitter entre mensajes — la mejor estimación lineal sin RNG.
+        var avgDelaySec = Math.Max(1, (seller.DelayMinSeconds + seller.DelayMaxSeconds) / 2);
+
+        var day = DateOnly.FromDateTime(nowLocal);
+        var sentToday = await _db.Outbox.CountAsync(o =>
+            o.SellerId == seller.Id && o.Status == OutboxStatus.Sent
+            && o.SentAt != null
+            && o.SentAt.Value >= day.ToDateTime(TimeOnly.MinValue)
+            && o.SentAt.Value < day.AddDays(1).ToDateTime(TimeOnly.MinValue), ct);
+
+        // Avanzar el día si hoy es skip-day o ya pasamos la ventana / cap.
+        DateTime dayStart = day.ToDateTime(new TimeOnly(seller.ActiveHoursStart, 0));
+        DateTime dayEnd = day.ToDateTime(new TimeOnly(seller.ActiveHoursEnd, 0));
+        int cap = _scheduler.ComputeTodayCap(seller, day);
+        DateTime cursor = nowLocal < dayStart ? dayStart : nowLocal;
+
+        void RollToNextValidDay()
+        {
+            do
+            {
+                day = day.AddDays(1);
+            } while (_scheduler.IsSkipDay(seller, day));
+            dayStart = day.ToDateTime(new TimeOnly(seller.ActiveHoursStart, 0));
+            dayEnd = day.ToDateTime(new TimeOnly(seller.ActiveHoursEnd, 0));
+            cap = _scheduler.ComputeTodayCap(seller, day);
+            sentToday = 0;
+            cursor = dayStart;
+        }
+
+        if (_scheduler.IsSkipDay(seller, day) || cursor >= dayEnd || sentToday >= cap)
+            RollToNextValidDay();
+
+        foreach (var o in items)
+        {
+            if (o.Status != OutboxStatus.Scheduled) continue;
+
+            // Piso: el item no puede salir antes de su ScheduledAt (en hora local del seller).
+            var schedLocal = TimeZoneInfo.ConvertTime(o.ScheduledAt, tz).DateTime;
+            if (schedLocal > cursor) cursor = schedLocal;
+
+            // Si caímos fuera de ventana o sobrepasamos cap, rolleamos a próximo día válido,
+            // pero respetando que el ScheduledAt del item podría estar todavía adelante.
+            while (sentToday >= cap || cursor >= dayEnd)
+            {
+                RollToNextValidDay();
+                if (schedLocal > cursor) cursor = schedLocal;
+            }
+
+            if (cursor < dayStart) cursor = dayStart;
+
+            result[o.Id] = TimeZoneInfo.ConvertTimeToUtc(
+                DateTime.SpecifyKind(cursor, DateTimeKind.Unspecified), tz);
+            sentToday++;
+            cursor = cursor.AddSeconds(avgDelaySec);
+        }
+        return result;
+    }
+
+    private static TimeZoneInfo SafeTz(string id)
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+        catch { return TimeZoneInfo.Utc; }
     }
 
     [HttpGet("seller/{id:guid}")]

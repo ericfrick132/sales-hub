@@ -12,6 +12,9 @@ type UpcomingItem = {
   message: string;
   status: 'Scheduled' | 'Sending' | 'Sent' | 'Failed' | 'Cancelled';
   scheduledAt: string;
+  /** Hora estimada real de despacho según la config del seller (cap, ventana, warmup, jitter).
+   *  Null si el envío está pausado (sending off o instancia desconectada). */
+  projectedAt?: string | null;
   searchCategory?: string;
   hasMedia: boolean;
   mediaMimeType?: string;
@@ -58,18 +61,30 @@ export default function UpcomingSends() {
   });
 
   const items = q.data ?? [];
+  // Si ningún item tiene projectedAt, el seller no puede mandar (sending off o
+  // instancia desconectada). El backend devolvió null en todos.
+  const sendingPaused = items.length > 0 && items.every((i) => !i.projectedAt);
 
   return (
     <div className="card p-4 space-y-2">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-semibold">Próximos envíos</h2>
-          <div className="text-xs text-slate-500">Lo que va a salir desde tu WhatsApp en orden de despacho.</div>
+          <div className="text-xs text-slate-500">
+            Hora estimada según tu cap diario, ventana horaria y warmup.
+          </div>
         </div>
         <span className="text-xs text-slate-400">
           {q.isFetching && 'Actualizando…'}
         </span>
       </div>
+
+      {sendingPaused && (
+        <div className="text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded px-3 py-2">
+          Envío pausado: prendé el switch en /sellers o reconectá tu WhatsApp. Los items quedan
+          en cola y salen cuando vuelvas a estar disponible.
+        </div>
+      )}
 
       {q.isLoading ? (
         <div className="text-sm text-slate-500 p-4 text-center">Cargando…</div>
@@ -99,8 +114,12 @@ export default function UpcomingSends() {
                 </div>
               </div>
               <div className="text-right text-xs whitespace-nowrap shrink-0">
-                <div className="font-medium text-slate-700">{fmtRelative(it.scheduledAt)}</div>
-                <div className="text-slate-400">{fmtAbsolute(it.scheduledAt)}</div>
+                <div className="font-medium text-slate-700">
+                  {fmtRelative(it.projectedAt ?? it.scheduledAt)}
+                </div>
+                <div className="text-slate-400">
+                  {fmtAbsolute(it.projectedAt ?? it.scheduledAt)}
+                </div>
               </div>
             </Link>
           ))}
