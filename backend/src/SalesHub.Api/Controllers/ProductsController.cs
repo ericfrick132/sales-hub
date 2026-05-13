@@ -88,7 +88,7 @@ public class ProductsController : ControllerBase
             .Select(l => l.Id)
             .ToListAsync(ct);
         if (leadIdsForProduct.Count == 0)
-            return new ResyncQueueResult(0, 0, 0, 0, 0, 0);
+            return new ResyncQueueResult(0, 0, 0, 0, 0, 0, 0);
 
         var oldRows = await _db.Outbox
             .Where(o => o.Status == OutboxStatus.Scheduled && leadIdsForProduct.Contains(o.LeadId))
