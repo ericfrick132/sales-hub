@@ -18,6 +18,9 @@ interface OutboxItem {
   message: string;
   status: OutboxStatus;
   scheduledAt: string;
+  /** Hora estimada real según la config humanizada del seller (cap, ventana, skip-day, jitter).
+   *  Sólo viene poblado para items Scheduled. Null si el envío está pausado. */
+  projectedAt?: string | null;
   sentAt?: string;
   attempts: number;
   error?: string;
@@ -59,7 +62,11 @@ export default function Connect() {
   });
   const outbox = useQuery({
     queryKey: ['dashboard-outbox'],
-    queryFn: async () => (await api.get<OutboxItem[]>('/dashboard/outbox', { params: { limit: 80 } })).data,
+    queryFn: async () => (await api.get<OutboxItem[]>('/dashboard/outbox', {
+      // order=upcoming: items futuros primero + el backend calcula ProjectedAt
+      // (ETA real considerando cap diario, ventana horaria, warmup, skip-day, jitter).
+      params: { limit: 80, order: 'upcoming' }
+    })).data,
     refetchInterval: 10000
   });
   const meSeller = useQuery({
@@ -151,7 +158,7 @@ export default function Connect() {
                 <th className="px-3 py-2 text-left">Lead</th>
                 <th className="px-3 py-2 text-left">App</th>
                 <th className="px-3 py-2 text-left">WhatsApp</th>
-                <th className="px-3 py-2 text-left">Programado</th>
+                <th className="px-3 py-2 text-left" title="Hora estimada según tu cap diario, ventana horaria y warmup.">ETA</th>
                 <th className="px-3 py-2 text-left">Enviado</th>
                 <th className="px-3 py-2 text-right">Intentos</th>
                 <th className="px-3 py-2 text-left">Error</th>
@@ -176,7 +183,13 @@ export default function Connect() {
                   <td className="px-3 py-2 font-medium">{o.leadName}</td>
                   <td className="px-3 py-2 text-slate-600">{o.productName ?? o.productKey}</td>
                   <td className="px-3 py-2 text-slate-600">{o.whatsappPhone}</td>
-                  <td className="px-3 py-2 text-slate-600">{fmtDateTime(o.scheduledAt)}</td>
+                  <td
+                    className="px-3 py-2 text-slate-600"
+                    title={o.projectedAt && o.projectedAt !== o.scheduledAt
+                      ? `Encolado: ${fmtDateTime(o.scheduledAt)}\nEsperado: ${fmtDateTime(o.projectedAt)}`
+                      : undefined}>
+                    {fmtDateTime(o.projectedAt ?? o.scheduledAt)}
+                  </td>
                   <td className="px-3 py-2 text-slate-600">{fmtDateTime(o.sentAt)}</td>
                   <td className="px-3 py-2 text-right text-slate-600">{o.attempts}</td>
                   <td className="px-3 py-2 text-rose-600 text-xs">{o.error ?? ''}</td>
