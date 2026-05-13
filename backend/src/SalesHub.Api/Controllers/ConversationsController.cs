@@ -33,7 +33,9 @@ public class ConversationsController : ControllerBase
 
     public record ConversationThreadDto(
         Guid LeadId, string LeadName, string? WhatsappPhone, string? RenderedInitialMessage,
-        string ProductKey, string Status, IReadOnlyList<ConversationMessageDto> Messages);
+        string ProductKey, string Status,
+        Guid? SellerId, string? SellerName,
+        IReadOnlyList<ConversationMessageDto> Messages);
 
     public record SendReplyRequest(string Text);
 
@@ -103,7 +105,9 @@ public class ConversationsController : ControllerBase
     {
         var sellerId = CurrentUser.Id(User);
         var isAdmin = CurrentUser.IsAdmin(User);
-        var lead = await _db.Leads.AsNoTracking().FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        var lead = await _db.Leads.AsNoTracking()
+            .Include(l => l.Seller)
+            .FirstOrDefaultAsync(l => l.Id == leadId, ct);
         if (lead is null) return NotFound();
         if (!isAdmin && lead.SellerId != sellerId) return Forbid();
 
@@ -117,7 +121,9 @@ public class ConversationsController : ControllerBase
         if (!isAdmin) await _conv.MarkReadAsync(sellerId, leadId, ct);
 
         return new ConversationThreadDto(lead.Id, lead.Name, lead.WhatsappPhone, lead.RenderedMessage,
-            lead.ProductKey, lead.Status.ToString(), messages);
+            lead.ProductKey, lead.Status.ToString(),
+            lead.SellerId, lead.Seller?.DisplayName,
+            messages);
     }
 
     [HttpPost("{leadId:guid}/reply")]

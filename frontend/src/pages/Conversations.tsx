@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import type { Product } from '../lib/types';
+import { isAdmin, useAuthStore } from '../lib/auth';
 
 type ListItem = {
   leadId: string;
@@ -12,6 +13,8 @@ type ListItem = {
   city?: string;
   productKey: string;
   status: string;
+  sellerId?: string;
+  sellerName?: string;
   lastMessageText?: string;
   lastDirection?: 'Outbound' | 'Inbound';
   lastTimestamp?: string;
@@ -34,11 +37,15 @@ type Thread = {
   renderedInitialMessage?: string;
   productKey: string;
   status: string;
+  sellerId?: string;
+  sellerName?: string;
   messages: Message[];
 };
 
 export default function Conversations() {
   const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const admin = isAdmin(user);
   const [params, setParams] = useSearchParams();
   const selected = params.get('lead');
   const [reply, setReply] = useState('');
@@ -153,10 +160,17 @@ export default function Conversations() {
               )}
             </div>
             <div className="text-xs text-slate-500 truncate">
-              {c.lastDirection === 'Outbound' ? 'Vos: ' : ''}
+              {c.lastDirection === 'Outbound'
+                ? (admin && c.sellerName ? `${c.sellerName}: ` : 'Vos: ')
+                : ''}
               {c.lastMessageText?.slice(0, 80) ?? '(sin mensajes)'}
             </div>
-            <div className="text-xs text-slate-400 mt-0.5 flex gap-2">
+            <div className="text-xs text-slate-400 mt-0.5 flex gap-2 flex-wrap">
+              {admin && c.sellerName && (
+                <span className="bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 text-[10px]">
+                  {c.sellerName}
+                </span>
+              )}
               <span>{c.productKey}</span>
               {c.city && <span>· {c.city}</span>}
               <span className="ml-auto">{c.lastTimestamp ? new Date(c.lastTimestamp).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : ''}</span>
@@ -187,6 +201,7 @@ export default function Conversations() {
                 <div className="font-semibold truncate">{thread.data.leadName}</div>
                 <div className="text-xs text-slate-500 truncate">
                   {thread.data.productKey} · {thread.data.status} · {thread.data.whatsappPhone ?? '—'}
+                  {admin && thread.data.sellerName && <> · <span className="font-medium">{thread.data.sellerName}</span></>}
                 </div>
               </div>
             </div>
