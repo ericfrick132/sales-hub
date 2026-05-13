@@ -356,6 +356,20 @@ public class SearchJobsController : ControllerBase
             lead.RenderedMessage = _renderer.Render(lead, product, seller);
             lead.WhatsappLink = $"https://wa.me/{lead.WhatsappPhone}?text={Uri.EscapeDataString(lead.RenderedMessage ?? "")}";
             _db.Leads.Add(lead);
+
+            // Encolar inmediatamente: el seller espera ver el lead en "Próximos envíos"
+            // apenas hace capture. El OutboxSender va a chequear SendingEnabled +
+            // Connected + ventana horaria al momento de mandar, así que es seguro
+            // encolar aunque el seller esté pausado: los items quedan Scheduled.
+            if (seller.EvolutionInstance is not null)
+            {
+                OutboxEnqueueHelper.EnqueueLeadMessages(
+                    _db, _renderer, lead, product, seller,
+                    normalized, seller.EvolutionInstance.InstanceName);
+                lead.Status = LeadStatus.Queued;
+                lead.QueuedAt = now;
+            }
+
             created++;
         }
 
