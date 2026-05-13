@@ -16,11 +16,17 @@ public class OutboxSender
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
     private readonly ISendScheduler _scheduler;
+    private readonly IMessageRenderer _renderer;
     private readonly ILogger<OutboxSender> _log;
 
-    public OutboxSender(ApplicationDbContext db, IEvolutionClient evo, ISendScheduler scheduler, ILogger<OutboxSender> log)
+    public OutboxSender(
+        ApplicationDbContext db,
+        IEvolutionClient evo,
+        ISendScheduler scheduler,
+        IMessageRenderer renderer,
+        ILogger<OutboxSender> log)
     {
-        _db = db; _evo = evo; _scheduler = scheduler; _log = log;
+        _db = db; _evo = evo; _scheduler = scheduler; _renderer = renderer; _log = log;
     }
 
     public async Task<int> TickAsync(CancellationToken ct)
@@ -86,6 +92,71 @@ public class OutboxSender
 
             try
             {
+                // ─── Re-render at send time ──────────────────────────────────
+                // Para filas nuevas (StepIndex != null), no confiamos en el snapshot Message/
+                // MediaAssetId persistido en el enqueue. Re-resolvemos desde la cadencia ACTUAL
+                // del producto (incluye overrides por categoría) y renderizamos los placeholders
+                // fresh. Si el admin editó la cadencia, sale lo nuevo. Si la cadencia se acortó
+                // y este step ya no existe, cancelamos la fila.
+                //
+                // Filas legacy (StepIndex == null, encoladas antes de este cambio) caen al
+                // path antiguo y se mandan con el snapshot tal cual.
+                if (next.StepIndex is not null)
+                {
+                    var leadCtx = await _db.Leads.AsNoTracking()
+                        .Include(l => l.Product)
+                        .FirstOrDefaultAsync(l => l.Id == next.LeadId, ct);
+                    if (leadCtx?.Product is null)
+                    {
+                        next.Status = OutboxStatus.Cancelled;
+                        next.Error = "Producto o lead inexistente";
+                        await _db.SaveChangesAsync(ct);
+                        continue;
+                    }
+                    var (steps, cadenceCategory) = OutboxEnqueueHelper.ResolveStepsForLead(leadCtx, leadCtx.Product);
+                    if (next.StepIndex.Value >= steps.Count)
+                    {
+                        next.Status = OutboxStatus.Cancelled;
+                        next.Error = "Step removido de la cadencia";
+                        await _db.SaveChangesAsync(ct);
+                        continue;
+                    }
+                    var step = steps[next.StepIndex.Value];
+                    var stepHasMedia = step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 });
+                    if (string.IsNullOrWhiteSpace(step.Text) && !stepHasMedia)
+                    {
+                        next.Status = OutboxStatus.Cancelled;
+                        next.Error = "Step vacío en la cadencia actual";
+                        await _db.SaveChangesAsync(ct);
+                        continue;
+                    }
+
+                    next.Message = string.IsNullOrWhiteSpace(step.Text)
+                        ? string.Empty
+                        : _renderer.RenderTemplate(step.Text, leadCtx, leadCtx.Product, seller);
+
+                    Guid? mediaAssetId = step.MediaAssetId;
+                    if (step.MediaAssetIds is { Count: > 0 })
+                    {
+                        if (step.MediaAssetIds.Count == 1)
+                        {
+                            mediaAssetId = step.MediaAssetIds[0];
+                        }
+                        else
+                        {
+                            var idx = OutboxEnqueueHelper.NextRotationIndex(
+                                _db, leadCtx.Product.Id, cadenceCategory,
+                                next.StepIndex.Value, step.MediaAssetIds.Count);
+                            mediaAssetId = step.MediaAssetIds[idx];
+                        }
+                    }
+                    next.MediaAssetId = mediaAssetId;
+                    next.CadenceCategory = cadenceCategory;
+                    // Persistimos el snapshot actualizado AHORA, antes de mandar — si crashea
+                    // a mitad del send, queda Sending con el contenido correcto para reintento.
+                    await _db.SaveChangesAsync(ct);
+                }
+
                 if (seller.ReadIncomingFirst)
                 {
                     await _evo.MarkAllChatsReadAsync(seller.EvolutionInstance.InstanceName, ct);

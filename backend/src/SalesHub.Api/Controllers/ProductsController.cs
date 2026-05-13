@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Api.Dtos;
+using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Api.Controllers;
 
@@ -14,7 +16,11 @@ namespace SalesHub.Api.Controllers;
 public class ProductsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
-    public ProductsController(ApplicationDbContext db) { _db = db; }
+    private readonly IMessageRenderer _renderer;
+    public ProductsController(ApplicationDbContext db, IMessageRenderer renderer)
+    {
+        _db = db; _renderer = renderer;
+    }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ProductDto>>> List(CancellationToken ct)
@@ -56,6 +62,78 @@ public class ProductsController : ControllerBase
         p.Active = false;
         await _db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    public record ResyncQueueResult(
+        int LeadsRequeued, int OldRowsCancelled, int NewRowsCreated,
+        int SkippedNoSeller, int SkippedNoInstance, int SkippedNoPhone,
+        int SkippedAlreadyStarted);
+
+    /// <summary>
+    /// Cancela todas las filas Scheduled del outbox para este producto y las re-encola
+    /// usando la cadencia actual. Útil después de editar MessageSteps/CategoryCadences:
+    /// las filas viejas tienen el snapshot pre-rendereado, este endpoint las regenera con
+    /// el render-at-send semantics activo (StepIndex poblado). Admin only, one-shot.
+    /// </summary>
+    [HttpPost("{id:guid}/resync-queue")]
+    public async Task<ActionResult<ResyncQueueResult>> ResyncQueue(
+        Guid id, [FromQuery] bool dryRun = false, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (product is null) return NotFound();
+
+        var leadIdsForProduct = await _db.Leads
+            .Where(l => l.ProductKey == product.ProductKey)
+            .Select(l => l.Id)
+            .ToListAsync(ct);
+        if (leadIdsForProduct.Count == 0)
+            return new ResyncQueueResult(0, 0, 0, 0, 0, 0);
+
+        var oldRows = await _db.Outbox
+            .Where(o => o.Status == OutboxStatus.Scheduled && leadIdsForProduct.Contains(o.LeadId))
+            .ToListAsync(ct);
+        var affectedLeadIds = oldRows.Select(r => r.LeadId).Distinct().ToList();
+
+        // Si un lead ya tuvo algún step Sent/Sending, re-encolar reenviaría el step 0
+        // (el helper siempre arranca de cero). Saltamos esos leads: dejamos Cancelled
+        // sus filas Scheduled pero no las regeneramos. Para esos leads, el admin
+        // tiene que decidir manualmente cómo recuperar (probablemente no quiere
+        // duplicar el primer mensaje).
+        var leadsWithProgress = await _db.Outbox
+            .Where(o => affectedLeadIds.Contains(o.LeadId)
+                     && (o.Status == OutboxStatus.Sent || o.Status == OutboxStatus.Sending))
+            .Select(o => o.LeadId).Distinct()
+            .ToListAsync(ct);
+        var leadsCleanToRequeue = affectedLeadIds.Except(leadsWithProgress).ToList();
+
+        if (dryRun)
+            return new ResyncQueueResult(
+                leadsCleanToRequeue.Count, oldRows.Count, 0, 0, 0, 0, leadsWithProgress.Count);
+
+        foreach (var r in oldRows) r.Status = OutboxStatus.Cancelled;
+
+        var leads = await _db.Leads
+            .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
+            .Where(l => leadsCleanToRequeue.Contains(l.Id))
+            .ToListAsync(ct);
+
+        int requeued = 0, newRows = 0, noSeller = 0, noInstance = 0, noPhone = 0;
+        foreach (var lead in leads)
+        {
+            if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) { noPhone++; continue; }
+            if (lead.Seller is null) { noSeller++; continue; }
+            if (lead.Seller.EvolutionInstance is null) { noInstance++; continue; }
+
+            var rows = OutboxEnqueueHelper.EnqueueLeadMessages(
+                _db, _renderer, lead, product, lead.Seller,
+                lead.WhatsappPhone!, lead.Seller.EvolutionInstance.InstanceName);
+            if (rows > 0) { requeued++; newRows += rows; }
+        }
+        await _db.SaveChangesAsync(ct);
+
+        return new ResyncQueueResult(
+            requeued, oldRows.Count, newRows, noSeller, noInstance, noPhone, leadsWithProgress.Count);
     }
 
     public record AudioStatRow(

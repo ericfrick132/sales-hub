@@ -54,25 +54,14 @@ public static class OutboxEnqueueHelper
                     ? lead.RenderedMessage!
                     : renderer.RenderTemplate(step.Text, lead, product, seller);
 
-                // Rotación de variantes: si hay > 1 audio, elegimos round-robin.
-                // El counter es atómico vía UPSERT con RETURNING en Postgres
-                // para evitar race entre dos enqueues concurrentes del mismo
-                // step. La rotación es POR cadencia (productId + categoría +
-                // stepIndex) — yoga rota su propio set, gimnasio el suyo.
+                // Snapshot del media: si hay variantes, dejamos la primera. La rotación
+                // round-robin real se decide en OutboxSender al momento de mandar — así
+                // sobrevive a cambios de variantes entre enqueue y envío (agregar/sacar
+                // audios) y no consumimos el contador dos veces (enqueue + send).
                 Guid? mediaAssetId = step.MediaAssetId;
                 if (step.MediaAssetIds is { Count: > 0 })
                 {
-                    var ids = step.MediaAssetIds;
-                    int chosenIdx;
-                    if (ids.Count == 1)
-                    {
-                        chosenIdx = 0;
-                    }
-                    else
-                    {
-                        chosenIdx = NextRotationIndex(db, product.Id, cadenceCategory, i, ids.Count);
-                    }
-                    mediaAssetId = ids[chosenIdx];
+                    mediaAssetId = step.MediaAssetIds[0];
                 }
 
                 db.Outbox.Add(new MessageOutbox
@@ -82,8 +71,14 @@ public static class OutboxEnqueueHelper
                     SellerId = seller.Id,
                     EvolutionInstance = instanceName,
                     WhatsappPhone = whatsappPhone,
+                    // Snapshot al momento del enqueue — útil como preview/debug pero el
+                    // sender va a re-renderizar desde la config del producto al momento de
+                    // mandar (ver OutboxSender). Si la cadencia cambia entre enqueue y
+                    // envío, sale lo nuevo.
                     Message = rendered,
                     MediaAssetId = mediaAssetId,
+                    StepIndex = i,
+                    CadenceCategory = cadenceCategory,
                     ScheduledAt = when,
                     Status = OutboxStatus.Scheduled
                 });
@@ -157,7 +152,7 @@ public static class OutboxEnqueueHelper
     /// devolver el siguiente módulo N. PK compuesta (productId, category,
     /// stepIndex) para que cada cadencia rote independiente.
     /// </summary>
-    private static int NextRotationIndex(ApplicationDbContext db, Guid productId, string category, int stepIndex, int variantCount)
+    public static int NextRotationIndex(ApplicationDbContext db, Guid productId, string category, int stepIndex, int variantCount)
     {
         // Postgres trata "" y NULL distinto en ON CONFLICT; normalizamos a "".
         var cat = category ?? string.Empty;
