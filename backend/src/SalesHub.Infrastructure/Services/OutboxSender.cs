@@ -71,11 +71,21 @@ public class OutboxSender
             // hasta que todos los demás leads también recibieron el suyo. Con esta
             // prioridad, una vez que un lead arrancó, el sender termina su cadencia
             // antes de pasar al siguiente.
+            //
+            // Whitelist: si el seller tiene VerticalsWhitelist explícita, sólo aceptamos
+            // rows cuyo producto esté en ella. Los rows fuera de whitelist NO se cancelan
+            // — quedan Scheduled esperando a que (a) la whitelist se amplíe, o (b) el
+            // lead se reasigne a un seller que sí tenga ese producto. Whitelist vacía/null
+            // = sin restricción (misma convención que LeadAssigner).
+            var hasWhitelist = seller.VerticalsWhitelist is { Count: > 0 };
+            var whitelist = hasWhitelist ? seller.VerticalsWhitelist : null;
             var candidates = await (
                 from o in _db.Outbox
                 where o.SellerId == seller.Id
                    && o.Status == OutboxStatus.Scheduled
                    && o.ScheduledAt <= now
+                   && (!hasWhitelist
+                       || (o.Lead != null && whitelist!.Contains(o.Lead.ProductKey)))
                 let leadInProgress = _db.Outbox.Any(x =>
                     x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
                 orderby leadInProgress descending, o.ScheduledAt
@@ -88,23 +98,6 @@ public class OutboxSender
                     .Include(l => l.Product)
                     .FirstOrDefaultAsync(l => l.Id == cand.LeadId, ct);
                 var product = lead?.Product;
-
-                // Guard: whitelist de productos del seller. Misma convención que
-                // LeadAssigner — whitelist vacía/null = sin restricción (acepta todo),
-                // whitelist con entradas = sólo esos productos. Si un lead fue mal
-                // asignado o capturado con product context equivocado, el row se cancela
-                // acá en vez de salir. Para recuperarlo: ajustar la whitelist o
-                // reasignar el lead + resync.
-                if (product is not null
-                    && seller.VerticalsWhitelist is { Count: > 0 }
-                    && !seller.VerticalsWhitelist.Contains(product.ProductKey))
-                {
-                    cand.Status = OutboxStatus.Cancelled;
-                    cand.Error = $"Producto '{product.ProductKey}' fuera de la whitelist del seller";
-                    await _db.SaveChangesAsync(ct);
-                    continue;
-                }
-
                 if (product is null) { next = cand; break; }
                 // Start>=End → sin restricción a nivel producto.
                 if (product.SendHourStart >= product.SendHourEnd) { next = cand; break; }
