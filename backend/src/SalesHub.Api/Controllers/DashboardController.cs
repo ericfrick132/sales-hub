@@ -309,14 +309,16 @@ public class DashboardController : ControllerBase
             .OrderByDescending(l => l.AssignedAt)
             .Take(200)
             .ToListAsync(ct);
-        // Misma whitelist que el sender + el endpoint /outbox: contamos sólo los rows
-        // que efectivamente van a salir. Si el producto del lead no está en la whitelist,
-        // el sender los skipea y no deben contar como "En cola" en el dashboard.
-        var queuedQ = _db.Outbox.Where(o => o.SellerId == id && o.Status == OutboxStatus.Scheduled);
+        // "En cola" cuenta LEADS en estado Queued, no filas de outbox (varias por
+        // lead). Así Asignados + En cola + Enviados particionan limpio. El conteo
+        // de mensajes de outbox sigue disponible en /dashboard/outbox.
+        // Respetamos la whitelist del seller: si el producto del lead no está en
+        // la whitelist el sender lo skipea, así que no debe contar como "En cola".
+        var queuedQ = _db.Leads.Where(l => l.SellerId == id && l.Status == LeadStatus.Queued);
         if (seller.VerticalsWhitelist is { Count: > 0 })
         {
             var wl = seller.VerticalsWhitelist;
-            queuedQ = queuedQ.Where(o => o.Lead != null && wl.Contains(o.Lead.ProductKey));
+            queuedQ = queuedQ.Where(l => wl.Contains(l.ProductKey));
         }
         var queued = await queuedQ.CountAsync(ct);
         var leads = active.Select(l => new LeadDto(
@@ -332,20 +334,19 @@ public class DashboardController : ControllerBase
     {
         var dayStart = today.ToDateTime(TimeOnly.MinValue);
         var dayEnd = today.AddDays(1).ToDateTime(TimeOnly.MinValue);
-        var assigned = await _db.Leads.CountAsync(l => l.SellerId == s.Id, ct);
+        // "Asignados" = leads actualmente asignados sin encolar/enviar. Sin el filtro
+        // de estado contaba todo (incluido Sent/Closed/Lost) y no reconciliaba.
+        var assigned = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.Status == LeadStatus.Assigned, ct);
         var sent = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.SentAt != null, ct);
         var replied = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.FirstReplyAt != null, ct);
         var closed = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.Status == LeadStatus.Closed, ct);
-        // Count both auto-sent (Outbox via Evolution) and manually-recorded sends (Lead.SentAt
-        // when seller marks status=Contactado). Today the team is sending by hand from their own
-        // WhatsApp, so the manual count is the load-bearing one.
+        // "Enviados hoy" = leads distintos contactados hoy. Lead.SentAt lo setean
+        // tanto el envío manual como el OutboxSender, así que basta contar leads
+        // (antes se sumaba además las filas de outbox → doble conteo).
         var dayStartOffset = new DateTimeOffset(dayStart, TimeSpan.Zero);
         var dayEndOffset = new DateTimeOffset(dayEnd, TimeSpan.Zero);
-        var todayManual = await _db.Leads.CountAsync(l => l.SellerId == s.Id
+        var todaySent = await _db.Leads.CountAsync(l => l.SellerId == s.Id
             && l.SentAt != null && l.SentAt >= dayStartOffset && l.SentAt < dayEndOffset, ct);
-        var todayAuto = await _db.Outbox.CountAsync(o => o.SellerId == s.Id && o.Status == OutboxStatus.Sent
-            && o.SentAt >= dayStart && o.SentAt < dayEnd, ct);
-        var todaySent = todayManual + todayAuto;
         return new SellerMetricRow(
             s.Id, s.DisplayName, assigned, sent, replied, closed,
             sent == 0 ? 0 : Math.Round((double)replied / sent, 3),

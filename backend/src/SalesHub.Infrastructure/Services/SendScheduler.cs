@@ -59,14 +59,29 @@ public class SendScheduler : ISendScheduler
             return NextDayStart(seller, today, tz);
 
         var cap = ComputeTodayCap(seller, today);
-        var sentToday = await _db.Outbox
+        // El cap es de contactos nuevos, no de mensajes: contamos leads distintos.
+        var contactedToday = await _db.Outbox
+            .Where(o => o.SellerId == seller.Id
+                     && o.Status == OutboxStatus.Sent
+                     && o.SentAt != null
+                     && o.SentAt.Value >= today.ToDateTime(TimeOnly.MinValue)
+                     && o.SentAt.Value < today.AddDays(1).ToDateTime(TimeOnly.MinValue))
+            .Select(o => o.LeadId)
+            .Distinct()
+            .CountAsync(ct);
+
+        if (contactedToday >= cap)
+            return NextDayStart(seller, today, tz);
+
+        // Tope absoluto de volumen total/día (follow-ups incluidos), independiente
+        // del cap de contactos y de cuántas verticales tenga el vendedor.
+        var messagesToday = await _db.Outbox
             .CountAsync(o => o.SellerId == seller.Id
                           && o.Status == OutboxStatus.Sent
                           && o.SentAt != null
                           && o.SentAt.Value >= today.ToDateTime(TimeOnly.MinValue)
                           && o.SentAt.Value < today.AddDays(1).ToDateTime(TimeOnly.MinValue), ct);
-
-        if (sentToday >= cap)
+        if (messagesToday >= OutboxSender.MaxMessagesPerSellerPerDay)
             return NextDayStart(seller, today, tz);
 
         // Active hours window

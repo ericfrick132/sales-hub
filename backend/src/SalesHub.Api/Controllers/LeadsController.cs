@@ -64,17 +64,25 @@ public class LeadsController : ControllerBase
         // El OutboxSender va a chequear SendingEnabled + Status=Connected al momento de mandar,
         // así que es seguro encolar aunque el seller esté momentáneamente desconectado o pausado:
         // los items se quedan Scheduled hasta que el seller pueda mandar.
+        // Idempotencia: si el lead ya tiene cadencia pendiente (Scheduled/Sending) no
+        // re-encolamos — reasignar no debe duplicar mensajes.
         if (req.AutoQueue
             && seller.EvolutionInstance is not null
             && !string.IsNullOrWhiteSpace(lead.WhatsappPhone)
             && lead.RenderedMessage is not null
             && lead.Product is not null)
         {
-            OutboxEnqueueHelper.EnqueueLeadMessages(
-                _db, _renderer, lead, lead.Product, seller,
-                lead.WhatsappPhone, seller.EvolutionInstance.InstanceName);
-            lead.Status = LeadStatus.Queued;
-            lead.QueuedAt = DateTimeOffset.UtcNow;
+            var alreadyQueued = await _db.Outbox.AnyAsync(
+                o => o.LeadId == lead.Id
+                  && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending), ct);
+            if (!alreadyQueued)
+            {
+                OutboxEnqueueHelper.EnqueueLeadMessages(
+                    _db, _renderer, lead, lead.Product, seller,
+                    lead.WhatsappPhone, seller.EvolutionInstance.InstanceName);
+                lead.Status = LeadStatus.Queued;
+                lead.QueuedAt = DateTimeOffset.UtcNow;
+            }
         }
 
         await _db.SaveChangesAsync(ct);
@@ -683,6 +691,15 @@ public class LeadsController : ControllerBase
         // No exigimos Status==Connected acá: el OutboxSender ya filtra al momento de mandar.
         // Si está desconectado, el item se queda Scheduled hasta que reconecte.
         if (lead.Product is null) return BadRequest(new { error = "Lead sin producto." });
+
+        // Idempotencia: si ya hay cadencia pendiente para este lead, no re-encolamos.
+        // Sin esto, re-clickear "Encolar" duplica toda la cadencia.
+        var alreadyQueued = await _db.Outbox.AnyAsync(
+            o => o.LeadId == lead.Id
+              && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending), ct);
+        if (alreadyQueued)
+            return BadRequest(new { error = "El lead ya está en cola." });
+
         if (string.IsNullOrWhiteSpace(lead.RenderedMessage))
             lead.RenderedMessage = _renderer.Render(lead, lead.Product, seller);
         OutboxEnqueueHelper.EnqueueLeadMessages(

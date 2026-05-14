@@ -44,6 +44,7 @@ export default function LeadDetail() {
   const [assignSellerId, setAssignSellerId] = useState('');
   const [assignAutoQueue, setAssignAutoQueue] = useState(true);
   const [assigning, setAssigning] = useState(false);
+  const [queueing, setQueueing] = useState(false);
 
   if (isLoading) return <div>Cargando…</div>;
   if (!lead) return <div className="card p-8 text-center">Lead no encontrado. <Link className="text-brand-600" to="/leads">Volver</Link></div>;
@@ -56,12 +57,16 @@ export default function LeadDetail() {
   }
 
   async function queueNow() {
+    if (queueing) return;
+    setQueueing(true);
     try {
       await api.post(`/leads/${lead!.id}/queue`, {});
       toast.success('Encolado');
       qc.invalidateQueries();
     } catch (err: any) {
       toast.error(err.response?.data?.error ?? 'Falló');
+    } finally {
+      setQueueing(false);
     }
   }
 
@@ -255,8 +260,8 @@ export default function LeadDetail() {
           <button
             className="btn-primary"
             onClick={queueNow}
-            disabled={!lead.sellerId || !lead.whatsappPhone}>
-            Encolar envío automático
+            disabled={queueing || !lead.sellerId || !lead.whatsappPhone}>
+            {queueing ? 'Encolando…' : 'Encolar envío automático'}
           </button>
           <button className="btn-secondary" disabled={enriching || !lead.instagramHandle} onClick={() => enrich('instagram')}>
             Enriquecer con Instagram

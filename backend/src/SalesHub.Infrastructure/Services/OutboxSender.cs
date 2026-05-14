@@ -13,6 +13,15 @@ namespace SalesHub.Infrastructure.Services;
 /// </summary>
 public class OutboxSender
 {
+    /// <summary>
+    /// Techo absoluto de mensajes enviados por vendedor por día, sin importar
+    /// cuántas verticales/productos tenga asignados. El cap de CONTACTOS limita
+    /// prospectos nuevos (la señal anti-ban principal), pero el volumen total
+    /// (contactos × pasos de cadencia) tampoco debe pasar este límite conservador
+    /// — WhatsApp marca números que superan ~150 msg/día.
+    /// </summary>
+    public const int MaxMessagesPerSellerPerDay = 150;
+
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
     private readonly ISendScheduler _scheduler;
@@ -32,6 +41,26 @@ public class OutboxSender
     public async Task<int> TickAsync(CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
+
+        // Recuperar filas zombie: si el proceso se reinició (deploy/OOM) mientras un
+        // mensaje estaba en Sending, quedó trabado para siempre — el query de
+        // candidatos sólo toma Scheduled. Reclamamos los Sending viejos: vuelven a
+        // Scheduled (o Failed si ya agotaron intentos).
+        var staleCutoff = now.AddMinutes(-10);
+        var stale = await _db.Outbox
+            .Where(o => o.Status == OutboxStatus.Sending && o.LockedAt != null && o.LockedAt < staleCutoff)
+            .ToListAsync(ct);
+        if (stale.Count > 0)
+        {
+            foreach (var s in stale)
+            {
+                s.Status = s.Attempts >= 3 ? OutboxStatus.Failed : OutboxStatus.Scheduled;
+                s.LockedAt = null;
+            }
+            await _db.SaveChangesAsync(ct);
+            _log.LogWarning("Reclaimed {N} stale Sending outbox rows", stale.Count);
+        }
+
         // Cualquier usuario con SendingEnabled + WhatsApp conectado envía, sea Seller o Admin.
         // El Admin que conecta su WhatsApp y prende el switch debe poder mandar como un vendedor más.
         var sellers = await _db.Sellers
@@ -48,13 +77,32 @@ public class OutboxSender
             if (_scheduler.IsSkipDay(seller, today)) continue;
 
             var cap = _scheduler.ComputeTodayCap(seller, today);
-            var sentToday = await _db.Outbox
+            // El cap es de CONTACTOS NUEVOS por día (lógica anti-ban), no de mensajes:
+            // contamos leads distintos contactados hoy, así los pasos 2..N de la
+            // cadencia (follow-ups al mismo número) no consumen cupo.
+            var dayStart = today.ToDateTime(TimeOnly.MinValue);
+            var dayEnd = today.AddDays(1).ToDateTime(TimeOnly.MinValue);
+            var contactedToday = await _db.Outbox
+                .Where(o => o.SellerId == seller.Id
+                         && o.Status == OutboxStatus.Sent
+                         && o.SentAt != null
+                         && o.SentAt.Value >= dayStart
+                         && o.SentAt.Value < dayEnd)
+                .Select(o => o.LeadId)
+                .Distinct()
+                .CountAsync(ct);
+            if (contactedToday >= cap) continue;
+
+            // Tope absoluto de volumen: aunque queden contactos nuevos por hacer,
+            // el total de mensajes del día (incluyendo follow-ups de la cadencia)
+            // no debe pasar el techo anti-ban.
+            var messagesToday = await _db.Outbox
                 .CountAsync(o => o.SellerId == seller.Id
                               && o.Status == OutboxStatus.Sent
                               && o.SentAt != null
-                              && o.SentAt.Value >= today.ToDateTime(TimeOnly.MinValue)
-                              && o.SentAt.Value < today.AddDays(1).ToDateTime(TimeOnly.MinValue), ct);
-            if (sentToday >= cap) continue;
+                              && o.SentAt.Value >= dayStart
+                              && o.SentAt.Value < dayEnd, ct);
+            if (messagesToday >= MaxMessagesPerSellerPerDay) continue;
 
             // Enforce active hours window.
             var local = TimeZoneInfo.ConvertTime(now, SafeTz(seller.Timezone)).DateTime;
@@ -111,6 +159,10 @@ public class OutboxSender
             next.Attempts++;
             await _db.SaveChangesAsync(ct);
 
+            // Una vez que invocamos un envío real contra Evolution, un fallo es
+            // ambiguo (pudo haber entregado igual). Reintentar duplicaría → si
+            // sendAttempted, vamos a Failed sin reintento.
+            var sendAttempted = false;
             try
             {
                 // ─── Re-render at send time ──────────────────────────────────
@@ -216,6 +268,7 @@ public class OutboxSender
                         // primero contexto, después la nota de voz).
                         if (!string.IsNullOrWhiteSpace(next.Message))
                         {
+                            sendAttempted = true;
                             var pre = await _evo.SendTextAsync(seller.EvolutionInstance.InstanceName, next.WhatsappPhone, next.Message, ct);
                             if (!pre) throw new InvalidOperationException("Evolution rechazó el texto previo al audio");
                         }
@@ -232,6 +285,7 @@ public class OutboxSender
                             await Task.Delay(chunk * 1000, ct);
                             rem -= chunk;
                         }
+                        sendAttempted = true;
                         ok = await _evo.SendPreparedVoiceNoteAsync(
                             seller.EvolutionInstance.InstanceName, next.WhatsappPhone,
                             prep.OggBytes, ct);
@@ -239,6 +293,7 @@ public class OutboxSender
                     else
                     {
                         var caption = string.IsNullOrWhiteSpace(next.Message) ? null : next.Message;
+                        sendAttempted = true;
                         ok = await _evo.SendMediaAsync(
                             seller.EvolutionInstance.InstanceName, next.WhatsappPhone,
                             asset.Content, asset.MimeType, asset.FileName, caption, ct);
@@ -246,6 +301,7 @@ public class OutboxSender
                 }
                 else
                 {
+                    sendAttempted = true;
                     ok = await _evo.SendTextAsync(seller.EvolutionInstance.InstanceName, next.WhatsappPhone, next.Message, ct);
                 }
                 if (!ok) throw new InvalidOperationException("Evolution rejected the send");
@@ -291,19 +347,29 @@ public class OutboxSender
             catch (Exception ex)
             {
                 _log.LogWarning(ex, "Send failed for outbox {Id}", next.Id);
-                next.Status = next.Attempts >= 3 ? OutboxStatus.Failed : OutboxStatus.Scheduled;
                 next.Error = ex.Message;
-                if (next.Status == OutboxStatus.Scheduled)
+                next.LockedAt = null;
+                if (sendAttempted)
                 {
-                    // Retry later (random 5-15m).
-                    next.ScheduledAt = DateTimeOffset.UtcNow.AddMinutes(Random.Shared.Next(5, 16));
+                    // Ya invocamos el envío real contra Evolution: no sabemos si
+                    // entregó. Reintentar duplicaría el mensaje → Failed sin reintento.
+                    next.Status = OutboxStatus.Failed;
                 }
-                else if (next.StepIndex is not null)
+                else
                 {
-                    // Failed permanente: cancelar los steps siguientes del mismo lead. Sin esto,
-                    // si step 0 (texto intro) muere, los audios igual saldrían más tarde sin
-                    // contexto — el lead recibe "[audio]" sin haber recibido nunca el mensaje
-                    // que lo introducía.
+                    // Falló en un paso previo al envío (presencia, prep de audio):
+                    // todavía no se mandó nada, es seguro reintentar.
+                    next.Status = next.Attempts >= 3 ? OutboxStatus.Failed : OutboxStatus.Scheduled;
+                    if (next.Status == OutboxStatus.Scheduled)
+                        next.ScheduledAt = DateTimeOffset.UtcNow.AddMinutes(Random.Shared.Next(5, 16));
+                }
+
+                // Si quedó Failed permanente y es parte de una cadencia, cancelamos
+                // los steps siguientes del mismo lead: sin el step previo (ej. texto
+                // intro) los que vienen después saldrían sin contexto — el lead
+                // recibiría "[audio]" sin el mensaje que lo introducía.
+                if (next.Status == OutboxStatus.Failed && next.StepIndex is not null)
+                {
                     var laterSteps = await _db.Outbox
                         .Where(o => o.LeadId == next.LeadId
                                  && o.Status == OutboxStatus.Scheduled
