@@ -38,4 +38,8 @@ public class ConversationMessage
     public DateTimeOffset? ReadAt { get; set; }
 
     public string? RawJson { get; set; }
+
+    /// <summary>Cuántas veces se intentó transcribir este mensaje (si es nota de
+    /// voz). Tope para no reintentar infinito un audio que falla.</summary>
+    public int TranscriptionAttempts { get; set; }
 }

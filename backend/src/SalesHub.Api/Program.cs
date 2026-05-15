@@ -29,6 +29,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<GooglePlacesSchedulerService>();
     builder.Services.AddHostedService<CompetitorIngestWorker>();
     builder.Services.AddHostedService<TrendsIngestWorker>();
+    builder.Services.AddHostedService<ConversationAgentWorker>();
 }
 
 builder.Services.AddControllers().AddJsonOptions(o =>

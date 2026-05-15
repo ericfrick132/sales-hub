@@ -13,6 +13,7 @@ builder.Services.AddHostedService<HumanizedSenderService>();
 builder.Services.AddHostedService<PipelineSchedulerService>();
 builder.Services.AddHostedService<CompetitorIngestWorker>();
 builder.Services.AddHostedService<TrendsIngestWorker>();
+builder.Services.AddHostedService<ConversationAgentWorker>();
 
 var host = builder.Build();
 

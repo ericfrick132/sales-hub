@@ -34,6 +34,12 @@ public interface IEvolutionClient
     /// <summary>Envía bytes ya convertidos a OGG/Opus (output de PrepareVoiceNoteAsync)
     /// como nota de voz, sin re-transcodear.</summary>
     Task<bool> SendPreparedVoiceNoteAsync(string instanceName, string jid, byte[] ogg, CancellationToken ct = default);
+
+    /// <summary>Baja y desencripta el media de un mensaje inbound. Evolution hace
+    /// la cripto de WhatsApp por nosotros. <paramref name="messageJson"/> es el
+    /// JSON del mensaje (key + message), tal como llegó por webhook. Devuelve los
+    /// bytes desencriptados o null si falla.</summary>
+    Task<byte[]?> GetMediaBase64Async(string instanceName, string messageJson, CancellationToken ct = default);
 }
 
 public record PreparedVoiceNote(byte[] OggBytes, int DurationSeconds);

@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.Configure<EvolutionOptions>(config.GetSection("Evolution"));
         services.Configure<GoogleOptions>(config.GetSection("Google"));
         services.Configure<JwtOptions>(config.GetSection("Jwt"));
+        services.Configure<GroqOptions>(config.GetSection("Groq"));
 
         services.AddDbContext<ApplicationDbContext>(o =>
             o.UseNpgsql(config.GetConnectionString("Default")
@@ -28,6 +29,7 @@ public static class DependencyInjection
         services.AddHttpClient<ApifyHttpClient>();
         services.AddHttpClient<ApifyUsageMonitor>();
         services.AddHttpClient<EvolutionClient>();
+        services.AddHttpClient<GroqWhisperClient>();
         services.AddHttpClient<GooglePlacesSource>();
         services.AddHttpClient<GooglePlacesEnricher>();
         services.AddScoped<IGooglePlacesEnricher>(sp => sp.GetRequiredService<GooglePlacesEnricher>());
@@ -60,6 +62,7 @@ public static class DependencyInjection
         services.AddScoped<OutboxSender>();
         services.AddScoped<InstanceMonitor>();
         services.AddScoped<ConversationService>();
+        services.AddScoped<ConversationAgentService>();
 
         return services;
     }

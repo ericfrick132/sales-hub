@@ -392,6 +392,38 @@ public class EvolutionClient : IEvolutionClient
         return true;
     }
 
+    public async Task<byte[]?> GetMediaBase64Async(string instanceName, string messageJson, CancellationToken ct = default)
+    {
+        try
+        {
+            using var msgDoc = JsonDocument.Parse(messageJson);
+            // Evolution desencripta el .enc de WhatsApp y devuelve { base64, mimetype, ... }.
+            var body = new { message = msgDoc.RootElement, convertToMp4 = false };
+            var resp = await _http.PostAsJsonAsync(
+                $"chat/getBase64FromMediaMessage/{Uri.EscapeDataString(instanceName)}", body, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var txt = await resp.Content.ReadAsStringAsync(ct);
+                _log.LogWarning("GetBase64FromMedia {Instance} failed: {Status} {Body}",
+                    instanceName, resp.StatusCode, txt);
+                return null;
+            }
+            var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            if (doc.RootElement.TryGetProperty("base64", out var b64) && b64.ValueKind == JsonValueKind.String)
+            {
+                var s = b64.GetString();
+                return string.IsNullOrWhiteSpace(s) ? null : Convert.FromBase64String(s);
+            }
+            _log.LogWarning("GetBase64FromMedia {Instance}: respuesta sin campo base64", instanceName);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "GetBase64FromMedia {Instance} threw", instanceName);
+            return null;
+        }
+    }
+
     private class CheckResponseItem
     {
         [JsonPropertyName("number")] public string? number { get; set; }
