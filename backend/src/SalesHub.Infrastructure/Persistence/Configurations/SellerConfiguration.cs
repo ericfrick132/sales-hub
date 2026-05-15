@@ -30,6 +30,11 @@ public class SellerConfiguration : IEntityTypeConfiguration<Seller>
             .HasColumnType("text[]");
         b.Property(x => x.RegionsAssigned)
             .HasColumnType("text[]");
+        // defaultValueSql para que las filas de sellers existentes queden con
+        // array vacío al agregar la columna (sin esto el ADD ... NOT NULL falla).
+        b.Property(x => x.KeywordRules)
+            .HasColumnType("text[]")
+            .HasDefaultValueSql("'{}'::text[]");
 
         b.HasOne(x => x.EvolutionInstance)
             .WithOne(x => x.Seller!)

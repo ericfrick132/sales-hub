@@ -13,7 +13,7 @@ using SalesHub.Infrastructure.Persistence;
 namespace SalesHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260515021744_AddSellerKeywordRules")]
+    [Migration("20260515022717_AddSellerKeywordRules")]
     partial class AddSellerKeywordRules
     {
         /// <inheritdoc />
@@ -1276,8 +1276,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.Property<List<string>>("KeywordRules")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("text[]")
-                        .HasColumnName("keyword_rules");
+                        .HasColumnName("keyword_rules")
+                        .HasDefaultValueSql("'{}'::text[]");
 
                     b.Property<DateTimeOffset?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone")

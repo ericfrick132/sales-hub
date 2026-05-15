@@ -15,7 +15,8 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                 name: "keyword_rules",
                 table: "sellers",
                 type: "text[]",
-                nullable: false);
+                nullable: false,
+                defaultValueSql: "'{}'::text[]");
         }
 
         /// <inheritdoc />

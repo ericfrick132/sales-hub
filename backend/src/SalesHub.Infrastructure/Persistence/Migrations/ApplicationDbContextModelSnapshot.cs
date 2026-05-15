@@ -1273,8 +1273,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.Property<List<string>>("KeywordRules")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("text[]")
-                        .HasColumnName("keyword_rules");
+                        .HasColumnName("keyword_rules")
+                        .HasDefaultValueSql("'{}'::text[]");
 
                     b.Property<DateTimeOffset?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone")
