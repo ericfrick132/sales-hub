@@ -264,6 +264,7 @@ function AddLeadModal({ products, onClose, onSaved }: AddLeadModalProps) {
   const [saving, setSaving] = useState(false);
   const [suggestions, setSuggestions] = useState<SimilarLead[]>([]);
   const [ignoredDup, setIgnoredDup] = useState(false);
+  const [autoQueue, setAutoQueue] = useState(false);
 
   useEffect(() => {
     saveDefaults({ productKey, source, status: leadStatus });
@@ -320,7 +321,8 @@ function AddLeadModal({ products, onClose, onSaved }: AddLeadModalProps) {
         whatsappPhone: whatsappPhone || null,
         instagramHandle: instagramHandle || null,
         website: website || null,
-        notes: notes || null
+        notes: notes || null,
+        autoQueue
       });
       toast.success('Lead cargado');
       onSaved();
@@ -390,7 +392,12 @@ function AddLeadModal({ products, onClose, onSaved }: AddLeadModalProps) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-500">Estado *</label>
-              <select className="input w-full" value={leadStatus} onChange={(e) => setLeadStatus(e.target.value as LeadStatus)}>
+              <select
+                className="input w-full"
+                value={autoQueue ? 'Assigned' : leadStatus}
+                onChange={(e) => setLeadStatus(e.target.value as LeadStatus)}
+                disabled={autoQueue}
+                title={autoQueue ? 'Con auto-encolar el estado se fuerza a Assigned' : undefined}>
                 {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
@@ -415,6 +422,19 @@ function AddLeadModal({ products, onClose, onSaved }: AddLeadModalProps) {
             <label className="text-xs text-slate-500">Notas</label>
             <textarea className="input w-full" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
+          <label className="flex items-start gap-2 text-sm bg-amber-50 border border-amber-200 rounded p-2 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={autoQueue}
+              onChange={(e) => setAutoQueue(e.target.checked)} />
+            <span>
+              <span className="font-medium">Encolar cadencia automática</span>
+              <span className="block text-xs text-slate-600">
+                Manda los pasos del producto (mensajes + audios) al WhatsApp del lead. Requiere WhatsApp y vendedor con instancia conectada. Fuerza el estado a "Asignado".
+              </span>
+            </span>
+          </label>
           <div className="flex flex-wrap gap-2 justify-end pt-2">
             <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>Cerrar</button>
             <button

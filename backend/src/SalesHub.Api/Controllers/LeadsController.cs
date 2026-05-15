@@ -929,11 +929,26 @@ public class LeadsController : ControllerBase
         var callerId = CurrentUser.Id(User);
         var isAdmin = CurrentUser.IsAdmin(User);
         var sellerId = isAdmin && req.SellerId is not null ? req.SellerId.Value : callerId;
-        var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == sellerId, ct);
+        var seller = await _db.Sellers
+            .Include(s => s.EvolutionInstance)
+            .FirstOrDefaultAsync(s => s.Id == sellerId, ct);
         if (seller is null) return BadRequest(new { error = "Vendedor no encontrado" });
 
         var now = DateTimeOffset.UtcNow;
-        var status = req.Status ?? LeadStatus.Sent;
+        // Con AutoQueue forzamos Assigned (que dispara la cadencia); sin AutoQueue
+        // se respeta el status del request (default Sent — para registrar contactos
+        // ya hechos a mano).
+        var status = req.AutoQueue ? LeadStatus.Assigned : (req.Status ?? LeadStatus.Sent);
+
+        var phone = string.IsNullOrWhiteSpace(req.WhatsappPhone) ? null : req.WhatsappPhone.Trim();
+        if (req.AutoQueue)
+        {
+            if (string.IsNullOrWhiteSpace(phone))
+                return BadRequest(new { error = "Con auto-encolar el lead necesita WhatsApp" });
+            if (seller.EvolutionInstance is null)
+                return BadRequest(new { error = "El vendedor no tiene instancia de WhatsApp configurada" });
+        }
+
         var lead = new Lead
         {
             Id = Guid.NewGuid(),
@@ -941,7 +956,7 @@ public class LeadsController : ControllerBase
             Source = req.Source,
             Name = req.Name.Trim(),
             City = string.IsNullOrWhiteSpace(req.City) ? null : req.City.Trim(),
-            WhatsappPhone = string.IsNullOrWhiteSpace(req.WhatsappPhone) ? null : req.WhatsappPhone.Trim(),
+            WhatsappPhone = phone,
             InstagramHandle = string.IsNullOrWhiteSpace(req.InstagramHandle) ? null : req.InstagramHandle.Trim(),
             Website = string.IsNullOrWhiteSpace(req.Website) ? null : req.Website.Trim(),
             Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
@@ -956,6 +971,20 @@ public class LeadsController : ControllerBase
         if (status >= LeadStatus.Sent) lead.SentAt = now;
         if (status == LeadStatus.Replied) lead.FirstReplyAt = now;
         if (status is LeadStatus.Closed or LeadStatus.Lost) lead.ClosedAt = now;
+
+        // Encolar la cadencia si el caller lo pidió. Misma lógica que /assign.
+        if (req.AutoQueue)
+        {
+            lead.RenderedMessage = _renderer.Render(lead, product, seller);
+            lead.WhatsappLink = string.IsNullOrWhiteSpace(lead.RenderedMessage)
+                ? null
+                : $"https://wa.me/{lead.WhatsappPhone}?text={Uri.EscapeDataString(lead.RenderedMessage)}";
+            OutboxEnqueueHelper.EnqueueLeadMessages(
+                _db, _renderer, lead, product, seller,
+                lead.WhatsappPhone!, seller.EvolutionInstance!.InstanceName);
+            lead.Status = LeadStatus.Queued;
+            lead.QueuedAt = now;
+        }
 
         _db.Leads.Add(lead);
         await _db.SaveChangesAsync(ct);

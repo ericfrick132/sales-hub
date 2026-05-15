@@ -66,7 +66,8 @@ public record CreateManualLeadRequest(
     string? InstagramHandle,
     string? Website,
     string? Notes,
-    Guid? SellerId);
+    Guid? SellerId,
+    bool AutoQueue = false);
 
 public record BulkImportRequest(
     string RawText,
