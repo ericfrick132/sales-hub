@@ -102,14 +102,35 @@ public class WebhookController : ControllerBase
             }
         }
 
+        // Texto del mensaje. Si es un tipo sin texto (audio, sticker, etc.) generamos
+        // un placeholder por tipo — así la respuesta del lead igual se captura y se
+        // ve en Conversaciones. En AR la mayoría responde con nota de voz: descartar
+        // los no-texto perdía casi todas las respuestas.
         string? text = null;
         if (msg.TryGetProperty("message", out var body))
         {
-            if (body.TryGetProperty("conversation", out var conv) && conv.ValueKind == JsonValueKind.String) text = conv.GetString();
-            else if (body.TryGetProperty("extendedTextMessage", out var ext) && ext.TryGetProperty("text", out var extText)) text = extText.GetString();
-            else if (body.TryGetProperty("imageMessage", out var img) && img.TryGetProperty("caption", out var cap)) text = cap.GetString();
+            if (body.TryGetProperty("conversation", out var conv) && conv.ValueKind == JsonValueKind.String)
+                text = conv.GetString();
+            else if (body.TryGetProperty("extendedTextMessage", out var ext) && ext.TryGetProperty("text", out var extText))
+                text = extText.GetString();
+            else if (body.TryGetProperty("imageMessage", out var img))
+                text = Caption(img) ?? "[imagen]";
+            else if (body.TryGetProperty("videoMessage", out var vid))
+                text = Caption(vid) ?? "[video]";
+            else if (body.TryGetProperty("audioMessage", out _))
+                text = "[audio]";
+            else if (body.TryGetProperty("documentMessage", out var doc))
+                text = doc.TryGetProperty("fileName", out var fn) && fn.ValueKind == JsonValueKind.String
+                    ? $"[documento: {fn.GetString()}]" : "[documento]";
+            else if (body.TryGetProperty("stickerMessage", out _))
+                text = "[sticker]";
+            else if (body.TryGetProperty("locationMessage", out _))
+                text = "[ubicación]";
+            else if (body.TryGetProperty("contactMessage", out _) || body.TryGetProperty("contactsArrayMessage", out _))
+                text = "[contacto]";
         }
         text ??= msg.TryGetProperty("messageText", out var mt) ? mt.GetString() : null;
+        // Eventos sin contenido reconocible (reactions, edits, protocol messages) → skip.
         if (string.IsNullOrWhiteSpace(text)) return null;
 
         long ts = 0;
@@ -125,4 +146,11 @@ public class WebhookController : ControllerBase
             && el.TryGetProperty(prop, out var v)
             && v.ValueKind == JsonValueKind.String
             ? v.GetString() : null;
+
+    /// <summary>Caption de un imageMessage/videoMessage, o null si vacío/ausente.</summary>
+    private static string? Caption(JsonElement media)
+    {
+        var c = TryGetString(media, "caption");
+        return string.IsNullOrWhiteSpace(c) ? null : c;
+    }
 }

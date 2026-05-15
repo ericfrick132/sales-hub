@@ -44,6 +44,8 @@ public class ConversationService
             _log.LogDebug("Inbound message without resolvable phone: {Jid}", incoming.FromJid);
             return false;
         }
+        // Normalizar a solo dígitos (FromPhone puede traer separadores).
+        phone = NonDigit.Replace(phone, "");
 
         var instance = await _db.EvolutionInstances
             .Include(i => i.Seller)
@@ -54,23 +56,18 @@ public class ConversationService
             return false;
         }
 
-        // Match against a lead assigned to this seller with matching phone.
-        var lead = await _db.Leads
-            .Where(l => l.SellerId == instance.SellerId && l.WhatsappPhone == phone)
-            .OrderByDescending(l => l.CreatedAt)
-            .FirstOrDefaultAsync(ct);
+        // Match tolerante: los teléfonos de los leads están guardados en formatos
+        // inconsistentes (con/sin +, espacios, guiones, 0 inicial, el 9 argentino),
+        // así que comparamos por los últimos 8 dígitos (el número de abonado, la
+        // parte estable en todos los formatos). Primero entre los leads del seller
+        // de la instancia; si no hay, ampliamos a cualquier lead.
+        var suffix = phone.Length >= 8 ? phone[^8..] : phone;
+        var lead = await MatchLeadByPhoneAsync(instance.SellerId, suffix, ct)
+                ?? await MatchLeadByPhoneAsync(null, suffix, ct);
         if (lead is null)
         {
-            // Maybe assigned to someone else; broaden search.
-            lead = await _db.Leads
-                .Where(l => l.WhatsappPhone == phone)
-                .OrderByDescending(l => l.CreatedAt)
-                .FirstOrDefaultAsync(ct);
-            if (lead is null)
-            {
-                _log.LogInformation("Inbound message from unknown number {Phone}", phone);
-                return false;
-            }
+            _log.LogInformation("Inbound message from unknown number {Phone}", phone);
+            return false;
         }
 
         // Dedup by WhatsApp message id.
@@ -168,6 +165,22 @@ public class ConversationService
             m.ReadAt = DateTimeOffset.UtcNow;
         }
         await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Busca el lead más reciente cuyo teléfono (normalizado a solo dígitos)
+    /// termina en <paramref name="suffix"/>. Si <paramref name="sellerId"/> no es
+    /// null, restringe a los leads de ese seller. Npgsql traduce Regex.Replace a
+    /// regexp_replace, así que el normalizado corre en la base.
+    /// </summary>
+    private async Task<Lead?> MatchLeadByPhoneAsync(Guid? sellerId, string suffix, CancellationToken ct)
+    {
+        var q = _db.Leads.Where(l =>
+            l.WhatsappPhone != null
+            && Regex.Replace(l.WhatsappPhone, @"\D", "").EndsWith(suffix));
+        if (sellerId is not null)
+            q = q.Where(l => l.SellerId == sellerId);
+        return await q.OrderByDescending(l => l.CreatedAt).FirstOrDefaultAsync(ct);
     }
 
     private static string? ExtractPhone(string? jid)
