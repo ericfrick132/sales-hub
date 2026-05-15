@@ -18,6 +18,11 @@ public class Seller
     public string? WhatsappPhone { get; set; }
     public List<string> VerticalsWhitelist { get; set; } = new();
     public List<string> RegionsAssigned { get; set; } = new();
+    // Reglas keyword → respuesta para sugerencias sin IA. Cada entrada es
+    // "keyword = respuesta". Si el último mensaje del lead contiene el keyword,
+    // se sugiere esa respuesta y se saltea la llamada a Claude (la IA queda de
+    // fallback para los casos que no matchean ningún keyword).
+    public List<string> KeywordRules { get; set; } = new();
 
     public SendMode SendMode { get; set; } = SendMode.Balanced;
     public int DailyCap { get; set; } = 50;

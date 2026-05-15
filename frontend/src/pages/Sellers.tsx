@@ -92,6 +92,7 @@ export default function Sellers() {
               products={products.data ?? []}
               onSave={save} />
 
+            <KeywordRulesEditor key={`kw-${selected.id}`} seller={selected} onSave={save} />
 
             <div className="card p-5">
               <h3 className="font-semibold mb-3">Gauges humanización</h3>
@@ -209,6 +210,59 @@ function AssignmentEditor({ seller, products, onSave }: {
             Descartar
           </button>
         )}
+        {dirty && <span className="text-xs text-amber-600">Hay cambios sin guardar</span>}
+      </div>
+    </div>
+  );
+}
+
+function KeywordRulesEditor({ seller, onSave }: {
+  seller: Seller;
+  onSave: (patch: Partial<Seller>) => Promise<void>;
+}) {
+  const [raw, setRaw] = useState((seller.keywordRules ?? []).join('\n'));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setRaw((seller.keywordRules ?? []).join('\n'));
+  }, [seller.id]);
+
+  const initial = (seller.keywordRules ?? []).join('\n');
+  const dirty = raw.trim() !== initial.trim();
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const rules = raw
+        .split('\n')
+        .map((r) => r.trim())
+        .filter((r) => r.includes('='));
+      await onSave({ keywordRules: rules } as Partial<Seller>);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="card p-5 space-y-3">
+      <div>
+        <h3 className="font-semibold">Reglas de keyword → respuesta</h3>
+        <p className="text-xs text-slate-500 mt-1">
+          Una regla por línea, formato <code>keyword = respuesta</code>. Si el último mensaje del lead
+          contiene el keyword, se sugiere esa respuesta en Conversaciones (sin gastar IA). Si no matchea
+          ninguna, cae a la sugerencia de IA. Match case-insensitive. Usá <code>\n</code> para saltos de línea.
+        </p>
+      </div>
+      <textarea
+        className="input w-full font-mono text-sm"
+        rows={6}
+        value={raw}
+        onChange={(e) => setRaw(e.target.value)}
+        placeholder={'precio = Te paso los precios: ...\nhorario = Atendemos de 9 a 18hs\ndemo = Dale, te coordino una demo'} />
+      <div className="flex items-center gap-2">
+        <button type="button" className="btn-primary" disabled={!dirty || saving} onClick={handleSave}>
+          {saving ? 'Guardando…' : 'Guardar reglas'}
+        </button>
         {dirty && <span className="text-xs text-amber-600">Hay cambios sin guardar</span>}
       </div>
     </div>

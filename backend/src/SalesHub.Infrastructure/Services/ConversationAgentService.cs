@@ -88,18 +88,20 @@ public class ConversationAgentService
 
     /// <summary>
     /// Genera la respuesta sugerida para los leads cuyo último mensaje es del
-    /// lead y todavía no tienen sugerencia. La sugerencia se limpia en cada
-    /// inbound nuevo (ConversationService) y cuando el vendedor responde.
+    /// lead y todavía no tienen sugerencia. Primero prueba las reglas de keyword
+    /// del vendedor (sin IA); si no matchea ninguna, cae a Claude. La sugerencia
+    /// se limpia en cada inbound nuevo (ConversationService) y al responder.
     /// </summary>
     private async Task<int> GenerateSuggestionsAsync(CancellationToken ct)
     {
-        if (!_suggestions.IsConfigured) return 0;
-
         // Leads sin sugerencia cuyo último mensaje es del lead. Si el último es
         // "[audio]" todavía sin transcribir, esperamos al próximo tick.
-        var needSuggestion = await (
-            from l in _db.Leads.Include(x => x.Product)
-            where l.AiSuggestedReply == null && l.SellerId != null && l.Product != null
+        // Proyectamos el texto del último mensaje para chequear keywords sin
+        // tener que cargar el hilo entero.
+        var candidates = await (
+            from l in _db.Leads.Include(x => x.Product).Include(x => x.Seller)
+            where l.AiSuggestedReply == null && l.SellerId != null
+                  && l.Product != null && l.Seller != null
             let last = _db.ConversationMessages
                 .Where(m => m.LeadId == l.Id)
                 .OrderByDescending(m => m.Timestamp)
@@ -107,27 +109,59 @@ public class ConversationAgentService
             where last != null
                 && last.Direction == MessageDirection.Inbound
                 && last.Text != "[audio]"
-            select l
+            select new { Lead = l, LastText = last.Text }
         ).Take(BatchSize).ToListAsync(ct);
 
         var done = 0;
-        foreach (var lead in needSuggestion)
+        foreach (var c in candidates)
         {
-            var thread = await _db.ConversationMessages
-                .Where(m => m.LeadId == lead.Id)
-                .OrderBy(m => m.Timestamp)
-                .ToListAsync(ct);
+            var lead = c.Lead;
 
-            var suggestion = await _suggestions.SuggestReplyAsync(lead, lead.Product!, thread, ct);
+            // 1) Reglas de keyword del vendedor — sin IA, sin costo.
+            var keywordReply = MatchKeywordRule(lead.Seller!.KeywordRules, c.LastText);
+            var suggestion = keywordReply;
+
+            // 2) Fallback a Claude sólo si no matcheó ningún keyword.
+            if (suggestion is null && _suggestions.IsConfigured)
+            {
+                var thread = await _db.ConversationMessages
+                    .Where(m => m.LeadId == lead.Id)
+                    .OrderBy(m => m.Timestamp)
+                    .ToListAsync(ct);
+                suggestion = await _suggestions.SuggestReplyAsync(lead, lead.Product!, thread, ct);
+            }
+
             if (string.IsNullOrWhiteSpace(suggestion)) continue;
 
             lead.AiSuggestedReply = suggestion;
             lead.AiSuggestedReplyAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
             done++;
-            _log.LogInformation("Sugerencia IA generada para lead {Lead}", lead.Id);
+            _log.LogInformation("Sugerencia generada para lead {Lead} (fuente: {Src})",
+                lead.Id, keywordReply is not null ? "keyword" : "IA");
         }
 
         return done;
+    }
+
+    /// <summary>
+    /// Devuelve la respuesta de la primera regla "keyword = respuesta" cuyo
+    /// keyword aparezca (case-insensitive) en el texto del lead. null si no
+    /// matchea ninguna. Soporta "\n" literal en la respuesta como salto de línea.
+    /// </summary>
+    private static string? MatchKeywordRule(IEnumerable<string> rules, string leadText)
+    {
+        if (string.IsNullOrWhiteSpace(leadText)) return null;
+        foreach (var rule in rules)
+        {
+            var eq = rule.IndexOf('=');
+            if (eq <= 0) continue;
+            var keyword = rule[..eq].Trim();
+            var reply = rule[(eq + 1)..].Trim().Replace("\\n", "\n");
+            if (keyword.Length == 0 || reply.Length == 0) continue;
+            if (leadText.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                return reply;
+        }
+        return null;
     }
 }

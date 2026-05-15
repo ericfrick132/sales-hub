@@ -148,6 +148,7 @@ export interface Seller {
   instanceStatus?: InstanceStatus;
   verticalsWhitelist: string[];
   regionsAssigned: string[];
+  keywordRules: string[];
   sendMode: SendMode;
   dailyCap: number;
   dailyVariancePct: number;
