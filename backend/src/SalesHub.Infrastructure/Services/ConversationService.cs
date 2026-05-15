@@ -101,6 +101,12 @@ public class ConversationService
         }
         lead.UpdatedAt = DateTimeOffset.UtcNow;
 
+        // El lead mandó algo nuevo → la sugerencia anterior (si había) quedó
+        // vieja. La limpiamos para que el ConversationAgent regenere incluyendo
+        // este mensaje.
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
+
         // Cortar el drip: si el lead respondió, los siguientes steps de
         // outreach inicial ya no tienen sentido (ahora la conversación queda
         // a manos del seller). Solo cancelamos los pendientes — los que ya
@@ -150,6 +156,9 @@ public class ConversationService
         };
         _db.ConversationMessages.Add(entry);
         lead.UpdatedAt = DateTimeOffset.UtcNow;
+        // El vendedor respondió: la sugerencia ya cumplió su función.
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
         await _db.SaveChangesAsync(ct);
         return entry;
     }

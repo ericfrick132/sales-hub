@@ -39,6 +39,7 @@ type Thread = {
   status: string;
   sellerId?: string;
   sellerName?: string;
+  aiSuggestedReply?: string;
   messages: Message[];
 };
 
@@ -49,6 +50,7 @@ export default function Conversations() {
   const [params, setParams] = useSearchParams();
   const selected = params.get('lead');
   const [reply, setReply] = useState('');
+  const [hideSuggestionFor, setHideSuggestionFor] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   const [productFilter, setProductFilter] = useState('');
@@ -258,8 +260,35 @@ export default function Conversations() {
               const replies = parseQuickReplies(
                 productsQ.data?.find((p) => p.productKey === thread.data?.productKey)?.replyTemplates ?? []
               );
+              const suggestion = thread.data?.aiSuggestedReply;
               return (
                 <>
+                  {suggestion && hideSuggestionFor !== selected && (
+                    <div className="px-3 pt-2 border-t border-slate-100">
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-sm">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="text-[11px] uppercase tracking-wide text-amber-700 font-medium">
+                            💡 Sugerencia IA
+                          </span>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => { setReply(suggestion); setHideSuggestionFor(selected); }}
+                              className="text-xs px-2 py-0.5 rounded bg-amber-600 text-white hover:bg-amber-700">
+                              Usar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setHideSuggestionFor(selected)}
+                              className="text-xs px-2 py-0.5 rounded border border-amber-300 text-amber-700 hover:bg-amber-100">
+                              Descartar
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-slate-700 whitespace-pre-wrap">{suggestion}</div>
+                      </div>
+                    </div>
+                  )}
                   <QuickReplyBar replies={replies} onPick={(t) => setReply(t)} />
                   <form
                     className="p-3 border-t border-slate-100 flex gap-2"

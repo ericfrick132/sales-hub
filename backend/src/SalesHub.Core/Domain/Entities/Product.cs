@@ -52,6 +52,11 @@ public class Product
 
     public bool RequiresAssistedSale { get; set; } = false;
 
+    // Instrucciones de venta para el agente de IA que sugiere respuestas en
+    // Conversaciones (tono, objeciones comunes, cuándo mandar precio/checkout).
+    // Texto libre por vertical. Vacío = el agente usa solo las instrucciones base.
+    public string AiSalesPlaybook { get; set; } = string.Empty;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 

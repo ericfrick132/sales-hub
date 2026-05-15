@@ -35,6 +35,7 @@ public class ConversationsController : ControllerBase
         Guid LeadId, string LeadName, string? WhatsappPhone, string? RenderedInitialMessage,
         string ProductKey, string Status,
         Guid? SellerId, string? SellerName,
+        string? AiSuggestedReply,
         IReadOnlyList<ConversationMessageDto> Messages);
 
     public record SendReplyRequest(string Text);
@@ -123,6 +124,7 @@ public class ConversationsController : ControllerBase
         return new ConversationThreadDto(lead.Id, lead.Name, lead.WhatsappPhone, lead.RenderedMessage,
             lead.ProductKey, lead.Status.ToString(),
             lead.SellerId, lead.Seller?.DisplayName,
+            lead.AiSuggestedReply,
             messages);
     }
 

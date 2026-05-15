@@ -60,6 +60,11 @@ public class Lead
 
     public string? Notes { get; set; }
 
+    // Respuesta sugerida por la IA para el próximo turno (modo asistido). Se
+    // regenera en cada inbound nuevo y se limpia cuando el vendedor responde.
+    public string? AiSuggestedReply { get; set; }
+    public DateTimeOffset? AiSuggestedReplyAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
