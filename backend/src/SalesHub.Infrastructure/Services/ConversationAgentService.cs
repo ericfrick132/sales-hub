@@ -96,12 +96,12 @@ public class ConversationAgentService
     {
         // Leads sin sugerencia cuyo último mensaje es del lead. Si el último es
         // "[audio]" todavía sin transcribir, esperamos al próximo tick.
-        // Proyectamos el texto del último mensaje para chequear keywords sin
-        // tener que cargar el hilo entero.
+        // Proyectamos sólo IDs + texto del último mensaje (sin Include — los
+        // Include se ignoran al proyectar a tipo anónimo); cargamos el lead
+        // completo después, por separado.
         var candidates = await (
-            from l in _db.Leads.Include(x => x.Product).Include(x => x.Seller)
+            from l in _db.Leads
             where l.AiSuggestedReply == null && l.SellerId != null
-                  && l.Product != null && l.Seller != null
             let last = _db.ConversationMessages
                 .Where(m => m.LeadId == l.Id)
                 .OrderByDescending(m => m.Timestamp)
@@ -109,16 +109,20 @@ public class ConversationAgentService
             where last != null
                 && last.Direction == MessageDirection.Inbound
                 && last.Text != "[audio]"
-            select new { Lead = l, LastText = last.Text }
+            select new { LeadId = l.Id, LastText = last.Text }
         ).Take(BatchSize).ToListAsync(ct);
 
         var done = 0;
         foreach (var c in candidates)
         {
-            var lead = c.Lead;
+            var lead = await _db.Leads
+                .Include(l => l.Product)
+                .Include(l => l.Seller)
+                .FirstOrDefaultAsync(l => l.Id == c.LeadId, ct);
+            if (lead?.Product is null || lead.Seller is null) continue;
 
             // 1) Reglas de keyword del vendedor — sin IA, sin costo.
-            var keywordReply = MatchKeywordRule(lead.Seller!.KeywordRules, c.LastText);
+            var keywordReply = MatchKeywordRule(lead.Seller.KeywordRules, c.LastText);
             var suggestion = keywordReply;
 
             // 2) Fallback a Claude sólo si no matcheó ningún keyword.

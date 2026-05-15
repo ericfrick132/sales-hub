@@ -177,16 +177,20 @@ public class ConversationService
     }
 
     /// <summary>
-    /// Busca el lead más reciente cuyo teléfono (normalizado a solo dígitos)
-    /// termina en <paramref name="suffix"/>. Si <paramref name="sellerId"/> no es
-    /// null, restringe a los leads de ese seller. Npgsql traduce Regex.Replace a
-    /// regexp_replace, así que el normalizado corre en la base.
+    /// Busca el lead más reciente cuyo teléfono termina en <paramref name="suffix"/>.
+    /// Si <paramref name="sellerId"/> no es null, restringe a los leads de ese
+    /// seller. Los teléfonos de los leads están en formatos inconsistentes (con
+    /// +, espacios, guiones, paréntesis); los strippeamos con string.Replace —
+    /// que Npgsql sí traduce a SQL (Regex.Replace NO se traduce).
     /// </summary>
     private async Task<Lead?> MatchLeadByPhoneAsync(Guid? sellerId, string suffix, CancellationToken ct)
     {
         var q = _db.Leads.Where(l =>
             l.WhatsappPhone != null
-            && Regex.Replace(l.WhatsappPhone, @"\D", "").EndsWith(suffix));
+            && l.WhatsappPhone
+                .Replace(" ", "").Replace("-", "").Replace("+", "")
+                .Replace("(", "").Replace(")", "").Replace(".", "")
+                .EndsWith(suffix));
         if (sellerId is not null)
             q = q.Where(l => l.SellerId == sellerId);
         return await q.OrderByDescending(l => l.CreatedAt).FirstOrDefaultAsync(ct);
