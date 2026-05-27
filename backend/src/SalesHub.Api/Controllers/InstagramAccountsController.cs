@@ -44,6 +44,7 @@ public class InstagramAccountsController : ControllerBase
                 IsActive = a.IsActive,
                 IsLoggedIn = a.IsLoggedIn,
                 IsActionBlocked = a.IsActionBlocked,
+                IsAwaitingTwoFactor = a.IsAwaitingTwoFactor,
                 BlockedUntil = a.BlockedUntil,
                 LastLoginAt = a.LastLoginAt,
                 LastUsedAt = a.LastUsedAt,
@@ -72,6 +73,7 @@ public class InstagramAccountsController : ControllerBase
             IsActive = account.IsActive,
             IsLoggedIn = account.IsLoggedIn,
             IsActionBlocked = account.IsActionBlocked,
+            IsAwaitingTwoFactor = account.IsAwaitingTwoFactor,
             BlockedUntil = account.BlockedUntil,
             LastLoginAt = account.LastLoginAt,
             LastUsedAt = account.LastUsedAt,
@@ -406,6 +408,7 @@ public class InstagramAccountsController : ControllerBase
         public bool IsActive { get; init; }
         public bool IsLoggedIn { get; init; }
         public bool IsActionBlocked { get; init; }
+        public bool IsAwaitingTwoFactor { get; init; }
         public DateTimeOffset? BlockedUntil { get; init; }
         public DateTimeOffset? LastLoginAt { get; init; }
         public DateTimeOffset? LastUsedAt { get; init; }

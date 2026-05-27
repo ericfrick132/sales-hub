@@ -55,6 +55,7 @@ export default function Layout() {
     { to: '/pipeline', label: 'Captación' },
     { to: '/sellers', label: 'Vendedores' },
     { to: '/products', label: 'Aplicaciones' },
+    { to: '/instagram/accounts', label: 'Cuentas IG' },
     { to: '/instagram/follow', label: 'Auto-follow IG' },
     { to: '/audio-analytics', label: 'Audios y estrategias' }
   ];
