@@ -1,0 +1,47 @@
+version: "3.8"
+
+# ============================================================
+# docker-compose.worker.yml
+# 
+# Para que cada vendedor corra el worker de Instagram en su
+# propia máquina y se conecte a la DB central de DigitalOcean.
+#
+# USO:
+#   1. Configurá las variables en .env.worker
+#   2. docker compose -f docker-compose.worker.yml up -d
+# ============================================================
+
+services:
+  instagram-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: saleshub-instagram-worker
+    restart: unless-stopped
+    environment:
+      # Conexión a la DB de DigitalOcean
+      - ConnectionStrings__Default=${DB_CONNECTION_STRING}
+      # Config de Instagram
+      - Instagram__BrowserDataDir=/app/instagram_browser_data
+      - Instagram__NavigationTimeoutMs=30000
+      - Instagram__MinActionDelayMs=2000
+      - Instagram__MaxActionDelayMs=5000
+      - Instagram__MaxDmPerHour=${MAX_DM_PER_HOUR:-20}
+      - Instagram__MaxScrapePerHour=${MAX_SCRAPE_PER_HOUR:-100}
+      - Instagram__ScraperIntervalMinutes=${SCRAPER_INTERVAL_MINUTES:-60}
+      - Instagram__MaxSelectorFailuresBeforeReanalysis=3
+      # Proxy (opcional, ej: BrightData)
+      - Instagram__ProxyUrl=${INSTAGRAM_PROXY_URL:-}
+      # Seed (no necesario para workers remotos, pero lo pide el Program.cs)
+      - Seed__AdminEmail=
+      - Seed__AdminPassword=
+      # Logging
+      - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Microsoft=Warning
+    volumes:
+      # Persistir datos del browser entre reinicios
+      - instagram_browser_data:/app/instagram_browser_data
+    # El worker no expone puertos, solo se conecta a la DB
+
+volumes:
+  instagram_browser_data:

@@ -19,9 +19,20 @@ WORKDIR /app
 # ffmpeg lo usamos para reconvertir audios a OGG/Opus antes de mandarlos
 # como nota de voz por WhatsApp — Evolution acepta el archivo pero WhatsApp
 # rechaza cualquier container que no sea OGG/Opus para PTT.
+# playwright-deps instala las dependencias del sistema para Playwright (Chromium)
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get install -y --no-install-recommends \
+        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+        libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 \
+        libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
+        libasound2 libatspi2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/out ./
+# Instalar Playwright y Chromium
+RUN dotnet tool install --global Microsoft.Playwright.CLI \
+    && playwright install chromium \
+    && playwright install-deps chromium
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 ENV PROJECT_DLL=${PROJECT}.dll

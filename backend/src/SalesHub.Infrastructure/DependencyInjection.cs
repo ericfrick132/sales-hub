@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SalesHub.Core.Abstractions;
 using SalesHub.Infrastructure.Apify;
 using SalesHub.Infrastructure.Evolution;
+using SalesHub.Infrastructure.Instagram;
 using SalesHub.Infrastructure.Options;
 using SalesHub.Infrastructure.Persistence;
 using SalesHub.Infrastructure.Services;
@@ -20,6 +21,7 @@ public static class DependencyInjection
         services.Configure<JwtOptions>(config.GetSection("Jwt"));
         services.Configure<GroqOptions>(config.GetSection("Groq"));
         services.Configure<ClaudeOptions>(config.GetSection("Claude"));
+        services.Configure<InstagramOptions>(config.GetSection("Instagram"));
 
         services.AddDbContext<ApplicationDbContext>(o =>
             o.UseNpgsql(config.GetConnectionString("Default")
@@ -66,6 +68,14 @@ public static class DependencyInjection
         services.AddScoped<ConversationService>();
         services.AddScoped<AiSuggestionService>();
         services.AddScoped<ConversationAgentService>();
+
+        // Instagram services
+        services.AddSingleton<InstagramEncryptionService>();
+        services.AddScoped<InstagramLeadScraper>();
+        services.AddScoped<InstagramDmSender>();
+        services.AddScoped<InstagramStructureAnalyzer>();
+        services.AddSingleton<SelectorFailureTracker>();
+        services.Configure<InstagramLlmOptions>(config.GetSection("InstagramLlm"));
 
         return services;
     }

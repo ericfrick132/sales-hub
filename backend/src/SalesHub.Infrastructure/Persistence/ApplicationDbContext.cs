@@ -25,6 +25,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<SearchJob> SearchJobs => Set<SearchJob>();
     public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
     public DbSet<MessageStepRotation> MessageStepRotations => Set<MessageStepRotation>();
+    public DbSet<InstagramAccount> InstagramAccounts => Set<InstagramAccount>();
+    public DbSet<InstagramMetrics> InstagramMetrics => Set<InstagramMetrics>();
+    public DbSet<InstagramScrapeTarget> InstagramScrapeTargets => Set<InstagramScrapeTarget>();
+    public DbSet<InstagramStructureSnapshot> InstagramStructureSnapshots => Set<InstagramStructureSnapshot>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

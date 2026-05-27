@@ -12,5 +12,6 @@ public enum LeadSource
     ManualInstagram = 101,
     ManualWhatsApp = 102,
     ManualWeb = 103,
-    BrowserCapture = 200
+    BrowserCapture = 200,
+    InstagramScraper = 300
 }
