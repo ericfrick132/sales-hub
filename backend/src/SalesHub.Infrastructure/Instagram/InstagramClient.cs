@@ -15,7 +15,7 @@ public class InstagramClient : IAsyncDisposable
     private readonly ApplicationDbContext _db;
     private readonly InstagramEncryptionService _crypto;
     private readonly InstagramOptions _opts;
-    private readonly ILogger<InstagramClient> _log;
+    private readonly ILogger _log;
 
     private IPlaywright? _playwright;
     private IBrowser? _browser;
@@ -28,7 +28,7 @@ public class InstagramClient : IAsyncDisposable
         ApplicationDbContext db,
         InstagramEncryptionService crypto,
         InstagramOptions opts,
-        ILogger<InstagramClient> log)
+        ILogger log)
     {
         _db = db;
         _crypto = crypto;
@@ -428,6 +428,97 @@ public class InstagramClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Sigue (follow) al usuario indicado. Devuelve un <see cref="FollowResult"/>
+    /// con el resultado: Followed, AlreadyFollowing, NotFound, Blocked o Failed.
+    /// Detecta bloqueos de acción (action_blocked) y marca la cuenta.
+    /// </summary>
+    public async Task<FollowResult> FollowUserAsync(string handle, CancellationToken ct = default)
+    {
+        EnsureLoggedIn();
+
+        _log.LogInformation("Following {Handle}...", handle);
+
+        try
+        {
+            await _page!.GotoAsync($"https://www.instagram.com/{handle}/", new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.NetworkIdle,
+                Timeout = _opts.NavigationTimeoutMs
+            });
+
+            await RandomDelayAsync();
+
+            // Si la URL contiene login → sesión caída
+            if (_page.Url.Contains("/accounts/login"))
+            {
+                _log.LogWarning("Sesión caída al intentar follow {Handle}", handle);
+                _loggedIn = false;
+                return FollowResult.Failed;
+            }
+
+            // Perfil no existe
+            var notFoundHeading = await _page.QuerySelectorAsync("text=Sorry, this page isn't available");
+            if (notFoundHeading is not null)
+            {
+                _log.LogInformation("Perfil {Handle} no existe", handle);
+                return FollowResult.NotFound;
+            }
+
+            // Botón "Following" → ya lo seguimos
+            var alreadyFollowing = await _page.QuerySelectorAsync(
+                "header button:has-text('Following'), header button:has-text('Siguiendo')");
+            if (alreadyFollowing is not null)
+            {
+                _log.LogInformation("Ya seguíamos a {Handle}", handle);
+                return FollowResult.AlreadyFollowing;
+            }
+
+            // Botón "Follow" / "Seguir"
+            var followBtn = await _page.QuerySelectorAsync(
+                "header button:has-text('Follow'), header button:has-text('Seguir')");
+            if (followBtn is null)
+            {
+                _log.LogWarning("No se encontró botón Follow para {Handle}", handle);
+                return FollowResult.Failed;
+            }
+
+            await followBtn.ClickAsync();
+            await Task.Delay(2500, ct);
+
+            // ¿Apareció dialog de action_blocked?
+            var blockedDialog = await _page.QuerySelectorAsync(
+                "div[role='dialog']:has-text('Try Again Later'), " +
+                "div[role='dialog']:has-text('Action Blocked'), " +
+                "div[role='dialog']:has-text('Acción bloqueada')");
+
+            if (blockedDialog is not null)
+            {
+                _log.LogWarning("Action Blocked al seguir a {Handle}", handle);
+                return FollowResult.Blocked;
+            }
+
+            // Verificar que el botón ahora dice Following
+            var nowFollowing = await _page.QuerySelectorAsync(
+                "header button:has-text('Following'), header button:has-text('Siguiendo'), " +
+                "header button:has-text('Requested'), header button:has-text('Solicitado')");
+
+            if (nowFollowing is null)
+            {
+                _log.LogWarning("Follow no confirmado para {Handle}", handle);
+                return FollowResult.Failed;
+            }
+
+            _log.LogInformation("Follow exitoso a {Handle}", handle);
+            return FollowResult.Followed;
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Error al hacer follow a {Handle}", handle);
+            return FollowResult.Failed;
+        }
+    }
+
+    /// <summary>
     /// Verifica si la sesión sigue activa navegando a la página principal.
     /// </summary>
     public async Task<bool> CheckSessionAsync(CancellationToken ct = default)
@@ -616,9 +707,21 @@ public class InstagramClient : IAsyncDisposable
         public string Path { get; set; } = "/";
         public bool HttpOnly { get; set; }
         public bool Secure { get; set; }
-        public string SameSite { get; set; } = "Lax";
+        public SameSiteAttribute? SameSite { get; set; } = SameSiteAttribute.Lax;
         public float Expires { get; set; }
     }
+}
+
+/// <summary>
+/// Resultado de un intento de seguir a un perfil.
+/// </summary>
+public enum FollowResult
+{
+    Followed = 0,
+    AlreadyFollowing = 1,
+    NotFound = 2,
+    Blocked = 3,
+    Failed = 4
 }
 
 /// <summary>

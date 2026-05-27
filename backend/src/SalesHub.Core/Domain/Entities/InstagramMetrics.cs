@@ -19,6 +19,10 @@ public class InstagramMetrics
     public int DmFailed { get; set; }
     public int DmReplies { get; set; }
 
+    // Auto-follow
+    public int FollowsDone { get; set; }
+    public int FollowsBlocked { get; set; }
+
     // Salud de la cuenta
     public int ActionBlocks { get; set; }
     public int Warnings { get; set; }

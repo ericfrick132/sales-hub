@@ -72,6 +72,7 @@ public static class DependencyInjection
         // Instagram services
         services.AddSingleton<InstagramEncryptionService>();
         services.AddScoped<InstagramLeadScraper>();
+        services.AddScoped<InstagramFollowService>();
         services.AddScoped<InstagramDmSender>();
         services.AddScoped<InstagramStructureAnalyzer>();
         services.AddSingleton<SelectorFailureTracker>();

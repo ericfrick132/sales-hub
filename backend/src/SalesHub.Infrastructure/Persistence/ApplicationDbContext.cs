@@ -29,6 +29,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<InstagramMetrics> InstagramMetrics => Set<InstagramMetrics>();
     public DbSet<InstagramScrapeTarget> InstagramScrapeTargets => Set<InstagramScrapeTarget>();
     public DbSet<InstagramStructureSnapshot> InstagramStructureSnapshots => Set<InstagramStructureSnapshot>();
+    public DbSet<InstagramFollowCampaign> InstagramFollowCampaigns => Set<InstagramFollowCampaign>();
+    public DbSet<InstagramFollowAction> InstagramFollowActions => Set<InstagramFollowAction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

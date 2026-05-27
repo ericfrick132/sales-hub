@@ -16,6 +16,7 @@ builder.Services.AddHostedService<TrendsIngestWorker>();
 builder.Services.AddHostedService<ConversationAgentWorker>();
 builder.Services.AddHostedService<InstagramScraperWorker>();
 builder.Services.AddHostedService<InstagramStructureAnalyzerWorker>();
+builder.Services.AddHostedService<InstagramFollowWorker>();
 
 var host = builder.Build();
 

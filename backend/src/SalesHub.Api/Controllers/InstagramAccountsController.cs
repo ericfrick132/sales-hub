@@ -155,7 +155,7 @@ public class InstagramAccountsController : ControllerBase
                 var account = new InstagramAccount
                 {
                     Id = Guid.NewGuid(),
-                    SellerId = req.DefaultSellerId,
+                    SellerId = req.DefaultSellerId ?? Guid.Empty,
                     Username = username,
                     EncryptedPassword = _crypto.Encrypt(password),
                     TwoFactorSecret = twoFactorSecret,

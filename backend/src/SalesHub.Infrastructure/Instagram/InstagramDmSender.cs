@@ -34,14 +34,15 @@ public class InstagramDmSender
     /// </summary>
     public async Task<bool> SendDmAsync(MessageOutbox outboxItem, CancellationToken ct = default)
     {
-        if (string.IsNullOrEmpty(outboxItem.InstagramHandle))
+        var lead = outboxItem.Lead;
+        var handle = lead?.InstagramHandle;
+        if (string.IsNullOrEmpty(handle))
         {
             _log.LogWarning("Outbox item {Id} no tiene InstagramHandle", outboxItem.Id);
             return false;
         }
 
         // Buscar cuenta de Instagram del seller asignado al lead
-        var lead = outboxItem.Lead;
         InstagramAccount? account = null;
 
         if (lead?.SellerId is not null)
@@ -59,7 +60,7 @@ public class InstagramDmSender
         if (account is null)
         {
             _log.LogWarning("No hay cuentas de Instagram disponibles para enviar DM a {Handle}",
-                outboxItem.InstagramHandle);
+                handle);
             return false;
         }
 
@@ -95,7 +96,7 @@ public class InstagramDmSender
             return false;
         }
 
-        var success = await client.SendDmAsync(outboxItem.InstagramHandle, outboxItem.Message, ct);
+        var success = await client.SendDmAsync(handle, outboxItem.Message, ct);
 
         // Actualizar métricas
         await UpdateDmMetricsAsync(account.Id, success, ct);

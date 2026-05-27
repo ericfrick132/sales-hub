@@ -1,4 +1,4 @@
-eusing Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SalesHub.Core.Domain.Entities;
 
