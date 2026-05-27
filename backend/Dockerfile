@@ -20,9 +20,8 @@ WORKDIR /app
 # como nota de voz por WhatsApp — Evolution acepta el archivo pero WhatsApp
 # rechaza cualquier container que no sea OGG/Opus para PTT.
 # playwright-deps instala las dependencias del sistema para Playwright (Chromium)
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
         libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
         libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 \
         libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
