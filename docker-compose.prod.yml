@@ -1,37 +1,5 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: saleshub
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-saleshub}
-      POSTGRES_DB: saleshub
-      # Permitir conexiones remotas (para workers de vendedores)
-      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
-    command:
-      - "postgres"
-      - "-c"
-      - "listen_addresses=*"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      # Expuesto para que los workers remotos se conecten
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U saleshub"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - caddy
-      - evolution
-    mem_limit: 500m
-    mem_reservation: 300m
-
   saleshub-api:
-    depends_on:
-      postgres:
-        condition: service_healthy
     build:
       context: ./backend
       args:
@@ -43,7 +11,6 @@ services:
       - .env
     environment:
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=saleshub;Username=saleshub;Password=${DB_PASSWORD:-saleshub}"
       SALESHUB_RUN_WORKERS: "true"
       SALESHUB_AUTO_MIGRATE: "true"
       TZ: America/Argentina/Buenos_Aires
@@ -58,9 +25,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
-
-volumes:
-  pgdata:
 
 networks:
   caddy:
