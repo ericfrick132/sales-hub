@@ -1,0 +1,55 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using SalesHub.Core.Domain.Entities.Social;
+
+namespace SalesHub.Infrastructure.Persistence.Configurations;
+
+public class PostingProfileConfiguration : IEntityTypeConfiguration<PostingProfile>
+{
+    public void Configure(EntityTypeBuilder<PostingProfile> b)
+    {
+        b.ToTable("posting_profiles");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.ProductKey).HasMaxLength(64).IsRequired();
+        b.HasIndex(x => x.ProductKey).IsUnique();
+        b.Property(x => x.BrandColorsJson).HasColumnType("jsonb");
+        b.Property(x => x.BufferChannelsJson).HasColumnType("jsonb");
+        b.Property(x => x.BrandFonts).HasMaxLength(256);
+        b.Property(x => x.BrandLogoUrl).HasMaxLength(512);
+        b.Property(x => x.BrandVoice).HasColumnType("text");
+        b.Property(x => x.BrandGuidelines).HasColumnType("text");
+        b.Property(x => x.TargetAudience).HasMaxLength(512);
+        b.Property(x => x.ContentPillars).HasColumnType("text[]");
+        b.Property(x => x.PostHours).HasColumnType("integer[]");
+    }
+}
+
+public class SocialPostConfiguration : IEntityTypeConfiguration<SocialPost>
+{
+    public void Configure(EntityTypeBuilder<SocialPost> b)
+    {
+        b.ToTable("social_posts");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.ProductKey).HasMaxLength(64).IsRequired();
+        // Enums como string para legibilidad en la DB (snake_case naming aplica a columnas).
+        b.Property(x => x.Platform).HasConversion<string>().HasMaxLength(32);
+        b.Property(x => x.Format).HasConversion<string>().HasMaxLength(32);
+        b.Property(x => x.AssetKind).HasConversion<string>().HasMaxLength(32);
+        b.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
+        b.Property(x => x.BufferChannelId).HasMaxLength(64);
+        b.Property(x => x.ContentPillar).HasMaxLength(128);
+        b.Property(x => x.Concept).HasColumnType("text");
+        b.Property(x => x.Prompt).HasColumnType("text");
+        b.Property(x => x.Caption).HasColumnType("text");
+        b.Property(x => x.Hashtags).HasColumnType("text[]");
+        b.Property(x => x.AssetUrl).HasMaxLength(1024);
+        b.Property(x => x.ThumbnailUrl).HasMaxLength(1024);
+        b.Property(x => x.BufferPostId).HasMaxLength(64);
+        b.Property(x => x.Error).HasColumnType("text");
+        b.Property(x => x.GenerationModel).HasMaxLength(64);
+        b.Property(x => x.RawJson).HasColumnType("text");
+        b.HasIndex(x => new { x.ProductKey, x.Status });
+        b.HasIndex(x => x.Status);
+        b.HasIndex(x => x.CreatedAt);
+    }
+}

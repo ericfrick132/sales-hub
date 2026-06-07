@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Domain.Entities;
+using SalesHub.Core.Domain.Entities.Social;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
 
@@ -14,6 +15,7 @@ public static class DatabaseSeeder
         await SeedAdminAsync(db, adminEmail, adminPassword, ct);
         await SeedSampleSellersAsync(db, ct);
         await BackfillCategoryOverridesAsync(db, ct);
+        await SeedPostingProfilesAsync(db, ct);
     }
 
     /// <summary>
@@ -62,6 +64,97 @@ public static class DatabaseSeeder
             MediaAssetId = s.MediaAssetId,
             MediaAssetIds = new List<Guid>(s.MediaAssetIds ?? new())
         }).ToList();
+
+    /// <summary>
+    /// Pre-popula un PostingProfile por producto con la identidad de marca real
+    /// extraída de cada repo/landing (colores, fuentes, logo, audiencia, tono,
+    /// pilares). Arrancan con Enabled=false y sin canales de Buffer mapeados —
+    /// el admin completa BufferChannelsJson y prende cuando conecta las redes.
+    /// Idempotente: si ya hay perfiles, no hace nada.
+    /// </summary>
+    private static async Task SeedPostingProfilesAsync(ApplicationDbContext db, CancellationToken ct)
+    {
+        if (await db.PostingProfiles.AnyAsync(ct)) return;
+
+        var profiles = new List<PostingProfile>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(), ProductKey = "gymhero", Enabled = false,
+                BrandColorsJson = "{\"primary\":\"#DDFD42\",\"background\":\"#0A0A0A\",\"accent\":\"#DDFD42\",\"text\":\"#F5F5F5\"}",
+                BrandFonts = "Bricolage Grotesque / DM Sans (mono: JetBrains Mono)",
+                BrandLogoUrl = "GymHero/src/frontend/marketing/public/images/logo.png",
+                BrandVoice = "Directo, sin vueltas, rioplatense. Habla del dolor del dueño de gym (Excel, perseguir morosos) y promete automatización y ahorro de tiempo. Estética 'bunker' negro + lima.",
+                TargetAudience = "Dueños de gimnasios, boxes de CrossFit y estudios de fitness (B2B)",
+                ContentPillars = new() { "Cobros automáticos sin perseguir morosos", "Semáforo de acceso en recepción (QR)", "Clases llenas, menos no-shows", "Dashboard único, adiós Excel", "Rutinas personalizadas", "Setup en 1 día incluido", "Sin permanencia, 7 días gratis", "Integrado con MercadoPago + WhatsApp" },
+                BrandGuidelines = "Idioma es-AR (voseo). Ejemplos de copy: 'Dejá de perseguir morosos. GymHero cobra por vos.' / 'Todo lo que tu gym necesita. Nada que no.' / 'Tu gym merece dejar de perder plata.' Mostrar métricas reales, no fluff.",
+                PostHours = new() { 10, 18 }, PostsPerDay = 1,
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), ProductKey = "turnospro", Enabled = false,
+                BrandColorsJson = "{\"primary\":\"#1E5E3F\",\"background\":\"#F4EFE6\",\"accent\":\"#E8593C\",\"text\":\"#171410\"}",
+                BrandFonts = "Fraunces / Space Grotesk (mono: JetBrains Mono)",
+                BrandLogoUrl = "TurnosPro/src/marketing-next/public/logo.png",
+                BrandVoice = "Profesional pero cálido, editorial. Voseo rioplatense. Enfocado en resultados (menos cancelaciones) y simplicidad. Paleta papel cálido + tinta.",
+                TargetAudience = "Peluquerías, barberías, estética, consultorios y profesionales con sistema de turnos (B2B)",
+                ContentPillars = new() { "Reservas online 24/7", "Pagos anticipados con seña (MercadoPago)", "Recordatorios automáticos por WhatsApp", "Agenda inteligente multi-profesional", "Catálogo digital de servicios", "Gestión integral de clientes", "Setup rápido sin apps", "Soporte humano y mejora continua" },
+                BrandGuidelines = "Idioma es-AR (voseo). Ejemplos: 'Agendá más con tu sitio listo para reservas.' / '80% menos cancelaciones: señas + recordatorios por WhatsApp.' Resaltar número duro + solución.",
+                PostHours = new() { 10, 18 }, PostsPerDay = 1,
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), ProductKey = "playcrew", Enabled = false,
+                BrandColorsJson = "{\"primary\":\"#C8FC2C\",\"background\":\"#111827\",\"accent\":\"#C8FC2C\",\"text\":\"#FFFFFF\"}",
+                BrandFonts = "Lexend / Inter",
+                BrandLogoUrl = "PlayCrew/src/frontend/public/png-sin-fondo-icono.png",
+                BrandVoice = "Directo, moderno, orientado a la acción. Habla de sacar fricción y llenar canchas. Dark theme + lima.",
+                TargetAudience = "Dueños de clubes y canchas de pádel y tenis (B2B); también jugadores (B2C)",
+                ContentPillars = new() { "Reservas automáticas 24/7", "Pagos y señas online", "Analytics de ocupación y revenue", "Membresías con auto-cobro", "Menos no-shows (recordatorios)", "Link público branded del club", "Gestión multi-cancha", "Ranking/ELO para torneos" },
+                BrandGuidelines = "Idioma es-AR. Ejemplos: 'Canchas llenas, sin tomar reservas por WhatsApp.' / 'Reservá tu próximo partido en 3 simples pasos.' Tono game-changer.",
+                PostHours = new() { 10, 18 }, PostsPerDay = 1,
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), ProductKey = "construction", Enabled = false,
+                BrandColorsJson = "{\"primary\":\"#1F3A60\",\"background\":\"#F4EEE0\",\"accent\":\"#D69531\",\"text\":\"#0E0F11\"}",
+                BrandFonts = "DM Serif Display / Inter (mono: IBM Plex Mono)",
+                BrandLogoUrl = "", // identidad tipográfica (sin asset de logo)
+                BrandVoice = "Técnico pero accesible, como un set de planos: preciso, ordenado, con anotaciones. Español directo, transparencia y control del caos de obra.",
+                TargetAudience = "Arquitectos, estudios de arquitectura y constructoras (B2B)",
+                ContentPillars = new() { "Gastos en tiempo real (ARS/USD)", "Documentos y planos versionados", "Control de contratistas y proveedores", "Timeline visual y avance de obra", "Dashboard multi-obra", "Transparencia por rol", "Biblioteca de materiales", "Presupuesto preciso ($/m²)" },
+                BrandGuidelines = "Idioma es-AR. Ejemplos: 'Tu obra no vive en siete Excels. Vive acá.' / 'Planos versionados. Sin ¿cuál es el bueno?.' Estética de planos/blueprint.",
+                PostHours = new() { 10, 18 }, PostsPerDay = 1,
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), ProductKey = "unistock", Enabled = false,
+                BrandColorsJson = "{\"primary\":\"#384DF4\",\"background\":\"#FAF9F6\",\"accent\":\"#F6D058\",\"text\":\"#0A0A0A\"}",
+                BrandFonts = "Geist / Geist (mono: JetBrains Mono)",
+                BrandLogoUrl = "CLIENTS/InventSync - AR/src/frontend/public/logo192.png",
+                BrandVoice = "Directo, honesto de depósito, sin fluff. Reconoce el dolor (revender stock fantasma) antes de resolverlo. Editorial y data-driven.",
+                TargetAudience = "PyMEs que fabrican/distribuyen y venden multicanal — MercadoLibre, Tienda Nube, WhatsApp (B2B)",
+                ContentPillars = new() { "Sync de stock multicanal en tiempo real", "Fabricación con BOM/recetas", "Reposición sugerida por demanda", "CRM unificado ventas + stock", "Analytics por canal (margen/rotación)", "Multi-depósito y lotes", "Trial 14 días, setup en el día", "Soporte en español LATAM" },
+                BrandGuidelines = "Idioma es-AR. Ejemplos: 'Vendés en tres canales. Te queda una unidad. ¿A quién le fallás?' / 'Un stock, todos los canales.' Reconocer dolor, después resolver.",
+                PostHours = new() { 10, 18 }, PostsPerDay = 1,
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), ProductKey = "bunker", Enabled = false,
+                BrandColorsJson = "{\"primary\":\"#DDFD42\",\"background\":\"#0A0A0A\",\"accent\":\"#10B981\",\"text\":\"#FFFFFF\"}",
+                BrandFonts = "Inter / Inter (serif accent: Instrument Serif)",
+                BrandLogoUrl = "CLIENTS/BUNKER - AR/src/frontend/public/logo192.png",
+                BrandVoice = "Profesional pero cercano. Data-driven, tecnología y confianza en la relación coach-atleta. 'Entrená con propósito'. Negro premium + lima.",
+                TargetAudience = "Personal trainers, entrenadores y coaches deportivos (B2B)",
+                ContentPillars = new() { "Planificación inteligente de entrenamientos", "Tracking de progreso (RPE/RIR)", "Comunicación coach–atleta", "Gestión de equipos y grupos", "Multi-dispositivo (app + web)", "Gratis para empezar", "Cobros con MercadoPago", "Estética deportiva premium" },
+                BrandGuidelines = "Idioma es-AR. Ejemplos: 'Entrená con propósito, mejorá con datos.' / 'Tu gimnasio, digitalizado.' Tono profesional, deportivo.",
+                PostHours = new() { 10, 18 }, PostsPerDay = 1,
+            },
+        };
+
+        db.PostingProfiles.AddRange(profiles);
+        await db.SaveChangesAsync(ct);
+    }
 
     private static async Task SeedSampleSellersAsync(ApplicationDbContext db, CancellationToken ct)
     {

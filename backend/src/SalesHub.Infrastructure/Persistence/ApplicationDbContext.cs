@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Domain.Entities;
+using SalesHub.Core.Domain.Entities.Social;
 
 namespace SalesHub.Infrastructure.Persistence;
 
@@ -31,6 +32,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<InstagramStructureSnapshot> InstagramStructureSnapshots => Set<InstagramStructureSnapshot>();
     public DbSet<InstagramFollowCampaign> InstagramFollowCampaigns => Set<InstagramFollowCampaign>();
     public DbSet<InstagramFollowAction> InstagramFollowActions => Set<InstagramFollowAction>();
+
+    // Módulo Posteos
+    public DbSet<PostingProfile> PostingProfiles => Set<PostingProfile>();
+    public DbSet<SocialPost> SocialPosts => Set<SocialPost>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using SalesHub.Core.Abstractions;
 using SalesHub.Infrastructure.Apify;
 using SalesHub.Infrastructure.Evolution;
@@ -8,6 +9,7 @@ using SalesHub.Infrastructure.Instagram;
 using SalesHub.Infrastructure.Options;
 using SalesHub.Infrastructure.Persistence;
 using SalesHub.Infrastructure.Services;
+using SalesHub.Infrastructure.Services.Social;
 
 namespace SalesHub.Infrastructure;
 
@@ -22,6 +24,14 @@ public static class DependencyInjection
         services.Configure<GroqOptions>(config.GetSection("Groq"));
         services.Configure<ClaudeOptions>(config.GetSection("Claude"));
         services.Configure<InstagramOptions>(config.GetSection("Instagram"));
+        // Varios servicios IG (InstagramClient, InstagramLeadScraper, InstagramAccountsController…)
+        // inyectan InstagramOptions DIRECTO (no IOptions<>). Sin esta línea no resuelven en runtime
+        // → era lo que bloqueaba las ventas automáticas por Instagram.
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<InstagramOptions>>().Value);
+
+        // Módulo Posteos
+        services.Configure<BufferOptions>(config.GetSection("Buffer"));
+        services.Configure<HiggsfieldOptions>(config.GetSection("Higgsfield"));
 
         services.AddDbContext<ApplicationDbContext>(o =>
             o.UseNpgsql(config.GetConnectionString("Default")
@@ -34,6 +44,9 @@ public static class DependencyInjection
         services.AddHttpClient<EvolutionClient>();
         services.AddHttpClient<GroqWhisperClient>();
         services.AddHttpClient<ClaudeClient>();
+        services.AddHttpClient<BufferClient>();
+        services.AddScoped<ISocialPublisher>(sp => sp.GetRequiredService<BufferClient>());
+        services.AddScoped<SocialContentGenerator>();
         services.AddHttpClient<GooglePlacesSource>();
         services.AddHttpClient<GooglePlacesEnricher>();
         services.AddScoped<IGooglePlacesEnricher>(sp => sp.GetRequiredService<GooglePlacesEnricher>());
