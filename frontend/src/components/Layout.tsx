@@ -57,6 +57,7 @@ export default function Layout() {
     { to: '/products', label: 'Aplicaciones' },
     { to: '/instagram/accounts', label: 'Cuentas IG' },
     { to: '/instagram/follow', label: 'Auto-follow IG' },
+    { to: '/posteos', label: 'Posteos' },
     { to: '/audio-analytics', label: 'Audios y estrategias' }
   ];
 

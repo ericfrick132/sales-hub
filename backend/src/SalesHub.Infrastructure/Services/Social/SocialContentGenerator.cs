@@ -80,6 +80,65 @@ public class SocialContentGenerator
         }
     }
 
+    /// <summary>
+    /// Genera para una red específica usando el prompt propio de ese canal (red×app)
+    /// + la base de marca del perfil. El formato/asset los fija el canal (no Claude).
+    /// </summary>
+    public async Task<GeneratedPost?> GenerateForChannelAsync(PostingProfile p, PostingChannel ch, IReadOnlyList<string> recentConcepts, CancellationToken ct = default)
+    {
+        if (!_claude.IsConfigured) { _log.LogWarning("Claude no configurado"); return null; }
+
+        var sys = new StringBuilder();
+        sys.AppendLine($"Sos el generador de contenido social del producto '{p.ProductKey}' para la red {ch.Platform}.");
+        sys.AppendLine($"Audiencia: {p.TargetAudience}.");
+        sys.AppendLine($"Tono/voz de marca: {p.BrandVoice}");
+        sys.AppendLine($"Guía de marca: {p.BrandGuidelines}");
+        sys.AppendLine($"Paleta (no la cambies): {p.BrandColorsJson}. Fuentes: {p.BrandFonts}.");
+        if (p.ContentPillars.Count > 0)
+            sys.AppendLine($"Pilares de contenido: {string.Join(" | ", p.ContentPillars)}.");
+        sys.AppendLine();
+        sys.AppendLine("INSTRUCCIONES ESPECÍFICAS DE ESTA RED:");
+        sys.AppendLine(string.IsNullOrWhiteSpace(ch.PromptTemplate) ? "(sin instrucciones extra)" : ch.PromptTemplate);
+        sys.AppendLine();
+        sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies). Caption en español rioplatense (voseo). El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
+        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"caption\":string, \"hashtags\":string[]}");
+
+        var user = new StringBuilder();
+        user.AppendLine($"Generá 1 idea nueva para {ch.Platform} ({ch.Format}).");
+        if (recentConcepts.Count > 0)
+        {
+            user.AppendLine("Evitá repetir estos conceptos recientes:");
+            foreach (var c in recentConcepts.Take(15)) user.AppendLine($"- {c}");
+        }
+        user.AppendLine("Recordá: SOLO el JSON.");
+
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), ct);
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var json = ExtractJson(raw);
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            var hashtags = new List<string>();
+            if (r.TryGetProperty("hashtags", out var h) && h.ValueKind == JsonValueKind.Array)
+                hashtags.AddRange(h.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0));
+            return new GeneratedPost(
+                Pillar: Str(r, "pillar"),
+                AssetKind: ch.AssetKind == SocialAssetKind.Video ? "video" : "image",
+                Format: ch.Format.ToString().ToLowerInvariant(),
+                Concept: Str(r, "concept"),
+                Prompt: Str(r, "prompt"),
+                Caption: Str(r, "caption"),
+                Hashtags: hashtags,
+                RawJson: json);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "No pude parsear JSON de Claude (canal {Platform})", ch.Platform);
+            return null;
+        }
+    }
+
     private static string Str(JsonElement e, string key, string def = "") =>
         e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? def) : def;
 

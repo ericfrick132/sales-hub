@@ -24,6 +24,23 @@ public class PostingProfileConfiguration : IEntityTypeConfiguration<PostingProfi
     }
 }
 
+public class PostingChannelConfiguration : IEntityTypeConfiguration<PostingChannel>
+{
+    public void Configure(EntityTypeBuilder<PostingChannel> b)
+    {
+        b.ToTable("posting_channels");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.ProductKey).HasMaxLength(64).IsRequired();
+        b.Property(x => x.Platform).HasConversion<string>().HasMaxLength(32);
+        b.Property(x => x.Format).HasConversion<string>().HasMaxLength(32);
+        b.Property(x => x.AssetKind).HasConversion<string>().HasMaxLength(32);
+        b.Property(x => x.BufferChannelId).HasMaxLength(64);
+        b.Property(x => x.PromptTemplate).HasColumnType("text");
+        b.HasIndex(x => new { x.ProductKey, x.Platform }).IsUnique()
+            .HasDatabaseName("IX_PostingChannel_Product_Platform");
+    }
+}
+
 public class SocialPostConfiguration : IEntityTypeConfiguration<SocialPost>
 {
     public void Configure(EntityTypeBuilder<SocialPost> b)

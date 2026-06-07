@@ -101,6 +101,81 @@ public class SocialPostsController : ControllerBase
         return Ok(post);
     }
 
+    // ── Canales por red (red × app, con prompt propio) ─────────────────────
+    [HttpGet("posting-channels")]
+    public async Task<IActionResult> PostingChannels([FromQuery] string? productKey, CancellationToken ct)
+    {
+        var q = _db.PostingChannels.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(productKey)) q = q.Where(c => c.ProductKey == productKey);
+        var channels = await q.OrderBy(c => c.ProductKey).ThenBy(c => c.Platform).ToListAsync(ct);
+        return Ok(channels);
+    }
+
+    [HttpPut("posting-channels/{id:guid}")]
+    public async Task<IActionResult> UpdatePostingChannel(Guid id, [FromBody] UpdateChannelRequest req, CancellationToken ct)
+    {
+        var ch = await _db.PostingChannels.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (ch == null) return NotFound();
+        if (req.Enabled.HasValue) ch.Enabled = req.Enabled.Value;
+        if (req.BufferChannelId != null) ch.BufferChannelId = req.BufferChannelId;
+        if (req.PromptTemplate != null) ch.PromptTemplate = req.PromptTemplate;
+        if (!string.IsNullOrWhiteSpace(req.Format) && Enum.TryParse<SocialPostFormat>(req.Format, true, out var f)) ch.Format = f;
+        if (!string.IsNullOrWhiteSpace(req.AssetKind) && Enum.TryParse<SocialAssetKind>(req.AssetKind, true, out var ak)) ch.AssetKind = ak;
+        ch.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(ch);
+    }
+
+    /// <summary>Crea un canal nuevo (ej. agregar YouTube/Facebook a una app).</summary>
+    [HttpPost("posting-channels")]
+    public async Task<IActionResult> CreatePostingChannel([FromBody] CreateChannelRequest req, CancellationToken ct)
+    {
+        if (!Enum.TryParse<SocialPlatform>(req.Platform, true, out var platform))
+            return BadRequest(new { error = "Platform inválida." });
+        if (await _db.PostingChannels.AnyAsync(c => c.ProductKey == req.ProductKey && c.Platform == platform, ct))
+            return Conflict(new { error = "Ya existe ese canal para esa app." });
+        var ch = new PostingChannel
+        {
+            Id = Guid.NewGuid(), ProductKey = req.ProductKey, Platform = platform,
+            Enabled = false,
+            Format = Enum.TryParse<SocialPostFormat>(req.Format, true, out var f) ? f : SocialPostFormat.Post,
+            AssetKind = Enum.TryParse<SocialAssetKind>(req.AssetKind, true, out var ak) ? ak : SocialAssetKind.Image,
+            PromptTemplate = req.PromptTemplate ?? string.Empty,
+        };
+        _db.PostingChannels.Add(ch);
+        await _db.SaveChangesAsync(ct);
+        return Ok(ch);
+    }
+
+    /// <summary>Genera 1 posteo a demanda para un canal puntual (usa su prompt propio).</summary>
+    [HttpPost("posting-channels/{id:guid}/generate")]
+    public async Task<IActionResult> GenerateForChannel(Guid id, CancellationToken ct)
+    {
+        var ch = await _db.PostingChannels.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (ch == null) return NotFound();
+        var profile = await _db.PostingProfiles.FirstOrDefaultAsync(p => p.ProductKey == ch.ProductKey, ct);
+        if (profile == null) return NotFound(new { error = "Falta el PostingProfile de la app." });
+        if (!_generator.IsConfigured) return BadRequest(new { error = "Claude no está configurado." });
+
+        var recent = await _db.SocialPosts.Where(s => s.ProductKey == ch.ProductKey && s.Platform == ch.Platform)
+            .OrderByDescending(s => s.CreatedAt).Select(s => s.Concept).Take(15).ToListAsync(ct);
+
+        var gen = await _generator.GenerateForChannelAsync(profile, ch, recent, ct);
+        if (gen == null) return StatusCode(502, new { error = "El generador no devolvió contenido." });
+
+        var post = new SocialPost
+        {
+            Id = Guid.NewGuid(), ProductKey = ch.ProductKey, Platform = ch.Platform,
+            BufferChannelId = ch.BufferChannelId, Format = ch.Format, AssetKind = ch.AssetKind,
+            ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt,
+            Caption = gen.Caption, Hashtags = gen.Hashtags, GenerationModel = "claude",
+            RawJson = gen.RawJson, Status = SocialPostStatus.DraftReady,
+        };
+        _db.SocialPosts.Add(post);
+        await _db.SaveChangesAsync(ct);
+        return Ok(post);
+    }
+
     /// <summary>Empuja un posteo a Buffer como DRAFT. Acepta override de assetUrl/channelId (ej. URL de Canva a mano).</summary>
     [HttpPost("{id:guid}/push")]
     public async Task<IActionResult> Push(Guid id, [FromBody] PushRequest? req, CancellationToken ct)
@@ -160,6 +235,22 @@ public class SocialPostsController : ControllerBase
     }
 
     public class GenerateRequest { public string ProductKey { get; set; } = string.Empty; }
+    public class UpdateChannelRequest
+    {
+        public bool? Enabled { get; set; }
+        public string? BufferChannelId { get; set; }
+        public string? Format { get; set; }
+        public string? AssetKind { get; set; }
+        public string? PromptTemplate { get; set; }
+    }
+    public class CreateChannelRequest
+    {
+        public string ProductKey { get; set; } = string.Empty;
+        public string Platform { get; set; } = string.Empty;
+        public string? Format { get; set; }
+        public string? AssetKind { get; set; }
+        public string? PromptTemplate { get; set; }
+    }
     public class PushRequest { public string? AssetUrl { get; set; } public string? ChannelId { get; set; } public DateTimeOffset? ScheduledAt { get; set; } }
     public class UpdateProfileRequest
     {

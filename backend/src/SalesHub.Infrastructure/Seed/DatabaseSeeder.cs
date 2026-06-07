@@ -16,6 +16,7 @@ public static class DatabaseSeeder
         await SeedSampleSellersAsync(db, ct);
         await BackfillCategoryOverridesAsync(db, ct);
         await SeedPostingProfilesAsync(db, ct);
+        await SeedPostingChannelsAsync(db, ct);
     }
 
     /// <summary>
@@ -153,6 +154,50 @@ public static class DatabaseSeeder
         };
 
         db.PostingProfiles.AddRange(profiles);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Crea canales por defecto por app (Instagram=Story imagen, TikTok=Video) con un
+    /// prompt propio por red+app, derivado de la audiencia del perfil. Desactivados;
+    /// el admin completa el canal de Buffer, edita el prompt y los prende. Idempotente.
+    /// </summary>
+    private static async Task SeedPostingChannelsAsync(ApplicationDbContext db, CancellationToken ct)
+    {
+        if (await db.PostingChannels.AnyAsync(ct)) return;
+        var profiles = await db.PostingProfiles.ToListAsync(ct);
+        if (profiles.Count == 0) return;
+
+        var channels = new List<PostingChannel>();
+        foreach (var p in profiles)
+        {
+            var aud = string.IsNullOrWhiteSpace(p.TargetAudience) ? "tu audiencia" : p.TargetAudience;
+
+            channels.Add(new PostingChannel
+            {
+                Id = Guid.NewGuid(), ProductKey = p.ProductKey, Platform = SocialPlatform.Instagram,
+                Enabled = false, Format = SocialPostFormat.Story, AssetKind = SocialAssetKind.Image,
+                PromptTemplate =
+$@"Generá una idea para una HISTORIA de Instagram (imagen vertical 1080x1920) de {p.ProductKey}, dirigida a {aud}.
+- 1 mensaje claro y visualmente impactante, con un CTA simple.
+- Respetá la paleta y el tono de marca.
+- Elegí un pilar de contenido y variá respecto a lo último.
+- El campo 'prompt' (en inglés, cinematográfico) describe la imagen a generar."
+            });
+
+            channels.Add(new PostingChannel
+            {
+                Id = Guid.NewGuid(), ProductKey = p.ProductKey, Platform = SocialPlatform.TikTok,
+                Enabled = false, Format = SocialPostFormat.Video, AssetKind = SocialAssetKind.Video,
+                PromptTemplate =
+$@"Generá un concepto + guion corto (15-30s) para un video de TikTok de {p.ProductKey}, dirigido a {aud}.
+- Hook fuerte en los primeros 2 segundos, ritmo dinámico, 1 idea por video, CTA al final.
+- Caption en español rioplatense (voseo).
+- El campo 'prompt' (en inglés, cinematográfico) describe la escena/video a generar respetando la estética de marca."
+            });
+        }
+
+        db.PostingChannels.AddRange(channels);
         await db.SaveChangesAsync(ct);
     }
 

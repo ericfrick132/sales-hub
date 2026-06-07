@@ -16,7 +16,8 @@ public enum SocialPostFormat
     Post = 1,
     Story = 2,
     Reel = 3,
-    Carousel = 4
+    Carousel = 4,
+    Video = 5
 }
 
 /// <summary>Qué asset lleva → decide el generador (imagen=Canva, video=Higgsfield).</summary>

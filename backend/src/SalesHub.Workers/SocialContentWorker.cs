@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities.Social;
@@ -58,39 +57,43 @@ public class SocialContentWorker : BackgroundService
             if (!(profile.PostHours?.Contains(hour) ?? false)) continue;
             _ranThisHour.Add(profile.ProductKey);
 
+            var channels = await db.PostingChannels
+                .Where(c => c.ProductKey == profile.ProductKey && c.Enabled)
+                .ToListAsync(ct);
             var n = Math.Max(1, profile.PostsPerDay);
-            for (var i = 0; i < n; i++)
+            foreach (var channel in channels)
             {
-                try { await GenerateOneAsync(scope, db, profile, ct); }
-                catch (Exception ex) { _log.LogError(ex, "Posteo gen falló para {Product}", profile.ProductKey); }
+                for (var i = 0; i < n; i++)
+                {
+                    try { await GenerateOneAsync(scope, db, profile, channel, ct); }
+                    catch (Exception ex) { _log.LogError(ex, "Posteo gen falló para {Product}/{Net}", profile.ProductKey, channel.Platform); }
+                }
             }
         }
     }
 
-    private async Task GenerateOneAsync(IServiceScope scope, ApplicationDbContext db, PostingProfile profile, CancellationToken ct)
+    private async Task GenerateOneAsync(IServiceScope scope, ApplicationDbContext db, PostingProfile profile, PostingChannel channel, CancellationToken ct)
     {
         var generator = scope.ServiceProvider.GetRequiredService<SocialContentGenerator>();
 
         var recent = await db.SocialPosts
-            .Where(s => s.ProductKey == profile.ProductKey)
+            .Where(s => s.ProductKey == profile.ProductKey && s.Platform == channel.Platform)
             .OrderByDescending(s => s.CreatedAt)
             .Select(s => s.Concept)
             .Take(15)
             .ToListAsync(ct);
 
-        var gen = await generator.GenerateAsync(profile, recent, ct);
-        if (gen == null) { _log.LogWarning("Generador devolvió null para {Product}", profile.ProductKey); return; }
-
-        var (platform, channelId) = PickChannel(profile.BufferChannelsJson, gen.AssetKind);
+        var gen = await generator.GenerateForChannelAsync(profile, channel, recent, ct);
+        if (gen == null) { _log.LogWarning("Generador null para {Product}/{Net}", profile.ProductKey, channel.Platform); return; }
 
         var post = new SocialPost
         {
             Id = Guid.NewGuid(),
             ProductKey = profile.ProductKey,
-            Platform = platform,
-            BufferChannelId = channelId ?? string.Empty,
-            Format = ParseFormat(gen.Format),
-            AssetKind = gen.AssetKind == "video" ? SocialAssetKind.Video : SocialAssetKind.Image,
+            Platform = channel.Platform,
+            BufferChannelId = channel.BufferChannelId,
+            Format = channel.Format,
+            AssetKind = channel.AssetKind,
             ContentPillar = gen.Pillar,
             Concept = gen.Concept,
             Prompt = gen.Prompt,
@@ -124,7 +127,7 @@ public class SocialContentWorker : BackgroundService
             var res = await publisher.CreatePostAsync(new PublishRequest
             {
                 ChannelId = post.BufferChannelId,
-                Service = platform.ToString().ToLowerInvariant(),
+                Service = channel.Platform.ToString().ToLowerInvariant(),
                 Caption = BuildCaption(post),
                 ImageUrl = post.AssetKind == SocialAssetKind.Image ? post.AssetUrl : null,
                 VideoUrl = post.AssetKind == SocialAssetKind.Video ? post.AssetUrl : null,
@@ -147,38 +150,4 @@ public class SocialContentWorker : BackgroundService
         if (p.Hashtags.Count == 0) return p.Caption;
         return $"{p.Caption}\n\n{string.Join(" ", p.Hashtags.Select(h => h.StartsWith('#') ? h : "#" + h))}";
     }
-
-    private static SocialPostFormat ParseFormat(string f) =>
-        Enum.TryParse<SocialPostFormat>(f, true, out var v) ? v : SocialPostFormat.Post;
-
-    /// <summary>Elige canal+plataforma del mapa {service:channelId} según el tipo de asset.</summary>
-    private static (SocialPlatform, string?) PickChannel(string channelsJson, string assetKind)
-    {
-        Dictionary<string, string>? map = null;
-        try { map = JsonSerializer.Deserialize<Dictionary<string, string>>(channelsJson); } catch { }
-        map ??= new();
-
-        var order = assetKind == "video"
-            ? new[] { "tiktok", "youtube", "instagram", "facebook" }
-            : new[] { "instagram", "facebook", "tiktok", "twitter" };
-
-        foreach (var svc in order)
-            if (map.TryGetValue(svc, out var id) && !string.IsNullOrWhiteSpace(id))
-                return (ToPlatform(svc), id);
-
-        // fallback: primer canal mapeado, o Instagram sin canal
-        var first = map.FirstOrDefault(kv => !string.IsNullOrWhiteSpace(kv.Value));
-        return first.Key != null ? (ToPlatform(first.Key), first.Value) : (SocialPlatform.Instagram, null);
-    }
-
-    private static SocialPlatform ToPlatform(string svc) => svc.ToLowerInvariant() switch
-    {
-        "instagram" => SocialPlatform.Instagram,
-        "tiktok" => SocialPlatform.TikTok,
-        "youtube" => SocialPlatform.YouTube,
-        "facebook" => SocialPlatform.Facebook,
-        "twitter" => SocialPlatform.Twitter,
-        "linkedin" => SocialPlatform.LinkedIn,
-        _ => SocialPlatform.Instagram,
-    };
 }

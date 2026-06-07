@@ -35,6 +35,7 @@ public class ApplicationDbContext : DbContext
 
     // Módulo Posteos
     public DbSet<PostingProfile> PostingProfiles => Set<PostingProfile>();
+    public DbSet<PostingChannel> PostingChannels => Set<PostingChannel>();
     public DbSet<SocialPost> SocialPosts => Set<SocialPost>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
