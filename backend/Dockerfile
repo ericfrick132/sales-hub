@@ -4,6 +4,17 @@ ARG PROJECT=SalesHub.Api
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 ARG PROJECT
 WORKDIR /src
+
+# Bajar Chromium para Playwright en su PROPIA capa, ANTES de copiar el código:
+# no depende del fuente, así Docker la cachea y NO se re-descarga en cada deploy
+# (antes estaba después de `COPY . .`, así que cualquier cambio de código la invalidaba
+# y volvía a bajar ~150MB de Chromium — el motivo de los deploys lentísimos).
+# Se copia a runtime después para no arrastrar el SDK a la imagen final.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PATH="$PATH:/root/.dotnet/tools"
+RUN dotnet tool install --global Microsoft.Playwright.CLI \
+    && playwright install chromium
+
 COPY SalesHub.sln ./
 COPY src/SalesHub.Core/*.csproj src/SalesHub.Core/
 COPY src/SalesHub.Infrastructure/*.csproj src/SalesHub.Infrastructure/
@@ -12,13 +23,6 @@ COPY src/SalesHub.Workers/*.csproj src/SalesHub.Workers/
 RUN dotnet restore SalesHub.sln
 COPY . .
 RUN dotnet publish "src/${PROJECT}/${PROJECT}.csproj" -c Release -o /app/out
-
-# Bajar Chromium en el stage de build (tiene SDK para correr la CLI de Playwright).
-# Lo copiamos a runtime después para no arrastrar el SDK a la imagen final.
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PATH="$PATH:/root/.dotnet/tools"
-RUN dotnet tool install --global Microsoft.Playwright.CLI \
-    && playwright install chromium
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 ARG PROJECT
