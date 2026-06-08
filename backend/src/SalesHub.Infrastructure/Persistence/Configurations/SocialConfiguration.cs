@@ -21,6 +21,7 @@ public class PostingProfileConfiguration : IEntityTypeConfiguration<PostingProfi
         b.Property(x => x.TargetAudience).HasMaxLength(512);
         b.Property(x => x.ContentPillars).HasColumnType("text[]");
         b.Property(x => x.PostHours).HasColumnType("integer[]");
+        b.Property(x => x.PostDays).HasColumnType("integer[]");
     }
 }
 

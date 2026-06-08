@@ -55,6 +55,8 @@ public class SocialContentWorker : BackgroundService
         {
             if (_ranThisHour.Contains(profile.ProductKey)) continue;
             if (!(profile.PostHours?.Contains(hour) ?? false)) continue;
+            // Días de la semana: vacío = todos. (0=Domingo … 6=Sábado)
+            if (profile.PostDays is { Count: > 0 } && !profile.PostDays.Contains((int)DateTime.Now.DayOfWeek)) continue;
             _ranThisHour.Add(profile.ProductKey);
 
             var channels = await db.PostingChannels

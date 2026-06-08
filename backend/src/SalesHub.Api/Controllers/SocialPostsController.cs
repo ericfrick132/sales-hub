@@ -43,6 +43,7 @@ public class SocialPostsController : ControllerBase
         if (req.Enabled.HasValue) p.Enabled = req.Enabled.Value;
         if (req.BufferChannelsJson != null) p.BufferChannelsJson = req.BufferChannelsJson;
         if (req.PostHours != null) p.PostHours = req.PostHours;
+        if (req.PostDays != null) p.PostDays = req.PostDays;
         if (req.PostsPerDay.HasValue) p.PostsPerDay = req.PostsPerDay.Value;
         if (req.ContentPillars != null) p.ContentPillars = req.ContentPillars;
         if (req.BrandVoice != null) p.BrandVoice = req.BrandVoice;
@@ -257,6 +258,7 @@ public class SocialPostsController : ControllerBase
         public bool? Enabled { get; set; }
         public string? BufferChannelsJson { get; set; }
         public List<int>? PostHours { get; set; }
+        public List<int>? PostDays { get; set; }
         public int? PostsPerDay { get; set; }
         public List<string>? ContentPillars { get; set; }
         public string? BrandVoice { get; set; }

@@ -8,7 +8,7 @@ interface PostingProfile {
   id: string; productKey: string; enabled: boolean;
   brandColorsJson: string; brandFonts: string; brandVoice: string;
   brandGuidelines: string; targetAudience: string; contentPillars: string[];
-  postHours: number[]; postsPerDay: number;
+  postHours: number[]; postDays: number[]; postsPerDay: number;
 }
 interface PostingChannel {
   id: string; productKey: string; platform: string; enabled: boolean;
@@ -219,19 +219,35 @@ export default function Posteos() {
   );
 }
 
+const DOW = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']; // índice = DayOfWeek (0=Domingo)
+
 function CadenceEditor({ profile, onSave }: { profile: PostingProfile; onSave: (b: Partial<PostingProfile>) => void }) {
   const [enabled, setEnabled] = useState(profile.enabled);
   const [hours, setHours] = useState((profile.postHours ?? []).join(', '));
+  const [days, setDays] = useState<number[]>(profile.postDays ?? []);
   const [perDay, setPerDay] = useState(profile.postsPerDay ?? 1);
+
+  const toggleDay = (d: number) => setDays((xs) => xs.includes(d) ? xs.filter((x) => x !== d) : [...xs, d].sort());
 
   function save() {
     const postHours = hours.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n) && n >= 0 && n <= 23);
-    onSave({ enabled, postHours, postsPerDay: Math.max(1, Number(perDay) || 1) });
+    onSave({ enabled, postHours, postDays: days, postsPerDay: Math.max(1, Number(perDay) || 1) });
   }
   return (
     <div className="card p-4">
       <h3 className="font-semibold mb-1">Frecuencia / horarios</h3>
-      <p className="text-xs text-slate-500 mb-3">Cada cuánto postea esta app. El worker revisa cada hora: en cada horario de la lista genera <b>{perDay || 1}</b> posteo(s) por red activa.</p>
+      <p className="text-xs text-slate-500 mb-3">Cada cuánto postea esta app. El worker revisa cada hora: en los días y horarios elegidos genera <b>{perDay || 1}</b> posteo(s) por red activa.</p>
+      <div className="mb-3">
+        <div className="text-xs text-slate-500 mb-1">Días (vacío = todos los días)</div>
+        <div className="flex gap-1 flex-wrap">
+          {DOW.map((label, d) => (
+            <button key={d} type="button" onClick={() => toggleDay(d)}
+              className={`text-xs rounded px-2.5 py-1 border ${days.includes(d) ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="flex items-end gap-3 flex-wrap">
         <label className="flex items-center gap-1 text-sm">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Posteo automático activo

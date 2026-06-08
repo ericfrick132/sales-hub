@@ -37,6 +37,8 @@ public class PostingProfile
     // ── Cadencia ──────────────────────────────────────────────────────────
     /// <summary>Horas del día (0-23, hora local) en las que se genera contenido.</summary>
     public List<int> PostHours { get; set; } = new();
+    /// <summary>Días de la semana en los que postea (0=Domingo … 6=Sábado). Vacío = todos los días.</summary>
+    public List<int> PostDays { get; set; } = new();
     /// <summary>Cuántos posteos generar por corrida/día.</summary>
     public int PostsPerDay { get; set; } = 1;
 
