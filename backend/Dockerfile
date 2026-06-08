@@ -10,17 +10,20 @@ COPY src/SalesHub.Infrastructure/*.csproj src/SalesHub.Infrastructure/
 COPY src/SalesHub.Api/*.csproj src/SalesHub.Api/
 COPY src/SalesHub.Workers/*.csproj src/SalesHub.Workers/
 RUN dotnet restore SalesHub.sln
+
+# Bajar Chromium para Playwright DESPUÉS del restore y ANTES de copiar el código,
+# invocando el driver Node que ya viene dentro del paquete NuGet restaurado
+# (.playwright/node + .playwright/package/cli.js). Así esta capa se cachea con el
+# restore y NO se re-descarga en cada cambio de código (antes iba después del publish
+# → se bajaban ~150MB de Chromium en CADA deploy, llenando el disco y tardando 25min).
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN PWNODE=$(find /root/.nuget/packages/microsoft.playwright -path '*linux-x64/node' -type f | head -1) && \
+    PWCLI=$(find /root/.nuget/packages/microsoft.playwright -path '*.playwright/package/cli.js' -type f | head -1) && \
+    test -n "$PWNODE" && test -n "$PWCLI" && \
+    "$PWNODE" "$PWCLI" install chromium
+
 COPY . .
 RUN dotnet publish "src/${PROJECT}/${PROJECT}.csproj" -c Release -o /app/out
-
-# Bajar Chromium en el stage de build (tiene SDK para correr la CLI de Playwright).
-# DEBE ir después del publish: la CLI de Playwright resuelve el driver desde el output
-# compilado del proyecto (bin/Release/.../.playwright/node), no del paquete restaurado.
-# Lo copiamos a runtime después para no arrastrar el SDK a la imagen final.
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PATH="$PATH:/root/.dotnet/tools"
-RUN dotnet tool install --global Microsoft.Playwright.CLI \
-    && playwright install chromium
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 ARG PROJECT
