@@ -115,7 +115,7 @@ public class SocialContentWorker : BackgroundService
         {
             post.Status = SocialPostStatus.GeneratingAsset;
             await db.SaveChangesAsync(ct);
-            var asset = await assetGen.GenerateAsync(gen.Prompt, gen.AssetKind, ct);
+            var asset = await assetGen.GenerateForPostAsync(profile, post, ct);
             if (asset != null) { post.AssetUrl = asset.Url; post.ThumbnailUrl = asset.ThumbnailUrl; }
         }
 

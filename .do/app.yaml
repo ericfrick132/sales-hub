@@ -51,6 +51,21 @@ services:
       - key: Seed__AdminPassword
         scope: RUN_TIME
         type: SECRET
+      - key: ImageGen__Provider
+        scope: RUN_TIME
+        value: openai
+      - key: ImageGen__Model
+        scope: RUN_TIME
+        value: gpt-image-1.5
+      - key: ImageGen__Size
+        scope: RUN_TIME
+        value: 1024x1024
+      - key: ImageGen__PublicBaseUrl
+        scope: RUN_TIME
+        value: https://api.sales.efcloud.tech
+      - key: ImageGen__ApiKey
+        scope: RUN_TIME
+        type: SECRET
 
 workers:
   - name: workers
@@ -86,6 +101,21 @@ workers:
       - key: TZ
         scope: RUN_TIME
         value: America/Argentina/Buenos_Aires
+      - key: ImageGen__Provider
+        scope: RUN_TIME
+        value: openai
+      - key: ImageGen__Model
+        scope: RUN_TIME
+        value: gpt-image-1.5
+      - key: ImageGen__Size
+        scope: RUN_TIME
+        value: 1024x1024
+      - key: ImageGen__PublicBaseUrl
+        scope: RUN_TIME
+        value: https://api.sales.efcloud.tech
+      - key: ImageGen__ApiKey
+        scope: RUN_TIME
+        type: SECRET
 
 static_sites:
   - name: frontend

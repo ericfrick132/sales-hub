@@ -32,6 +32,7 @@ public static class DependencyInjection
         // Módulo Posteos
         services.Configure<BufferOptions>(config.GetSection("Buffer"));
         services.Configure<HiggsfieldOptions>(config.GetSection("Higgsfield"));
+        services.Configure<ImageGenOptions>(config.GetSection("ImageGen"));
 
         // Módulo SEO/GEO
         services.Configure<SeoOptions>(config.GetSection("Seo"));
@@ -51,6 +52,8 @@ public static class DependencyInjection
         services.AddHttpClient<BufferClient>();
         services.AddScoped<ISocialPublisher>(sp => sp.GetRequiredService<BufferClient>());
         services.AddScoped<SocialContentGenerator>();
+        services.AddHttpClient<AiImageGenerator>();
+        services.AddScoped<ISocialAssetGenerator>(sp => sp.GetRequiredService<AiImageGenerator>());
         services.AddHttpClient<GoogleAutocompleteClient>();
         services.AddHttpClient<GitHubContentClient>();
         services.AddHttpClient<GooglePlacesSource>();

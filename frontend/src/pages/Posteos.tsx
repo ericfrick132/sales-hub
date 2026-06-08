@@ -30,6 +30,8 @@ function colorOf(json: string, key: string, def: string) {
 export default function Posteos() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
+  const [preview, setPreview] = useState<SocialPost | null>(null);
+  const [busyAsset, setBusyAsset] = useState<string | null>(null);
 
   const profilesQ = useQuery({
     queryKey: ['posteos-profiles'],
@@ -93,13 +95,32 @@ export default function Posteos() {
     } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló', { id: t }); }
   }
 
+  // Genera la imagen con IA (la guarda en la DB y deja el assetUrl listo). Devuelve el post actualizado.
+  async function generateAsset(p: SocialPost): Promise<SocialPost | null> {
+    setBusyAsset(p.id);
+    const t = toast.loading('Generando imagen con IA…');
+    try {
+      const { data } = await api.post<SocialPost>(`/posteos/${p.id}/generate-asset`);
+      toast.success('Imagen generada', { id: t });
+      qc.invalidateQueries({ queryKey: ['posteos-posts', productKey] });
+      return data;
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló', { id: t }); return null; }
+    finally { setBusyAsset(null); }
+  }
+
+  // Genera y abre el modal de preview (cumple "previa preview" antes de subir).
+  async function generateAndPreview(p: SocialPost) {
+    const updated = await generateAsset(p);
+    if (updated?.assetUrl) setPreview(updated);
+  }
+
   async function pushPost(p: SocialPost) {
-    const assetUrl = p.assetUrl || window.prompt('URL pública del asset (imagen/video) — ej. export de Canva:') || '';
-    if (!assetUrl) return;
+    if (!p.assetUrl) { toast.error('Generá la imagen primero'); return; }
     const t = toast.loading('Subiendo a Buffer (draft)…');
     try {
-      await api.post(`/posteos/${p.id}/push`, { assetUrl });
+      await api.post(`/posteos/${p.id}/push`, { assetUrl: p.assetUrl });
       toast.success('Subido a Buffer como draft', { id: t });
+      setPreview(null);
       qc.invalidateQueries({ queryKey: ['posteos-posts', productKey] });
     } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló', { id: t }); }
   }
@@ -202,8 +223,21 @@ export default function Posteos() {
                     <div className="text-slate-600 whitespace-pre-wrap mt-1">{p.caption}</div>
                     {p.hashtags?.length > 0 && <div className="text-[11px] text-sky-600 mt-1">{p.hashtags.map((h) => (h.startsWith('#') ? h : '#' + h)).join(' ')}</div>}
                     {p.error && <div className="text-[11px] text-red-600 mt-1">{p.error}</div>}
-                    <div className="flex gap-2 mt-2">
-                      <button className="btn-primary text-[11px]" onClick={() => pushPost(p)}>Subir a Buffer (draft)</button>
+                    {p.assetUrl && (
+                      <button type="button" onClick={() => setPreview(p)} className="mt-2 block" title="Ver imagen">
+                        <img src={p.assetUrl} alt="preview" className="w-28 h-28 object-cover rounded-lg border hover:opacity-90" />
+                      </button>
+                    )}
+                    <div className="flex gap-2 mt-2 flex-wrap items-center">
+                      {p.assetKind === 'Image' && (
+                        <button className="btn-secondary text-[11px]" disabled={busyAsset === p.id}
+                          onClick={() => generateAndPreview(p)}>
+                          {busyAsset === p.id ? 'Generando…' : p.assetUrl ? 'Regenerar imagen' : 'Generar imagen'}
+                        </button>
+                      )}
+                      <button className="btn-primary text-[11px] disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={!p.assetUrl} title={!p.assetUrl ? 'Generá la imagen primero' : ''}
+                        onClick={() => pushPost(p)}>Subir a Buffer (draft)</button>
                       <button className="btn-secondary text-[11px]" onClick={() => rejectPost(p.id)}>Rechazar</button>
                       <button className="text-[11px] text-red-600" onClick={() => deletePost(p.id)}>Borrar</button>
                     </div>
@@ -214,6 +248,43 @@ export default function Posteos() {
             </div>
           </>
         )}
+      </div>
+
+      {preview && (
+        <PreviewModal
+          post={preview}
+          busy={busyAsset === preview.id}
+          onClose={() => setPreview(null)}
+          onPush={() => pushPost(preview)}
+          onRegenerate={() => generateAndPreview(preview)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PreviewModal({ post, busy, onClose, onPush, onRegenerate }: {
+  post: SocialPost; busy: boolean; onClose: () => void; onPush: () => void; onRegenerate: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-md w-full p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-semibold">Vista previa</h3>
+          <button className="text-slate-400 hover:text-slate-600 text-xl leading-none" onClick={onClose}>×</button>
+        </div>
+        {post.assetUrl
+          ? <img src={post.assetUrl} alt="preview" className="w-full rounded-lg border" />
+          : <div className="text-sm text-slate-500 py-10 text-center">Sin imagen.</div>}
+        <div className="text-xs text-slate-600 mt-2 whitespace-pre-wrap">{post.caption}</div>
+        <div className="flex gap-2 mt-3">
+          <button className="btn-primary text-sm flex-1 disabled:opacity-40" disabled={!post.assetUrl || busy} onClick={onPush}>
+            Subir a Buffer (draft)
+          </button>
+          <button className="btn-secondary text-sm disabled:opacity-40" disabled={busy} onClick={onRegenerate}>
+            {busy ? 'Generando…' : 'Regenerar'}
+          </button>
+        </div>
       </div>
     </div>
   );

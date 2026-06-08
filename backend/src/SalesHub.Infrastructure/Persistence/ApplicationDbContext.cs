@@ -40,6 +40,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PostingProfile> PostingProfiles => Set<PostingProfile>();
     public DbSet<PostingChannel> PostingChannels => Set<PostingChannel>();
     public DbSet<SocialPost> SocialPosts => Set<SocialPost>();
+    public DbSet<SocialPostAsset> SocialPostAssets => Set<SocialPostAsset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

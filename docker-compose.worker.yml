@@ -35,6 +35,11 @@ services:
       # Seed (no necesario para workers remotos, pero lo pide el Program.cs)
       - Seed__AdminEmail=
       - Seed__AdminPassword=
+      # Posteos: generador de imagen IA (solo si activás el auto-posteo)
+      - ImageGen__Provider=${IMAGEGEN_PROVIDER:-openai}
+      - ImageGen__Model=${IMAGEGEN_MODEL:-gpt-image-1.5}
+      - ImageGen__ApiKey=${IMAGEGEN_API_KEY:-}
+      - ImageGen__PublicBaseUrl=${IMAGEGEN_PUBLIC_BASE_URL:-https://api.sales.efcloud.tech}
       # Logging
       - Logging__LogLevel__Default=Information
       - Logging__LogLevel__Microsoft=Warning

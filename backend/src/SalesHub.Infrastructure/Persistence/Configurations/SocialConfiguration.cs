@@ -71,3 +71,15 @@ public class SocialPostConfiguration : IEntityTypeConfiguration<SocialPost>
         b.HasIndex(x => x.CreatedAt);
     }
 }
+
+public class SocialPostAssetConfiguration : IEntityTypeConfiguration<SocialPostAsset>
+{
+    public void Configure(EntityTypeBuilder<SocialPostAsset> b)
+    {
+        b.ToTable("social_post_assets");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.MimeType).HasMaxLength(128).IsRequired();
+        b.Property(x => x.Content).HasColumnType("bytea").IsRequired();
+        b.HasIndex(x => x.SocialPostId);
+    }
+}

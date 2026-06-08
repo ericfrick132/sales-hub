@@ -19,12 +19,13 @@ public class SocialPostsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly SocialContentGenerator _generator;
+    private readonly AiImageGenerator _imageGen;
     private readonly ISocialPublisher _publisher;
     private readonly ILogger<SocialPostsController> _log;
 
-    public SocialPostsController(ApplicationDbContext db, SocialContentGenerator generator, ISocialPublisher publisher, ILogger<SocialPostsController> log)
+    public SocialPostsController(ApplicationDbContext db, SocialContentGenerator generator, AiImageGenerator imageGen, ISocialPublisher publisher, ILogger<SocialPostsController> log)
     {
-        _db = db; _generator = generator; _publisher = publisher; _log = log;
+        _db = db; _generator = generator; _imageGen = imageGen; _publisher = publisher; _log = log;
     }
 
     // ── Perfiles de marca ──────────────────────────────────────────────────
@@ -177,7 +178,59 @@ public class SocialPostsController : ControllerBase
         return Ok(post);
     }
 
-    /// <summary>Empuja un posteo a Buffer como DRAFT. Acepta override de assetUrl/channelId (ej. URL de Canva a mano).</summary>
+    /// <summary>
+    /// Auto-genera la imagen del posteo con IA, la guarda en la DB y deja el AssetUrl
+    /// apuntando al endpoint público. El front lo previsualiza antes de subir a Buffer.
+    /// </summary>
+    [HttpPost("{id:guid}/generate-asset")]
+    public async Task<IActionResult> GenerateAsset(Guid id, CancellationToken ct)
+    {
+        var post = await _db.SocialPosts.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (post == null) return NotFound();
+        if (post.AssetKind != SocialAssetKind.Image)
+            return BadRequest(new { error = "Por ahora solo se generan imágenes (el video sigue siendo manual)." });
+        if (!_imageGen.IsConfigured)
+            return BadRequest(new { error = "El generador de imagen no está configurado (falta ImageGen:ApiKey)." });
+        var profile = await _db.PostingProfiles.FirstOrDefaultAsync(p => p.ProductKey == post.ProductKey, ct);
+        if (profile == null) return NotFound(new { error = "Falta el PostingProfile de la app." });
+
+        post.Status = SocialPostStatus.GeneratingAsset;
+        post.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        var asset = await _imageGen.GenerateForPostAsync(profile, post, ct);
+        if (asset == null)
+        {
+            post.Status = SocialPostStatus.Error;
+            post.Error = "No se pudo generar la imagen (revisá la API key / logs del proveedor).";
+            post.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return StatusCode(502, new { error = post.Error });
+        }
+
+        post.AssetUrl = asset.Url;
+        post.ThumbnailUrl = asset.ThumbnailUrl;
+        post.Status = SocialPostStatus.DraftReady;
+        post.Error = null;
+        post.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(post);
+    }
+
+    /// <summary>
+    /// Sirve un asset generado desde la DB. Público (lo descarga Buffer y lo muestra el
+    /// preview del front), por eso AllowAnonymous a diferencia del resto del controller.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("assets/{id:guid}.png")]
+    public async Task<IActionResult> GetAsset(Guid id, CancellationToken ct)
+    {
+        var asset = await _db.SocialPostAssets.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
+        if (asset == null || asset.Content.Length == 0) return NotFound();
+        return File(asset.Content, string.IsNullOrWhiteSpace(asset.MimeType) ? "image/png" : asset.MimeType);
+    }
+
+    /// <summary>Empuja un posteo a Buffer como DRAFT. Acepta override de assetUrl/channelId.</summary>
     [HttpPost("{id:guid}/push")]
     public async Task<IActionResult> Push(Guid id, [FromBody] PushRequest? req, CancellationToken ct)
     {

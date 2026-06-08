@@ -1,0 +1,156 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using SalesHub.Core.Abstractions;
+using SalesHub.Core.Domain.Entities.Social;
+using SalesHub.Infrastructure.Options;
+using SalesHub.Infrastructure.Persistence;
+
+namespace SalesHub.Infrastructure.Services.Social;
+
+/// <summary>
+/// Genera la imagen del posteo con un modelo de IA texto→imagen (GPT Image por
+/// default, Grok como alternativa — ambos OpenAI-compatibles). Guarda el PNG en
+/// la DB (SocialPostAsset) y devuelve la URL pública /api/posteos/assets/{id}.png
+/// que consume Buffer. Proveedor swappable por ImageGen__Provider.
+/// </summary>
+public class AiImageGenerator : ISocialAssetGenerator
+{
+    private readonly HttpClient _http;
+    private readonly ImageGenOptions _opts;
+    private readonly ApplicationDbContext _db;
+    private readonly ILogger<AiImageGenerator> _log;
+
+    public AiImageGenerator(HttpClient http, IOptions<ImageGenOptions> opts, ApplicationDbContext db, ILogger<AiImageGenerator> log)
+    {
+        _http = http;
+        _opts = opts.Value;
+        _db = db;
+        _log = log;
+        _http.BaseAddress = new Uri(_opts.ResolveBaseUrl().TrimEnd('/') + "/");
+        _http.Timeout = TimeSpan.FromSeconds(_opts.TimeoutSeconds);
+        if (!string.IsNullOrWhiteSpace(_opts.ApiKey))
+            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _opts.ApiKey);
+    }
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(_opts.ApiKey);
+
+    public bool CanHandle(string assetKind) =>
+        string.Equals(assetKind?.Trim(), "image", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Camino genérico de la interfaz (worker viejo / fallback): usa el prompt tal cual.</summary>
+    public async Task<AssetResult?> GenerateAsync(string prompt, string assetKind, CancellationToken ct = default)
+    {
+        if (!CanHandle(assetKind)) return null;
+        var bytes = await GenerateBytesAsync(prompt, ct);
+        if (bytes == null) return null;
+        return await PersistAsync(bytes, null, ct);
+    }
+
+    /// <summary>
+    /// Camino rico (controller + worker): arma un prompt de marca a partir del
+    /// concepto/visual de Claude + la paleta/voz del perfil, y liga el asset al posteo.
+    /// </summary>
+    public async Task<AssetResult?> GenerateForPostAsync(PostingProfile profile, SocialPost post, CancellationToken ct = default)
+    {
+        if (post.AssetKind != SocialAssetKind.Image) return null;
+        var prompt = BuildBrandPrompt(profile, post);
+        var bytes = await GenerateBytesAsync(prompt, ct);
+        if (bytes == null) return null;
+        return await PersistAsync(bytes, post.Id, ct);
+    }
+
+    // ── Prompt de marca ────────────────────────────────────────────────────
+    private static string BuildBrandPrompt(PostingProfile profile, SocialPost post)
+    {
+        var sb = new StringBuilder();
+        // Base visual: el prompt cinematográfico en inglés que ya generó Claude.
+        sb.Append(string.IsNullOrWhiteSpace(post.Prompt) ? post.Concept : post.Prompt);
+        sb.Append($". Social media {post.Format.ToString().ToLowerInvariant()} for {post.Platform}, square 1:1 composition, clean and modern.");
+        if (!string.IsNullOrWhiteSpace(profile.BrandColorsJson) && profile.BrandColorsJson.Trim() != "{}")
+            sb.Append($" Use this brand color palette (exact hex): {profile.BrandColorsJson}.");
+        if (!string.IsNullOrWhiteSpace(profile.BrandFonts))
+            sb.Append($" Typography style: {profile.BrandFonts}.");
+        var headline = Headline(post.Concept);
+        if (!string.IsNullOrWhiteSpace(headline))
+            sb.Append($" Render the headline text \"{headline}\" prominently, perfectly spelled, legible and well integrated into the layout.");
+        sb.Append(" Professional marketing quality, on-brand, no watermark, no logos of other companies.");
+        return sb.ToString();
+    }
+
+    /// <summary>Titular corto, 1 línea, para overlay en la imagen.</summary>
+    private static string Headline(string concept)
+    {
+        if (string.IsNullOrWhiteSpace(concept)) return string.Empty;
+        var line = concept.Replace("\r", " ").Replace("\n", " ").Trim();
+        const int max = 70;
+        return line.Length <= max ? line : line[..max].TrimEnd() + "…";
+    }
+
+    // ── Llamada al proveedor ───────────────────────────────────────────────
+    private async Task<byte[]?> GenerateBytesAsync(string prompt, CancellationToken ct)
+    {
+        if (!IsConfigured) { _log.LogWarning("ImageGen ApiKey no configurada — no se genera imagen"); return null; }
+
+        var provider = _opts.Provider.Trim().ToLowerInvariant();
+        object body = provider switch
+        {
+            // Grok (xAI): OpenAI-compatible pero sin size/quality; pedimos b64.
+            "grok" => new { model = _opts.Model, prompt, n = 1, response_format = "b64_json" },
+            // OpenAI GPT Image: acepta size + quality; devuelve b64_json siempre.
+            _ => new { model = _opts.Model, prompt, size = _opts.Size, quality = _opts.Quality, n = 1 },
+        };
+
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("v1/images/generations", body, ct);
+            var raw = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _log.LogWarning("ImageGen {Provider} falló: {Status} {Body}", provider, resp.StatusCode,
+                    raw[..Math.Min(raw.Length, 500)]);
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(raw);
+            if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array || data.GetArrayLength() == 0)
+            {
+                _log.LogWarning("ImageGen {Provider}: respuesta sin data", provider);
+                return null;
+            }
+            var first = data[0];
+            if (first.TryGetProperty("b64_json", out var b64) && b64.ValueKind == JsonValueKind.String)
+                return Convert.FromBase64String(b64.GetString()!);
+            if (first.TryGetProperty("url", out var url) && url.ValueKind == JsonValueKind.String)
+                return await _http.GetByteArrayAsync(url.GetString()!, ct);
+
+            _log.LogWarning("ImageGen {Provider}: data[0] sin b64_json ni url", provider);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "ImageGen {Provider} excepción", provider);
+            return null;
+        }
+    }
+
+    // ── Persistencia ───────────────────────────────────────────────────────
+    private async Task<AssetResult> PersistAsync(byte[] bytes, Guid? postId, CancellationToken ct)
+    {
+        var asset = new SocialPostAsset
+        {
+            Id = Guid.NewGuid(),
+            SocialPostId = postId,
+            MimeType = "image/png",
+            Content = bytes,
+            SizeBytes = bytes.LongLength,
+        };
+        _db.SocialPostAssets.Add(asset);
+        await _db.SaveChangesAsync(ct);
+        var publicUrl = $"{_opts.PublicBaseUrl.TrimEnd('/')}/api/posteos/assets/{asset.Id}.png";
+        return new AssetResult(publicUrl, publicUrl);
+    }
+}
