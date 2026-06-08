@@ -19,11 +19,13 @@ public class SeoController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly SeoContentService _seo;
+    private readonly BlogPublisher _publisher;
 
-    public SeoController(ApplicationDbContext db, SeoContentService seo)
+    public SeoController(ApplicationDbContext db, SeoContentService seo, BlogPublisher publisher)
     {
         _db = db;
         _seo = seo;
+        _publisher = publisher;
     }
 
     // ---------------------------------------------------------------- SITES
@@ -31,13 +33,15 @@ public class SeoController : ControllerBase
     public record SiteSummary(
         Guid Id, string? ProductKey, string Name, string Domain, string Language,
         string Sector, string Audience, string ProductSummary, string BrandVoice,
-        List<string> TargetCountries, string BlogBaseUrl, bool AutoPublish, int WeeklyTarget,
-        bool IsActive, int KeywordCount, int ArticleCount, int NeedsReviewCount);
+        List<string> TargetCountries, string BlogBaseUrl, bool AutoPublish, int PublishCadenceHours, int PostsPerRun,
+        string RepoFullName, string RepoBranch, string RepoPublicDir,
+        bool IsActive, int KeywordCount, int ArticleCount, int PublishedCount);
 
     public record UpsertSite(
         string? ProductKey, string Name, string? Domain, string? Language, string? Sector,
         string? Audience, string? ProductSummary, string? BrandVoice, List<string>? TargetCountries,
-        string? BlogBaseUrl, bool? AutoPublish, int? WeeklyTarget);
+        string? BlogBaseUrl, bool? AutoPublish, int? PublishCadenceHours, int? PostsPerRun,
+        string? RepoFullName, string? RepoBranch, string? RepoPublicDir);
 
     [HttpGet("sites")]
     public async Task<IActionResult> ListSites(CancellationToken ct)
@@ -48,13 +52,14 @@ public class SeoController : ControllerBase
             .GroupBy(k => k.SiteId).Select(g => new { g.Key, C = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.C, ct);
         var artCounts = await _db.SeoArticles.Where(a => ids.Contains(a.SiteId))
             .GroupBy(a => a.SiteId).Select(g => new { g.Key, C = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.C, ct);
-        var reviewCounts = await _db.SeoArticles.Where(a => ids.Contains(a.SiteId) && a.Status == SeoArticleStatus.NeedsReview)
+        var pubCounts = await _db.SeoArticles.Where(a => ids.Contains(a.SiteId) && a.Status == SeoArticleStatus.Published)
             .GroupBy(a => a.SiteId).Select(g => new { g.Key, C = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.C, ct);
 
         var result = sites.Select(s => new SiteSummary(
             s.Id, s.ProductKey, s.Name, s.Domain, s.Language, s.Sector, s.Audience, s.ProductSummary,
-            s.BrandVoice, s.TargetCountries, s.BlogBaseUrl, s.AutoPublish, s.WeeklyTarget, s.IsActive,
-            kwCounts.GetValueOrDefault(s.Id), artCounts.GetValueOrDefault(s.Id), reviewCounts.GetValueOrDefault(s.Id)));
+            s.BrandVoice, s.TargetCountries, s.BlogBaseUrl, s.AutoPublish, s.PublishCadenceHours, s.PostsPerRun,
+            s.RepoFullName, s.RepoBranch, s.RepoPublicDir, s.IsActive,
+            kwCounts.GetValueOrDefault(s.Id), artCounts.GetValueOrDefault(s.Id), pubCounts.GetValueOrDefault(s.Id)));
         return Ok(result);
     }
 
@@ -78,7 +83,11 @@ public class SeoController : ControllerBase
             TargetCountries = req.TargetCountries ?? new(),
             BlogBaseUrl = req.BlogBaseUrl?.Trim() ?? "",
             AutoPublish = req.AutoPublish ?? false,
-            WeeklyTarget = req.WeeklyTarget ?? 3
+            PublishCadenceHours = req.PublishCadenceHours ?? 0,
+            PostsPerRun = req.PostsPerRun ?? 1,
+            RepoFullName = req.RepoFullName?.Trim() ?? "",
+            RepoBranch = string.IsNullOrWhiteSpace(req.RepoBranch) ? "main" : req.RepoBranch!.Trim(),
+            RepoPublicDir = string.IsNullOrWhiteSpace(req.RepoPublicDir) ? "src/frontend/public" : req.RepoPublicDir!.Trim()
         };
         _db.SeoSites.Add(site);
         await _db.SaveChangesAsync(ct);
@@ -103,7 +112,11 @@ public class SeoController : ControllerBase
         if (req.TargetCountries is not null) site.TargetCountries = req.TargetCountries;
         site.BlogBaseUrl = req.BlogBaseUrl?.Trim() ?? site.BlogBaseUrl;
         if (req.AutoPublish is not null) site.AutoPublish = req.AutoPublish.Value;
-        if (req.WeeklyTarget is not null) site.WeeklyTarget = req.WeeklyTarget.Value;
+        if (req.PublishCadenceHours is not null) site.PublishCadenceHours = req.PublishCadenceHours.Value;
+        if (req.PostsPerRun is not null) site.PostsPerRun = req.PostsPerRun.Value;
+        if (req.RepoFullName is not null) site.RepoFullName = req.RepoFullName.Trim();
+        if (!string.IsNullOrWhiteSpace(req.RepoBranch)) site.RepoBranch = req.RepoBranch.Trim();
+        if (!string.IsNullOrWhiteSpace(req.RepoPublicDir)) site.RepoPublicDir = req.RepoPublicDir.Trim();
         site.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync(ct);
@@ -128,25 +141,31 @@ public class SeoController : ControllerBase
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
 
-        var defaults = new (string Key, string Name, string Sector, string Audience, string Summary)[]
+        var defaults = new (string Key, string Name, string Sector, string Audience, string Summary, string Domain, string Repo, string Branch)[]
         {
             ("gymhero", "GymHero", "software de gestión para gimnasios y estudios fitness",
                 "dueños de gimnasios, boxes de crossfit y entrenadores que gestionan socios, cobros y rutinas",
-                "App para gestionar socios, cobros, accesos y rutinas de un gimnasio desde el celular."),
+                "App para gestionar socios, cobros, accesos y rutinas de un gimnasio desde el celular.",
+                "gymhero.fitness", "ericfrick132/gymhero", "main"),
             ("turnospro", "TurnosPro", "software de turnos y reservas online",
                 "profesionales y comercios que manejan turnos: peluquerías, consultorios, estética, talleres",
-                "App de agenda y reservas online con recordatorios para reducir ausencias."),
+                "App de agenda y reservas online con recordatorios para reducir ausencias.",
+                "turnos-pro.com", "ericfrick132/beauty-salon", "master"),
             ("bunker", "Bunker", "",
-                "", ""),
+                "", "",
+                "bunker-app.com", "ericfrick132/conquerapp", "main"),
             ("unistock", "UniStock", "software de inventario y control de stock",
                 "comercios y pymes que necesitan controlar stock, compras y reportes",
-                "App de inventario multi-depósito con reportes y alertas de stock."),
+                "App de inventario multi-depósito con reportes y alertas de stock.",
+                "", "ericfrick132/UniStock---AR", "main"),
             ("archicloud", "ArchiCloud", "software de gestión de obras y construcción",
                 "estudios de arquitectura, constructoras y directores de obra",
-                "App para gestionar obras: avances, costos, documentación y equipos por obra."),
+                "App para gestionar obras: avances, costos, documentación y equipos por obra.",
+                "archicloud.tech", "ericfrick132/ConstructionManager", "main"),
             ("playcrew", "PlayCrew", "app de pádel para encontrar partidos y reservar canchas",
                 "jugadores de pádel que buscan partidos de su nivel y reservar canchas",
-                "App de pádel para armar partidos por nivel, reservar canchas y conocer jugadores."),
+                "App de pádel para armar partidos por nivel, reservar canchas y conocer jugadores.",
+                "playcrewpadel.com", "ericfrick132/PlayCrew", "main"),
         };
 
         var existing = await _db.SeoSites.Select(s => s.ProductKey).ToListAsync(ct);
@@ -161,14 +180,18 @@ public class SeoController : ControllerBase
                 Id = Guid.NewGuid(),
                 ProductKey = d.Key,
                 Name = d.Name,
-                Domain = "",
+                Domain = d.Domain,
                 Language = "es",
                 Sector = d.Sector,
                 Audience = d.Audience,
                 ProductSummary = d.Summary,
                 TargetCountries = new() { "Argentina", "Uruguay", "Colombia" },
-                AutoPublish = false,
-                WeeklyTarget = 3
+                AutoPublish = false,          // arranca pausado; el usuario fija la cadencia y lo prende
+                PublishCadenceHours = 0,
+                PostsPerRun = 1,
+                RepoFullName = d.Repo,
+                RepoBranch = d.Branch,
+                RepoPublicDir = "src/frontend/public"
             });
             created.Add(d.Name);
         }
@@ -261,13 +284,13 @@ public class SeoController : ControllerBase
     public record ArticleSummary(
         Guid Id, Guid SiteId, string TargetKeyword, string Title, string Slug,
         SeoContentType ContentType, SeoArticleStatus Status, int? SeoScore, int WordCount,
-        string GeneratedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? PublishedAt);
+        string GeneratedBy, string PublishedUrl, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? PublishedAt);
 
     public record ArticleFull(
         Guid Id, Guid SiteId, Guid? KeywordId, string TargetKeyword, string Title, string Slug,
         string MetaDescription, string BodyMarkdown, string FaqJson, string JsonLd,
         SeoContentType ContentType, SeoArticleStatus Status, int? SeoScore, string OptimizationNotes,
-        int WordCount, string GeneratedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? PublishedAt);
+        int WordCount, string GeneratedBy, string PublishedUrl, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? PublishedAt);
 
     [HttpGet("sites/{siteId:guid}/articles")]
     public async Task<IActionResult> ListArticles(Guid siteId, [FromQuery] string? status, CancellationToken ct)
@@ -277,7 +300,7 @@ public class SeoController : ControllerBase
         var arts = await q.OrderByDescending(a => a.UpdatedAt).ToListAsync(ct);
         return Ok(arts.Select(a => new ArticleSummary(
             a.Id, a.SiteId, a.TargetKeyword, a.Title, a.Slug, a.ContentType, a.Status, a.SeoScore,
-            a.WordCount, a.GeneratedBy, a.CreatedAt, a.UpdatedAt, a.PublishedAt)));
+            a.WordCount, a.GeneratedBy, a.PublishedUrl, a.CreatedAt, a.UpdatedAt, a.PublishedAt)));
     }
 
     [HttpGet("articles/{id:guid}")]
@@ -346,6 +369,19 @@ public class SeoController : ControllerBase
         return Ok(MapFull(a));
     }
 
+    /// <summary>Publica el artículo al repo del sitio (commit HTML → DO redeploya → live en /blog).</summary>
+    [HttpPost("articles/{id:guid}/publish")]
+    public async Task<IActionResult> Publish(Guid id, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        try
+        {
+            var a = await _publisher.PublishArticleAsync(id, ct);
+            return Ok(MapFull(a));
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpDelete("articles/{id:guid}")]
     public async Task<IActionResult> DeleteArticle(Guid id, CancellationToken ct)
     {
@@ -365,5 +401,5 @@ public class SeoController : ControllerBase
     private static ArticleFull MapFull(SeoArticle a) => new(
         a.Id, a.SiteId, a.KeywordId, a.TargetKeyword, a.Title, a.Slug, a.MetaDescription, a.BodyMarkdown,
         a.FaqJson, a.JsonLd, a.ContentType, a.Status, a.SeoScore, a.OptimizationNotes, a.WordCount,
-        a.GeneratedBy, a.CreatedAt, a.UpdatedAt, a.PublishedAt);
+        a.GeneratedBy, a.PublishedUrl, a.CreatedAt, a.UpdatedAt, a.PublishedAt);
 }

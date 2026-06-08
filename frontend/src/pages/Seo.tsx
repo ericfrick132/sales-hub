@@ -15,6 +15,15 @@ const CONTENT_TYPES: { value: SeoContentType; label: string }[] = [
   { value: 'Landing', label: 'Landing' }
 ];
 
+function cadenceLabel(hours: number): string {
+  if (!hours || hours <= 0) return 'pausado';
+  if (hours % 24 === 0) {
+    const d = hours / 24;
+    return d === 1 ? '1/día' : `cada ${d} días`;
+  }
+  return `cada ${hours} h`;
+}
+
 const ARTICLE_STATUS_LABEL: Record<SeoArticleStatus, string> = {
   Draft: 'Borrador',
   NeedsReview: 'Para revisar',
@@ -83,8 +92,8 @@ export default function Seo() {
         <div>
           <h1 className="text-2xl font-bold">SEO / Contenido</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Motor propio de SEO + GEO: investigá keywords reales, generá artículos optimizados con FAQ y JSON-LD,
-            revisá y exportá a tu CMS. Un sitio por app.
+            Motor propio de SEO + GEO autónomo: investiga keywords reales, genera artículos optimizados con FAQ
+            y JSON-LD, y los publica solo en /blog de cada app según la cadencia que configurás. Un sitio por app.
           </p>
         </div>
         <div className="flex gap-2">
@@ -117,14 +126,14 @@ export default function Seo() {
               } ${!s.isActive ? 'opacity-50' : ''}`}>
               <div className="flex items-center justify-between">
                 <div className="font-semibold">{s.name}</div>
-                {s.needsReviewCount > 0 && (
-                  <span className="badge bg-amber-500 text-white text-xs">{s.needsReviewCount} a revisar</span>
+                {s.autoPublish && s.publishCadenceHours > 0 && (
+                  <span className="badge bg-emerald-500 text-white text-xs">auto · {cadenceLabel(s.publishCadenceHours)}</span>
                 )}
               </div>
               <div className="text-xs text-slate-500 mt-0.5">{s.domain || 'sin dominio'}</div>
               <div className="text-xs text-slate-400 mt-1">
                 {s.keywordCount} keywords · {s.articleCount} artículos
-                {s.autoPublish && <span className="text-emerald-600"> · agente 24/7</span>}
+                {s.publishedCount > 0 && <span className="text-emerald-600"> · {s.publishedCount} publicados</span>}
               </div>
             </button>
           ))}
@@ -534,10 +543,13 @@ function ArticleModal({ articleId, siteId, onClose }: { articleId: string; siteI
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <ArticleStatusBadge status={a.status} />
               {a.seoScore != null && <span className="text-xs text-slate-500">SEO {a.seoScore}/100</span>}
               <span className="text-xs text-slate-400">{a.wordCount} palabras · {a.generatedBy}</span>
+              {a.publishedUrl && (
+                <a className="text-xs text-emerald-700 underline" href={a.publishedUrl} target="_blank" rel="noreferrer">ver publicado ↗</a>
+              )}
             </div>
             <div className="flex gap-1 flex-wrap">
               <button
@@ -634,7 +646,13 @@ function SiteForm({
   const [brandVoice, setBrandVoice] = useState(site?.brandVoice ?? '');
   const [countries, setCountries] = useState((site?.targetCountries ?? []).join(', '));
   const [autoPublish, setAutoPublish] = useState(site?.autoPublish ?? false);
-  const [weeklyTarget, setWeeklyTarget] = useState(site?.weeklyTarget ?? 3);
+  // Cadencia editable en días u horas; se guarda en horas.
+  const initialHours = site?.publishCadenceHours ?? 48;
+  const [cadenceUnit, setCadenceUnit] = useState<'dias' | 'horas'>(initialHours % 24 === 0 ? 'dias' : 'horas');
+  const [cadenceValue, setCadenceValue] = useState(initialHours % 24 === 0 ? Math.max(1, initialHours / 24) : initialHours);
+  const [postsPerRun, setPostsPerRun] = useState(site?.postsPerRun ?? 1);
+  const [repoFullName, setRepoFullName] = useState(site?.repoFullName ?? '');
+  const [repoBranch, setRepoBranch] = useState(site?.repoBranch ?? 'main');
 
   return (
     <Modal title={site ? `Editar ${site.name}` : 'Nuevo sitio'} onCancel={onCancel} wide>
@@ -651,15 +669,37 @@ function SiteForm({
         <Field label="Audiencia"><textarea className="input" rows={2} value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="dueños de gimnasios y entrenadores…" /></Field>
         <Field label="Resumen del producto"><textarea className="input" rows={2} value={productSummary} onChange={(e) => setProductSummary(e.target.value)} /></Field>
         <Field label="Voz de marca"><textarea className="input" rows={2} value={brandVoice} onChange={(e) => setBrandVoice(e.target.value)} placeholder="cercana, profesional, sin jerga…" /></Field>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-          <label className="flex items-center gap-2 text-sm">
+        <div className="card bg-slate-50 p-3 space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium">
             <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)} />
-            Agente 24/7 (genera borradores solo, siempre a revisión)
+            Publicación automática (genera y publica solo, sin revisión)
           </label>
-          <Field label="Objetivo de artículos / semana">
-            <input className="input" type="number" min={0} value={weeklyTarget} onChange={(e) => setWeeklyTarget(Number(e.target.value))} />
-          </Field>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 items-end">
+            <Field label="Publicar 1 artículo cada">
+              <input className="input" type="number" min={1} value={cadenceValue} onChange={(e) => setCadenceValue(Math.max(1, Number(e.target.value)))} />
+            </Field>
+            <Field label="Unidad">
+              <select className="input" value={cadenceUnit} onChange={(e) => setCadenceUnit(e.target.value as 'dias' | 'horas')}>
+                <option value="dias">días</option>
+                <option value="horas">horas</option>
+              </select>
+            </Field>
+            <Field label="Artículos por disparo">
+              <input className="input" type="number" min={1} value={postsPerRun} onChange={(e) => setPostsPerRun(Math.max(1, Number(e.target.value)))} />
+            </Field>
+          </div>
+          <p className="text-xs text-slate-500">
+            El agente arma el plan de keywords solo (si se queda sin, investiga más) y publica en {domain || 'tu dominio'}/blog
+            según esta cadencia. Si desactivás el toggle, queda pausado.
+          </p>
         </div>
+        <details className="text-xs">
+          <summary className="cursor-pointer text-slate-500">Avanzado: repo (solo si publicás por commit estático)</summary>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+            <Field label="Repo (owner/name)"><input className="input" value={repoFullName} onChange={(e) => setRepoFullName(e.target.value)} placeholder="ericfrick132/gymhero" /></Field>
+            <Field label="Branch"><input className="input" value={repoBranch} onChange={(e) => setRepoBranch(e.target.value)} placeholder="main" /></Field>
+          </div>
+        </details>
       </div>
       <div className="flex justify-end gap-2 mt-4">
         <button className="text-xs px-3 py-1 rounded border border-slate-300" onClick={onCancel}>Cancelar</button>
@@ -679,7 +719,10 @@ function SiteForm({
               brandVoice: brandVoice.trim(),
               targetCountries: countries.split(',').map((c) => c.trim()).filter(Boolean),
               autoPublish,
-              weeklyTarget
+              publishCadenceHours: cadenceUnit === 'dias' ? cadenceValue * 24 : cadenceValue,
+              postsPerRun,
+              repoFullName: repoFullName.trim(),
+              repoBranch: repoBranch.trim() || 'main'
             })
           }>
           {submitting ? 'Guardando…' : site ? 'Guardar' : 'Crear'}

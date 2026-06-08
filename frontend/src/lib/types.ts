@@ -22,11 +22,15 @@ export interface SeoSite {
   targetCountries: string[];
   blogBaseUrl: string;
   autoPublish: boolean;
-  weeklyTarget: number;
+  publishCadenceHours: number;
+  postsPerRun: number;
+  repoFullName: string;
+  repoBranch: string;
+  repoPublicDir: string;
   isActive: boolean;
   keywordCount: number;
   articleCount: number;
-  needsReviewCount: number;
+  publishedCount: number;
 }
 
 export interface SeoKeyword {
@@ -54,6 +58,7 @@ export interface SeoArticleSummary {
   seoScore?: number | null;
   wordCount: number;
   generatedBy: string;
+  publishedUrl: string;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string | null;

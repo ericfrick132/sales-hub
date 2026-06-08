@@ -31,6 +31,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<TrendsIngestWorker>();
     builder.Services.AddHostedService<ConversationAgentWorker>();
     builder.Services.AddHostedService<SeoContentWorker>();
+    builder.Services.AddHostedService<SeoDistributeWorker>();
 }
 
 builder.Services.AddControllers().AddJsonOptions(o =>

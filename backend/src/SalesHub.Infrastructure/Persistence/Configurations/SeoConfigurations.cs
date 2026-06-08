@@ -20,6 +20,9 @@ public class SeoSiteConfiguration : IEntityTypeConfiguration<SeoSite>
         b.Property(x => x.BrandVoice).HasColumnType("text");
         b.Property(x => x.TargetCountries).HasColumnType("text[]");
         b.Property(x => x.BlogBaseUrl).HasMaxLength(512);
+        b.Property(x => x.RepoFullName).HasMaxLength(256);
+        b.Property(x => x.RepoBranch).HasMaxLength(64);
+        b.Property(x => x.RepoPublicDir).HasMaxLength(256);
         b.HasIndex(x => x.ProductKey);
         b.HasIndex(x => x.Domain);
     }
@@ -58,6 +61,7 @@ public class SeoArticleConfiguration : IEntityTypeConfiguration<SeoArticle>
         b.Property(x => x.JsonLd).HasColumnType("text");
         b.Property(x => x.OptimizationNotes).HasColumnType("text");
         b.Property(x => x.GeneratedBy).HasMaxLength(64);
+        b.Property(x => x.PublishedUrl).HasMaxLength(1024);
         b.HasIndex(x => new { x.SiteId, x.Status });
         b.HasOne(x => x.Site)
             .WithMany(x => x.Articles)

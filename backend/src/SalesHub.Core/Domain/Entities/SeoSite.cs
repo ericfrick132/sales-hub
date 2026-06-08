@@ -35,11 +35,28 @@ public class SeoSite
     /// <summary>URL base del blog para construir slugs/links internos. Ej. "https://gymhero.app/blog".</summary>
     public string BlogBaseUrl { get; set; } = string.Empty;
 
-    /// <summary>Si el agente de fondo debe generar piezas automáticamente (siempre quedan en revisión, nunca se publican solas).</summary>
+    /// <summary>
+    /// Modo autónomo: si está activo, el agente genera Y publica artículos solo, sin
+    /// revisión humana, según <see cref="PublishCadenceHours"/>. El humano solo configura la cadencia.
+    /// </summary>
     public bool AutoPublish { get; set; } = false;
 
-    /// <summary>Cuántos artículos por semana debería producir el agente.</summary>
+    /// <summary>Cadencia de publicación en HORAS (ej. 24 = uno por día, 72 = cada 3 días). 0 = pausado.</summary>
+    public int PublishCadenceHours { get; set; } = 0;
+
+    /// <summary>(Legacy) Objetivo semanal del modo anterior. Se conserva; el modo autónomo usa la cadencia en horas.</summary>
     public int WeeklyTarget { get; set; } = 3;
+
+    /// <summary>Cuántos artículos genera+publica en cada disparo de la cadencia (normalmente 1).</summary>
+    public int PostsPerRun { get; set; } = 1;
+
+    // --- Publicación al repo de la app (distribuidor de blog) ---
+    /// <summary>Repo GitHub de la app, formato "owner/name" (ej. "ericfrick132/gymhero"). Vacío = no se publica.</summary>
+    public string RepoFullName { get; set; } = string.Empty;
+    /// <summary>Branch donde commitear (main/master).</summary>
+    public string RepoBranch { get; set; } = "main";
+    /// <summary>Carpeta servida estáticamente por el front; los artículos van a {dir}/blog/. Ej. "src/frontend/public".</summary>
+    public string RepoPublicDir { get; set; } = "src/frontend/public";
 
     public bool IsActive { get; set; } = true;
 

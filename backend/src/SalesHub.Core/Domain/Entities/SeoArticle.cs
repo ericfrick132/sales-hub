@@ -48,6 +48,9 @@ public class SeoArticle
     /// <summary>Modelo que lo generó. Ej. "claude-sonnet-4-6".</summary>
     public string GeneratedBy { get; set; } = string.Empty;
 
+    /// <summary>URL pública donde quedó publicado el artículo en el sitio de la app (tras distribuirlo al repo).</summary>
+    public string PublishedUrl { get; set; } = string.Empty;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? PublishedAt { get; set; }

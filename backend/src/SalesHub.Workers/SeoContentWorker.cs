@@ -6,10 +6,12 @@ using SalesHub.Infrastructure.Services;
 namespace SalesHub.Workers;
 
 /// <summary>
-/// El "agente 24/7" del motor de SEO/GEO. Por cada sitio con AutoPublish activo,
-/// chequea el backlog de la semana y genera borradores hasta llegar al objetivo
-/// semanal. NUNCA publica: todo queda en NeedsReview para que un humano lo apruebe.
-/// Se enciende con Seo:AutoStart=true (además de SALESHUB_RUN_WORKERS=true).
+/// Agente SEO/GEO AUTÓNOMO. Por cada sitio con AutoPublish activo y una cadencia
+/// configurada (PublishCadenceHours), cuando "le toca" genera Y publica un artículo
+/// solo —sin revisión humana— directo al repo de la app (queda live en /blog). El
+/// humano solo configura la cadencia (días/horas) y cuántos por disparo (PostsPerRun).
+/// Si el sitio se queda sin keywords, investiga más automáticamente.
+/// Se enciende con Seo:AutoStart=true (+ SALESHUB_RUN_WORKERS=true).
 /// </summary>
 public class SeoContentWorker : BackgroundService
 {
@@ -27,25 +29,21 @@ public class SeoContentWorker : BackgroundService
         var enabled = _config.GetValue<bool>("Seo:AutoStart", false);
         if (!enabled)
         {
-            _log.LogInformation("SeoContentWorker disabled (on-demand only). Set Seo:AutoStart=true to enable the 24/7 agent.");
+            _log.LogInformation("SeoContentWorker disabled (on-demand only). Set Seo:AutoStart=true to enable the autonomous agent.");
             return;
         }
 
-        var intervalMin = _config.GetValue<int?>("Seo:WorkerIntervalMinutes") ?? 360;
-        _log.LogInformation("SeoContentWorker started (interval {Min} min)", intervalMin);
+        // Cada cuánto DESPIERTA a chequear si algún sitio cumplió su cadencia. La cadencia
+        // real la define cada sitio en horas; este intervalo solo es la resolución del chequeo.
+        var intervalMin = _config.GetValue<int?>("Seo:WorkerIntervalMinutes") ?? 60;
+        _log.LogInformation("SeoContentWorker (autónomo) started, chequea cada {Min} min", intervalMin);
         await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            try
-            {
-                await RunTickAsync(stoppingToken);
-            }
+            try { await RunTickAsync(stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "SeoContentWorker tick failed");
-            }
+            catch (Exception ex) { _log.LogError(ex, "SeoContentWorker tick failed"); }
             await Task.Delay(TimeSpan.FromMinutes(intervalMin), stoppingToken);
         }
     }
@@ -56,56 +54,77 @@ public class SeoContentWorker : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var seo = scope.ServiceProvider.GetRequiredService<SeoContentService>();
 
-        if (!seo.IsConfigured)
-        {
-            _log.LogWarning("SeoContentWorker: Claude sin configurar, salteando tick");
-            return;
-        }
+        if (!seo.IsConfigured) { _log.LogWarning("SeoContentWorker: Claude sin configurar, salteo tick"); return; }
 
+        // Modo C: el blog se sirve en vivo desde el backend de cada app (sin commits),
+        // así que sólo hace falta dominio + ProductKey. No requiere repo ni GitHub.
         var sites = await db.SeoSites
-            .Where(s => s.IsActive && s.AutoPublish && s.WeeklyTarget > 0)
+            .Where(s => s.IsActive && s.AutoPublish && s.PublishCadenceHours > 0
+                     && s.Domain != "" && s.ProductKey != null)
             .ToListAsync(ct);
 
-        var weekAgo = DateTimeOffset.UtcNow.AddDays(-7);
-
+        var now = DateTimeOffset.UtcNow;
         foreach (var site in sites)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                var madeThisWeek = await db.SeoArticles
-                    .CountAsync(a => a.SiteId == site.Id && a.CreatedAt >= weekAgo, ct);
-                if (madeThisWeek >= site.WeeklyTarget) continue;
+                var lastPub = await db.SeoArticles
+                    .Where(a => a.SiteId == site.Id && a.PublishedAt != null)
+                    .MaxAsync(a => (DateTimeOffset?)a.PublishedAt, ct);
 
-                // Mejor keyword disponible: primero las planificadas, luego ideas, por prioridad.
-                var kw = await db.SeoKeywords
-                    .Where(k => k.SiteId == site.Id && (k.Status == SeoKeywordStatus.Planned || k.Status == SeoKeywordStatus.Idea))
-                    .OrderBy(k => k.Status == SeoKeywordStatus.Planned ? 0 : 1)
-                    .ThenByDescending(k => k.Priority)
-                    .FirstOrDefaultAsync(ct);
+                var due = lastPub is null || (now - lastPub.Value).TotalHours >= site.PublishCadenceHours;
+                if (!due) continue;
 
-                if (kw is null)
+                var perRun = Math.Max(1, site.PostsPerRun);
+                for (var i = 0; i < perRun; i++)
                 {
-                    _log.LogInformation("SeoContentWorker: {Site} sin keywords disponibles para generar", site.Name);
-                    continue;
+                    var kw = await NextKeywordAsync(db, seo, site.Id, site.Sector, ct);
+                    if (kw is null) { _log.LogInformation("SeoContentWorker: {Site} sin keywords disponibles", site.Name); break; }
+
+                    var type = kw.Intent == SeoIntent.Commercial ? SeoContentType.Comparison
+                             : kw.Intent == SeoIntent.Transactional ? SeoContentType.Landing
+                             : SeoContentType.Article;
+
+                    // Genera y publica directo (sin revisión humana, sin commit): queda live
+                    // vía el endpoint público + el backend de cada app.
+                    var article = await seo.GenerateArticleAsync(site.Id, kw.Term, type, kw.Id, SeoArticleStatus.Published, ct);
+                    if (article is null) { _log.LogWarning("SeoContentWorker: generación nula para {Site}", site.Name); break; }
+
+                    article.PublishedAt ??= DateTimeOffset.UtcNow;
+                    article.PublishedUrl = BlogPublisher.ArticleUrl(site, article.Slug);
+                    await db.SaveChangesAsync(ct);
+                    _log.LogInformation("SeoContentWorker: AUTO-publicado '{Title}' → {Url}", article.Title, article.PublishedUrl);
+
+                    await Task.Delay(TimeSpan.FromSeconds(8), ct);
                 }
 
-                var type = kw.Intent == SeoIntent.Commercial ? SeoContentType.Comparison
-                         : kw.Intent == SeoIntent.Transactional ? SeoContentType.Landing
-                         : SeoContentType.Article;
-
-                var article = await seo.GenerateArticleAsync(site.Id, kw.Term, type, kw.Id, SeoArticleStatus.NeedsReview, ct);
-                if (article is not null)
-                    _log.LogInformation("SeoContentWorker: generado '{Title}' para {Site} ({Done}/{Target} esta semana)",
-                        article.Title, site.Name, madeThisWeek + 1, site.WeeklyTarget);
-
-                // Espaciar llamadas entre sitios para no golpear la API de golpe.
-                await Task.Delay(TimeSpan.FromSeconds(10), ct);
+                await Task.Delay(TimeSpan.FromSeconds(8), ct); // espaciar entre sitios
             }
             catch (Exception ex)
             {
-                _log.LogWarning(ex, "SeoContentWorker: falló generar para {Site}", site.Name);
+                _log.LogWarning(ex, "SeoContentWorker: falló ciclo de {Site}", site.Name);
             }
         }
     }
+
+    /// <summary>Próxima keyword a usar (Planned primero, luego Idea, por prioridad). Si no hay, investiga más.</summary>
+    private static async Task<Core.Domain.Entities.SeoKeyword?> NextKeywordAsync(
+        ApplicationDbContext db, SeoContentService seo, Guid siteId, string seed, CancellationToken ct)
+    {
+        var kw = await PickAsync(db, siteId, ct);
+        if (kw is not null) return kw;
+
+        // Refill automático: investigar más keywords y reintentar.
+        try { await seo.ResearchKeywordsAsync(siteId, seed ?? "", ct); }
+        catch { /* si falla la investigación, devolvemos null abajo */ }
+        return await PickAsync(db, siteId, ct);
+    }
+
+    private static Task<Core.Domain.Entities.SeoKeyword?> PickAsync(ApplicationDbContext db, Guid siteId, CancellationToken ct)
+        => db.SeoKeywords
+            .Where(k => k.SiteId == siteId && (k.Status == SeoKeywordStatus.Planned || k.Status == SeoKeywordStatus.Idea))
+            .OrderBy(k => k.Status == SeoKeywordStatus.Planned ? 0 : 1)
+            .ThenByDescending(k => k.Priority)
+            .FirstOrDefaultAsync(ct);
 }

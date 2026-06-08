@@ -35,6 +35,7 @@ public static class DependencyInjection
 
         // Módulo SEO/GEO
         services.Configure<SeoOptions>(config.GetSection("Seo"));
+        services.Configure<GitHubOptions>(config.GetSection("GitHub"));
 
         services.AddDbContext<ApplicationDbContext>(o =>
             o.UseNpgsql(config.GetConnectionString("Default")
@@ -51,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<ISocialPublisher>(sp => sp.GetRequiredService<BufferClient>());
         services.AddScoped<SocialContentGenerator>();
         services.AddHttpClient<GoogleAutocompleteClient>();
+        services.AddHttpClient<GitHubContentClient>();
         services.AddHttpClient<GooglePlacesSource>();
         services.AddHttpClient<GooglePlacesEnricher>();
         services.AddScoped<IGooglePlacesEnricher>(sp => sp.GetRequiredService<GooglePlacesEnricher>());
@@ -86,6 +88,7 @@ public static class DependencyInjection
         services.AddScoped<AiSuggestionService>();
         services.AddScoped<ConversationAgentService>();
         services.AddScoped<SeoContentService>();
+        services.AddScoped<BlogPublisher>();
 
         // Instagram services
         services.AddSingleton<InstagramEncryptionService>();
