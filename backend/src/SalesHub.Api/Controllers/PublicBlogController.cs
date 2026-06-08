@@ -32,7 +32,6 @@ public class PublicBlogController : ControllerBase
             .ToListAsync(ct);
 
     [HttpGet("{siteKey}")]
-    [HttpGet("{siteKey}/")]
     public async Task<IActionResult> Index(string siteKey, CancellationToken ct)
     {
         var site = await SiteAsync(siteKey, ct);
@@ -51,7 +50,6 @@ public class PublicBlogController : ControllerBase
     }
 
     [HttpGet("{siteKey}/{slug}")]
-    [HttpGet("{siteKey}/{slug}/")]
     public async Task<IActionResult> Article(string siteKey, string slug, CancellationToken ct)
     {
         var site = await SiteAsync(siteKey, ct);
