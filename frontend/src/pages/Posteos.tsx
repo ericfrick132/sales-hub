@@ -58,6 +58,14 @@ export default function Posteos() {
     retry: false,
   });
 
+  async function saveProfile(pk: string, body: Partial<PostingProfile>) {
+    try {
+      await api.put(`/posteos/profiles/${pk}`, body);
+      toast.success('Frecuencia guardada');
+      qc.invalidateQueries({ queryKey: ['posteos-profiles'] });
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló'); }
+  }
+
   async function saveChannel(c: PostingChannel) {
     try {
       await api.put(`/posteos/posting-channels/${c.id}`, {
@@ -160,6 +168,9 @@ export default function Posteos() {
               )}
             </div>
 
+            {/* Frecuencia / horarios */}
+            <CadenceEditor profile={profile} onSave={(b) => saveProfile(profile.productKey, b)} />
+
             {/* Redes */}
             <div className="card p-4">
               <div className="flex items-center justify-between mb-3">
@@ -204,6 +215,38 @@ export default function Posteos() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function CadenceEditor({ profile, onSave }: { profile: PostingProfile; onSave: (b: Partial<PostingProfile>) => void }) {
+  const [enabled, setEnabled] = useState(profile.enabled);
+  const [hours, setHours] = useState((profile.postHours ?? []).join(', '));
+  const [perDay, setPerDay] = useState(profile.postsPerDay ?? 1);
+
+  function save() {
+    const postHours = hours.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n) && n >= 0 && n <= 23);
+    onSave({ enabled, postHours, postsPerDay: Math.max(1, Number(perDay) || 1) });
+  }
+  return (
+    <div className="card p-4">
+      <h3 className="font-semibold mb-1">Frecuencia / horarios</h3>
+      <p className="text-xs text-slate-500 mb-3">Cada cuánto postea esta app. El worker revisa cada hora: en cada horario de la lista genera <b>{perDay || 1}</b> posteo(s) por red activa.</p>
+      <div className="flex items-end gap-3 flex-wrap">
+        <label className="flex items-center gap-1 text-sm">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Posteo automático activo
+        </label>
+        <div>
+          <div className="text-xs text-slate-500 mb-0.5">Horarios (0-23, coma)</div>
+          <input className="input w-40" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="10, 18" />
+        </div>
+        <div>
+          <div className="text-xs text-slate-500 mb-0.5">Posteos por horario</div>
+          <input className="input w-24" type="number" min={1} value={perDay} onChange={(e) => setPerDay(Number(e.target.value))} />
+        </div>
+        <button className="btn-primary text-sm" onClick={save}>Guardar</button>
+      </div>
+      {!enabled && <div className="text-[11px] text-amber-600 mt-2">Está pausado: no postea solo. Igual podés "Generar ahora" a mano por red.</div>}
     </div>
   );
 }
