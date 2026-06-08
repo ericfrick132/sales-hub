@@ -2,6 +2,72 @@ export type LeadStatus =
   | 'New' | 'Assigned' | 'Queued' | 'Sent' | 'Replied'
   | 'Interested' | 'DemoScheduled' | 'Closed' | 'Lost' | 'Blocked';
 
+// ---------------------------------------------------------------- SEO / GEO
+
+export type SeoIntent = 'Informational' | 'Commercial' | 'Transactional' | 'Navigational';
+export type SeoKeywordStatus = 'Idea' | 'Planned' | 'Used' | 'Ignored';
+export type SeoContentType = 'Article' | 'Guide' | 'Faq' | 'Comparison' | 'Landing';
+export type SeoArticleStatus = 'Draft' | 'NeedsReview' | 'Approved' | 'Published' | 'Archived';
+
+export interface SeoSite {
+  id: string;
+  productKey?: string | null;
+  name: string;
+  domain: string;
+  language: string;
+  sector: string;
+  audience: string;
+  productSummary: string;
+  brandVoice: string;
+  targetCountries: string[];
+  blogBaseUrl: string;
+  autoPublish: boolean;
+  weeklyTarget: number;
+  isActive: boolean;
+  keywordCount: number;
+  articleCount: number;
+  needsReviewCount: number;
+}
+
+export interface SeoKeyword {
+  id: string;
+  siteId: string;
+  term: string;
+  cluster: string;
+  intent: SeoIntent;
+  source: string;
+  volume?: number | null;
+  difficulty?: number | null;
+  priority: number;
+  status: SeoKeywordStatus;
+  createdAt: string;
+}
+
+export interface SeoArticleSummary {
+  id: string;
+  siteId: string;
+  targetKeyword: string;
+  title: string;
+  slug: string;
+  contentType: SeoContentType;
+  status: SeoArticleStatus;
+  seoScore?: number | null;
+  wordCount: number;
+  generatedBy: string;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string | null;
+}
+
+export interface SeoArticleFull extends SeoArticleSummary {
+  keywordId?: string | null;
+  metaDescription: string;
+  bodyMarkdown: string;
+  faqJson: string;
+  jsonLd: string;
+  optimizationNotes: string;
+}
+
 export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   GooglePlaces: 'Google Places',
   ApifyGoogleMaps: 'Maps',

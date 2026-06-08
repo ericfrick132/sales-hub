@@ -33,6 +33,9 @@ public static class DependencyInjection
         services.Configure<BufferOptions>(config.GetSection("Buffer"));
         services.Configure<HiggsfieldOptions>(config.GetSection("Higgsfield"));
 
+        // Módulo SEO/GEO
+        services.Configure<SeoOptions>(config.GetSection("Seo"));
+
         services.AddDbContext<ApplicationDbContext>(o =>
             o.UseNpgsql(config.GetConnectionString("Default")
                 ?? Environment.GetEnvironmentVariable("SALESHUB_DB_CONNECTION")
@@ -47,6 +50,7 @@ public static class DependencyInjection
         services.AddHttpClient<BufferClient>();
         services.AddScoped<ISocialPublisher>(sp => sp.GetRequiredService<BufferClient>());
         services.AddScoped<SocialContentGenerator>();
+        services.AddHttpClient<GoogleAutocompleteClient>();
         services.AddHttpClient<GooglePlacesSource>();
         services.AddHttpClient<GooglePlacesEnricher>();
         services.AddScoped<IGooglePlacesEnricher>(sp => sp.GetRequiredService<GooglePlacesEnricher>());
@@ -81,6 +85,7 @@ public static class DependencyInjection
         services.AddScoped<ConversationService>();
         services.AddScoped<AiSuggestionService>();
         services.AddScoped<ConversationAgentService>();
+        services.AddScoped<SeoContentService>();
 
         // Instagram services
         services.AddSingleton<InstagramEncryptionService>();

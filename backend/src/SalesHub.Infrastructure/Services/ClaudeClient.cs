@@ -40,7 +40,15 @@ public class ClaudeClient
     /// para abaratar llamadas repetidas. <paramref name="userMessage"/> es el
     /// turno variable (la conversación). Devuelve el texto generado o null.
     /// </summary>
-    public async Task<string?> CompleteAsync(string systemPrompt, string userMessage, CancellationToken ct = default)
+    public Task<string?> CompleteAsync(string systemPrompt, string userMessage, CancellationToken ct = default)
+        => CompleteAsync(systemPrompt, userMessage, _opts.MaxTokens, null, ct);
+
+    /// <summary>
+    /// Igual que la sobrecarga corta pero permite subir <paramref name="maxTokens"/>
+    /// (artículos largos) y elegir un <paramref name="model"/> distinto al default
+    /// (ej. Sonnet para contenido de calidad). Usado por el motor de SEO/GEO.
+    /// </summary>
+    public async Task<string?> CompleteAsync(string systemPrompt, string userMessage, int maxTokens, string? model, CancellationToken ct = default)
     {
         if (!IsConfigured)
         {
@@ -50,8 +58,8 @@ public class ClaudeClient
 
         var body = new
         {
-            model = _opts.Model,
-            max_tokens = _opts.MaxTokens,
+            model = string.IsNullOrWhiteSpace(model) ? _opts.Model : model,
+            max_tokens = maxTokens,
             system = new[]
             {
                 new

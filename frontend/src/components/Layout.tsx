@@ -58,6 +58,7 @@ export default function Layout() {
     { to: '/instagram/accounts', label: 'Cuentas IG' },
     { to: '/instagram/follow', label: 'Auto-follow IG' },
     { to: '/posteos', label: 'Posteos' },
+    { to: '/seo', label: 'SEO / Contenido' },
     { to: '/audio-analytics', label: 'Audios y estrategias' }
   ];
 

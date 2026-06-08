@@ -32,6 +32,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<InstagramStructureSnapshot> InstagramStructureSnapshots => Set<InstagramStructureSnapshot>();
     public DbSet<InstagramFollowCampaign> InstagramFollowCampaigns => Set<InstagramFollowCampaign>();
     public DbSet<InstagramFollowAction> InstagramFollowActions => Set<InstagramFollowAction>();
+    public DbSet<SeoSite> SeoSites => Set<SeoSite>();
+    public DbSet<SeoKeyword> SeoKeywords => Set<SeoKeyword>();
+    public DbSet<SeoArticle> SeoArticles => Set<SeoArticle>();
 
     // Módulo Posteos
     public DbSet<PostingProfile> PostingProfiles => Set<PostingProfile>();

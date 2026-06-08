@@ -23,6 +23,7 @@ import AudioAnalytics from './pages/AudioAnalytics';
 import InstagramFollow from './pages/InstagramFollow';
 import InstagramAccounts from './pages/InstagramAccounts';
 import Posteos from './pages/Posteos';
+import Seo from './pages/Seo';
 
 function SellerZonesRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -65,6 +66,7 @@ export default function App() {
             <Route path="/audio-analytics" element={<AudioAnalytics />} />
             <Route path="/instagram/accounts" element={<InstagramAccounts />} />
             <Route path="/instagram/follow" element={<InstagramFollow />} />
+            <Route path="/seo" element={<Seo />} />
             <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/competitors" element={<Competitors />} />
             <Route path="/trends" element={<Trends />} />
