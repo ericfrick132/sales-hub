@@ -11,11 +11,14 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // default '{}' para que las filas existentes (perfiles ya seedeados)
+            // no queden NULL en una columna NOT NULL.
             migrationBuilder.AddColumn<List<int>>(
                 name: "post_days",
                 table: "posting_profiles",
                 type: "integer[]",
-                nullable: false);
+                nullable: false,
+                defaultValueSql: "'{}'");
         }
 
         /// <inheritdoc />
