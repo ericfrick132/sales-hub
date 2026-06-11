@@ -1,4 +1,6 @@
+using System.Net.Http;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
 using SalesHub.Core.Domain.Entities;
@@ -70,9 +72,18 @@ public class InstagramClient : IAsyncDisposable
 
         // Proxy: prioridad al de la cuenta (geo-matcheado a su origen real,
         // ej. gymhero → residencial AR) y fallback al global de InstagramOptions.
-        var proxy = BuildProxy(account.ProxyUrl) ?? BuildProxy(_opts.ProxyUrl);
-        if (proxy is not null)
+        // Antes de usarlo, verificamos que la sesión LLEGUE a Instagram con cert
+        // válido; si el peer de salida la intercepta/bloquea (ej. un Kaspersky en la
+        // PC residencial que hace MITM), rotamos el token de sesión a otro peer limpio.
+        var rawProxy = !string.IsNullOrWhiteSpace(account.ProxyUrl) ? account.ProxyUrl : _opts.ProxyUrl;
+        if (!string.IsNullOrWhiteSpace(rawProxy))
         {
+            var proxy = await ResolveWorkingProxyAsync(rawProxy!, account.Username, ct);
+            if (proxy is null)
+                throw new InvalidOperationException(
+                    $"Ninguna sesión del proxy llegó a Instagram para {account.Username}. " +
+                    "No se intenta sin proxy para no exponer la cuenta desde la IP del server.");
+
             launchOpts.Proxy = proxy;
             _log.LogInformation("Instagram {User} sale por proxy {Server}", account.Username, proxy.Server);
         }
@@ -737,6 +748,95 @@ public class InstagramClient : IAsyncDisposable
 
         var otp = binary % 1_000_000;
         return otp.ToString("D6");
+    }
+
+    // Token de sesión rotable dentro del username del proxy (formato 2captcha:
+    // ...-session-XXXXX-...). Sirve para pedir otro peer de salida.
+    private static readonly Regex SessionTokenRegex =
+        new("session-[^-:@]+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private const int MaxProxySessionTries = 6;
+
+    /// <summary>
+    /// Devuelve un proxy cuya sesión llega a Instagram con certificado válido.
+    /// Verifica la sesión actual; si el peer la intercepta/bloquea (MITM, antivirus,
+    /// filtro), rota el token de sesión a otro peer y reintenta. Null si ninguna sirve.
+    /// </summary>
+    private async Task<Proxy?> ResolveWorkingProxyAsync(string rawProxy, string accountUser, CancellationToken ct)
+    {
+        var baseProxy = BuildProxy(rawProxy);
+        if (baseProxy is null) return null;
+
+        var canRotate = baseProxy.Username is not null && SessionTokenRegex.IsMatch(baseProxy.Username);
+
+        for (var attempt = 0; attempt < MaxProxySessionTries; attempt++)
+        {
+            // Intento 0: sesión tal cual. Siguientes: rotamos el token (si se puede).
+            Proxy candidate;
+            if (attempt == 0)
+            {
+                candidate = baseProxy;
+            }
+            else if (canRotate)
+            {
+                var token = "s" + Guid.NewGuid().ToString("N")[..8];
+                candidate = new Proxy
+                {
+                    Server = baseProxy.Server,
+                    Username = SessionTokenRegex.Replace(baseProxy.Username!, "session-" + token),
+                    Password = baseProxy.Password
+                };
+            }
+            else
+            {
+                break; // sin token de sesión no hay nada que rotar
+            }
+
+            if (await ProxyReachesInstagramAsync(candidate, ct))
+            {
+                if (attempt > 0)
+                    _log.LogInformation("Proxy de {User}: sesión rotada OK al intento {N}.", accountUser, attempt + 1);
+                return candidate;
+            }
+
+            _log.LogWarning("Proxy de {User}: la sesión no llegó a IG (intento {N}/{Max}), rotando peer...",
+                accountUser, attempt + 1, MaxProxySessionTries);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Verifica vía HTTP que el proxy llega a la página de login de Instagram con un
+    /// certificado VÁLIDO. Si el peer hace MITM (cert self-signed) o bloquea el dominio,
+    /// la validación TLS por defecto tira excepción y devolvemos false (no exponemos
+    /// credenciales por ese peer).
+    /// </summary>
+    private async Task<bool> ProxyReachesInstagramAsync(Proxy proxy, CancellationToken ct)
+    {
+        try
+        {
+            var webProxy = new System.Net.WebProxy(proxy.Server);
+            if (!string.IsNullOrEmpty(proxy.Username))
+                webProxy.Credentials = new System.Net.NetworkCredential(proxy.Username, proxy.Password);
+
+            using var handler = new HttpClientHandler { Proxy = webProxy, UseProxy = true };
+            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+
+            using var resp = await http.GetAsync(
+                "https://www.instagram.com/accounts/login/",
+                HttpCompletionOption.ResponseHeadersRead, ct);
+
+            return (int)resp.StatusCode is >= 200 and < 400;
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug("Verificación de proxy falló: {Err}", ex.Message);
+            return false;
+        }
     }
 
     /// <summary>
