@@ -12,6 +12,13 @@ public class InstagramAccount
     public string EncryptedPassword { get; set; } = string.Empty;
     public string? TwoFactorSecret { get; set; }
 
+    /// <summary>
+    /// Proxy por cuenta para que cada cuenta saliente coincida con su geo real
+    /// (ej. gymhero → residencial AR). Formato: scheme://user:pass@host:port
+    /// o host:port:user:pass. Si es null, cae al proxy global de InstagramOptions.
+    /// </summary>
+    public string? ProxyUrl { get; set; }
+
     /// <summary>Cookies de sesión serializadas como JSON para persistir el login.</summary>
     public string? SessionCookiesJson { get; set; }
 

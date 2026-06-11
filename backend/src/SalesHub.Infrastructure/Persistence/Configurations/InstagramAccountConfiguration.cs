@@ -14,6 +14,7 @@ public class InstagramAccountConfiguration : IEntityTypeConfiguration<InstagramA
         b.Property(x => x.Username).HasMaxLength(128).IsRequired();
         b.Property(x => x.EncryptedPassword).HasMaxLength(512).IsRequired();
         b.Property(x => x.TwoFactorSecret).HasMaxLength(64);
+        b.Property(x => x.ProxyUrl).HasMaxLength(500);
         b.Property(x => x.SessionCookiesJson).HasColumnType("text");
         b.Property(x => x.IsAwaitingTwoFactor).HasDefaultValue(false);
 

@@ -13,6 +13,7 @@ interface IgAccount {
   isLoggedIn: boolean;
   isActionBlocked: boolean;
   isAwaitingTwoFactor: boolean;
+  proxyUrl?: string | null;
   blockedUntil?: string | null;
   lastLoginAt?: string | null;
   lastUsedAt?: string | null;
@@ -62,7 +63,7 @@ export default function InstagramAccounts() {
   });
 
   const createMut = useMutation({
-    mutationFn: async (body: { sellerId: string; username: string; password: string; twoFactorSecret?: string }) =>
+    mutationFn: async (body: { sellerId: string; username: string; password: string; twoFactorSecret?: string; proxyUrl?: string }) =>
       (await api.post('/instagram-accounts', body)).data,
     onSuccess: () => {
       toast.success('Cuenta creada');
@@ -203,6 +204,13 @@ export default function InstagramAccounts() {
               <div className="flex gap-1 flex-wrap">
                 <Badge ok={a.isActive} okLabel="activa" badLabel="pausada" />
                 <Badge ok={a.isLoggedIn} okLabel="logueada" badLabel="no logueada" />
+                <span
+                  title={a.proxyUrl ? proxyHostHint(a.proxyUrl) : 'Sale por la IP del server (riesgo de 2FA/checkpoint)'}
+                  className={`text-[10px] px-2 py-0.5 rounded ${
+                    a.proxyUrl ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                  {a.proxyUrl ? 'proxy ✓' : 'sin proxy'}
+                </span>
                 {a.isActionBlocked && (
                   <span className="text-[10px] px-2 py-0.5 rounded bg-rose-100 text-rose-700">
                     blocked{a.blockedUntil ? ` hasta ${new Date(a.blockedUntil).toLocaleString()}` : ''}
@@ -275,6 +283,18 @@ export default function InstagramAccounts() {
   );
 }
 
+// Muestra solo host:port del proxy (oculta user:pass) para tooltips.
+function proxyHostHint(raw: string): string {
+  try {
+    const noScheme = raw.replace(/^\w+:\/\//, '');
+    const afterAuth = noScheme.includes('@') ? noScheme.split('@')[1] : noScheme;
+    const host = afterAuth.split(':').slice(0, 2).join(':');
+    return `Proxy: ${host}`;
+  } catch {
+    return 'Proxy configurado';
+  }
+}
+
 function Badge({ ok, okLabel, badLabel }: { ok: boolean; okLabel: string; badLabel: string }) {
   return (
     <span
@@ -293,12 +313,13 @@ function CreateForm({
 }: {
   sellers: Seller[];
   submitting: boolean;
-  onSubmit: (body: { sellerId: string; username: string; password: string; twoFactorSecret?: string }) => void;
+  onSubmit: (body: { sellerId: string; username: string; password: string; twoFactorSecret?: string; proxyUrl?: string }) => void;
 }) {
   const [sellerId, setSellerId] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [twoFactorSecret, setTwoFactorSecret] = useState('');
+  const [proxyUrl, setProxyUrl] = useState('');
 
   return (
     <div className="card p-4 space-y-3">
@@ -315,6 +336,14 @@ function CreateForm({
           <input className="input" value={twoFactorSecret} onChange={(e) => setTwoFactorSecret(e.target.value)} placeholder="JBSWY3DPEHPK3PXP" />
         </Field>
       </div>
+      <Field label="Proxy (recomendado: residencial del país de la cuenta)">
+        <input
+          className="input font-mono text-xs"
+          value={proxyUrl}
+          onChange={(e) => setProxyUrl(e.target.value)}
+          placeholder="http://user:pass@host:port  ó  host:port:user:pass"
+        />
+      </Field>
       <button
         className="btn-primary"
         disabled={!sellerId || !username.trim() || !password || submitting}
@@ -323,7 +352,8 @@ function CreateForm({
             sellerId,
             username: username.trim(),
             password,
-            twoFactorSecret: twoFactorSecret.trim() || undefined
+            twoFactorSecret: twoFactorSecret.trim() || undefined,
+            proxyUrl: proxyUrl.trim() || undefined
           })
         }>
         {submitting ? 'Creando…' : 'Crear'}
@@ -385,6 +415,7 @@ function EditModal({
   const [password, setPassword] = useState('');
   const [twoFactorSecret, setTwoFactorSecret] = useState('');
   const [isActive, setIsActive] = useState(account.isActive);
+  const [proxyUrl, setProxyUrl] = useState(account.proxyUrl ?? '');
 
   return (
     <Modal title={`Editar @${account.username}`} onCancel={onCancel}>
@@ -395,6 +426,14 @@ function EditModal({
         </Field>
         <Field label="2FA secret (vacío = no cambiar)">
           <input className="input" value={twoFactorSecret} onChange={(e) => setTwoFactorSecret(e.target.value)} />
+        </Field>
+        <Field label="Proxy (vacío = sin proxy)">
+          <input
+            className="input font-mono text-xs"
+            value={proxyUrl}
+            onChange={(e) => setProxyUrl(e.target.value)}
+            placeholder="http://user:pass@host:port  ó  host:port:user:pass"
+          />
         </Field>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
@@ -410,6 +449,8 @@ function EditModal({
             const body: Record<string, unknown> = { sellerId, isActive };
             if (password) body.password = password;
             if (twoFactorSecret) body.twoFactorSecret = twoFactorSecret;
+            // proxyUrl siempre se envía: permite setear y también limpiar (string vacío → null)
+            body.proxyUrl = proxyUrl.trim();
             onSubmit(body);
           }}>
           {submitting ? 'Guardando…' : 'Guardar'}

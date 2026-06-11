@@ -45,6 +45,7 @@ public class InstagramAccountsController : ControllerBase
                 IsLoggedIn = a.IsLoggedIn,
                 IsActionBlocked = a.IsActionBlocked,
                 IsAwaitingTwoFactor = a.IsAwaitingTwoFactor,
+                ProxyUrl = a.ProxyUrl,
                 BlockedUntil = a.BlockedUntil,
                 LastLoginAt = a.LastLoginAt,
                 LastUsedAt = a.LastUsedAt,
@@ -74,6 +75,7 @@ public class InstagramAccountsController : ControllerBase
             IsLoggedIn = account.IsLoggedIn,
             IsActionBlocked = account.IsActionBlocked,
             IsAwaitingTwoFactor = account.IsAwaitingTwoFactor,
+            ProxyUrl = account.ProxyUrl,
             BlockedUntil = account.BlockedUntil,
             LastLoginAt = account.LastLoginAt,
             LastUsedAt = account.LastUsedAt,
@@ -94,6 +96,7 @@ public class InstagramAccountsController : ControllerBase
             Username = req.Username,
             EncryptedPassword = _crypto.Encrypt(req.Password),
             TwoFactorSecret = req.TwoFactorSecret,
+            ProxyUrl = string.IsNullOrWhiteSpace(req.ProxyUrl) ? null : req.ProxyUrl.Trim(),
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
@@ -204,6 +207,9 @@ public class InstagramAccountsController : ControllerBase
         if (!string.IsNullOrEmpty(req.Password))
             account.EncryptedPassword = _crypto.Encrypt(req.Password);
         if (req.TwoFactorSecret is not null) account.TwoFactorSecret = req.TwoFactorSecret;
+        // ProxyUrl: si viene null no se toca; si viene vacío se limpia.
+        if (req.ProxyUrl is not null)
+            account.ProxyUrl = string.IsNullOrWhiteSpace(req.ProxyUrl) ? null : req.ProxyUrl.Trim();
         if (req.IsActive.HasValue) account.IsActive = req.IsActive.Value;
 
         // Si se cambió la contraseña, invalidar sesión
@@ -409,6 +415,7 @@ public class InstagramAccountsController : ControllerBase
         public bool IsLoggedIn { get; init; }
         public bool IsActionBlocked { get; init; }
         public bool IsAwaitingTwoFactor { get; init; }
+        public string? ProxyUrl { get; init; }
         public DateTimeOffset? BlockedUntil { get; init; }
         public DateTimeOffset? LastLoginAt { get; init; }
         public DateTimeOffset? LastUsedAt { get; init; }
@@ -421,6 +428,7 @@ public class InstagramAccountsController : ControllerBase
         public string Username { get; init; } = string.Empty;
         public string Password { get; init; } = string.Empty;
         public string? TwoFactorSecret { get; init; }
+        public string? ProxyUrl { get; init; }
     }
 
     public record UpdateInstagramAccountRequest
@@ -429,6 +437,7 @@ public class InstagramAccountsController : ControllerBase
         public string? Password { get; init; }
         public string? TwoFactorSecret { get; init; }
         public bool? IsActive { get; init; }
+        public string? ProxyUrl { get; init; }
     }
 
     public record InstagramAccountDashboardDto

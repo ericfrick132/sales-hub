@@ -28,8 +28,14 @@ public class InstagramClient : IAsyncDisposable
     // Los dejamos como lista para tolerar variantes A/B y el form viejo.
     private const string UsernameSelector = "input[name='email'], input[name='username']";
     private const string PasswordSelector = "input[name='pass'], input[name='password']";
+    // En la página two_step_verification el input del código NO tiene 'name' ni
+    // 'aria-label' estables (es un <input type=text autocomplete=off> con id de React).
+    // Lo matcheamos por forma, tolerando además variantes viejas.
     private const string TwoFactorSelector =
-        "input[name='verificationCode'], input[autocomplete='one-time-code']";
+        "input[name='verificationCode'], " +
+        "input[autocomplete='one-time-code'], " +
+        "input[type='tel']:not([name]), " +
+        "input[type='text'][autocomplete='off']:not([name])";
 
     public InstagramClient(
         ApplicationDbContext db,
@@ -62,8 +68,19 @@ public class InstagramClient : IAsyncDisposable
             }
         };
 
-        if (!string.IsNullOrEmpty(_opts.ProxyUrl))
-            launchOpts.Proxy = new Proxy { Server = _opts.ProxyUrl };
+        // Proxy: prioridad al de la cuenta (geo-matcheado a su origen real,
+        // ej. gymhero → residencial AR) y fallback al global de InstagramOptions.
+        var proxy = BuildProxy(account.ProxyUrl) ?? BuildProxy(_opts.ProxyUrl);
+        if (proxy is not null)
+        {
+            launchOpts.Proxy = proxy;
+            _log.LogInformation("Instagram {User} sale por proxy {Server}", account.Username, proxy.Server);
+        }
+        else
+        {
+            _log.LogWarning("Instagram {User} SIN proxy (sale por la IP del server). " +
+                "IG puede pedir 2FA/checkpoint si la geo no coincide.", account.Username);
+        }
 
         _browser = await _playwright.Chromium.LaunchAsync(launchOpts);
 
@@ -145,22 +162,28 @@ public class InstagramClient : IAsyncDisposable
 
         // Submit del form (Enter dispara el submit nativo)
         await passEl.PressAsync("Enter");
-        await Task.Delay(5000, ct);
+        await Task.Delay(6000, ct);
 
-        // Verificar si pide 2FA
-        var twoFactorInput = await _page.QuerySelectorAsync(TwoFactorSelector);
-        if (twoFactorInput is not null)
+        // Verificar si pide 2FA. Lo detectamos por la URL (estable: la página de
+        // verificación es /accounts/login/two_step_verification?...&flow=two_factor_login)
+        // en vez de depender del input, que no tiene atributos estables.
+        var afterLoginUrl = _page.Url;
+        var asksTwoFactor = afterLoginUrl.Contains("two_factor")
+            || afterLoginUrl.Contains("two_step_verification");
+        if (asksTwoFactor)
         {
             _log.LogInformation("Instagram pide 2FA para {User}", account.Username);
 
             if (!string.IsNullOrEmpty(account.TwoFactorSecret))
             {
-                // Tenemos el secret, generar código automáticamente
+                // Esperar a que el input del código esté disponible y autocompletarlo
+                var twoFactorInput = await _page.WaitForSelectorAsync(TwoFactorSelector,
+                    new PageWaitForSelectorOptions { Timeout = 15_000 });
                 var code = GenerateTotpCode(account.TwoFactorSecret);
-                await twoFactorInput.FillAsync(code);
+                await twoFactorInput!.FillAsync(code);
                 await RandomDelayAsync();
                 await twoFactorInput.PressAsync("Enter");
-                await Task.Delay(5000, ct);
+                await Task.Delay(6000, ct);
             }
             else
             {
@@ -622,20 +645,19 @@ public class InstagramClient : IAsyncDisposable
     /// </summary>
     private async Task CompleteLoginAsync(InstagramAccount account, CancellationToken ct)
     {
-        // Verificar si hay "Save Info" dialog
-        var saveInfo = await _page!.QuerySelectorAsync("div:has-text('Save Info')");
-        if (saveInfo is not null)
+        // Cerrar diálogos post-login ("¿Guardar info de inicio de sesión?",
+        // "Activar notificaciones"). El botón visible suele ser "Not Now" / "Ahora no"
+        // (en/es, locale es-AR) y puede ser <button> o <div role=button>.
+        const string dismissSel =
+            "button:has-text('Not Now'), button:has-text('Ahora no'), " +
+            "div[role='button']:has-text('Not Now'), div[role='button']:has-text('Ahora no')";
+        for (var i = 0; i < 2; i++)
         {
-            var notNow = await _page.QuerySelectorAsync("button:has-text('Not Now')");
-            if (notNow is not null)
-                await notNow.ClickAsync();
+            var dismiss = await _page!.QuerySelectorAsync(dismissSel);
+            if (dismiss is null) break;
+            await dismiss.ClickAsync();
             await Task.Delay(2000, ct);
         }
-
-        // Verificar si hay "Turn on Notifications" dialog
-        var notif = await _page.QuerySelectorAsync("button:has-text('Not Now')");
-        if (notif is not null)
-            await notif.ClickAsync();
 
         await Task.Delay(3000, ct);
 
@@ -695,6 +717,47 @@ public class InstagramClient : IAsyncDisposable
 
         var otp = binary % 1_000_000;
         return otp.ToString("D6");
+    }
+
+    /// <summary>
+    /// Construye un <see cref="Proxy"/> de Playwright a partir de un string en
+    /// formato URI (scheme://user:pass@host:port) o lista 2captcha (host:port:user:pass
+    /// o host:port). Devuelve null si está vacío o no se puede parsear.
+    /// </summary>
+    private static Proxy? BuildProxy(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        raw = raw.Trim();
+
+        // Formato URI: scheme://[user:pass@]host:port
+        if (raw.Contains("://"))
+        {
+            try
+            {
+                var uri = new Uri(raw);
+                var proxy = new Proxy { Server = $"{uri.Scheme}://{uri.Host}:{uri.Port}" };
+                if (!string.IsNullOrEmpty(uri.UserInfo))
+                {
+                    var parts = uri.UserInfo.Split(':', 2);
+                    proxy.Username = Uri.UnescapeDataString(parts[0]);
+                    if (parts.Length > 1) proxy.Password = Uri.UnescapeDataString(parts[1]);
+                }
+                return proxy;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // Formato lista de 2captcha: host:port:user:pass  (o host:port sin auth)
+        var seg = raw.Split(':');
+        if (seg.Length == 4)
+            return new Proxy { Server = $"http://{seg[0]}:{seg[1]}", Username = seg[2], Password = seg[3] };
+        if (seg.Length == 2)
+            return new Proxy { Server = $"http://{seg[0]}:{seg[1]}" };
+
+        return null;
     }
 
     /// <summary>
