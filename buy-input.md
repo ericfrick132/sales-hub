@@ -1,3 +1,0 @@
-- heading "Buy proxy traffic" [level=1] [ref=e94]:
-  - img [ref=e95]
-  - text: Buy proxy traffic
