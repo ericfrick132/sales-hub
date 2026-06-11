@@ -671,6 +671,20 @@ public class InstagramClient : IAsyncDisposable
             // diálogo real de "Action Blocked" en los follows (+24h). Acá solo logueamos
             // y dejamos la cuenta libre para reintentar, sin cooldown fantasma de 1h.
             _log.LogWarning("Login no se completó para {User}. URL: {Url}", account.Username, currentUrl);
+            // Diagnóstico: capturar qué texto muestra Instagram (throttle, password,
+            // checkpoint, "esperá unos minutos", etc.) para no adivinar la causa.
+            try
+            {
+                var bodyText = await _page.InnerTextAsync("body");
+                bodyText = bodyText.Replace("\n", " ").Trim();
+                if (bodyText.Length > 700) bodyText = bodyText[..700];
+                _log.LogWarning("IG mostró a {User}: «{Text}»", account.Username, bodyText);
+            }
+            catch (Exception diagEx)
+            {
+                _log.LogWarning("No se pudo leer el texto de la página de IG para {User}: {Err}",
+                    account.Username, diagEx.Message);
+            }
             account.IsLoggedIn = false;
             account.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
