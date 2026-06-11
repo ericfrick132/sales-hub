@@ -231,7 +231,7 @@ public class InstagramClient : IAsyncDisposable
 
         await _page!.GotoAsync($"https://www.instagram.com/{targetHandle}/", new PageGotoOptions
         {
-            WaitUntil = WaitUntilState.NetworkIdle,
+            WaitUntil = WaitUntilState.DOMContentLoaded,
             Timeout = _opts.NavigationTimeoutMs
         });
 
@@ -486,7 +486,7 @@ public class InstagramClient : IAsyncDisposable
         {
             await _page!.GotoAsync($"https://www.instagram.com/{handle}/", new PageGotoOptions
             {
-                WaitUntil = WaitUntilState.NetworkIdle,
+                WaitUntil = WaitUntilState.DOMContentLoaded,
                 Timeout = _opts.NavigationTimeoutMs
             });
 
@@ -569,17 +569,23 @@ public class InstagramClient : IAsyncDisposable
     {
         try
         {
+            // OJO: NO usar NetworkIdle — el feed de IG mantiene conexiones abiertas
+            // y nunca "asienta", así que por proxy timeouteaba y daba falso "caída".
             await _page!.GotoAsync("https://www.instagram.com/", new PageGotoOptions
             {
-                WaitUntil = WaitUntilState.NetworkIdle,
-                Timeout = 15_000
+                WaitUntil = WaitUntilState.DOMContentLoaded,
+                Timeout = _opts.NavigationTimeoutMs
             });
+            await Task.Delay(2000, ct);
 
-            var loginBtn = await _page.QuerySelectorAsync("a[href='/accounts/login/']");
-            return loginBtn is null;
+            // Deslogueado si IG redirige a login o muestra el form de login inline.
+            if (_page.Url.Contains("/accounts/login")) return false;
+            var loginField = await _page.QuerySelectorAsync(UsernameSelector);
+            return loginField is null;
         }
-        catch
+        catch (Exception ex)
         {
+            _log.LogWarning("CheckSession para {User} falló: {Err}", _page?.Url, ex.Message);
             return false;
         }
     }
