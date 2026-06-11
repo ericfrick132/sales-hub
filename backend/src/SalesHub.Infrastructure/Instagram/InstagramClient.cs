@@ -665,11 +665,17 @@ public class InstagramClient : IAsyncDisposable
         var currentUrl = _page.Url;
         if (currentUrl.Contains("login") || currentUrl.Contains("challenge"))
         {
-            _log.LogWarning("Login falló o pidió challenge para {User}. URL: {Url}", account.Username, currentUrl);
-            account.IsActionBlocked = true;
-            account.BlockedUntil = DateTimeOffset.UtcNow.AddHours(1);
+            // El login no se completó (sigue en login / pide challenge). Esto NO es un
+            // action-block de Instagram: puede ser 2FA no resuelto, un challenge, timing
+            // o credenciales. NO marcamos IsActionBlocked — ese flag se reserva para el
+            // diálogo real de "Action Blocked" en los follows (+24h). Acá solo logueamos
+            // y dejamos la cuenta libre para reintentar, sin cooldown fantasma de 1h.
+            _log.LogWarning("Login no se completó para {User}. URL: {Url}", account.Username, currentUrl);
+            account.IsLoggedIn = false;
+            account.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
-            throw new InvalidOperationException($"Login falló para {account.Username}. Posible challenge o bloqueo.");
+            throw new InvalidOperationException(
+                $"Login no se completó para {account.Username} (sigue en login/challenge).");
         }
 
         _loggedIn = true;
