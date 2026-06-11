@@ -24,6 +24,13 @@ public class InstagramClient : IAsyncDisposable
 
     private bool _loggedIn;
 
+    // Instagram (form unificado de Meta) usa estos names en el login web.
+    // Los dejamos como lista para tolerar variantes A/B y el form viejo.
+    private const string UsernameSelector = "input[name='email'], input[name='username']";
+    private const string PasswordSelector = "input[name='pass'], input[name='password']";
+    private const string TwoFactorSelector =
+        "input[name='verificationCode'], input[autocomplete='one-time-code']";
+
     public InstagramClient(
         ApplicationDbContext db,
         InstagramEncryptionService crypto,
@@ -126,19 +133,22 @@ public class InstagramClient : IAsyncDisposable
 
         await RandomDelayAsync();
 
-        // Esperar y llenar campos de login
-        await _page.WaitForSelectorAsync("input[name='username']");
-        await _page.FillAsync("input[name='username']", account.Username);
+        // Esperar y llenar campos de login.
+        // Instagram renombró los campos (username→email, password→pass) y el
+        // botón visible es un <div>; el form se envía con Enter sobre el password.
+        var userEl = await _page.WaitForSelectorAsync(UsernameSelector);
+        await userEl!.FillAsync(account.Username);
         await RandomDelayAsync();
-        await _page.FillAsync("input[name='password']", password);
+        var passEl = await _page.WaitForSelectorAsync(PasswordSelector);
+        await passEl!.FillAsync(password);
         await RandomDelayAsync();
 
-        // Click en login
-        await _page.ClickAsync("button[type='submit']");
+        // Submit del form (Enter dispara el submit nativo)
+        await passEl.PressAsync("Enter");
         await Task.Delay(5000, ct);
 
         // Verificar si pide 2FA
-        var twoFactorInput = await _page.QuerySelectorAsync("input[name='verificationCode']");
+        var twoFactorInput = await _page.QuerySelectorAsync(TwoFactorSelector);
         if (twoFactorInput is not null)
         {
             _log.LogInformation("Instagram pide 2FA para {User}", account.Username);
@@ -147,9 +157,9 @@ public class InstagramClient : IAsyncDisposable
             {
                 // Tenemos el secret, generar código automáticamente
                 var code = GenerateTotpCode(account.TwoFactorSecret);
-                await _page.FillAsync("input[name='verificationCode']", code);
+                await twoFactorInput.FillAsync(code);
                 await RandomDelayAsync();
-                await _page.ClickAsync("button[type='submit']");
+                await twoFactorInput.PressAsync("Enter");
                 await Task.Delay(5000, ct);
             }
             else
@@ -548,7 +558,7 @@ public class InstagramClient : IAsyncDisposable
     {
         EnsureLoggedIn();
 
-        var twoFactorInput = await _page!.QuerySelectorAsync("input[name='verificationCode']");
+        var twoFactorInput = await _page!.QuerySelectorAsync(TwoFactorSelector);
         if (twoFactorInput is null)
         {
             _log.LogWarning("No se encontró el input de 2FA. Quizás ya expiró la página de login.");
@@ -557,13 +567,13 @@ public class InstagramClient : IAsyncDisposable
 
         _log.LogInformation("Enviando código 2FA para {User}...", account.Username);
 
-        await _page.FillAsync("input[name='verificationCode']", code);
+        await twoFactorInput.FillAsync(code);
         await RandomDelayAsync();
-        await _page.ClickAsync("button[type='submit']");
+        await twoFactorInput.PressAsync("Enter");
         await Task.Delay(5000, ct);
 
         // Verificar si el código era correcto
-        var stillHasTwoFactor = await _page.QuerySelectorAsync("input[name='verificationCode']");
+        var stillHasTwoFactor = await _page.QuerySelectorAsync(TwoFactorSelector);
         if (stillHasTwoFactor is not null)
         {
             _log.LogWarning("Código 2FA incorrecto para {User}", account.Username);
@@ -667,9 +677,10 @@ public class InstagramClient : IAsyncDisposable
 
     private static string GenerateTotpCode(string secret)
     {
-        // Implementación simple de TOTP para 2FA
-        // En producción usar una librería como Otp.NET
-        var key = System.Text.Encoding.UTF8.GetBytes(secret);
+        // Implementación simple de TOTP (RFC 6238) para 2FA.
+        // El secret de Instagram viene en Base32 (RFC 4648): hay que DECODIFICARLO
+        // a bytes crudos, no tomar el string como bytes (eso generaba códigos inválidos).
+        var key = Base32Decode(secret);
         var time = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30;
         var timeBytes = BitConverter.GetBytes(time);
         if (BitConverter.IsLittleEndian) Array.Reverse(timeBytes);
@@ -684,6 +695,37 @@ public class InstagramClient : IAsyncDisposable
 
         var otp = binary % 1_000_000;
         return otp.ToString("D6");
+    }
+
+    /// <summary>
+    /// Decodifica un secret en Base32 (RFC 4648) a sus bytes crudos.
+    /// Tolera espacios, guiones, minúsculas y padding '='.
+    /// </summary>
+    private static byte[] Base32Decode(string input)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        var clean = input.Trim()
+            .Replace(" ", "").Replace("-", "")
+            .TrimEnd('=')
+            .ToUpperInvariant();
+
+        var output = new List<byte>(clean.Length * 5 / 8);
+        var bits = 0;
+        var value = 0;
+        foreach (var c in clean)
+        {
+            var idx = alphabet.IndexOf(c);
+            if (idx < 0) continue; // ignorar caracteres fuera del alfabeto Base32
+            value = (value << 5) | idx;
+            bits += 5;
+            if (bits >= 8)
+            {
+                output.Add((byte)((value >> (bits - 8)) & 0xFF));
+                bits -= 8;
+            }
+        }
+
+        return output.ToArray();
     }
 
     public async ValueTask DisposeAsync()
