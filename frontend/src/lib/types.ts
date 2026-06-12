@@ -158,6 +158,7 @@ export interface Product {
   messageSteps: MessageStep[];
   categoryCadences: CategoryCadence[];
   aiSalesPlaybook: string;
+  autoPilot: boolean;
 }
 
 export interface MessageStep {

@@ -65,6 +65,11 @@ public class Lead
     public string? AiSuggestedReply { get; set; }
     public DateTimeOffset? AiSuggestedReplyAt { get; set; }
 
+    // Re-enganche automático: cuántos "nudges" de seguimiento le mandó el bot
+    // cuando se quedó callado, y cuándo fue el último (para capear y espaciar).
+    public int NudgeCount { get; set; }
+    public DateTimeOffset? LastNudgeAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

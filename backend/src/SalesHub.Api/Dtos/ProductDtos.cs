@@ -28,7 +28,8 @@ public record ProductDto(
     List<string> ReplyTemplates,
     List<MessageStepDto> MessageSteps,
     List<CategoryCadenceDto> CategoryCadences,
-    string AiSalesPlaybook);
+    string AiSalesPlaybook,
+    bool AutoPilot);
 
 public record CreateOrUpdateProductRequest(
     string ProductKey,
@@ -53,4 +54,5 @@ public record CreateOrUpdateProductRequest(
     List<string>? ReplyTemplates,
     List<MessageStepDto>? MessageSteps,
     List<CategoryCadenceDto>? CategoryCadences,
-    string? AiSalesPlaybook = null);
+    string? AiSalesPlaybook = null,
+    bool AutoPilot = false);

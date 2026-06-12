@@ -2,20 +2,25 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
+using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Infrastructure.Services;
 
 /// <summary>
-/// Procesa los mensajes inbound de WhatsApp: (1) transcribe las notas de voz a
-/// texto vía Groq/Whisper, (2) genera la respuesta sugerida por IA (modo
-/// asistido — el vendedor revisa y manda). Cada paso es independiente y se
-/// saltea si su API key no está configurada.
+/// Procesa los mensajes inbound de WhatsApp: (1) transcribe notas de voz vía
+/// Groq/Whisper, (2) genera la respuesta al lead, (3) re-engancha al lead que se
+/// quedó callado. Para los productos con AutoPilot=true el bot AUTO-ENVÍA por
+/// WhatsApp; si no, deja la respuesta como sugerencia para que el vendedor la mande.
 /// </summary>
 public class ConversationAgentService
 {
     private const int MaxTranscriptionAttempts = 3;
     private const int BatchSize = 10;
+
+    // Re-enganche: cuántas horas de silencio esperamos antes de un nudge, y el tope.
+    private const int ReengageAfterHours = 48;
+    private const int MaxNudges = 3;
 
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
@@ -33,8 +38,9 @@ public class ConversationAgentService
     public async Task<int> TickAsync(CancellationToken ct)
     {
         var transcribed = await TranscribeAudiosAsync(ct);
-        var suggested = await GenerateSuggestionsAsync(ct);
-        return transcribed + suggested;
+        var replied = await GenerateSuggestionsAsync(ct);
+        var reengaged = await GenerateReengagementsAsync(ct);
+        return transcribed + replied + reengaged;
     }
 
     /// <summary>Transcribe las notas de voz inbound que el webhook dejó como "[audio]".</summary>
@@ -87,18 +93,14 @@ public class ConversationAgentService
     }
 
     /// <summary>
-    /// Genera la respuesta sugerida para los leads cuyo último mensaje es del
-    /// lead y todavía no tienen sugerencia. Primero prueba las reglas de keyword
-    /// del vendedor (sin IA); si no matchea ninguna, cae a Claude. La sugerencia
-    /// se limpia en cada inbound nuevo (ConversationService) y al responder.
+    /// Para los leads cuyo último mensaje es del lead y todavía no tienen respuesta:
+    /// genera la respuesta (regla de keyword del vendedor primero, si no Claude) y la
+    /// AUTO-ENVÍA si el producto tiene AutoPilot, o la deja como sugerencia si no.
     /// </summary>
     private async Task<int> GenerateSuggestionsAsync(CancellationToken ct)
     {
         // Leads sin sugerencia cuyo último mensaje es del lead. Si el último es
         // "[audio]" todavía sin transcribir, esperamos al próximo tick.
-        // Proyectamos sólo IDs + texto del último mensaje (sin Include — los
-        // Include se ignoran al proyectar a tipo anónimo); cargamos el lead
-        // completo después, por separado.
         var candidates = await (
             from l in _db.Leads
             where l.AiSuggestedReply == null && l.SellerId != null
@@ -117,35 +119,145 @@ public class ConversationAgentService
         {
             var lead = await _db.Leads
                 .Include(l => l.Product)
-                .Include(l => l.Seller)
+                .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
                 .FirstOrDefaultAsync(l => l.Id == c.LeadId, ct);
             if (lead?.Product is null || lead.Seller is null) continue;
 
             // 1) Reglas de keyword del vendedor — sin IA, sin costo.
             var keywordReply = MatchKeywordRule(lead.Seller.KeywordRules, c.LastText);
-            var suggestion = keywordReply;
+            var reply = keywordReply;
 
             // 2) Fallback a Claude sólo si no matcheó ningún keyword.
-            if (suggestion is null && _suggestions.IsConfigured)
+            if (reply is null && _suggestions.IsConfigured)
             {
                 var thread = await _db.ConversationMessages
                     .Where(m => m.LeadId == lead.Id)
                     .OrderBy(m => m.Timestamp)
                     .ToListAsync(ct);
-                suggestion = await _suggestions.SuggestReplyAsync(lead, lead.Product!, thread, ct);
+                reply = await _suggestions.SuggestReplyAsync(lead, lead.Product!, thread, ct);
             }
 
-            if (string.IsNullOrWhiteSpace(suggestion)) continue;
+            if (string.IsNullOrWhiteSpace(reply)) continue;
 
-            lead.AiSuggestedReply = suggestion;
-            lead.AiSuggestedReplyAt = DateTimeOffset.UtcNow;
+            var src = keywordReply is not null ? "keyword" : "IA";
+            if (lead.Product!.AutoPilot && await AutoSendAsync(lead, reply, ct))
+            {
+                _log.LogInformation("Auto-respondido a lead {Lead} (fuente: {Src})", lead.Id, src);
+            }
+            else
+            {
+                lead.AiSuggestedReply = reply;
+                lead.AiSuggestedReplyAt = DateTimeOffset.UtcNow;
+                lead.UpdatedAt = DateTimeOffset.UtcNow;
+                _log.LogInformation("Sugerencia generada para lead {Lead} (fuente: {Src})", lead.Id, src);
+            }
+
             await _db.SaveChangesAsync(ct);
             done++;
-            _log.LogInformation("Sugerencia generada para lead {Lead} (fuente: {Src})",
-                lead.Id, keywordReply is not null ? "keyword" : "IA");
         }
 
         return done;
+    }
+
+    /// <summary>
+    /// Re-engancha leads que respondieron alguna vez, donde el último mensaje es
+    /// nuestro (outbound) y pasaron &gt;= ReengageAfterHours sin novedad. Capea a
+    /// MaxNudges por lead. Auto-envía si AutoPilot; si no, deja sugerencia.
+    /// </summary>
+    private async Task<int> GenerateReengagementsAsync(CancellationToken ct)
+    {
+        if (!_suggestions.IsConfigured) return 0;
+
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.AddHours(-ReengageAfterHours);
+
+        var candidates = await (
+            from l in _db.Leads
+            where l.SellerId != null
+                && l.FirstReplyAt != null
+                && (l.Status == LeadStatus.Replied || l.Status == LeadStatus.Interested)
+                && l.AiSuggestedReply == null
+                && l.NudgeCount < MaxNudges
+                && (l.LastNudgeAt == null || l.LastNudgeAt < cutoff)
+            let last = _db.ConversationMessages
+                .Where(m => m.LeadId == l.Id)
+                .OrderByDescending(m => m.Timestamp)
+                .FirstOrDefault()
+            where last != null
+                && last.Direction == MessageDirection.Outbound
+                && last.Timestamp < cutoff
+            select new { LeadId = l.Id, LastAt = last.Timestamp }
+        ).Take(BatchSize).ToListAsync(ct);
+
+        var done = 0;
+        foreach (var c in candidates)
+        {
+            var lead = await _db.Leads
+                .Include(l => l.Product)
+                .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
+                .FirstOrDefaultAsync(l => l.Id == c.LeadId, ct);
+            if (lead?.Product is null || lead.Seller is null) continue;
+
+            var thread = await _db.ConversationMessages
+                .Where(m => m.LeadId == lead.Id)
+                .OrderBy(m => m.Timestamp)
+                .ToListAsync(ct);
+
+            var msg = await _suggestions.SuggestReengagementAsync(
+                lead, lead.Product!, thread, now - c.LastAt, ct);
+            if (string.IsNullOrWhiteSpace(msg)) continue;
+
+            var autopilot = lead.Product!.AutoPilot;
+            if (autopilot)
+            {
+                if (!await AutoSendAsync(lead, msg, ct)) continue; // no marcar nudge si no se envió
+            }
+            else
+            {
+                lead.AiSuggestedReply = msg;
+                lead.AiSuggestedReplyAt = now;
+            }
+
+            lead.NudgeCount++;
+            lead.LastNudgeAt = now;
+            lead.UpdatedAt = now;
+            await _db.SaveChangesAsync(ct);
+            done++;
+            _log.LogInformation("Re-enganche {Mode} a lead {Lead} (nudge {N}/{Max})",
+                autopilot ? "auto-enviado" : "sugerido", lead.Id, lead.NudgeCount, MaxNudges);
+        }
+
+        return done;
+    }
+
+    /// <summary>
+    /// Envía un mensaje al lead por la instancia de Evolution de su vendedor y lo
+    /// registra como outbound. Devuelve false (sin enviar) si la instancia no está
+    /// conectada o falta el teléfono — el caller cae a dejar sugerencia.
+    /// </summary>
+    private async Task<bool> AutoSendAsync(Lead lead, string text, CancellationToken ct)
+    {
+        var instance = lead.Seller?.EvolutionInstance;
+        if (instance is null || instance.Status != InstanceStatus.Connected) return false;
+        if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return false;
+
+        var ok = await _evo.SendTextAsync(instance.InstanceName, lead.WhatsappPhone, text, ct);
+        _db.ConversationMessages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = lead.SellerId,
+            Direction = MessageDirection.Outbound,
+            Status = ok ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Failed,
+            Text = text,
+            EvolutionInstance = instance.InstanceName,
+            Timestamp = DateTimeOffset.UtcNow,
+            IsRead = true
+        });
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        return ok;
     }
 
     /// <summary>

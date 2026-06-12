@@ -9,7 +9,7 @@ namespace SalesHub.Infrastructure.Services;
 /// Arma el prompt de venta y le pide a Claude la próxima respuesta para el lead.
 /// Inyecta el precio REAL del producto (Product.PriceDisplay) y valida la salida
 /// con un guardrail: si la IA menciona un precio que no coincide, reintenta y, si
-/// insiste, descarta la sugerencia (no propagamos un precio inventado).
+/// insiste, descarta la respuesta (no propagamos un precio inventado).
 /// </summary>
 public class AiSuggestionService
 {
@@ -25,17 +25,40 @@ public class AiSuggestionService
     /// <summary>True si Claude está configurado — el worker no sugiere si no.</summary>
     public bool IsConfigured => _claude.IsConfigured;
 
+    /// <summary>Próxima respuesta cuando el último mensaje es del lead.</summary>
     public async Task<string?> SuggestReplyAsync(
         Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, CancellationToken ct)
     {
         if (thread.Count == 0) return null;
         var system = BuildSystemPrompt(product);
-        var conversation = BuildConversation(lead, thread);
+        var conversation = BuildConversation(lead, thread, instruction: null);
+        return await CompleteWithPriceGuardrailAsync(system, conversation, product, ct);
+    }
 
+    /// <summary>
+    /// Mensaje de re-enganche cuando el lead venía hablando y se quedó callado.
+    /// </summary>
+    public async Task<string?> SuggestReengagementAsync(
+        Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, TimeSpan silentFor, CancellationToken ct)
+    {
+        if (thread.Count == 0) return null;
+        var system = BuildSystemPrompt(product);
+        var hrs = Math.Max(1, (int)Math.Round(silentFor.TotalHours));
+        var instruction =
+            $"El lead venía hablando y se quedó callado hace ~{hrs} horas. Escribí un mensaje CORTO y " +
+            "natural para retomar la charla, sin sonar desesperado ni repetir lo ya dicho. Si tiene sentido, " +
+            "movelo al próximo paso (una demo, o el link de checkout). Si ya le mandaste seguimientos antes, " +
+            "variá el enfoque. Si no hay nada nuevo para aportar, mejor algo liviano que reabra la charla.";
+        var conversation = BuildConversation(lead, thread, instruction);
+        return await CompleteWithPriceGuardrailAsync(system, conversation, product, ct);
+    }
+
+    private async Task<string?> CompleteWithPriceGuardrailAsync(
+        string system, string conversation, Product product, CancellationToken ct)
+    {
         var reply = await _claude.CompleteAsync(system, conversation, ct);
         if (string.IsNullOrWhiteSpace(reply)) return null;
 
-        // Guardrail de precio: si menciona un precio que no es el real, reintentar.
         if (MentionsWrongPrice(reply, product.PriceDisplay))
         {
             _log.LogWarning(
@@ -50,7 +73,7 @@ public class AiSuggestionService
             if (string.IsNullOrWhiteSpace(reply) || MentionsWrongPrice(reply, product.PriceDisplay))
             {
                 _log.LogWarning(
-                    "IA insistió con un precio incorrecto para {Product}; se descarta la sugerencia.",
+                    "IA insistió con un precio incorrecto para {Product}; se descarta la respuesta.",
                     product.DisplayName);
                 return null;
             }
@@ -98,8 +121,8 @@ public class AiSuggestionService
         return sb.ToString();
     }
 
-    /// <summary>Parte variable: el hilo de la conversación.</summary>
-    private static string BuildConversation(Lead lead, IReadOnlyList<ConversationMessage> thread)
+    /// <summary>Parte variable: el hilo de la conversación + la instrucción final.</summary>
+    private static string BuildConversation(Lead lead, IReadOnlyList<ConversationMessage> thread, string? instruction)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"LEAD: {lead.Name}");
@@ -111,7 +134,7 @@ public class AiSuggestionService
             sb.AppendLine($"{who}: {m.Text}");
         }
         sb.AppendLine();
-        sb.AppendLine("Generá la próxima respuesta del vendedor:");
+        sb.AppendLine(instruction ?? "Generá la próxima respuesta del vendedor:");
         return sb.ToString();
     }
 

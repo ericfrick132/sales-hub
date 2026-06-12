@@ -15,7 +15,8 @@ const EMPTY: Product = {
   replyTemplates: [],
   messageSteps: [],
   categoryCadences: [],
-  aiSalesPlaybook: ''
+  aiSalesPlaybook: '',
+  autoPilot: false
 };
 
 export default function Products() {
@@ -160,6 +161,11 @@ export default function Products() {
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={draft.requiresAssistedSale} onChange={(e) => onChange('requiresAssistedSale', e.target.checked)} />
             Requiere venta asistida (demo con admin)
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-indigo-700"
+            title="Si está prendido, el bot RESPONDE SOLO por WhatsApp (auto-envía y re-engancha). Apagalo para volver a modo sugerencia.">
+            <input type="checkbox" checked={draft.autoPilot} onChange={(e) => onChange('autoPilot', e.target.checked)} />
+            🤖 Piloto automático (el bot responde solo)
           </label>
           <button className="btn-primary ml-auto" onClick={save}>Guardar</button>
         </div>

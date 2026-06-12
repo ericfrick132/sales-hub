@@ -52,6 +52,12 @@ public class Product
 
     public bool RequiresAssistedSale { get; set; } = false;
 
+    // Piloto automático: si está en true, el agente de IA RESPONDE SOLO por WhatsApp
+    // (auto-envía la respuesta y re-engancha al lead que se queda callado) en vez de
+    // dejar una sugerencia para que el vendedor la mande. Off por default — control
+    // total, se prende por producto y se puede cortar al toque.
+    public bool AutoPilot { get; set; } = false;
+
     // Instrucciones de venta para el agente de IA que sugiere respuestas en
     // Conversaciones (tono, objeciones comunes, cuándo mandar precio/checkout).
     // Texto libre por vertical. Vacío = el agente usa solo las instrucciones base.

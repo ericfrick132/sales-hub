@@ -217,6 +217,7 @@ public class ProductsController : ControllerBase
         p.SendHourStart = Math.Clamp(r.SendHourStart, 0, 24);
         p.SendHourEnd = Math.Clamp(r.SendHourEnd, 0, 24);
         p.RequiresAssistedSale = r.RequiresAssistedSale;
+        p.AutoPilot = r.AutoPilot;
         p.GooglePlacesDailyLeadCap = r.GooglePlacesDailyLeadCap;
         p.ReplyTemplates = (r.ReplyTemplates ?? new())
             .Select(s => s?.Trim() ?? string.Empty)
@@ -262,5 +263,6 @@ public class ProductsController : ControllerBase
         p.ReplyTemplates,
         StepsToDto(p.MessageSteps),
         p.CategoryCadences.Select(c => new CategoryCadenceDto(c.Category, StepsToDto(c.Steps))).ToList(),
-        p.AiSalesPlaybook ?? string.Empty);
+        p.AiSalesPlaybook ?? string.Empty,
+        p.AutoPilot);
 }
