@@ -27,7 +27,8 @@ public record ProductDto(
     int GooglePlacesDailyLeadCap,
     List<string> ReplyTemplates,
     List<MessageStepDto> MessageSteps,
-    List<CategoryCadenceDto> CategoryCadences);
+    List<CategoryCadenceDto> CategoryCadences,
+    string AiSalesPlaybook);
 
 public record CreateOrUpdateProductRequest(
     string ProductKey,
@@ -51,4 +52,5 @@ public record CreateOrUpdateProductRequest(
     int GooglePlacesDailyLeadCap,
     List<string>? ReplyTemplates,
     List<MessageStepDto>? MessageSteps,
-    List<CategoryCadenceDto>? CategoryCadences);
+    List<CategoryCadenceDto>? CategoryCadences,
+    string? AiSalesPlaybook = null);

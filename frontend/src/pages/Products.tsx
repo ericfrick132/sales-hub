@@ -14,7 +14,8 @@ const EMPTY: Product = {
   googlePlacesDailyLeadCap: 60,
   replyTemplates: [],
   messageSteps: [],
-  categoryCadences: []
+  categoryCadences: [],
+  aiSalesPlaybook: ''
 };
 
 export default function Products() {
@@ -99,6 +100,12 @@ export default function Products() {
                   onChange={(e) => onChange('googlePlacesDailyLeadCap', +e.target.value)} />
               </Field>
             </div>
+            <Field label="Reglas / Playbook de la IA — cómo querés que responda el bot (lenguaje natural)">
+              <textarea className="input font-mono text-xs" rows={6}
+                value={draft.aiSalesPlaybook}
+                onChange={(e) => onChange('aiSalesPlaybook', e.target.value)}
+                placeholder={'Ej:\n- Tuteá siempre, tono relajado y canchero, máx 2 líneas por mensaje.\n- Si preguntan el precio, dalo y proponé una demo el mismo día.\n- Si ya usan otro software, preguntá cuál y ofrecé migración gratis.\n- No insistas más de 2 veces si no contestan.'} />
+            </Field>
             <Field label="Trigger hours (coma, 0-23)">
               <input className="input" value={draft.triggerHours.join(', ')}
                 onChange={(e) => onChange('triggerHours', e.target.value.split(',').map((s) => parseInt(s.trim())).filter((n) => !isNaN(n)))} />

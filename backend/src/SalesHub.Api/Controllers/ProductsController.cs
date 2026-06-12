@@ -211,6 +211,7 @@ public class ProductsController : ControllerBase
         p.OpenerTemplate = r.OpenerTemplate ?? string.Empty;
         p.CheckoutUrl = r.CheckoutUrl;
         p.PriceDisplay = r.PriceDisplay;
+        p.AiSalesPlaybook = r.AiSalesPlaybook ?? string.Empty;
         p.DailyLimit = r.DailyLimit;
         p.TriggerHours = r.TriggerHours;
         p.SendHourStart = Math.Clamp(r.SendHourStart, 0, 24);
@@ -260,5 +261,6 @@ public class ProductsController : ControllerBase
         p.RequiresAssistedSale, p.GooglePlacesDailyLeadCap,
         p.ReplyTemplates,
         StepsToDto(p.MessageSteps),
-        p.CategoryCadences.Select(c => new CategoryCadenceDto(c.Category, StepsToDto(c.Steps))).ToList());
+        p.CategoryCadences.Select(c => new CategoryCadenceDto(c.Category, StepsToDto(c.Steps))).ToList(),
+        p.AiSalesPlaybook ?? string.Empty);
 }

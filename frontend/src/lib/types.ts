@@ -157,6 +157,7 @@ export interface Product {
   replyTemplates: string[];
   messageSteps: MessageStep[];
   categoryCadences: CategoryCadence[];
+  aiSalesPlaybook: string;
 }
 
 export interface MessageStep {
