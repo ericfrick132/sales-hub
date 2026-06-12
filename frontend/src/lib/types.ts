@@ -159,6 +159,7 @@ export interface Product {
   categoryCadences: CategoryCadence[];
   aiSalesPlaybook: string;
   autoPilot: boolean;
+  autoReengage: boolean;
 }
 
 export interface MessageStep {

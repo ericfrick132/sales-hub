@@ -21,18 +21,21 @@ public class ConversationAgentService
     // Re-enganche: cuántas horas de silencio esperamos antes de un nudge, y el tope.
     private const int ReengageAfterHours = 48;
     private const int MaxNudges = 3;
+    // Anti-ban: máximo de nudges proactivos auto-enviados por tick (evita ráfagas).
+    private const int MaxNudgesPerTickGlobal = 2;
 
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
     private readonly GroqWhisperClient _whisper;
     private readonly AiSuggestionService _suggestions;
+    private readonly ISendScheduler _scheduler;
     private readonly ILogger<ConversationAgentService> _log;
 
     public ConversationAgentService(
         ApplicationDbContext db, IEvolutionClient evo, GroqWhisperClient whisper,
-        AiSuggestionService suggestions, ILogger<ConversationAgentService> log)
+        AiSuggestionService suggestions, ISendScheduler scheduler, ILogger<ConversationAgentService> log)
     {
-        _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _log = log;
+        _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _scheduler = scheduler; _log = log;
     }
 
     public async Task<int> TickAsync(CancellationToken ct)
@@ -140,7 +143,18 @@ public class ConversationAgentService
             if (string.IsNullOrWhiteSpace(reply)) continue;
 
             var src = keywordReply is not null ? "keyword" : "IA";
-            if (lead.Product!.AutoPilot && await AutoSendAsync(lead, reply, ct))
+
+            // Auto-respuesta a inbound (reactiva, bajo riesgo, "como una persona"):
+            // permitida con AutoPilot, en horario activo del vendedor y bajo el tope
+            // absoluto diario por número. Si no, queda como sugerencia.
+            var canAutoReply = false;
+            if (lead.Product!.AutoPilot)
+            {
+                var st = await SellerSendStateAsync(lead.Seller!, ct);
+                canAutoReply = st.active && st.sentToday < OutboxSender.MaxMessagesPerSellerPerDay;
+            }
+
+            if (canAutoReply && await AutoSendAsync(lead, reply, ct))
             {
                 _log.LogInformation("Auto-respondido a lead {Lead} (fuente: {Src})", lead.Id, src);
             }
@@ -190,6 +204,7 @@ public class ConversationAgentService
         ).Take(BatchSize).ToListAsync(ct);
 
         var done = 0;
+        var nudgesSentThisTick = 0;
         foreach (var c in candidates)
         {
             var lead = await _db.Leads
@@ -197,6 +212,20 @@ public class ConversationAgentService
                 .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
                 .FirstOrDefaultAsync(l => l.Id == c.LeadId, ct);
             if (lead?.Product is null || lead.Seller is null) continue;
+
+            // Re-enganche PROACTIVO automático solo si el producto opta in (AutoPilot +
+            // AutoReengage). El proactivo es lo más baneable, así que es un toggle aparte.
+            var autoReengage = lead.Product!.AutoPilot && lead.Product!.AutoReengage;
+
+            // Si vamos a auto-enviar, validar límites anti-ban ANTES de gastar la llamada
+            // a la IA: no rafaguear, respetar horario activo y el cap diario del vendedor.
+            if (autoReengage)
+            {
+                if (nudgesSentThisTick >= MaxNudgesPerTickGlobal) break;
+                var st = await SellerSendStateAsync(lead.Seller!, ct);
+                if (!st.active || st.sentToday >= st.dailyCap)
+                    continue; // fuera de horario o cap alcanzado → se reintenta más tarde
+            }
 
             var thread = await _db.ConversationMessages
                 .Where(m => m.LeadId == lead.Id)
@@ -207,10 +236,10 @@ public class ConversationAgentService
                 lead, lead.Product!, thread, now - c.LastAt, ct);
             if (string.IsNullOrWhiteSpace(msg)) continue;
 
-            var autopilot = lead.Product!.AutoPilot;
-            if (autopilot)
+            if (autoReengage)
             {
                 if (!await AutoSendAsync(lead, msg, ct)) continue; // no marcar nudge si no se envió
+                nudgesSentThisTick++;
             }
             else
             {
@@ -224,10 +253,43 @@ public class ConversationAgentService
             await _db.SaveChangesAsync(ct);
             done++;
             _log.LogInformation("Re-enganche {Mode} a lead {Lead} (nudge {N}/{Max})",
-                autopilot ? "auto-enviado" : "sugerido", lead.Id, lead.NudgeCount, MaxNudges);
+                autoReengage ? "auto-enviado" : "sugerido", lead.Id, lead.NudgeCount, MaxNudges);
         }
 
         return done;
+    }
+
+    /// <summary>
+    /// Estado de envío del vendedor hoy: si está en horario activo, cuántos mensajes
+    /// salientes ya mandó hoy (outbox + auto-enviados) y su cap diario con warmup ramp.
+    /// Con esto el auto-envío del piloto respeta los mismos límites anti-ban que el
+    /// outreach humanizado (horario activo, tope diario por número).
+    /// </summary>
+    private async Task<(bool active, int sentToday, int dailyCap)> SellerSendStateAsync(Seller seller, CancellationToken ct)
+    {
+        var tz = SafeTz(seller.Timezone);
+        var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz);
+        var active = localNow.Hour >= seller.ActiveHoursStart && localNow.Hour < seller.ActiveHoursEnd;
+
+        var localMidnight = new DateTimeOffset(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0, localNow.Offset);
+        var startUtc = localMidnight.ToUniversalTime();
+        var endUtc = startUtc.AddDays(1);
+
+        var outbox = await _db.Outbox.CountAsync(o => o.SellerId == seller.Id
+            && o.Status == OutboxStatus.Sent && o.SentAt != null
+            && o.SentAt >= startUtc && o.SentAt < endUtc, ct);
+        var conv = await _db.ConversationMessages.CountAsync(m => m.SellerId == seller.Id
+            && m.Direction == MessageDirection.Outbound
+            && m.Timestamp >= startUtc && m.Timestamp < endUtc, ct);
+
+        var cap = _scheduler.ComputeTodayCap(seller, DateOnly.FromDateTime(localNow.DateTime));
+        return (active, outbox + conv, cap);
+    }
+
+    private static TimeZoneInfo SafeTz(string id)
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+        catch { return TimeZoneInfo.Utc; }
     }
 
     /// <summary>

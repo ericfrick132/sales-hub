@@ -29,7 +29,8 @@ public record ProductDto(
     List<MessageStepDto> MessageSteps,
     List<CategoryCadenceDto> CategoryCadences,
     string AiSalesPlaybook,
-    bool AutoPilot);
+    bool AutoPilot,
+    bool AutoReengage);
 
 public record CreateOrUpdateProductRequest(
     string ProductKey,
@@ -55,4 +56,5 @@ public record CreateOrUpdateProductRequest(
     List<MessageStepDto>? MessageSteps,
     List<CategoryCadenceDto>? CategoryCadences,
     string? AiSalesPlaybook = null,
-    bool AutoPilot = false);
+    bool AutoPilot = false,
+    bool AutoReengage = false);

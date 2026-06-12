@@ -58,6 +58,13 @@ public class Product
     // total, se prende por producto y se puede cortar al toque.
     public bool AutoPilot { get; set; } = false;
 
+    // Re-enganche proactivo automático: con AutoPilot + AutoReengage en true, el bot
+    // ADEMÁS de responder inbound manda los nudges de re-enganche solo (capeados por el
+    // límite diario del vendedor). Apagado por default — responder inbound es de bajo
+    // riesgo (como una persona), pero los mensajes proactivos son los que más banean,
+    // así que se opta-in por producto.
+    public bool AutoReengage { get; set; } = false;
+
     // Instrucciones de venta para el agente de IA que sugiere respuestas en
     // Conversaciones (tono, objeciones comunes, cuándo mandar precio/checkout).
     // Texto libre por vertical. Vacío = el agente usa solo las instrucciones base.

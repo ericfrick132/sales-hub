@@ -16,7 +16,8 @@ const EMPTY: Product = {
   messageSteps: [],
   categoryCadences: [],
   aiSalesPlaybook: '',
-  autoPilot: false
+  autoPilot: false,
+  autoReengage: false
 };
 
 export default function Products() {
@@ -163,9 +164,14 @@ export default function Products() {
             Requiere venta asistida (demo con admin)
           </label>
           <label className="flex items-center gap-2 text-sm font-medium text-indigo-700"
-            title="Si está prendido, el bot RESPONDE SOLO por WhatsApp (auto-envía y re-engancha). Apagalo para volver a modo sugerencia.">
+            title="Si está prendido, el bot RESPONDE SOLO los mensajes entrantes por WhatsApp (con ritmo humano y tope diario por número). Bajo riesgo: es como una persona contestando.">
             <input type="checkbox" checked={draft.autoPilot} onChange={(e) => onChange('autoPilot', e.target.checked)} />
-            🤖 Piloto automático (el bot responde solo)
+            🤖 Piloto automático (responde inbound solo)
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-rose-700"
+            title="Además de responder, manda los re-enganches PROACTIVOS solo (a los que se quedaron callados), capeado al límite diario del vendedor. Más alcance, más riesgo de ban. Requiere Piloto automático prendido.">
+            <input type="checkbox" checked={draft.autoReengage} onChange={(e) => onChange('autoReengage', e.target.checked)} />
+            📣 Re-enganche proactivo automático
           </label>
           <button className="btn-primary ml-auto" onClick={save}>Guardar</button>
         </div>
