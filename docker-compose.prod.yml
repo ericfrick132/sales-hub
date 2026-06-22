@@ -17,8 +17,12 @@ services:
     networks:
       - caddy
       - evolution
-    mem_limit: 450m
-    mem_reservation: 250m
+    # Los workers de IG corren acá y lanzan Chromium (Playwright), que solo ya usa
+    # ~300-500MB por instancia. Con 450m el contenedor se OOM-killeaba al abrir el
+    # navegador. El host tiene RAM de sobra (~2GB libres + swap), así que damos
+    # headroom para 2-3 navegadores en simultáneo.
+    mem_limit: 1500m
+    mem_reservation: 400m
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 30s

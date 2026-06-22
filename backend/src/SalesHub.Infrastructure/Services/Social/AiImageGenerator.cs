@@ -36,7 +36,10 @@ public class AiImageGenerator : ISocialAssetGenerator
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _opts.ApiKey);
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(_opts.ApiKey);
+    public bool IsConfigured => IsPollinations || !string.IsNullOrWhiteSpace(_opts.ApiKey);
+
+    /// <summary>Pollinations es gratis y sin API key (texto→imagen por URL GET).</summary>
+    private bool IsPollinations => string.Equals(_opts.Provider?.Trim(), "pollinations", StringComparison.OrdinalIgnoreCase);
 
     public bool CanHandle(string assetKind) =>
         string.Equals(assetKind?.Trim(), "image", StringComparison.OrdinalIgnoreCase);
@@ -45,7 +48,7 @@ public class AiImageGenerator : ISocialAssetGenerator
     public async Task<AssetResult?> GenerateAsync(string prompt, string assetKind, CancellationToken ct = default)
     {
         if (!CanHandle(assetKind)) return null;
-        var bytes = await GenerateBytesAsync(prompt, ct);
+        var bytes = await GenerateBytesAsync(prompt, null, ct);
         if (bytes == null) return null;
         return await PersistAsync(bytes, null, ct);
     }
@@ -58,7 +61,7 @@ public class AiImageGenerator : ISocialAssetGenerator
     {
         if (post.AssetKind != SocialAssetKind.Image) return null;
         var prompt = BuildBrandPrompt(profile, post);
-        var bytes = await GenerateBytesAsync(prompt, ct);
+        var bytes = await GenerateBytesAsync(prompt, post.Format, ct);
         if (bytes == null) return null;
         return await PersistAsync(bytes, post.Id, ct);
     }
@@ -69,7 +72,13 @@ public class AiImageGenerator : ISocialAssetGenerator
         var sb = new StringBuilder();
         // Base visual: el prompt cinematográfico en inglés que ya generó Claude.
         sb.Append(string.IsNullOrWhiteSpace(post.Prompt) ? post.Concept : post.Prompt);
-        sb.Append($". Social media {post.Format.ToString().ToLowerInvariant()} for {post.Platform}, square 1:1 composition, clean and modern.");
+        var aspect = post.Format switch
+        {
+            SocialPostFormat.Story or SocialPostFormat.Reel => "vertical 9:16 full-bleed composition",
+            SocialPostFormat.Carousel => "vertical 4:5 composition",
+            _ => "square 1:1 composition",
+        };
+        sb.Append($". Social media {post.Format.ToString().ToLowerInvariant()} for {post.Platform}, {aspect}, clean and modern.");
         if (!string.IsNullOrWhiteSpace(profile.BrandColorsJson) && profile.BrandColorsJson.Trim() != "{}")
             sb.Append($" Use this brand color palette (exact hex): {profile.BrandColorsJson}.");
         if (!string.IsNullOrWhiteSpace(profile.BrandFonts))
@@ -91,9 +100,12 @@ public class AiImageGenerator : ISocialAssetGenerator
     }
 
     // ── Llamada al proveedor ───────────────────────────────────────────────
-    private async Task<byte[]?> GenerateBytesAsync(string prompt, CancellationToken ct)
+    private async Task<byte[]?> GenerateBytesAsync(string prompt, SocialPostFormat? format, CancellationToken ct)
     {
-        if (!IsConfigured) { _log.LogWarning("ImageGen ApiKey no configurada — no se genera imagen"); return null; }
+        // Pollinations: gratis, sin API key, texto→imagen por GET. Dimensiones según formato.
+        if (IsPollinations) return await GeneratePollinationsAsync(prompt, format, ct);
+
+        if (string.IsNullOrWhiteSpace(_opts.ApiKey)) { _log.LogWarning("ImageGen ApiKey no configurada — no se genera imagen"); return null; }
 
         var provider = _opts.Provider.Trim().ToLowerInvariant();
         object body = provider switch
@@ -136,6 +148,38 @@ public class AiImageGenerator : ISocialAssetGenerator
             return null;
         }
     }
+
+    /// <summary>
+    /// Pollinations (flux): GET https://image.pollinations.ai/prompt/{prompt}?width&height&seed.
+    /// No requiere API key. La dimensión sale del formato del posteo.
+    /// </summary>
+    private async Task<byte[]?> GeneratePollinationsAsync(string prompt, SocialPostFormat? format, CancellationToken ct)
+    {
+        var (w, h) = DimsFor(format);
+        var seed = Random.Shared.Next(1, int.MaxValue);
+        var url = "https://image.pollinations.ai/prompt/" + Uri.EscapeDataString(prompt)
+            + $"?width={w}&height={h}&seed={seed}&nologo=true&enhance=true&model=flux";
+        try
+        {
+            var bytes = await _http.GetByteArrayAsync(url, ct);
+            if (bytes is { Length: > 0 }) return bytes;
+            _log.LogWarning("Pollinations devolvió 0 bytes");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Pollinations excepción");
+            return null;
+        }
+    }
+
+    /// <summary>Dimensiones IG por formato (px).</summary>
+    private static (int w, int h) DimsFor(SocialPostFormat? format) => format switch
+    {
+        SocialPostFormat.Story or SocialPostFormat.Reel => (1080, 1920),
+        SocialPostFormat.Carousel => (1080, 1350),
+        _ => (1080, 1080),
+    };
 
     // ── Persistencia ───────────────────────────────────────────────────────
     private async Task<AssetResult> PersistAsync(byte[] bytes, Guid? postId, CancellationToken ct)

@@ -55,6 +55,7 @@ export default function Conversations() {
 
   const [productFilter, setProductFilter] = useState('');
   const [sellerFilter, setSellerFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [days, setDays] = useState(30);
   const fromTs = useMemo(() => {
     if (!days) return undefined;
@@ -62,11 +63,12 @@ export default function Conversations() {
   }, [days]);
 
   const list = useQuery({
-    queryKey: ['conversations', productFilter, sellerFilter, days],
+    queryKey: ['conversations', productFilter, sellerFilter, statusFilter, days],
     queryFn: async () => (await api.get<ListItem[]>('/conversations', {
       params: {
         productKey: productFilter || undefined,
         sellerId: sellerFilter || undefined,
+        status: statusFilter || undefined,
         from: fromTs
       }
     })).data,
@@ -150,6 +152,22 @@ export default function Conversations() {
               </div>
             )}
             <div className="flex-1 min-w-[120px]">
+              <label className="text-[11px] text-slate-500 block">Estado</label>
+              <select
+                className="input text-sm w-full"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="">Todos</option>
+                <option value="Interested">Interesado</option>
+                <option value="Replied">Respondió</option>
+                <option value="DemoScheduled">Demo agendada</option>
+                <option value="Closed">Ganado</option>
+                <option value="Lost">Perdido</option>
+                <option value="Sent">Enviado</option>
+                <option value="Blocked">Bloqueado</option>
+              </select>
+            </div>
+            <div className="flex-1 min-w-[120px]">
               <label className="text-[11px] text-slate-500 block">Período</label>
               <select
                 className="input text-sm w-full"
@@ -180,6 +198,7 @@ export default function Conversations() {
             )}>
             <div className="flex justify-between items-start gap-2">
               <div className="font-medium truncate flex-1 min-w-0">{c.leadName}</div>
+              <StatusPill status={c.status} />
               {admin && c.sellerName && (
                 <span className="text-[11px] bg-brand-100 text-brand-700 rounded px-1.5 py-0.5 font-medium shrink-0">
                   {c.sellerName}
@@ -223,9 +242,12 @@ export default function Conversations() {
                 ←
               </button>
               <div className="min-w-0 flex-1">
-                <div className="font-semibold truncate">{thread.data.leadName}</div>
+                <div className="font-semibold truncate flex items-center gap-2">
+                  <span className="truncate">{thread.data.leadName}</span>
+                  <StatusPill status={thread.data.status} />
+                </div>
                 <div className="text-xs text-slate-500 truncate">
-                  {thread.data.productKey} · {thread.data.status} · {thread.data.whatsappPhone ?? '—'}
+                  {thread.data.productKey} · {thread.data.whatsappPhone ?? '—'}
                   {admin && thread.data.sellerName && <> · <span className="font-medium">{thread.data.sellerName}</span></>}
                 </div>
               </div>
@@ -322,6 +344,28 @@ export default function Conversations() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  New:           { label: 'nuevo',         cls: 'bg-slate-100 text-slate-600' },
+  Assigned:      { label: 'asignado',      cls: 'bg-slate-100 text-slate-600' },
+  Queued:        { label: 'en cola',       cls: 'bg-slate-100 text-slate-600' },
+  Sent:          { label: 'enviado',       cls: 'bg-sky-100 text-sky-700' },
+  Replied:       { label: 'respondió',     cls: 'bg-indigo-100 text-indigo-700' },
+  Interested:    { label: 'interesado',    cls: 'bg-emerald-100 text-emerald-700' },
+  DemoScheduled: { label: 'demo agendada', cls: 'bg-violet-100 text-violet-700' },
+  Closed:        { label: 'ganado',        cls: 'bg-emerald-600 text-white' },
+  Lost:          { label: 'perdido',       cls: 'bg-rose-100 text-rose-700' },
+  Blocked:       { label: 'bloqueado',     cls: 'bg-rose-100 text-rose-700' }
+};
+
+function StatusPill({ status }: { status?: string }) {
+  const m = STATUS_META[status ?? ''] ?? { label: (status ?? '').toLowerCase(), cls: 'bg-slate-100 text-slate-600' };
+  return (
+    <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 whitespace-nowrap', m.cls)}>
+      {m.label}
+    </span>
   );
 }
 

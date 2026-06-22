@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Domain.Entities;
+using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
 using SalesHub.Infrastructure.Services;
 
@@ -60,6 +61,7 @@ public class ConversationsController : ControllerBase
     public async Task<ActionResult<IEnumerable<ConversationListItem>>> List(
         [FromQuery] string? productKey,
         [FromQuery] Guid? sellerId,
+        [FromQuery] string? status,
         [FromQuery(Name = "from")] DateTimeOffset? fromTs,
         [FromQuery(Name = "to")] DateTimeOffset? toTs,
         // bucket: "replied" (lead respondió alguna vez), "waiting" (mandamos último, esperando),
@@ -76,6 +78,8 @@ public class ConversationsController : ControllerBase
         if (!isAdmin) leadQ = leadQ.Where(l => l.SellerId == callerId);
         else if (sellerId is not null) leadQ = leadQ.Where(l => l.SellerId == sellerId);
         if (!string.IsNullOrWhiteSpace(productKey)) leadQ = leadQ.Where(l => l.ProductKey == productKey);
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<LeadStatus>(status, ignoreCase: true, out var st))
+            leadQ = leadQ.Where(l => l.Status == st);
 
         var items = await (from l in leadQ
                            let latest = _db.ConversationMessages.Where(m => m.LeadId == l.Id)
