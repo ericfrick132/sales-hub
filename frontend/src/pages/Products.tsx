@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import type { CategoryCadence, MediaAsset, MessageStep, Product, Seller } from '../lib/types';
+import Switch from '../components/Switch';
 
 const EMPTY: Product = {
   id: '', productKey: '', displayName: '', active: true, country: 'AR', countryName: 'Argentina',
@@ -47,6 +48,18 @@ export default function Products() {
     setDraft((d) => ({ ...d, [k]: v }));
   }
 
+  // Toggle directo de piloto/re-enganche desde la lista (endpoint chico, no pisa el resto).
+  async function toggleAutomation(p: Product, patch: { autoPilot?: boolean; autoReengage?: boolean }) {
+    const autoPilot = patch.autoPilot ?? p.autoPilot;
+    const autoReengage = patch.autoReengage ?? p.autoReengage;
+    try {
+      await api.post(`/products/${p.id}/automation`, { autoPilot, autoReengage });
+      toast.success(autoPilot ? 'Piloto actualizado' : 'Piloto apagado');
+      qc.invalidateQueries({ queryKey: ['products-admin'] });
+      if (selected?.id === p.id) setDraft((d) => ({ ...d, autoPilot, autoReengage: autoPilot && autoReengage }));
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló'); }
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
       <div className="md:col-span-4">
@@ -56,11 +69,26 @@ export default function Products() {
         </div>
         <div className="card divide-y divide-slate-100">
           {(productsQ.data ?? []).map((p) => (
-            <button key={p.id} onClick={() => setSelected(p)}
-              className={`w-full text-left p-3 hover:bg-slate-50 ${selected?.id === p.id ? 'bg-brand-50' : ''}`}>
-              <div className="font-medium">{p.displayName}</div>
-              <div className="text-xs text-slate-500">{p.productKey} — {p.active ? 'activo' : 'pausado'}</div>
-            </button>
+            <div key={p.id}
+              className={`p-3 flex items-center gap-3 hover:bg-slate-50 ${selected?.id === p.id ? 'bg-brand-50' : ''}`}>
+              <button onClick={() => setSelected(p)} className="flex-1 text-left min-w-0">
+                <div className="font-medium truncate">{p.displayName}</div>
+                <div className="text-xs text-slate-500 truncate">{p.productKey} — {p.active ? 'activo' : 'pausado'}</div>
+              </button>
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="flex flex-col items-center gap-0.5">
+                  <Switch on={p.autoPilot} onClick={() => toggleAutomation(p, { autoPilot: !p.autoPilot })}
+                    title="Piloto automático: el bot responde y vende solo" />
+                  <span className="text-[10px] text-slate-400">piloto</span>
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <Switch on={p.autoReengage} disabled={!p.autoPilot}
+                    onClick={() => toggleAutomation(p, { autoReengage: !p.autoReengage })}
+                    title={p.autoPilot ? 'Re-enganche proactivo a leads dormidos' : 'Necesita Piloto ON'} />
+                  <span className="text-[10px] text-slate-400">re-enganche</span>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       </div>

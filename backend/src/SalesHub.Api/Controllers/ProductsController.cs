@@ -64,6 +64,26 @@ public class ProductsController : ControllerBase
         return NoContent();
     }
 
+    public record AutomationRequest(bool AutoPilot, bool AutoReengage);
+
+    /// <summary>
+    /// Switch on/off del piloto automático y el re-enganche, sin tocar el resto de la
+    /// config (a diferencia del PUT completo). Para los toggles de la UI.
+    /// </summary>
+    [HttpPost("{id:guid}/automation")]
+    public async Task<ActionResult<ProductDto>> SetAutomation(Guid id, [FromBody] AutomationRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p is null) return NotFound();
+        p.AutoPilot = req.AutoPilot;
+        // El re-enganche sólo tiene sentido con piloto automático prendido.
+        p.AutoReengage = req.AutoPilot && req.AutoReengage;
+        p.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return ToDto(p);
+    }
+
     public record ResyncQueueResult(
         int LeadsRequeued, int OldRowsCancelled, int NewRowsCreated,
         int SkippedNoSeller, int SkippedNoInstance, int SkippedNoPhone,

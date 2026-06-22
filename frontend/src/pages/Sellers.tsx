@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import type { Seller, Product } from '../lib/types';
 import GaugeEditor from '../components/GaugeEditor';
+import Switch from '../components/Switch';
 
 export default function Sellers() {
   const qc = useQueryClient();
@@ -27,14 +28,13 @@ export default function Sellers() {
     qc.invalidateQueries({ queryKey: ['sellers'] });
   }
 
-  async function toggleSending() {
-    if (!selected) return;
+  async function toggleSending(s: Seller) {
     try {
-      const { data } = await api.post(`/sellers/${selected.id}/sending`, {
-        enabled: !selected.sendingEnabled
+      const { data } = await api.post(`/sellers/${s.id}/sending`, {
+        enabled: !s.sendingEnabled
       });
       const enabled = !!data.sendingEnabled;
-      setSelected({ ...selected, sendingEnabled: enabled });
+      if (selected?.id === s.id) setSelected({ ...selected, sendingEnabled: enabled });
       toast.success(enabled ? 'Envío activado' : 'Envío pausado');
       qc.invalidateQueries({ queryKey: ['sellers'] });
     } catch (e: any) {
@@ -53,18 +53,31 @@ export default function Sellers() {
           </div>
         </div>
         <div className="card divide-y divide-slate-100">
-          {(sellersQ.data ?? []).map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setSelected(s)}
-              className={`w-full text-left p-3 hover:bg-slate-50 ${selected?.id === s.id ? 'bg-brand-50' : ''}`}>
-              <div className="font-medium">{s.displayName}</div>
-              <div className="text-xs text-slate-500">{s.email} — {s.role}</div>
-              <div className="text-xs text-slate-400 mt-1">
-                {s.instanceStatus ?? 'sin instance'} · {s.sendingEnabled ? 'envío ON' : 'envío OFF'}
+          {(sellersQ.data ?? []).map((s) => {
+            const connected = s.instanceStatus === 'Connected';
+            return (
+              <div
+                key={s.id}
+                className={`p-3 flex items-center gap-3 hover:bg-slate-50 ${selected?.id === s.id ? 'bg-brand-50' : ''}`}>
+                <button onClick={() => setSelected(s)} className="flex-1 text-left min-w-0">
+                  <div className="font-medium truncate">{s.displayName}</div>
+                  <div className="text-xs text-slate-500 truncate">{s.email} — {s.role}</div>
+                  <div className="text-[11px] mt-0.5">
+                    <span className={connected ? 'text-emerald-600' : 'text-slate-400'}>
+                      {connected ? '● WhatsApp conectado' : `○ WhatsApp ${(s.instanceStatus ?? 'sin instancia').toLowerCase()}`}
+                    </span>
+                  </div>
+                </button>
+                <div className="flex flex-col items-center gap-0.5 shrink-0">
+                  <Switch
+                    on={s.sendingEnabled}
+                    onClick={() => toggleSending(s)}
+                    title={connected ? 'Prender/apagar el envío de este vendedor' : 'Conectá WhatsApp para poder enviar'} />
+                  <span className="text-[10px] text-slate-400">envío</span>
+                </div>
               </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -77,17 +90,13 @@ export default function Sellers() {
                 <p className="text-sm text-slate-500 break-all">{selected.email}</p>
               </div>
               <div className="flex gap-2 flex-wrap items-center">
-                <button
-                  type="button"
-                  onClick={toggleSending}
-                  className={`text-xs px-3 py-1 rounded-full border font-medium transition ${
-                    selected.sendingEnabled
-                      ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
-                      : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
-                  }`}
-                  title="Prender/apagar el envío automático de este vendedor">
-                  Envío: {selected.sendingEnabled ? 'ON' : 'OFF'}
-                </button>
+                <div className="flex items-center gap-2 px-1">
+                  <Switch
+                    on={selected.sendingEnabled}
+                    onClick={() => toggleSending(selected)}
+                    title="Prender/apagar el envío automático de este vendedor" />
+                  <span className="text-xs font-medium text-slate-600">Envío {selected.sendingEnabled ? 'ON' : 'OFF'}</span>
+                </div>
                 <Link to={`/sellers/zones?seller=${selected.id}`} className="btn-secondary text-xs">
                   Editar zonas (mapa)
                 </Link>
