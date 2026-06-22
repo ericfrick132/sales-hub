@@ -32,6 +32,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<ConversationAgentWorker>();
     builder.Services.AddHostedService<SeoContentWorker>();
     builder.Services.AddHostedService<SeoDistributeWorker>();
+    builder.Services.AddHostedService<SocialContentWorker>();              // posteos automáticos → Buffer (gated por Workers:PosteosAutoStart)
 
     // Workers de Instagram. Corren acá (no en un contenedor aparte) porque la imagen
     // ya trae Playwright/Chromium y el droplet tiene RAM de sobra. Sin esto, las
