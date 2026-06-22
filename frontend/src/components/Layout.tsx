@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import clsx from 'clsx';
 
 type NavItem = { to: string; label: string; badge?: number };
+type NavGroup = { title?: string; items: NavItem[]; collapsible?: boolean };
 
 export default function Layout() {
   const user = useAuthStore((s) => s.user);
@@ -20,13 +21,8 @@ export default function Layout() {
     refetchInterval: 20000
   });
 
-  const insightItems: NavItem[] = [
-    { to: '/map', label: 'Mapa' },
-    { to: '/competitors', label: 'Competencia' },
-    { to: '/trends', label: 'Tendencias' }
-  ];
-  const insightsOpenInitial = insightItems.some((i) => pathname.startsWith(i.to));
-  const [insightsOpen, setInsightsOpen] = useState(insightsOpenInitial);
+  const INSIGHT_PATHS = ['/map', '/competitors', '/trends'];
+  const [insightsOpen, setInsightsOpen] = useState(INSIGHT_PATHS.some((p) => pathname.startsWith(p)));
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -35,33 +31,48 @@ export default function Layout() {
   if (!user) return null;
   const admin = isAdmin(user);
 
-  const operationLinks: NavItem[] = admin
+  // Navbar agrupado por función (qué hace cada cosa) en vez de "operación + Admin".
+  const groups: NavGroup[] = admin
     ? [
-        { to: '/admin', label: 'Hoy' },
-        { to: '/leads', label: 'Leads' },
-        { to: '/leads/search', label: 'Capturar de Maps' },
-        { to: '/conversations', label: 'Conversaciones', badge: unread.data },
-        { to: '/connect', label: 'WhatsApp' }
+        { items: [{ to: '/admin', label: 'Hoy' }] },
+        { title: 'Leads', items: [
+          { to: '/leads', label: 'Leads' },
+          { to: '/conversations', label: 'Conversaciones', badge: unread.data },
+        ] },
+        { title: 'Captación', items: [
+          { to: '/leads/search', label: 'Capturar de Maps' },
+          { to: '/pipeline', label: 'Captación' },
+        ] },
+        { title: 'Canales', items: [
+          { to: '/connect', label: 'WhatsApp' },
+          { to: '/instagram/accounts', label: 'Cuentas IG' },
+          { to: '/instagram/follow', label: 'Auto-follow IG' },
+        ] },
+        { title: 'Contenido', items: [
+          { to: '/posteos', label: 'Posteos' },
+          { to: '/calendario', label: 'Calendario' },
+          { to: '/seo', label: 'SEO / Contenido' },
+          { to: '/audio-analytics', label: 'Audios y estrategias' },
+        ] },
+        { title: 'Insights', collapsible: true, items: [
+          { to: '/map', label: 'Mapa' },
+          { to: '/competitors', label: 'Competencia' },
+          { to: '/trends', label: 'Tendencias' },
+        ] },
+        { title: 'Configuración', items: [
+          { to: '/sellers', label: 'Vendedores' },
+          { to: '/products', label: 'Aplicaciones' },
+        ] },
       ]
     : [
-        { to: '/dashboard', label: 'Hoy' },
-        { to: '/leads', label: 'Mis leads' },
-        { to: '/conversations', label: 'Conversaciones', badge: unread.data },
-        { to: '/leads/search', label: 'Capturar de Maps' },
-        { to: '/connect', label: 'WhatsApp' }
+        { items: [{ to: '/dashboard', label: 'Hoy' }] },
+        { title: 'Leads', items: [
+          { to: '/leads', label: 'Mis leads' },
+          { to: '/conversations', label: 'Conversaciones', badge: unread.data },
+        ] },
+        { title: 'Captación', items: [{ to: '/leads/search', label: 'Capturar de Maps' }] },
+        { title: 'Canales', items: [{ to: '/connect', label: 'WhatsApp' }] },
       ];
-
-  const adminLinks: NavItem[] = [
-    { to: '/pipeline', label: 'Captación' },
-    { to: '/sellers', label: 'Vendedores' },
-    { to: '/products', label: 'Aplicaciones' },
-    { to: '/instagram/accounts', label: 'Cuentas IG' },
-    { to: '/instagram/follow', label: 'Auto-follow IG' },
-    { to: '/posteos', label: 'Posteos' },
-    { to: '/calendario', label: 'Calendario' },
-    { to: '/seo', label: 'SEO / Contenido' },
-    { to: '/audio-analytics', label: 'Audios y estrategias' }
-  ];
 
   const sidebar = (
     <aside
@@ -83,32 +94,34 @@ export default function Layout() {
           ×
         </button>
       </div>
-      <nav className="flex-1 py-4 space-y-1 px-3 overflow-y-auto">
-        {operationLinks.map((l) => <NavRow key={l.to} item={l} pathname={pathname} />)}
-
-        {admin && (
-          <>
-            <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-slate-500">
-              Admin
-            </div>
-            {adminLinks.map((l) => <NavRow key={l.to} item={l} pathname={pathname} />)}
-
-            <button
-              onClick={() => setInsightsOpen((o) => !o)}
-              className={clsx(
-                'flex items-center justify-between rounded-md px-3 py-2 text-sm w-full',
-                'hover:bg-slate-800 text-slate-300'
-              )}>
-              <span>Insights</span>
-              <span className="text-xs text-slate-500">{insightsOpen ? '▾' : '▸'}</span>
-            </button>
-            {insightsOpen && (
-              <div className="ml-3 border-l border-slate-800 pl-2 space-y-1">
-                {insightItems.map((l) => <NavRow key={l.to} item={l} pathname={pathname} small />)}
+      <nav className="flex-1 py-3 space-y-1 px-3 overflow-y-auto">
+        {groups.map((g, gi) => {
+          if (g.collapsible) {
+            return (
+              <div key={g.title ?? gi} className="pt-2">
+                <button
+                  onClick={() => setInsightsOpen((o) => !o)}
+                  className="flex items-center justify-between rounded-md px-3 py-1.5 w-full hover:bg-slate-800">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500">{g.title}</span>
+                  <span className="text-xs text-slate-500">{insightsOpen ? '▾' : '▸'}</span>
+                </button>
+                {insightsOpen && (
+                  <div className="ml-3 border-l border-slate-800 pl-2 space-y-1 mt-1">
+                    {g.items.map((l) => <NavRow key={l.to} item={l} pathname={pathname} small />)}
+                  </div>
+                )}
               </div>
-            )}
-          </>
-        )}
+            );
+          }
+          return (
+            <div key={g.title ?? gi} className={gi > 0 ? 'pt-2' : ''}>
+              {g.title && (
+                <div className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-slate-500">{g.title}</div>
+              )}
+              {g.items.map((l) => <NavRow key={l.to} item={l} pathname={pathname} />)}
+            </div>
+          );
+        })}
       </nav>
       <button
         onClick={logout}
