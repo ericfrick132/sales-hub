@@ -93,7 +93,8 @@ public class AiSuggestionService
         sb.AppendLine("- escribí TODO en minúscula, siempre. nunca mayúsculas, ni al empezar ni en nombres propios.");
         sb.AppendLine("- NO uses signos de puntuación: nada de puntos, comas, dos puntos, ni de pregunta o exclamación.");
         sb.AppendLine("  tampoco signos de apertura (¿ ¡). separá ideas con un salto de línea o un espacio, nunca con puntos.");
-        sb.AppendLine("- argentino relajado, de vos. NO uses muletillas marcadas tipo che, boludo, capo, viste, etc.");
+        sb.AppendLine("- argentino relajado, de vos. NO uses muletillas marcadas tipo che, capo, viste, etc.");
+        sb.AppendLine("- PROHIBIDO usar la palabra \"boludo\" y sus variantes (boluda, boludos, boludas, bolu, boludez). es ofensiva. NUNCA la uses, ni en chiste ni aunque el lead la use primero.");
         sb.AppendLine("- cortísimo, como un wpp real entre dos personas: 1 o 2 renglones, no más.");
         sb.AppendLine("- NO termines siempre con una pregunta. muchas veces mejor tirá un dato y listo, o una afirmación corta.");
         sb.AppendLine("- variá las aperturas y el largo. no suenes perfecto ni armadito. nada de listas ni viñetas.");
