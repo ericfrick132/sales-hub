@@ -27,10 +27,15 @@ public static class OutboxEnqueueHelper
         Seller seller,
         string whatsappPhone,
         string instanceName,
-        DateTimeOffset? scheduledAt = null)
+        DateTimeOffset? scheduledAt = null,
+        MessageChannel channel = MessageChannel.WhatsApp)
     {
         var when = scheduledAt ?? DateTimeOffset.UtcNow;
         var count = 0;
+
+        // Instagram DM = solo texto: no mandamos media (el cliente IG no la soporta),
+        // así que skipeamos steps sin texto y no adjuntamos assets.
+        var textOnly = channel == MessageChannel.Instagram;
 
         // Resolver qué cadencia usar para este lead (override por categoría
         // o default del producto).
@@ -44,9 +49,10 @@ public static class OutboxEnqueueHelper
             for (var i = 0; i < steps.Count; i++)
             {
                 var step = steps[i];
-                var hasMedia = step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 });
+                var hasMedia = !textOnly && (step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 }));
                 // Un step sin texto Y sin media no manda nada — lo skipeamos.
                 // Si tiene media, va aunque el texto esté vacío (sin caption).
+                // En IG (textOnly) un step sin texto se skipea aunque tenga media.
                 if (string.IsNullOrWhiteSpace(step.Text) && !hasMedia) continue;
 
                 if (i > 0) when = when.AddSeconds(Math.Max(0, step.DelaySeconds));
@@ -58,8 +64,8 @@ public static class OutboxEnqueueHelper
                 // round-robin real se decide en OutboxSender al momento de mandar — así
                 // sobrevive a cambios de variantes entre enqueue y envío (agregar/sacar
                 // audios) y no consumimos el contador dos veces (enqueue + send).
-                Guid? mediaAssetId = step.MediaAssetId;
-                if (step.MediaAssetIds is { Count: > 0 })
+                Guid? mediaAssetId = textOnly ? null : step.MediaAssetId;
+                if (!textOnly && step.MediaAssetIds is { Count: > 0 })
                 {
                     mediaAssetId = step.MediaAssetIds[0];
                 }
@@ -69,6 +75,7 @@ public static class OutboxEnqueueHelper
                     Id = Guid.NewGuid(),
                     LeadId = lead.Id,
                     SellerId = seller.Id,
+                    Channel = channel,
                     EvolutionInstance = instanceName,
                     WhatsappPhone = whatsappPhone,
                     // Snapshot al momento del enqueue — útil como preview/debug pero el
@@ -103,6 +110,7 @@ public static class OutboxEnqueueHelper
                 Id = Guid.NewGuid(),
                 LeadId = lead.Id,
                 SellerId = seller.Id,
+                Channel = channel,
                 EvolutionInstance = instanceName,
                 WhatsappPhone = whatsappPhone,
                 Message = opener,
@@ -117,6 +125,7 @@ public static class OutboxEnqueueHelper
             Id = Guid.NewGuid(),
             LeadId = lead.Id,
             SellerId = seller.Id,
+            Channel = channel,
             EvolutionInstance = instanceName,
             WhatsappPhone = whatsappPhone,
             Message = main,

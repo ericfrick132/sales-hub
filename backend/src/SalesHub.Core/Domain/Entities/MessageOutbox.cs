@@ -12,6 +12,12 @@ public class MessageOutbox
     public Guid SellerId { get; set; }
     public Seller? Seller { get; set; }
 
+    /// <summary>
+    /// Canal de envío. WhatsApp (default) lo manda el OutboxSender vía Evolution;
+    /// Instagram lo despacha el InstagramDmSender (DM al InstagramHandle del lead).
+    /// </summary>
+    public MessageChannel Channel { get; set; } = MessageChannel.WhatsApp;
+
     public string EvolutionInstance { get; set; } = string.Empty;
     public string WhatsappPhone { get; set; } = string.Empty;
 

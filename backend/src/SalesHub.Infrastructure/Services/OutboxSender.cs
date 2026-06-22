@@ -48,7 +48,8 @@ public class OutboxSender
         // Scheduled (o Failed si ya agotaron intentos).
         var staleCutoff = now.AddMinutes(-10);
         var stale = await _db.Outbox
-            .Where(o => o.Status == OutboxStatus.Sending && o.LockedAt != null && o.LockedAt < staleCutoff)
+            .Where(o => o.Status == OutboxStatus.Sending && o.Channel == MessageChannel.WhatsApp
+                     && o.LockedAt != null && o.LockedAt < staleCutoff)
             .ToListAsync(ct);
         if (stale.Count > 0)
         {
@@ -84,6 +85,7 @@ public class OutboxSender
             var dayEnd = today.AddDays(1).ToDateTime(TimeOnly.MinValue);
             var contactedToday = await _db.Outbox
                 .Where(o => o.SellerId == seller.Id
+                         && o.Channel == MessageChannel.WhatsApp
                          && o.Status == OutboxStatus.Sent
                          && o.SentAt != null
                          && o.SentAt.Value >= dayStart
@@ -98,6 +100,7 @@ public class OutboxSender
             // no debe pasar el techo anti-ban.
             var messagesToday = await _db.Outbox
                 .CountAsync(o => o.SellerId == seller.Id
+                              && o.Channel == MessageChannel.WhatsApp
                               && o.Status == OutboxStatus.Sent
                               && o.SentAt != null
                               && o.SentAt.Value >= dayStart
@@ -131,6 +134,7 @@ public class OutboxSender
                 from o in _db.Outbox
                 where o.SellerId == seller.Id
                    && o.Status == OutboxStatus.Scheduled
+                   && o.Channel == MessageChannel.WhatsApp
                    && o.ScheduledAt <= now
                    && (!hasWhitelist
                        || (o.Lead != null && whitelist!.Contains(o.Lead.ProductKey)))

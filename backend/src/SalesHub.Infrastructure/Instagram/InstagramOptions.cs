@@ -14,8 +14,11 @@ public class InstagramOptions
     public int MinActionDelayMs { get; set; } = 2_000;
     public int MaxActionDelayMs { get; set; } = 5_000;
 
-    /// <summary>Máximo de DMs por hora por cuenta.</summary>
+    /// <summary>Máximo de DMs por hora por cuenta (pacing anti-ban del worker).</summary>
     public int MaxDmPerHour { get; set; } = 20;
+
+    /// <summary>Máximo de DMs por DÍA por cuenta. Tope duro anti-ban.</summary>
+    public int MaxDmPerDay { get; set; } = 40;
 
     /// <summary>Máximo de perfiles a scrapear por hora por cuenta.</summary>
     public int MaxScrapePerHour { get; set; } = 100;

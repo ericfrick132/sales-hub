@@ -126,6 +126,87 @@ public class ConversationService
         return true;
     }
 
+    /// <summary>
+    /// Ingesta un DM entrante de Instagram (leído del inbox por el poller). Matchea el
+    /// lead por InstagramHandle y aplica las mismas transiciones que el inbound de WhatsApp:
+    /// marca Replied, corta el drip y limpia la sugerencia de IA vieja. Dedup por el
+    /// item_id de IG (guardado en WhatsappMessageId con prefijo "ig:").
+    /// </summary>
+    public async Task<bool> HandleInstagramInboundAsync(
+        string handle, string externalId, string text, DateTimeOffset timestamp, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var h = handle.Trim().TrimStart('@');
+        if (h.Length == 0) return false;
+
+        // Dedup por id externo de IG.
+        var extKey = string.IsNullOrWhiteSpace(externalId) ? null : $"ig:{externalId}";
+        if (extKey is not null)
+        {
+            var dupe = await _db.ConversationMessages.AnyAsync(m => m.WhatsappMessageId == extKey, ct);
+            if (dupe) return false;
+        }
+
+        var lead = await MatchLeadByInstagramHandleAsync(h, ct);
+        if (lead is null)
+        {
+            _log.LogInformation("IG inbound de @{Handle} sin lead asociado", h);
+            return false;
+        }
+
+        _db.ConversationMessages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = lead.SellerId,
+            Direction = MessageDirection.Inbound,
+            Status = MessageDeliveryStatus.Received,
+            Text = text,
+            WhatsappMessageId = extKey,
+            EvolutionInstance = null,
+            Timestamp = timestamp,
+            IsRead = false
+        });
+
+        var isFirstReply = lead.FirstReplyAt is null;
+        if (isFirstReply) lead.FirstReplyAt = timestamp;
+        if (lead.Status is LeadStatus.Sent or LeadStatus.Queued or LeadStatus.Assigned)
+            lead.Status = LeadStatus.Replied;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // El lead escribió → la sugerencia anterior quedó vieja; el ConversationAgent regenera.
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
+
+        if (isFirstReply)
+        {
+            var pending = await _db.Outbox
+                .Where(o => o.LeadId == lead.Id && o.Status == OutboxStatus.Scheduled)
+                .ToListAsync(ct);
+            foreach (var o in pending) o.Status = OutboxStatus.Cancelled;
+            if (pending.Count > 0)
+                _log.LogInformation("Lead {Lead} respondió por IG — {N} steps pendientes cancelados", lead.Id, pending.Count);
+        }
+
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("IG inbound guardado: lead={Lead} @{Handle}", lead.Id, h);
+        return true;
+    }
+
+    /// <summary>
+    /// Busca el lead más reciente cuyo InstagramHandle matchea (case-insensitive,
+    /// tolerando el @ inicial guardado de cualquier lado).
+    /// </summary>
+    private async Task<Lead?> MatchLeadByInstagramHandleAsync(string handle, CancellationToken ct)
+    {
+        var norm = handle.ToLower();
+        return await _db.Leads
+            .Where(l => l.InstagramHandle != null
+                && l.InstagramHandle.ToLower().Replace("@", "") == norm)
+            .OrderByDescending(l => l.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
+
     /// <summary>Called when the UI sends a reply manually. Does NOT go through the humanized outbox.</summary>
     public async Task<ConversationMessage?> SendReplyAsync(Guid sellerId, Guid leadId, string text, CancellationToken ct)
     {

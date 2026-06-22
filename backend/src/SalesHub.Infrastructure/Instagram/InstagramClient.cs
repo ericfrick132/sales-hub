@@ -222,12 +222,29 @@ public class InstagramClient : IAsyncDisposable
     /// <summary>
     /// Scrapea los seguidores de una cuenta de Instagram.
     /// </summary>
-    public async Task<List<InstagramProfile>> ScrapeFollowersAsync(string targetHandle, int maxFollowers, CancellationToken ct = default)
+    /// <summary>Scrapea los SEGUIDORES (followers) del perfil indicado.</summary>
+    public Task<List<InstagramProfile>> ScrapeFollowersAsync(string targetHandle, int maxProfiles, CancellationToken ct = default)
+        => ScrapeConnectionsAsync(targetHandle, maxProfiles, following: false, ct);
+
+    /// <summary>Scrapea las cuentas que el perfil indicado SIGUE (following).</summary>
+    public Task<List<InstagramProfile>> ScrapeFollowingAsync(string targetHandle, int maxProfiles, CancellationToken ct = default)
+        => ScrapeConnectionsAsync(targetHandle, maxProfiles, following: true, ct);
+
+    /// <summary>
+    /// Abre el dialog de "followers" o "following" de un perfil y scrapea hasta
+    /// <paramref name="maxProfiles"/> handles, scrolleando para cargar más.
+    /// </summary>
+    private async Task<List<InstagramProfile>> ScrapeConnectionsAsync(
+        string targetHandle, int maxProfiles, bool following, CancellationToken ct = default)
     {
         EnsureLoggedIn();
         var profiles = new List<InstagramProfile>();
 
-        _log.LogInformation("Scrapeando seguidores de {Target} (max {Max})...", targetHandle, maxFollowers);
+        // "followers" = seguidores del perfil; "following" = cuentas que el perfil sigue.
+        var tab = following ? "following" : "followers";
+        var label = following ? "seguidos" : "seguidores";
+
+        _log.LogInformation("Scrapeando {Label} de {Target} (max {Max})...", label, targetHandle, maxProfiles);
 
         await _page!.GotoAsync($"https://www.instagram.com/{targetHandle}/", new PageGotoOptions
         {
@@ -237,40 +254,42 @@ public class InstagramClient : IAsyncDisposable
 
         await RandomDelayAsync();
 
-        // Click en el link de seguidores
-        var followersLink = await _page.QuerySelectorAsync($"a[href='/{targetHandle}/followers/']");
-        if (followersLink is null)
+        // Click en el link de followers/following
+        var tabLink = await _page.QuerySelectorAsync($"a[href='/{targetHandle}/{tab}/']");
+        if (tabLink is null)
         {
-            _log.LogWarning("No se encontró el link de seguidores para {Target}", targetHandle);
+            _log.LogWarning("No se encontró el link de {Label} para {Target}", label, targetHandle);
             return profiles;
         }
 
-        await followersLink.ClickAsync();
+        await tabLink.ClickAsync();
         await Task.Delay(3000, ct);
 
-        // Scroll para cargar más seguidores
-        var followersDialog = await _page.WaitForSelectorAsync("div[role='dialog']", new PageWaitForSelectorOptions
+        // Scroll para cargar más
+        var dialog = await _page.WaitForSelectorAsync("div[role='dialog']", new PageWaitForSelectorOptions
         {
             Timeout = _opts.NavigationTimeoutMs
         });
 
-        if (followersDialog is null)
+        if (dialog is null)
         {
-            _log.LogWarning("No se abrió el dialog de seguidores para {Target}", targetHandle);
+            _log.LogWarning("No se abrió el dialog de {Label} para {Target}", label, targetHandle);
             return profiles;
         }
 
         var lastCount = 0;
         var scrollAttempts = 0;
 
-        while (profiles.Count < maxFollowers && scrollAttempts < 30)
+        while (profiles.Count < maxProfiles && scrollAttempts < 30)
         {
             // Extraer handles visibles
             var links = await _page.QuerySelectorAllAsync("div[role='dialog'] a[href^='/']");
             foreach (var link in links)
             {
                 var href = await link.GetAttributeAsync("href");
-                if (string.IsNullOrEmpty(href) || href == "/" || href.Contains("/followers/")) continue;
+                // Saltear los links de navegación del propio perfil (followers/following).
+                if (string.IsNullOrEmpty(href) || href == "/"
+                    || href.Contains("/followers/") || href.Contains("/following/")) continue;
 
                 var handle = href.TrimStart('/').Split('/').FirstOrDefault();
                 if (string.IsNullOrEmpty(handle) || profiles.Any(p => p.Handle == handle)) continue;
@@ -282,11 +301,11 @@ public class InstagramClient : IAsyncDisposable
                 {
                     Handle = handle,
                     DisplayName = displayName,
-                    Source = "followers",
+                    Source = tab,
                     SourceTarget = targetHandle
                 });
 
-                if (profiles.Count >= maxFollowers) break;
+                if (profiles.Count >= maxProfiles) break;
             }
 
             if (profiles.Count == lastCount)
@@ -304,7 +323,7 @@ public class InstagramClient : IAsyncDisposable
             await Task.Delay(1500, ct);
         }
 
-        _log.LogInformation("Scrapeados {Count} seguidores de {Target}", profiles.Count, targetHandle);
+        _log.LogInformation("Scrapeados {Count} {Label} de {Target}", profiles.Count, label, targetHandle);
         return profiles;
     }
 
@@ -469,6 +488,113 @@ public class InstagramClient : IAsyncDisposable
             _log.LogError(ex, "Error al enviar DM a {Handle}", handle);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Lee el inbox de DMs y devuelve los mensajes ENTRANTES (de la otra persona).
+    /// Usa la API interna autenticada de Instagram (direct_v2/inbox) vía fetch desde
+    /// el contexto de la página — mucho más robusto que scrapear el DOM virtualizado.
+    /// </summary>
+    public async Task<List<InstagramInboundMessage>> ReadInboxAsync(int maxThreads = 20, CancellationToken ct = default)
+    {
+        EnsureLoggedIn();
+        var result = new List<InstagramInboundMessage>();
+
+        // El fetch tiene que ser same-origin (www.instagram.com) para mandar cookies + headers.
+        if (string.IsNullOrEmpty(_page!.Url) || !_page.Url.Contains("instagram.com"))
+        {
+            await _page.GotoAsync("https://www.instagram.com/", new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.DOMContentLoaded,
+                Timeout = _opts.NavigationTimeoutMs
+            });
+            await Task.Delay(1500, ct);
+        }
+
+        string raw;
+        try
+        {
+            raw = await _page.EvaluateAsync<string>(@"async (limit) => {
+                const url = `/api/v1/direct_v2/inbox/?visual_message_return_type=unseen&thread_message_limit=10&persistentBadging=true&limit=${limit}`;
+                const res = await fetch(url, { headers: { 'X-IG-App-ID': '936619743392459' }, credentials: 'include' });
+                return JSON.stringify({ status: res.status, body: res.ok ? await res.json() : null });
+            }", maxThreads);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("ReadInbox: fetch falló: {Err}", ex.Message);
+            return result;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("body", out var body) || body.ValueKind != JsonValueKind.Object)
+            {
+                var status = root.TryGetProperty("status", out var s) ? s.ToString() : "?";
+                _log.LogWarning("ReadInbox: respuesta inesperada de IG (status {Status})", status);
+                return result;
+            }
+
+            if (!body.TryGetProperty("inbox", out var inbox) ||
+                !inbox.TryGetProperty("threads", out var threads) ||
+                threads.ValueKind != JsonValueKind.Array)
+                return result;
+
+            foreach (var thread in threads.EnumerateArray())
+            {
+                // viewer_id = nuestro propio user id; los items con otro user_id son entrantes.
+                long viewerId = thread.TryGetProperty("viewer_id", out var vid) && vid.ValueKind == JsonValueKind.Number
+                    ? vid.GetInt64() : 0;
+
+                // Counterparty (1:1). Para grupos tomamos el primero; igual matcheamos por handle.
+                string? handle = null;
+                if (thread.TryGetProperty("users", out var users) && users.ValueKind == JsonValueKind.Array
+                    && users.GetArrayLength() > 0 && users[0].TryGetProperty("username", out var un))
+                    handle = un.GetString();
+                if (string.IsNullOrWhiteSpace(handle)) continue;
+
+                if (!thread.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var item in items.EnumerateArray())
+                {
+                    if (!item.TryGetProperty("item_type", out var itype) || itype.GetString() != "text") continue;
+
+                    long senderId = item.TryGetProperty("user_id", out var uid) && uid.ValueKind == JsonValueKind.Number
+                        ? uid.GetInt64() : 0;
+                    if (senderId == viewerId) continue; // saliente (lo mandamos nosotros)
+
+                    var text = item.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+                    if (string.IsNullOrWhiteSpace(text)) continue;
+
+                    var itemId = "";
+                    if (item.TryGetProperty("item_id", out var iid))
+                        itemId = iid.ValueKind == JsonValueKind.String ? iid.GetString() ?? "" : iid.GetRawText();
+
+                    // timestamp de IG: microsegundos desde epoch.
+                    var ts = DateTimeOffset.UtcNow;
+                    if (item.TryGetProperty("timestamp", out var tsp))
+                    {
+                        long micros = tsp.ValueKind == JsonValueKind.Number ? tsp.GetInt64()
+                            : long.TryParse(tsp.GetString(), out var parsed) ? parsed : 0;
+                        if (micros > 0) ts = DateTimeOffset.FromUnixTimeMilliseconds(micros / 1000);
+                    }
+
+                    result.Add(new InstagramInboundMessage(handle!.TrimStart('@'), itemId, text, ts));
+                }
+            }
+
+            _log.LogInformation("ReadInbox: {Count} mensajes entrantes en {Threads} threads",
+                result.Count, threads.GetArrayLength());
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("ReadInbox: parseo falló: {Err}", ex.Message);
+        }
+
+        return result;
     }
 
     /// <summary>

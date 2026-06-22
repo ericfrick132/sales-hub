@@ -1,5 +1,4 @@
-ACCIÓN: crear archivo nuevo
-
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -9,7 +8,8 @@ using SalesHub.Infrastructure.Persistence;
 namespace SalesHub.Api.Controllers;
 
 [ApiController]
-[Route("instagram-accounts/{accountId}/post")]
+[Route("api/instagram-accounts/{accountId:guid}/post")]
+[Authorize(Roles = "Admin")]
 public class InstagramPostsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
@@ -33,7 +33,7 @@ public class InstagramPostsController : ControllerBase
 
     [HttpPost]
     public async Task<IActionResult> PostImage(
-        string accountId,
+        Guid accountId,
         [FromBody] PostImageRequest req,
         CancellationToken ct)
     {

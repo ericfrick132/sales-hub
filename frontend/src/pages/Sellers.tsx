@@ -27,6 +27,21 @@ export default function Sellers() {
     qc.invalidateQueries({ queryKey: ['sellers'] });
   }
 
+  async function toggleSending() {
+    if (!selected) return;
+    try {
+      const { data } = await api.post(`/sellers/${selected.id}/sending`, {
+        enabled: !selected.sendingEnabled
+      });
+      const enabled = !!data.sendingEnabled;
+      setSelected({ ...selected, sendingEnabled: enabled });
+      toast.success(enabled ? 'Envío activado' : 'Envío pausado');
+      qc.invalidateQueries({ queryKey: ['sellers'] });
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo cambiar el envío');
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
       <div className="md:col-span-4">
@@ -61,7 +76,18 @@ export default function Sellers() {
                 <h2 className="text-xl font-bold">{selected.displayName}</h2>
                 <p className="text-sm text-slate-500 break-all">{selected.email}</p>
               </div>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap items-center">
+                <button
+                  type="button"
+                  onClick={toggleSending}
+                  className={`text-xs px-3 py-1 rounded-full border font-medium transition ${
+                    selected.sendingEnabled
+                      ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
+                      : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                  }`}
+                  title="Prender/apagar el envío automático de este vendedor">
+                  Envío: {selected.sendingEnabled ? 'ON' : 'OFF'}
+                </button>
                 <Link to={`/sellers/zones?seller=${selected.id}`} className="btn-secondary text-xs">
                   Editar zonas (mapa)
                 </Link>

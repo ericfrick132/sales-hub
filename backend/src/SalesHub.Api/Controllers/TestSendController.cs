@@ -182,4 +182,50 @@ public class TestSendController : ControllerBase
 
         return Ok(new { ok = true, sentSteps, totalSteps = steps.Count });
     }
+
+    public record InstagramDmRequest(Guid LeadId, string? Message);
+
+    /// <summary>
+    /// Encola un DM de Instagram para un lead (Channel=Instagram). Lo despacha el
+    /// InstagramDmWorker en el próximo tick. Útil para probar el canal IG sin
+    /// esperar al pipeline. Si no se pasa <c>message</c>, usa el RenderedMessage del lead.
+    /// </summary>
+    [HttpPost("instagram")]
+    public async Task<IActionResult> EnqueueInstagramDm([FromBody] InstagramDmRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        if (req.LeadId == Guid.Empty) return BadRequest(new { error = "leadId requerido" });
+
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == req.LeadId, ct);
+        if (lead is null) return NotFound(new { error = "Lead no existe" });
+        if (string.IsNullOrWhiteSpace(lead.InstagramHandle))
+            return BadRequest(new { error = "El lead no tiene InstagramHandle" });
+        if (lead.SellerId is null)
+            return BadRequest(new { error = "El lead no está asignado a un vendedor" });
+
+        var message = !string.IsNullOrWhiteSpace(req.Message) ? req.Message!
+            : !string.IsNullOrWhiteSpace(lead.RenderedMessage) ? lead.RenderedMessage!
+            : null;
+        if (string.IsNullOrWhiteSpace(message))
+            return BadRequest(new { error = "Sin mensaje (pasá 'message' o renderizá el lead primero)" });
+
+        var hasIgAccount = await _db.InstagramAccounts.AnyAsync(a => a.IsActive && !a.IsActionBlocked, ct);
+        if (!hasIgAccount) return BadRequest(new { error = "No hay cuentas de Instagram disponibles" });
+
+        var item = new MessageOutbox
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = lead.SellerId.Value,
+            Channel = MessageChannel.Instagram,
+            Message = message!,
+            ScheduledAt = DateTimeOffset.UtcNow,
+            Status = OutboxStatus.Scheduled
+        };
+        _db.Outbox.Add(item);
+        await _db.SaveChangesAsync(ct);
+
+        _log.LogInformation("DM IG encolado (test): lead {Lead} → @{Handle}", lead.Id, lead.InstagramHandle);
+        return Ok(new { ok = true, outboxId = item.Id, handle = lead.InstagramHandle });
+    }
 }

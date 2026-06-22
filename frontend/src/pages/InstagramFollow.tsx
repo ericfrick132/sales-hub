@@ -17,6 +17,7 @@ interface Campaign {
   instagramAccountId: string;
   instagramAccountUsername?: string | null;
   sourceHandle: string;
+  sourceMode: string;
   dailyRate: number;
   maxTotalFollows: number;
   isActive: boolean;
@@ -58,6 +59,7 @@ export default function InstagramFollow() {
 
   const [accountId, setAccountId] = useState('');
   const [sourceHandle, setSourceHandle] = useState('');
+  const [sourceMode, setSourceMode] = useState<'Followers' | 'Following'>('Followers');
   const [dailyRate, setDailyRate] = useState(30);
   const [maxTotal, setMaxTotal] = useState(0);
 
@@ -86,6 +88,7 @@ export default function InstagramFollow() {
         await api.post('/instagram-follow-campaigns', {
           instagramAccountId: accountId,
           sourceHandle: sourceHandle.trim().replace(/^@/, ''),
+          sourceMode,
           dailyRate,
           maxTotalFollows: maxTotal
         })
@@ -147,8 +150,9 @@ export default function InstagramFollow() {
       <header>
         <h1 className="text-2xl font-bold">Auto-follow Instagram</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Encolá los followers de un perfil para seguirlos desde tu cuenta de IG a un ritmo
-          configurable por día. Mantenelo bajo (&lt;50/día) para no gatillar action blocks.
+          Encolá los seguidores de un perfil —o las cuentas que ese perfil sigue— para seguirlos
+          desde tu cuenta de IG a un ritmo configurable por día. Mantenelo bajo (&lt;50/día) para no
+          gatillar action blocks.
         </p>
       </header>
 
@@ -175,13 +179,24 @@ export default function InstagramFollow() {
           </div>
 
           <div className="sm:col-span-2">
-            <label className="text-xs text-slate-500">Perfil source (followers a seguir)</label>
+            <label className="text-xs text-slate-500">Perfil source (de quién tomar las cuentas)</label>
             <input
               className="input"
               placeholder="ej: gimnasiocompetidor"
               value={sourceHandle}
               onChange={(e) => setSourceHandle(e.target.value)}
             />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="text-xs text-slate-500">A quién seguir</label>
+            <select
+              className="input"
+              value={sourceMode}
+              onChange={(e) => setSourceMode(e.target.value as 'Followers' | 'Following')}>
+              <option value="Followers">Seguidores del perfil (followers)</option>
+              <option value="Following">Cuentas que el perfil sigue (following)</option>
+            </select>
           </div>
 
           <div>
@@ -242,7 +257,8 @@ export default function InstagramFollow() {
                 </span>
               </div>
               <div className="text-xs text-slate-500 mt-0.5">
-                desde @{c.instagramAccountUsername} · {c.dailyRate}/día
+                desde @{c.instagramAccountUsername} · {c.dailyRate}/día ·{' '}
+                {c.sourceMode === 'Following' ? 'sus seguidos' : 'sus seguidores'}
               </div>
               <div className="text-xs text-slate-600 mt-1">
                 hoy: <b>{c.followedToday}</b>/{c.dailyRate} · seguidos:{' '}
@@ -263,7 +279,8 @@ export default function InstagramFollow() {
                 <div>
                   <h3 className="font-semibold">@{detailQ.data.sourceHandle}</h3>
                   <div className="text-xs text-slate-500">
-                    cuenta: @{detailQ.data.instagramAccountUsername}
+                    cuenta: @{detailQ.data.instagramAccountUsername} ·{' '}
+                    siguiendo {detailQ.data.sourceMode === 'Following' ? 'a sus seguidos' : 'a sus seguidores'}
                   </div>
                 </div>
                 <div className="flex gap-2">

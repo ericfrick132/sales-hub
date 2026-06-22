@@ -136,8 +136,8 @@ public class InstagramFollowService
         InstagramAccount account,
         CancellationToken ct)
     {
-        _log.LogInformation("Top-up cola campaña {Id} ({Source}): scrapeando {Size} followers",
-            campaign.Id, campaign.SourceHandle, campaign.ScrapeBatchSize);
+        _log.LogInformation("Top-up cola campaña {Id} ({Source}, modo {Mode}): scrapeando {Size} cuentas",
+            campaign.Id, campaign.SourceHandle, campaign.SourceMode, campaign.ScrapeBatchSize);
 
         await using var client = new InstagramClient(_db, _crypto, _opts, _log);
 
@@ -155,10 +155,11 @@ public class InstagramFollowService
                 return;
             }
 
-            var profiles = await client.ScrapeFollowersAsync(
-                campaign.SourceHandle,
-                campaign.ScrapeBatchSize,
-                ct);
+            // Según el modo: seguir a los SEGUIDORES del source, o a las cuentas
+            // que el source SIGUE (su lista "following").
+            var profiles = campaign.SourceMode == InstagramFollowSourceMode.Following
+                ? await client.ScrapeFollowingAsync(campaign.SourceHandle, campaign.ScrapeBatchSize, ct)
+                : await client.ScrapeFollowersAsync(campaign.SourceHandle, campaign.ScrapeBatchSize, ct);
 
             if (profiles.Count == 0)
             {

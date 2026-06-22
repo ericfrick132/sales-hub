@@ -98,6 +98,7 @@ public static class DependencyInjection
         services.AddScoped<InstagramLeadScraper>();
         services.AddScoped<InstagramFollowService>();
         services.AddScoped<InstagramDmSender>();
+        services.AddScoped<InstagramInboxPoller>();
         services.AddScoped<InstagramStructureAnalyzer>();
         services.AddSingleton<SelectorFailureTracker>();
         services.Configure<InstagramLlmOptions>(config.GetSection("InstagramLlm"));

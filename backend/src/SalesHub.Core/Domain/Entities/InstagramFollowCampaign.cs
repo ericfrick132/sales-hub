@@ -1,9 +1,12 @@
+using SalesHub.Core.Domain.Enums;
+
 namespace SalesHub.Core.Domain.Entities;
 
 /// <summary>
-/// Campaña de auto-follow: toma los followers de <see cref="SourceHandle"/>
-/// y los va siguiendo desde <see cref="InstagramAccountId"/> a un ritmo
-/// de <see cref="DailyRate"/> follows por día.
+/// Campaña de auto-follow: toma una lista de cuentas del <see cref="SourceHandle"/>
+/// (sus <c>followers</c> o las cuentas que ese perfil <c>sigue</c>, según
+/// <see cref="SourceMode"/>) y las va siguiendo desde <see cref="InstagramAccountId"/>
+/// a un ritmo de <see cref="DailyRate"/> follows por día.
 /// </summary>
 public class InstagramFollowCampaign
 {
@@ -13,8 +16,15 @@ public class InstagramFollowCampaign
     public Guid InstagramAccountId { get; set; }
     public InstagramAccount? InstagramAccount { get; set; }
 
-    /// <summary>Handle del perfil cuyos followers vamos a seguir (sin @).</summary>
+    /// <summary>Handle del perfil del que tomamos las cuentas a seguir (sin @).</summary>
     public string SourceHandle { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Qué lista del <see cref="SourceHandle"/> seguimos: sus seguidores
+    /// (<see cref="InstagramFollowSourceMode.Followers"/>) o las cuentas que
+    /// ese perfil sigue (<see cref="InstagramFollowSourceMode.Following"/>).
+    /// </summary>
+    public InstagramFollowSourceMode SourceMode { get; set; } = InstagramFollowSourceMode.Followers;
 
     /// <summary>Follows máximos por día. Recomendado &lt; 50 para evitar bloqueos.</summary>
     public int DailyRate { get; set; } = 30;

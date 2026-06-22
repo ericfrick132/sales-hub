@@ -260,10 +260,42 @@ public class PipelineService
                     lead.Status = LeadStatus.Queued;
                     lead.QueuedAt = DateTimeOffset.UtcNow;
                 }
+                // Fallback Instagram: sin WhatsApp pero con handle de IG → DM por IG.
+                else if (autoQueue && seller.SendingEnabled
+                         && await TryQueueInstagramAsync(lead, product, seller, ct))
+                {
+                    lead.Status = LeadStatus.Queued;
+                    lead.QueuedAt = DateTimeOffset.UtcNow;
+                }
             }
         }
         await _db.SaveChangesAsync(ct);
         return created;
+    }
+
+    /// <summary>
+    /// Si el lead no tiene WhatsApp pero sí <see cref="Lead.InstagramHandle"/> y existe
+    /// al menos una cuenta de IG disponible (la del seller o cualquiera), encola el
+    /// outreach inicial por el canal Instagram. WhatsApp tiene prioridad: si el lead
+    /// tiene teléfono, no encolamos por IG para no contactar dos veces.
+    /// Devuelve true si encoló algo.
+    /// </summary>
+    private async Task<bool> TryQueueInstagramAsync(Lead lead, Product product, Seller seller, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(lead.InstagramHandle)) return false;
+        if (!string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return false;
+
+        // ¿Hay alguna cuenta de IG que pueda mandar? (el sender elige la del seller
+        // o cualquiera; acá sólo chequeamos que exista, el login se valida al enviar.)
+        var hasIgAccount = await _db.InstagramAccounts
+            .AnyAsync(a => a.IsActive && !a.IsActionBlocked, ct);
+        if (!hasIgAccount) return false;
+
+        var n = OutboxEnqueueHelper.EnqueueLeadMessages(
+            _db, _renderer, lead, product, seller,
+            whatsappPhone: string.Empty, instanceName: string.Empty,
+            scheduledAt: null, channel: MessageChannel.Instagram);
+        return n > 0;
     }
 
     public record ReassignOrphansResult(
@@ -313,6 +345,14 @@ public class PipelineService
                 OutboxEnqueueHelper.EnqueueLeadMessages(
                     _db, _renderer, lead, lead.Product, seller,
                     lead.WhatsappPhone, inst.InstanceName);
+                lead.Status = LeadStatus.Queued;
+                lead.QueuedAt = DateTimeOffset.UtcNow;
+                queued++;
+            }
+            // Fallback Instagram: sin WhatsApp pero con handle de IG → DM por IG.
+            else if (autoQueue && seller.SendingEnabled
+                     && await TryQueueInstagramAsync(lead, lead.Product, seller, ct))
+            {
                 lead.Status = LeadStatus.Queued;
                 lead.QueuedAt = DateTimeOffset.UtcNow;
                 queued++;

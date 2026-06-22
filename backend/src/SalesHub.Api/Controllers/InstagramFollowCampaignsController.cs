@@ -41,6 +41,7 @@ public class InstagramFollowCampaignsController : ControllerBase
                 InstagramAccountId = c.InstagramAccountId,
                 InstagramAccountUsername = c.InstagramAccount != null ? c.InstagramAccount.Username : null,
                 SourceHandle = c.SourceHandle,
+                SourceMode = c.SourceMode.ToString(),
                 DailyRate = c.DailyRate,
                 MaxTotalFollows = c.MaxTotalFollows,
                 IsActive = c.IsActive,
@@ -97,6 +98,7 @@ public class InstagramFollowCampaignsController : ControllerBase
             InstagramAccountId = campaign.InstagramAccountId,
             InstagramAccountUsername = campaign.InstagramAccount?.Username,
             SourceHandle = campaign.SourceHandle,
+            SourceMode = campaign.SourceMode.ToString(),
             DailyRate = campaign.DailyRate,
             MaxTotalFollows = campaign.MaxTotalFollows,
             ScrapeBatchSize = campaign.ScrapeBatchSize,
@@ -131,11 +133,16 @@ public class InstagramFollowCampaignsController : ControllerBase
 
         var handle = req.SourceHandle.Trim().TrimStart('@');
 
+        var sourceMode = Enum.TryParse<InstagramFollowSourceMode>(req.SourceMode, ignoreCase: true, out var m)
+            ? m
+            : InstagramFollowSourceMode.Followers;
+
         var campaign = new InstagramFollowCampaign
         {
             Id = Guid.NewGuid(),
             InstagramAccountId = req.InstagramAccountId,
             SourceHandle = handle,
+            SourceMode = sourceMode,
             DailyRate = req.DailyRate > 0 ? req.DailyRate : 30,
             MaxTotalFollows = req.MaxTotalFollows,
             ScrapeBatchSize = req.ScrapeBatchSize > 0 ? req.ScrapeBatchSize : 100,
@@ -149,8 +156,8 @@ public class InstagramFollowCampaignsController : ControllerBase
         await _db.SaveChangesAsync();
 
         _log.LogInformation(
-            "Campaña follow creada: {Id} (source={Source}, account={User}, rate={Rate}/d)",
-            campaign.Id, handle, account.Username, campaign.DailyRate);
+            "Campaña follow creada: {Id} (source={Source}, modo={Mode}, account={User}, rate={Rate}/d)",
+            campaign.Id, handle, sourceMode, account.Username, campaign.DailyRate);
 
         return Ok(new { id = campaign.Id });
     }
@@ -162,6 +169,9 @@ public class InstagramFollowCampaignsController : ControllerBase
         if (campaign is null) return NotFound();
 
         if (req.IsActive.HasValue) campaign.IsActive = req.IsActive.Value;
+        if (!string.IsNullOrWhiteSpace(req.SourceMode)
+            && Enum.TryParse<InstagramFollowSourceMode>(req.SourceMode, ignoreCase: true, out var mode))
+            campaign.SourceMode = mode;
         if (req.DailyRate.HasValue && req.DailyRate.Value > 0) campaign.DailyRate = req.DailyRate.Value;
         if (req.MaxTotalFollows.HasValue) campaign.MaxTotalFollows = req.MaxTotalFollows.Value;
         if (req.ScrapeBatchSize.HasValue && req.ScrapeBatchSize.Value > 0)
@@ -217,6 +227,7 @@ public class InstagramFollowCampaignsController : ControllerBase
         public Guid InstagramAccountId { get; init; }
         public string? InstagramAccountUsername { get; init; }
         public string SourceHandle { get; init; } = string.Empty;
+        public string SourceMode { get; init; } = nameof(InstagramFollowSourceMode.Followers);
         public int DailyRate { get; init; }
         public int MaxTotalFollows { get; init; }
         public bool IsActive { get; init; }
@@ -253,6 +264,8 @@ public class InstagramFollowCampaignsController : ControllerBase
     {
         public Guid InstagramAccountId { get; init; }
         public string SourceHandle { get; init; } = string.Empty;
+        /// <summary>"Followers" (default) o "Following".</summary>
+        public string? SourceMode { get; init; }
         public int DailyRate { get; init; } = 30;
         public int MaxTotalFollows { get; init; }
         public int ScrapeBatchSize { get; init; } = 100;
@@ -262,6 +275,7 @@ public class InstagramFollowCampaignsController : ControllerBase
     public record UpdateCampaignRequest
     {
         public bool? IsActive { get; init; }
+        public string? SourceMode { get; init; }
         public int? DailyRate { get; init; }
         public int? MaxTotalFollows { get; init; }
         public int? ScrapeBatchSize { get; init; }

@@ -62,6 +62,7 @@ public class SendScheduler : ISendScheduler
         // El cap es de contactos nuevos, no de mensajes: contamos leads distintos.
         var contactedToday = await _db.Outbox
             .Where(o => o.SellerId == seller.Id
+                     && o.Channel == MessageChannel.WhatsApp
                      && o.Status == OutboxStatus.Sent
                      && o.SentAt != null
                      && o.SentAt.Value >= today.ToDateTime(TimeOnly.MinValue)
@@ -77,6 +78,7 @@ public class SendScheduler : ISendScheduler
         // del cap de contactos y de cuántas verticales tenga el vendedor.
         var messagesToday = await _db.Outbox
             .CountAsync(o => o.SellerId == seller.Id
+                          && o.Channel == MessageChannel.WhatsApp
                           && o.Status == OutboxStatus.Sent
                           && o.SentAt != null
                           && o.SentAt.Value >= today.ToDateTime(TimeOnly.MinValue)
@@ -100,7 +102,8 @@ public class SendScheduler : ISendScheduler
         // Burst: if we already sent a full burst in the last 30 min, add burst pause
         var burstWindow = TimeSpan.FromMinutes(30);
         var recentSent = await _db.Outbox
-            .Where(o => o.SellerId == seller.Id && o.SentAt != null && o.SentAt > reference.Subtract(burstWindow))
+            .Where(o => o.SellerId == seller.Id && o.Channel == MessageChannel.WhatsApp
+                     && o.SentAt != null && o.SentAt > reference.Subtract(burstWindow))
             .OrderByDescending(o => o.SentAt)
             .Take(seller.BurstSize + 1)
             .CountAsync(ct);
