@@ -32,6 +32,15 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<ConversationAgentWorker>();
     builder.Services.AddHostedService<SeoContentWorker>();
     builder.Services.AddHostedService<SeoDistributeWorker>();
+
+    // Workers de Instagram. Corren acá (no en un contenedor aparte) porque la imagen
+    // ya trae Playwright/Chromium y el droplet tiene RAM de sobra. Sin esto, las
+    // automatizaciones de IG (follow, DM, inbox) quedan deployadas pero nunca se ejecutan.
+    builder.Services.AddHostedService<InstagramScraperWorker>();          // + login batch de cuentas
+    builder.Services.AddHostedService<InstagramStructureAnalyzerWorker>(); // self-healing de selectores
+    builder.Services.AddHostedService<InstagramFollowWorker>();            // campañas de auto-follow
+    builder.Services.AddHostedService<InstagramDmWorker>();                // envío de DMs (Channel=Instagram)
+    builder.Services.AddHostedService<InstagramInboxWorker>();             // poll del inbox → conversaciones
 }
 
 builder.Services.AddControllers().AddJsonOptions(o =>

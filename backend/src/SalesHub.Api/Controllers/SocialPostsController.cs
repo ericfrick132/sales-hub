@@ -74,6 +74,58 @@ public class SocialPostsController : ControllerBase
         return Ok(posts);
     }
 
+    /// <summary>
+    /// Calendario universal: todos los posteos de todas las apps (o de una sola) cuyo
+    /// ScheduledAt cae en [from, to), más un "backlog" de posteos sin agendar todavía.
+    /// Alimenta la vista mes/semana del front.
+    /// </summary>
+    [HttpGet("calendar")]
+    public async Task<IActionResult> Calendar([FromQuery] DateTimeOffset from, [FromQuery] DateTimeOffset to, [FromQuery] string? productKey, CancellationToken ct)
+    {
+        var q = _db.SocialPosts.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(productKey)) q = q.Where(s => s.ProductKey == productKey);
+
+        var scheduled = await q
+            .Where(s => s.ScheduledAt != null && s.ScheduledAt >= from && s.ScheduledAt < to)
+            .OrderBy(s => s.ScheduledAt)
+            .ToListAsync(ct);
+
+        // Sin agendar y todavía vivos (no rechazados ni ya posteados): los mostramos
+        // en una columna aparte para arrastrarlos/agendarlos a un día.
+        var backlog = await q
+            .Where(s => s.ScheduledAt == null
+                && s.Status != SocialPostStatus.Rejected
+                && s.Status != SocialPostStatus.Posted)
+            .OrderByDescending(s => s.CreatedAt)
+            .Take(100)
+            .ToListAsync(ct);
+
+        return Ok(new { scheduled, backlog });
+    }
+
+    /// <summary>
+    /// Edita un posteo desde el calendario: contenido (concepto/caption/hashtags/pilar),
+    /// formato, canal y fecha agendada. Pasar scheduledAt=null lo manda al backlog.
+    /// </summary>
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePostRequest req, CancellationToken ct)
+    {
+        var post = await _db.SocialPosts.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (post == null) return NotFound();
+
+        if (req.Concept != null) post.Concept = req.Concept;
+        if (req.Caption != null) post.Caption = req.Caption;
+        if (req.Hashtags != null) post.Hashtags = req.Hashtags;
+        if (req.ContentPillar != null) post.ContentPillar = req.ContentPillar;
+        if (req.BufferChannelId != null) post.BufferChannelId = req.BufferChannelId;
+        if (!string.IsNullOrWhiteSpace(req.Format) && Enum.TryParse<SocialPostFormat>(req.Format, true, out var f)) post.Format = f;
+        // ScheduledAt es deliberadamente sobreescribible a null (mandar al backlog).
+        if (req.SetScheduledAt) post.ScheduledAt = req.ScheduledAt;
+        post.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(post);
+    }
+
     /// <summary>Genera 1 idea de posteo a demanda con Claude (status DraftReady, sin asset todavía).</summary>
     [HttpPost("generate")]
     public async Task<IActionResult> Generate([FromBody] GenerateRequest req, CancellationToken ct)
@@ -243,6 +295,20 @@ public class SocialPostsController : ControllerBase
         if (string.IsNullOrWhiteSpace(channelId)) return BadRequest(new { error = "Falta channelId (mapealo en el perfil o pasalo en el body)." });
 
         post.AssetUrl = assetUrl; post.BufferChannelId = channelId;
+        if (req?.ScheduledAt != null) post.ScheduledAt = req.ScheduledAt;
+
+        // asDraft=true (default) → queda como borrador en Buffer para aprobación humana.
+        // asDraft=false + scheduledAt → Buffer lo auto-publica en esa fecha (agendado real).
+        var asDraft = req?.AsDraft ?? true;
+
+        // Si ya había una copia en Buffer (ej. el draft que sube el worker), la borramos
+        // antes de re-crear para no duplicar al reprogramar/republicar.
+        if (!string.IsNullOrWhiteSpace(post.BufferPostId))
+        {
+            try { await _publisher.DeletePostAsync(post.BufferPostId!, ct); }
+            catch (Exception ex) { _log.LogWarning(ex, "No pude borrar el post viejo de Buffer antes de re-subir"); }
+            post.BufferPostId = null;
+        }
 
         var res = await _publisher.CreatePostAsync(new PublishRequest
         {
@@ -254,11 +320,16 @@ public class SocialPostsController : ControllerBase
             ThumbnailUrl = post.ThumbnailUrl,
             InstagramType = post.Format.ToString().ToLowerInvariant(),
             ScheduledAt = req?.ScheduledAt,
-            SaveAsDraft = true,
+            SaveAsDraft = asDraft,
             Automatic = true,
         }, ct);
 
-        if (res.Success) { post.Status = SocialPostStatus.PushedToBuffer; post.BufferPostId = res.ExternalPostId; post.Error = null; }
+        if (res.Success)
+        {
+            post.Status = (!asDraft && req?.ScheduledAt != null) ? SocialPostStatus.Scheduled : SocialPostStatus.PushedToBuffer;
+            post.BufferPostId = res.ExternalPostId;
+            post.Error = null;
+        }
         else { post.Status = SocialPostStatus.Error; post.Error = res.Error; }
         post.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
@@ -305,7 +376,26 @@ public class SocialPostsController : ControllerBase
         public string? AssetKind { get; set; }
         public string? PromptTemplate { get; set; }
     }
-    public class PushRequest { public string? AssetUrl { get; set; } public string? ChannelId { get; set; } public DateTimeOffset? ScheduledAt { get; set; } }
+    public class PushRequest
+    {
+        public string? AssetUrl { get; set; }
+        public string? ChannelId { get; set; }
+        public DateTimeOffset? ScheduledAt { get; set; }
+        /// <summary>true (default) = borrador en Buffer; false + ScheduledAt = agendar y auto-publicar.</summary>
+        public bool? AsDraft { get; set; }
+    }
+    public class UpdatePostRequest
+    {
+        public string? Concept { get; set; }
+        public string? Caption { get; set; }
+        public List<string>? Hashtags { get; set; }
+        public string? ContentPillar { get; set; }
+        public string? Format { get; set; }
+        public string? BufferChannelId { get; set; }
+        /// <summary>Si es true, se aplica ScheduledAt (incluyendo null para mandarlo al backlog).</summary>
+        public bool SetScheduledAt { get; set; }
+        public DateTimeOffset? ScheduledAt { get; set; }
+    }
     public class UpdateProfileRequest
     {
         public bool? Enabled { get; set; }

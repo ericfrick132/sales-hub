@@ -53,6 +53,48 @@ public class AiSuggestionService
         return await CompleteWithPriceGuardrailAsync(system, conversation, product, ct);
     }
 
+    /// <summary>
+    /// Clasifica el ESTADO del prospecto analizando toda la conversación. Devuelve una
+    /// intención (interested / not_interested / scheduled / won / needs_human / unknown)
+    /// que el ConversationAgent mapea a LeadStatus. No genera respuesta — solo analiza.
+    /// </summary>
+    public async Task<LeadIntent> ClassifyLeadAsync(
+        Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, CancellationToken ct)
+    {
+        if (!_claude.IsConfigured || thread.Count == 0) return LeadIntent.Unknown;
+
+        var system =
+            "Sos un analista de ventas. Te paso una conversación entre un vendedor y un prospecto.\n" +
+            "Clasificá el ESTADO del prospecto con UNA sola palabra de esta lista, sin explicar nada:\n" +
+            "- interested: muestra interés, hace preguntas, pide info o precio, sigue la charla.\n" +
+            "- not_interested: dice claramente que no le interesa, que no, que ya compró en otro lado, o pide que no le escriban.\n" +
+            "- scheduled: acordó una demo, llamada o reunión.\n" +
+            "- won: ya compró, cerró o pagó.\n" +
+            "- needs_human: situación delicada o reclamo que requiere una persona.\n" +
+            "- unknown: todavía no hay señal clara.\n" +
+            "Ante la duda entre interested y not_interested, elegí interested (no cerramos por las dudas).\n" +
+            "Respondé SOLO con una de esas palabras, en minúscula, sin nada más.";
+
+        var conversation = BuildConversation(lead, thread,
+            instruction: "Clasificá el estado del prospecto según la conversación. Respondé con UNA sola palabra de la lista.");
+
+        var raw = await _claude.CompleteAsync(system, conversation, ct);
+        return ParseIntent(raw);
+    }
+
+    private static LeadIntent ParseIntent(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return LeadIntent.Unknown;
+        var t = raw.Trim().ToLowerInvariant();
+        // Orden importa: "not_interested" contiene "interested".
+        if (t.Contains("not_interested") || t.Contains("not interested") || t.Contains("no_interes")) return LeadIntent.NotInterested;
+        if (t.Contains("needs_human") || t.Contains("human")) return LeadIntent.NeedsHuman;
+        if (t.Contains("scheduled") || t.Contains("agend")) return LeadIntent.Scheduled;
+        if (t.Contains("won")) return LeadIntent.Won;
+        if (t.Contains("interested") || t.Contains("interes")) return LeadIntent.Interested;
+        return LeadIntent.Unknown;
+    }
+
     private async Task<string?> CompleteWithPriceGuardrailAsync(
         string system, string conversation, Product product, CancellationToken ct)
     {

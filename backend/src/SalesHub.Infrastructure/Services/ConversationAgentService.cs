@@ -126,19 +126,36 @@ public class ConversationAgentService
                 .FirstOrDefaultAsync(l => l.Id == c.LeadId, ct);
             if (lead?.Product is null || lead.Seller is null) continue;
 
+            // Cargamos el hilo COMPLETO una sola vez: sirve para clasificar el estado del
+            // lead y, si hace falta, para generar la respuesta.
+            var thread = await _db.ConversationMessages
+                .Where(m => m.LeadId == lead.Id)
+                .OrderBy(m => m.Timestamp)
+                .ToListAsync(ct);
+
+            // 0) Clasificar el estado del lead analizando TODA la conversación y mover el
+            // status (interesado / no interesado / agendó / compró). Si quedó resuelto
+            // (no interesado o ya compró) no seguimos vendiendo.
+            var intent = await _suggestions.ClassifyLeadAsync(lead, lead.Product!, thread, ct);
+            if (ApplyIntentToStatus(lead, intent))
+            {
+                lead.AiSuggestedReply = null;
+                lead.AiSuggestedReplyAt = null;
+                lead.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                _log.LogInformation("Lead {Lead} clasificado {Intent} → {Status}; no se genera respuesta",
+                    lead.Id, intent, lead.Status);
+                done++;
+                continue;
+            }
+
             // 1) Reglas de keyword del vendedor — sin IA, sin costo.
             var keywordReply = MatchKeywordRule(lead.Seller.KeywordRules, c.LastText);
             var reply = keywordReply;
 
             // 2) Fallback a Claude sólo si no matcheó ningún keyword.
             if (reply is null && _suggestions.IsConfigured)
-            {
-                var thread = await _db.ConversationMessages
-                    .Where(m => m.LeadId == lead.Id)
-                    .OrderBy(m => m.Timestamp)
-                    .ToListAsync(ct);
                 reply = await _suggestions.SuggestReplyAsync(lead, lead.Product!, thread, ct);
-            }
 
             if (string.IsNullOrWhiteSpace(reply)) continue;
 
@@ -146,9 +163,9 @@ public class ConversationAgentService
 
             // Auto-respuesta a inbound (reactiva, bajo riesgo, "como una persona"):
             // permitida con AutoPilot, en horario activo del vendedor y bajo el tope
-            // absoluto diario por número. Si no, queda como sugerencia.
+            // absoluto diario por número. needs_human nunca se auto-envía. Si no, queda sugerencia.
             var canAutoReply = false;
-            if (lead.Product!.AutoPilot)
+            if (lead.Product!.AutoPilot && intent != LeadIntent.NeedsHuman)
             {
                 var st = await SellerSendStateAsync(lead.Seller!, ct);
                 canAutoReply = st.active && st.sentToday < OutboxSender.MaxMessagesPerSellerPerDay;
@@ -171,6 +188,89 @@ public class ConversationAgentService
         }
 
         return done;
+    }
+
+    /// <summary>
+    /// Mapea la intención detectada por IA a un LeadStatus y la aplica. Conservador:
+    /// nunca pisa una venta ya cerrada (Closed). Devuelve true si la conversación quedó
+    /// "resuelta" (no interesado o ganado) → no hay que seguir vendiendo ni re-enganchar.
+    /// </summary>
+    private bool ApplyIntentToStatus(Lead lead, LeadIntent intent)
+    {
+        if (lead.Status == LeadStatus.Closed) return true; // venta cerrada, no tocar
+
+        switch (intent)
+        {
+            case LeadIntent.NotInterested:
+                if (lead.Status != LeadStatus.Lost) lead.Status = LeadStatus.Lost;
+                return true; // dado por cerrado: el re-enganche ya excluye Lost
+
+            case LeadIntent.Won:
+                lead.Status = LeadStatus.Closed;
+                return true;
+
+            case LeadIntent.Scheduled:
+                if (lead.Status != LeadStatus.DemoScheduled) lead.Status = LeadStatus.DemoScheduled;
+                return false; // agendó, pero seguimos la charla / confirmamos
+
+            case LeadIntent.Interested:
+                // "posible": lo dejamos abierto en Interested → el re-enganche lo sigue
+                // ofreciendo cada ReengageAfterHours. Reabrimos un Lost si vuelve a mostrar interés.
+                if (lead.Status is LeadStatus.Sent or LeadStatus.Replied or LeadStatus.Lost)
+                    lead.Status = LeadStatus.Interested;
+                return false;
+
+            case LeadIntent.NeedsHuman:
+            case LeadIntent.Unknown:
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Backfill: reclasifica el estado de los leads que tienen conversación previa y
+    /// siguen en Sent/Replied (sin resolver), analizando todo el hilo con IA. Procesa
+    /// hasta <paramref name="max"/> por llamada para no colgar la request. Devuelve
+    /// cuántos procesó y cuántos quedan pendientes.
+    /// </summary>
+    public async Task<(int processed, int remaining)> ReclassifyExistingAsync(int max, CancellationToken ct)
+    {
+        if (!_suggestions.IsConfigured) return (0, 0);
+
+        var candidateIds = await _db.Leads
+            .Where(l => l.SellerId != null
+                && (l.Status == LeadStatus.Sent || l.Status == LeadStatus.Replied)
+                && _db.ConversationMessages.Any(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound))
+            .OrderByDescending(l => l.UpdatedAt)
+            .Select(l => l.Id)
+            .Take(Math.Clamp(max, 1, 200))
+            .ToListAsync(ct);
+
+        var processed = 0;
+        foreach (var id in candidateIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            var lead = await _db.Leads.Include(l => l.Product).FirstOrDefaultAsync(l => l.Id == id, ct);
+            if (lead?.Product is null) continue;
+
+            var thread = await _db.ConversationMessages
+                .Where(m => m.LeadId == id)
+                .OrderBy(m => m.Timestamp)
+                .ToListAsync(ct);
+
+            var intent = await _suggestions.ClassifyLeadAsync(lead, lead.Product, thread, ct);
+            ApplyIntentToStatus(lead, intent);
+            lead.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            processed++;
+        }
+
+        var remaining = await _db.Leads
+            .CountAsync(l => l.SellerId != null
+                && (l.Status == LeadStatus.Sent || l.Status == LeadStatus.Replied)
+                && _db.ConversationMessages.Any(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound), ct);
+
+        return (processed, remaining);
     }
 
     /// <summary>

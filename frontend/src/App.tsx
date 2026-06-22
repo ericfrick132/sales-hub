@@ -23,6 +23,7 @@ import AudioAnalytics from './pages/AudioAnalytics';
 import InstagramFollow from './pages/InstagramFollow';
 import InstagramAccounts from './pages/InstagramAccounts';
 import Posteos from './pages/Posteos';
+import CalendarPosteos from './pages/CalendarPosteos';
 import Seo from './pages/Seo';
 
 function SellerZonesRedirect() {
@@ -71,6 +72,7 @@ export default function App() {
             <Route path="/competitors" element={<Competitors />} />
             <Route path="/trends" element={<Trends />} />
             <Route path="/posteos" element={<Posteos />} />
+            <Route path="/calendario" element={<CalendarPosteos />} />
           </>
         )}
         <Route path="*" element={<Navigate to="/" replace />} />

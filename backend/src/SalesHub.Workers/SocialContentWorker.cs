@@ -104,6 +104,10 @@ public class SocialContentWorker : BackgroundService
             GenerationModel = "claude",
             RawJson = gen.RawJson,
             Status = SocialPostStatus.Idea,
+            // Agenda en el slot de hoy (la hora que disparó el tick) para que el posteo
+            // caiga en el calendario en su horario. Si ya pasó, lo corre 5' adelante
+            // (Buffer rechaza fechas pasadas). El humano lo puede mover desde el calendario.
+            ScheduledAt = NextSlot(),
         };
         db.SocialPosts.Add(post);
         await db.SaveChangesAsync(ct);
@@ -122,7 +126,11 @@ public class SocialContentWorker : BackgroundService
         post.Status = SocialPostStatus.DraftReady;
         await db.SaveChangesAsync(ct);
 
-        // Push a Buffer como draft (solo si hay asset + canal mapeado)
+        // Auto-publicar: agenda en Buffer y Buffer publica solo en el slot (SaveAsDraft=false).
+        // Para volver a "draft + aprobación humana" sin tocar código: Workers:PosteosAutoPublish=false.
+        var autoPublish = _config.GetValue<bool>("Workers:PosteosAutoPublish", true);
+
+        // Push a Buffer (solo si hay asset + canal mapeado)
         if (!string.IsNullOrWhiteSpace(post.AssetUrl) && !string.IsNullOrWhiteSpace(post.BufferChannelId))
         {
             var publisher = scope.ServiceProvider.GetRequiredService<ISocialPublisher>();
@@ -135,16 +143,29 @@ public class SocialContentWorker : BackgroundService
                 VideoUrl = post.AssetKind == SocialAssetKind.Video ? post.AssetUrl : null,
                 ThumbnailUrl = post.ThumbnailUrl,
                 InstagramType = post.Format.ToString().ToLowerInvariant(),
-                SaveAsDraft = true,
+                ScheduledAt = post.ScheduledAt,
+                SaveAsDraft = !autoPublish,
                 Automatic = true,
             }, ct);
 
-            if (res.Success) { post.Status = SocialPostStatus.PushedToBuffer; post.BufferPostId = res.ExternalPostId; }
+            if (res.Success)
+            {
+                post.Status = autoPublish ? SocialPostStatus.Scheduled : SocialPostStatus.PushedToBuffer;
+                post.BufferPostId = res.ExternalPostId;
+            }
             else { post.Status = SocialPostStatus.Error; post.Error = res.Error; }
             await db.SaveChangesAsync(ct);
         }
 
         _log.LogInformation("Posteo {Status} para {Product}: {Concept}", post.Status, profile.ProductKey, post.Concept);
+    }
+
+    /// <summary>Slot de agenda = hoy a la hora del tick en punto; si ya pasó, ahora + 5'.</summary>
+    private static DateTimeOffset NextSlot()
+    {
+        var now = DateTimeOffset.Now;
+        var slot = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, 0, 0, now.Offset);
+        return slot <= now ? now.AddMinutes(5) : slot;
     }
 
     private static string BuildCaption(SocialPost p)

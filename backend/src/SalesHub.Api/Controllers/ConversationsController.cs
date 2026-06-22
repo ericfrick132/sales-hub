@@ -14,10 +14,26 @@ public class ConversationsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly ConversationService _conv;
+    private readonly ConversationAgentService _agent;
 
-    public ConversationsController(ApplicationDbContext db, ConversationService conv)
+    public ConversationsController(ApplicationDbContext db, ConversationService conv, ConversationAgentService agent)
     {
-        _db = db; _conv = conv;
+        _db = db; _conv = conv; _agent = agent;
+    }
+
+    public record ReclassifyRequest(int Max = 50);
+
+    /// <summary>
+    /// Backfill: la IA analiza los chats anteriores de los leads en Sent/Replied y
+    /// les actualiza el estado (interesado / no interesado / agendó / compró). Procesa
+    /// hasta Max por llamada; devuelve cuántos quedan para llamarlo de nuevo. Solo admin.
+    /// </summary>
+    [HttpPost("reclassify")]
+    public async Task<IActionResult> Reclassify([FromBody] ReclassifyRequest? req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var (processed, remaining) = await _agent.ReclassifyExistingAsync(req?.Max ?? 50, ct);
+        return Ok(new { processed, remaining });
     }
 
     public record ConversationListItem(
