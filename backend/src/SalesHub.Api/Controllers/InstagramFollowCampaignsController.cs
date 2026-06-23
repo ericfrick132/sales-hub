@@ -131,7 +131,13 @@ public class InstagramFollowCampaignsController : ControllerBase
         var account = await _db.InstagramAccounts.FirstOrDefaultAsync(a => a.Id == req.InstagramAccountId);
         if (account is null) return BadRequest(new { error = "InstagramAccount no existe" });
 
-        var handle = req.SourceHandle.Trim().TrimStart('@');
+        // Normalizar a handle limpio: tolera URL completa (instagram.com/x/), @, barras.
+        var handle = req.SourceHandle.Trim();
+        var urlIdx = handle.IndexOf("instagram.com/", StringComparison.OrdinalIgnoreCase);
+        if (urlIdx >= 0) handle = handle[(urlIdx + "instagram.com/".Length)..];
+        handle = handle.TrimStart('@').Trim().Trim('/').Split('/', '?')[0].Trim();
+        if (string.IsNullOrEmpty(handle))
+            return BadRequest(new { error = "SourceHandle inválido (poné solo el usuario, ej: accesogym)" });
 
         var sourceMode = Enum.TryParse<InstagramFollowSourceMode>(req.SourceMode, ignoreCase: true, out var m)
             ? m

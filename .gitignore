@@ -17,3 +17,7 @@ deploy.txt
 *.local.txt
 .playwright-mcp/
 scripts/localities/localities-import.json
+
+# Secretos sueltos y screenshots de verificación (no commitear — repo público)
+/1.md
+/*.png

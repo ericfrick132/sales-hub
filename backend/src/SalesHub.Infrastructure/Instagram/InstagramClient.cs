@@ -222,6 +222,22 @@ public class InstagramClient : IAsyncDisposable
     /// <summary>
     /// Scrapea los seguidores de una cuenta de Instagram.
     /// </summary>
+    /// <summary>
+    /// Normaliza un "source" a un handle de IG limpio: tolera URLs completas
+    /// (https://instagram.com/x/), arroba y barras. Sin esto, una URL como source
+    /// rompe el scraping (se navega a instagram.com/https://.../ ).
+    /// </summary>
+    private static string NormalizeHandle(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        var s = raw.Trim();
+        var idx = s.IndexOf("instagram.com/", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0) s = s[(idx + "instagram.com/".Length)..];
+        s = s.TrimStart('@').Trim().Trim('/');
+        s = s.Split('/', '?').FirstOrDefault() ?? s;
+        return s.Trim();
+    }
+
     /// <summary>Scrapea los SEGUIDORES (followers) del perfil indicado.</summary>
     public Task<List<InstagramProfile>> ScrapeFollowersAsync(string targetHandle, int maxProfiles, CancellationToken ct = default)
         => ScrapeConnectionsAsync(targetHandle, maxProfiles, following: false, ct);
@@ -244,6 +260,13 @@ public class InstagramClient : IAsyncDisposable
         var tab = following ? "following" : "followers";
         var label = following ? "seguidos" : "seguidores";
 
+        targetHandle = NormalizeHandle(targetHandle);
+        if (string.IsNullOrEmpty(targetHandle))
+        {
+            _log.LogWarning("Source de {Label} inválido (handle vacío tras normalizar).", label);
+            return profiles;
+        }
+
         _log.LogInformation("Scrapeando {Label} de {Target} (max {Max})...", label, targetHandle, maxProfiles);
 
         await _page!.GotoAsync($"https://www.instagram.com/{targetHandle}/", new PageGotoOptions
@@ -254,11 +277,30 @@ public class InstagramClient : IAsyncDisposable
 
         await RandomDelayAsync();
 
-        // Click en el link de followers/following
-        var tabLink = await _page.QuerySelectorAsync($"a[href='/{targetHandle}/{tab}/']");
+        // Esperar el link de followers/following: IG renderiza el perfil client-side,
+        // así que un QuerySelector inmediato suele llegar antes de que el link exista.
+        // El selector tolera el href exacto o cualquiera que termine en /{tab}/.
+        IElementHandle? tabLink = null;
+        try
+        {
+            tabLink = await _page.WaitForSelectorAsync(
+                $"a[href='/{targetHandle}/{tab}/'], a[href$='/{tab}/']",
+                new PageWaitForSelectorOptions { Timeout = 12_000 });
+        }
+        catch (Exception) { /* timeout: el link no apareció */ }
+
         if (tabLink is null)
         {
-            _log.LogWarning("No se encontró el link de {Label} para {Target}", label, targetHandle);
+            if (_page.Url.Contains("/accounts/login"))
+            {
+                _loggedIn = false;
+                _log.LogWarning("Sesión caída al scrapear {Label} de {Target}", label, targetHandle);
+            }
+            else
+            {
+                _log.LogWarning("No se encontró el link de {Label} para {Target} " +
+                    "(perfil privado, o Instagram limita/bloquea la lista para esta cuenta).", label, targetHandle);
+            }
             return profiles;
         }
 

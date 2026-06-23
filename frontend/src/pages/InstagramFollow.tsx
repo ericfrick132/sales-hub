@@ -12,6 +12,14 @@ interface IgAccount {
   isActionBlocked: boolean;
 }
 
+// Normaliza el source a handle limpio para mostrar (tolera URL completa, @, barras).
+function cleanHandle(raw: string): string {
+  let s = (raw || '').trim();
+  const i = s.toLowerCase().indexOf('instagram.com/');
+  if (i >= 0) s = s.slice(i + 'instagram.com/'.length);
+  return s.replace(/^@/, '').replace(/^\/+|\/+$/g, '').split(/[/?]/)[0];
+}
+
 interface Campaign {
   id: string;
   instagramAccountId: string;
@@ -246,7 +254,7 @@ export default function InstagramFollow() {
                 selectedId === c.id ? 'bg-brand-50' : ''
               }`}>
               <div className="flex items-center justify-between gap-2">
-                <div className="font-medium">@{c.sourceHandle}</div>
+                <div className="font-medium">@{cleanHandle(c.sourceHandle)}</div>
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded ${
                     c.isActive
@@ -264,6 +272,12 @@ export default function InstagramFollow() {
                 hoy: <b>{c.followedToday}</b>/{c.dailyRate} · seguidos:{' '}
                 <b>{c.totalFollowed}</b> · cola: {c.pending}
               </div>
+              {c.lastScrapeAt && c.totalEnqueued === 0 && (
+                <div className="text-[11px] text-amber-600 mt-1 leading-snug">
+                  ⚠ El último scrape no encontró seguidores. Suele pasar si el perfil es privado
+                  o si Instagram limita la lista de seguidores para esta cuenta.
+                </div>
+              )}
             </button>
           ))}
         </div>
