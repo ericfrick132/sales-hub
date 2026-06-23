@@ -25,6 +25,7 @@ public class FlagsController : ControllerBase
         ("posteos", "Workers:PosteosAutoStart", "Posteos automáticos"),
         ("captacion", "Workers:PipelineAutoStart", "Captación de leads"),
         ("seo", "Seo:AutoStart", "Artículos SEO"),
+        ("reengage", "LeadImport:AutoStart", "Re-engagement (TurnosPro/GymHero)"),
     };
 
     public record FlagDto(string Key, string Label, bool Enabled);

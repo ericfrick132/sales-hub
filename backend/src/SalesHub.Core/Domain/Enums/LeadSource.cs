@@ -16,5 +16,8 @@ public enum LeadSource
     InstagramScraper = 300,
     // Tenant/demo nuevo registrado en el propio producto (TurnosPro/GymHero) que entra
     // al follow-up automático vía el endpoint de intake.
-    DemoSignup = 400
+    DemoSignup = 400,
+    // Lead importado/sincronizado desde otro producto propio (TurnosPro/GymHero) para
+    // re-engagement centralizado: SalesHub lo trae por el endpoint de export de ese producto.
+    ProductReengage = 401
 }

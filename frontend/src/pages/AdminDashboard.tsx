@@ -6,6 +6,7 @@ import MetricCards from '../components/MetricCards';
 import SendingControl from '../components/SendingControl';
 import ControlCenter from '../components/ControlCenter';
 import MainCalendar from '../components/MainCalendar';
+import TodayChecklist from '../components/TodayChecklist';
 
 interface DailyActivity {
   date: string;
@@ -65,6 +66,8 @@ export default function AdminDashboard() {
         { label: 'Respondieron 7d', value: data.leadsReplied7d },
         { label: 'Cerrados 7d', value: data.leadsClosed7d }
       ]} />
+
+      <TodayChecklist />
 
       <MainCalendar />
 

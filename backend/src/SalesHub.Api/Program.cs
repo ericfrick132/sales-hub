@@ -20,6 +20,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSalesHubInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddHttpClient(); // IHttpClientFactory para el LeadImportWorker
 
 if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "true")
 {
@@ -33,6 +34,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<SeoContentWorker>();
     builder.Services.AddHostedService<SeoDistributeWorker>();
     builder.Services.AddHostedService<SocialContentWorker>();              // posteos automáticos → Buffer (gated por Workers:PosteosAutoStart)
+    builder.Services.AddHostedService<LeadImportWorker>();                 // re-engagement: import de leads de TurnosPro/GymHero
 
     // Workers de Instagram. Corren acá (no en un contenedor aparte) porque la imagen
     // ya trae Playwright/Chromium y el droplet tiene RAM de sobra. Sin esto, las
