@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import type { GlobalMetrics } from '../lib/types';
 import MetricCards from '../components/MetricCards';
 import SendingControl from '../components/SendingControl';
+import ControlCenter from '../components/ControlCenter';
 
 interface DailyActivity {
   date: string;
@@ -53,6 +54,8 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl md:text-2xl font-bold">Hoy</h1>
+
+      <ControlCenter sellers={data.sellers} />
 
       <MetricCards cards={[
         { label: 'Leads totales', value: data.totalLeads },
