@@ -40,6 +40,19 @@ public class CalendarController : ControllerBase
             events.Add(new($"post:{p.Id}", "post", $"{p.Platform}: {title}", p.ScheduledAt!.Value, p.Status.ToString(), p.ProductKey));
         }
 
+        // 1b) Artículos SEO agendados (ScheduledAt) o publicados (PublishedAt) en el rango.
+        var arts = await _db.SeoArticles.AsNoTracking()
+            .Where(a => pk == null || a.Site!.ProductKey == pk)
+            .Where(a => (a.ScheduledAt != null && a.ScheduledAt >= from && a.ScheduledAt < to)
+                     || (a.PublishedAt != null && a.PublishedAt >= from && a.PublishedAt < to))
+            .Select(a => new { a.Id, a.Title, a.ScheduledAt, a.PublishedAt, a.Status, ProductKey = a.Site!.ProductKey })
+            .ToListAsync(ct);
+        foreach (var a in arts)
+        {
+            var at = a.ScheduledAt ?? a.PublishedAt!.Value;
+            events.Add(new($"seo:{a.Id}", "seo", $"SEO: {a.Title}", at, a.Status.ToString(), a.ProductKey ?? ""));
+        }
+
         // 2) Runners proyectados desde la cadencia configurada
         var profiles = await _db.PostingProfiles.AsNoTracking()
             .Where(p => p.Enabled).Where(p => pk == null || p.ProductKey == pk).ToListAsync(ct);
@@ -80,6 +93,34 @@ public class CalendarController : ControllerBase
             }
         }
 
+        // Follow campaigns: 1 runner diario por campaña activa (el worker sigue al ritmo DailyRate).
+        // No tienen productKey, así que solo van en la vista global (pk == null).
+        if (pk == null)
+        {
+            var campaigns = await _db.InstagramFollowCampaigns.AsNoTracking()
+                .Where(c => c.IsActive).ToListAsync(ct);
+            if (campaigns.Count > 0)
+            {
+                for (var day = startDay; day <= endDay; day = day.AddDays(1))
+                {
+                    var at = new DateTimeOffset(day.Year, day.Month, day.Day, 9, 0, 0, TimeSpan.Zero);
+                    if (at < from || at >= to) continue;
+                    foreach (var c in campaigns)
+                        events.Add(new($"runfollow:{c.Id}:{day:yyyyMMdd}", "runner-follow",
+                            $"Follow · @{CleanHandle(c.SourceHandle)} ({c.DailyRate}/día)", at, null, ""));
+                }
+            }
+        }
+
         return Ok(events.OrderBy(e => e.At));
+
+        static string CleanHandle(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return raw ?? "";
+            var s = raw.Trim();
+            var i = s.IndexOf("instagram.com/", StringComparison.OrdinalIgnoreCase);
+            if (i >= 0) s = s[(i + "instagram.com/".Length)..];
+            return s.TrimStart('@').Trim('/').Split('/', '?')[0];
+        }
     }
 }

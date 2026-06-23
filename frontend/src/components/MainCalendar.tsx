@@ -19,6 +19,8 @@ const KIND: Record<string, { color: string; label: string }> = {
   post: { color: '#10b981', label: 'Posteo agendado' },
   'runner-post': { color: '#0ea5e9', label: 'Genera posteos' },
   'runner-capt': { color: '#f59e0b', label: 'Captación de leads' },
+  'runner-follow': { color: '#8b5cf6', label: 'Auto-follow IG' },
+  seo: { color: '#0d9488', label: 'Artículo SEO' },
 };
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());

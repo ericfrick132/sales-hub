@@ -54,4 +54,7 @@ public class SeoArticle
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? PublishedAt { get; set; }
+
+    /// <summary>Cuándo se planea publicar (para calendarizar). Si es futuro, aparece agendado.</summary>
+    public DateTimeOffset? ScheduledAt { get; set; }
 }
