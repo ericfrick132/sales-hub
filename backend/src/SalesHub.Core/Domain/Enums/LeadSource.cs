@@ -13,5 +13,8 @@ public enum LeadSource
     ManualWhatsApp = 102,
     ManualWeb = 103,
     BrowserCapture = 200,
-    InstagramScraper = 300
+    InstagramScraper = 300,
+    // Tenant/demo nuevo registrado en el propio producto (TurnosPro/GymHero) que entra
+    // al follow-up automático vía el endpoint de intake.
+    DemoSignup = 400
 }
