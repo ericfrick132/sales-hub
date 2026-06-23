@@ -201,6 +201,8 @@ export default function InstagramAccounts() {
         {accounts.map((a) => {
           const m = byId.get(a.id)?.todayMetrics;
           const st = statusOf(a);
+          // Solo la cuenta que se está conectando muestra "Conectando…" (no todas).
+          const connecting = loginMut.isPending && loginMut.variables === a.id;
           return (
             <div key={a.id} className="p-3 flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-[14rem]">
@@ -228,9 +230,9 @@ export default function InstagramAccounts() {
 
               <div className="flex items-center gap-2">
                 {st.primary === 'login' && (
-                  <button className="btn-primary text-xs" disabled={loginMut.isPending}
+                  <button className="btn-primary text-xs" disabled={connecting}
                     onClick={() => loginMut.mutate(a.id)}>
-                    {loginMut.isPending ? 'Conectando…' : 'Conectar'}
+                    {connecting ? 'Conectando…' : 'Conectar'}
                   </button>
                 )}
                 {st.primary === '2fa' && (
@@ -240,8 +242,8 @@ export default function InstagramAccounts() {
                 )}
                 {st.primary === 'ready' && (
                   <button className="text-xs px-2 py-1 rounded border border-slate-200 text-slate-500 hover:bg-slate-50"
-                    disabled={loginMut.isPending} onClick={() => loginMut.mutate(a.id)} title="Volver a conectar / refrescar sesión">
-                    Reconectar
+                    disabled={connecting} onClick={() => loginMut.mutate(a.id)} title="Volver a conectar / refrescar sesión">
+                    {connecting ? 'Conectando…' : 'Reconectar'}
                   </button>
                 )}
                 <button
