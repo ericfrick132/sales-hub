@@ -108,12 +108,17 @@ public class AiImageGenerator : ISocialAssetGenerator
         if (string.IsNullOrWhiteSpace(_opts.ApiKey)) { _log.LogWarning("ImageGen ApiKey no configurada — no se genera imagen"); return null; }
 
         var provider = _opts.Provider.Trim().ToLowerInvariant();
+        // gpt-image acepta 1024x1024 | 1024x1536 (vertical) | 1536x1024. Para Story/Reel/Carousel
+        // pedimos vertical (mejor para IG); para el resto, lo que diga la config (default cuadrado).
+        var size = format is SocialPostFormat.Story or SocialPostFormat.Reel or SocialPostFormat.Carousel
+            ? "1024x1536"
+            : _opts.Size;
         object body = provider switch
         {
             // Grok (xAI): OpenAI-compatible pero sin size/quality; pedimos b64.
             "grok" => new { model = _opts.Model, prompt, n = 1, response_format = "b64_json" },
             // OpenAI GPT Image: acepta size + quality; devuelve b64_json siempre.
-            _ => new { model = _opts.Model, prompt, size = _opts.Size, quality = _opts.Quality, n = 1 },
+            _ => new { model = _opts.Model, prompt, size, quality = _opts.Quality, n = 1 },
         };
 
         try
