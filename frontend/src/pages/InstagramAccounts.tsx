@@ -149,7 +149,7 @@ export default function InstagramAccounts() {
         <div>
           <h1 className="text-2xl font-bold">Cuentas de Instagram</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Cuentas usadas por scraping, DMs y auto-follow. El password se guarda encriptado (AES).
+            Las cuentas que mandan DMs, hacen auto-follow y scrapean leads en Instagram.
           </p>
         </div>
         <div className="flex gap-2">
@@ -163,10 +163,18 @@ export default function InstagramAccounts() {
             className="btn-primary text-xs"
             disabled={loginAllMut.isPending}
             onClick={() => loginAllMut.mutate()}>
-            {loginAllMut.isPending ? 'Logueando…' : 'Login todas'}
+            {loginAllMut.isPending ? 'Conectando…' : 'Conectar todas'}
           </button>
         </div>
       </header>
+
+      <div className="text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2 leading-relaxed">
+        Cómo dejar una cuenta lista: <b>1.</b> Agregala con usuario y contraseña ·{' '}
+        <b>2.</b> tocá <b>Conectar</b> ·{' '}
+        <b>3.</b> si Instagram pide código, ingresá el <b>2FA</b> → queda{' '}
+        <span className="text-emerald-600 font-medium">Lista para usar</span>.{' '}
+        Tip: cargá un <b>proxy</b> del país de la cuenta (botón Editar) para evitar verificaciones.
+      </div>
 
       {showNew && (
         <CreateForm
@@ -192,68 +200,63 @@ export default function InstagramAccounts() {
         )}
         {accounts.map((a) => {
           const m = byId.get(a.id)?.todayMetrics;
+          const st = statusOf(a);
           return (
             <div key={a.id} className="p-3 flex flex-wrap items-center gap-3">
-              <div className="flex-1 min-w-[12rem]">
+              <div className="flex-1 min-w-[14rem]">
                 <div className="font-medium">@{a.username}</div>
                 <div className="text-xs text-slate-500">
-                  {a.sellerName ?? '— sin seller —'} · creada {new Date(a.createdAt).toLocaleDateString()}
+                  {a.sellerName ?? '— sin vendedor —'} · creada {new Date(a.createdAt).toLocaleDateString()}
                 </div>
-              </div>
-
-              <div className="flex gap-1 flex-wrap">
-                <Badge ok={a.isActive} okLabel="activa" badLabel="pausada" />
-                <Badge ok={a.isLoggedIn} okLabel="logueada" badLabel="no logueada" />
-                <span
-                  title={a.proxyUrl ? proxyHostHint(a.proxyUrl) : 'Sale por la IP del server (riesgo de 2FA/checkpoint)'}
-                  className={`text-[10px] px-2 py-0.5 rounded ${
-                    a.proxyUrl ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'
-                  }`}>
-                  {a.proxyUrl ? 'proxy ✓' : 'sin proxy'}
-                </span>
-                {a.isActionBlocked && (
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-rose-100 text-rose-700">
-                    blocked{a.blockedUntil ? ` hasta ${new Date(a.blockedUntil).toLocaleString()}` : ''}
-                  </span>
-                )}
-                {a.isAwaitingTwoFactor && (
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-700">
-                    esperando 2FA
-                  </span>
+                <div className={`text-xs mt-1 inline-flex items-center gap-1.5 font-medium ${st.text}`}>
+                  <span className={`w-2 h-2 rounded-full ${st.dot}`} />
+                  {st.label}
+                </div>
+                {a.isLoggedIn && !a.proxyUrl && (
+                  <div className="text-[11px] text-amber-600 mt-0.5">
+                    Sin proxy: Instagram puede pedir verificación. Recomendado cargar uno (Editar).
+                  </div>
                 )}
               </div>
 
-              {m && (
-                <div className="text-xs text-slate-600 min-w-[10rem]">
+              {m && (m.profilesScraped > 0 || m.dmSent > 0) && (
+                <div className="text-xs text-slate-600">
                   hoy: scrape <b>{m.profilesScraped}</b> · DM <b>{m.dmSent}</b>
                   {m.actionBlocks > 0 && <span className="text-rose-600"> · blocks {m.actionBlocks}</span>}
                 </div>
               )}
 
-              <div className="flex gap-1">
+              <div className="flex items-center gap-2">
+                {st.primary === 'login' && (
+                  <button className="btn-primary text-xs" disabled={loginMut.isPending}
+                    onClick={() => loginMut.mutate(a.id)}>
+                    {loginMut.isPending ? 'Conectando…' : 'Conectar'}
+                  </button>
+                )}
+                {st.primary === '2fa' && (
+                  <button className="btn-primary text-xs" onClick={() => setTwoFaFor(a)}>
+                    Ingresar código 2FA
+                  </button>
+                )}
+                {st.primary === 'ready' && (
+                  <button className="text-xs px-2 py-1 rounded border border-slate-200 text-slate-500 hover:bg-slate-50"
+                    disabled={loginMut.isPending} onClick={() => loginMut.mutate(a.id)} title="Volver a conectar / refrescar sesión">
+                    Reconectar
+                  </button>
+                )}
                 <button
-                  className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
-                  disabled={loginMut.isPending}
-                  onClick={() => loginMut.mutate(a.id)}>
-                  Login
-                </button>
-                <button
-                  className="text-xs px-2 py-1 rounded border border-amber-300 text-amber-700 hover:bg-amber-50"
-                  onClick={() => setTwoFaFor(a)}>
-                  2FA
-                </button>
-                <button
-                  className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
+                  className="text-xs px-2 py-1 rounded border border-slate-200 text-slate-500 hover:bg-slate-50"
                   onClick={() => setEditing(a)}>
                   Editar
                 </button>
                 <button
-                  className="text-xs px-2 py-1 rounded border border-rose-300 text-rose-700 hover:bg-rose-50"
+                  className="text-xs px-2 py-1 rounded text-rose-500 hover:bg-rose-50"
+                  title="Eliminar cuenta"
                   onClick={() => {
                     if (confirm(`¿Eliminar @${a.username}? Se borran sus cookies y métricas.`))
                       deleteMut.mutate(a.id);
                   }}>
-                  Eliminar
+                  ✕
                 </button>
               </div>
             </div>
@@ -283,27 +286,29 @@ export default function InstagramAccounts() {
   );
 }
 
-// Muestra solo host:port del proxy (oculta user:pass) para tooltips.
-function proxyHostHint(raw: string): string {
-  try {
-    const noScheme = raw.replace(/^\w+:\/\//, '');
-    const afterAuth = noScheme.includes('@') ? noScheme.split('@')[1] : noScheme;
-    const host = afterAuth.split(':').slice(0, 2).join(':');
-    return `Proxy: ${host}`;
-  } catch {
-    return 'Proxy configurado';
+// Estado claro y accionable de una cuenta: una sola línea + cuál es la acción principal.
+function statusOf(a: IgAccount): {
+  label: string;
+  dot: string;
+  text: string;
+  primary: 'login' | '2fa' | 'ready' | 'none';
+} {
+  if (a.isActionBlocked) {
+    return {
+      label: `Bloqueada por Instagram${a.blockedUntil ? ` hasta ${new Date(a.blockedUntil).toLocaleString()}` : ''}`,
+      dot: 'bg-rose-500', text: 'text-rose-600', primary: 'none',
+    };
   }
-}
-
-function Badge({ ok, okLabel, badLabel }: { ok: boolean; okLabel: string; badLabel: string }) {
-  return (
-    <span
-      className={`text-[10px] px-2 py-0.5 rounded ${
-        ok ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
-      }`}>
-      {ok ? okLabel : badLabel}
-    </span>
-  );
+  if (a.isAwaitingTwoFactor) {
+    return { label: 'Esperando código 2FA', dot: 'bg-amber-500', text: 'text-amber-600', primary: '2fa' };
+  }
+  if (!a.isLoggedIn) {
+    return { label: 'Falta iniciar sesión', dot: 'bg-amber-500', text: 'text-amber-600', primary: 'login' };
+  }
+  if (!a.isActive) {
+    return { label: 'Pausada', dot: 'bg-slate-400', text: 'text-slate-500', primary: 'none' };
+  }
+  return { label: 'Lista para usar', dot: 'bg-emerald-500', text: 'text-emerald-600', primary: 'ready' };
 }
 
 function CreateForm({
