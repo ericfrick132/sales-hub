@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
@@ -28,7 +29,9 @@ public class LeadImportWorker : BackgroundService
     }
 
     private record SourceCfg(string ProductKey, string BaseUrl, string ApiKey);
-    private record ExportLead(string ExternalId, string? Name, string? BusinessName, string? Phone, string? Email, string? Status);
+    // ExternalId puede venir como string (Guid en TurnosPro) o number (int en GymHero):
+    // lo tomamos como JsonElement y lo normalizamos a string con .ToString().
+    private record ExportLead(JsonElement ExternalId, string? Name, string? BusinessName, string? Phone, string? Email, string? Status);
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -95,12 +98,13 @@ public class LeadImportWorker : BackgroundService
         var created = 0;
         foreach (var l in leads)
         {
+            var extId = l.ExternalId.ToString();
             var phone = CleanPhone(l.Phone);
             // Sin teléfono no lo podemos contactar por el runner de WhatsApp; lo marcamos para no re-traerlo.
-            if (phone is null) { toMark.Add(l.ExternalId); continue; }
+            if (phone is null) { toMark.Add(extId); continue; }
             // Dedup por teléfono+producto: si ya lo tenemos, marcamos en origen y seguimos.
             if (await db.Leads.AnyAsync(x => x.ProductKey == src.ProductKey && x.WhatsappPhone == phone, ct))
-            { toMark.Add(l.ExternalId); continue; }
+            { toMark.Add(extId); continue; }
 
             var lead = new Lead
             {
@@ -126,7 +130,7 @@ public class LeadImportWorker : BackgroundService
                 }
             }
             await db.SaveChangesAsync(ct);
-            toMark.Add(l.ExternalId);
+            toMark.Add(extId);
             created++;
         }
 
