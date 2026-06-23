@@ -43,7 +43,7 @@ public class Seller
     public int SkipDayProbabilityPct { get; set; } = 5;
     public int TypoProbabilityPct { get; set; } = 0;
 
-    public bool SendingEnabled { get; set; } = false;
+    public bool SendingEnabled { get; set; } = true;
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

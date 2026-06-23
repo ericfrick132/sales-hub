@@ -47,7 +47,7 @@ public class SeoContentWorker : BackgroundService
     {
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        if (!await db.IsFlagOnAsync("seo", _config.GetValue<bool>("Seo:AutoStart", false), ct))
+        if (!await db.IsFlagOnAsync("seo", _config.GetValue<bool>("Seo:AutoStart", true), ct))
             return;
         var seo = scope.ServiceProvider.GetRequiredService<SeoContentService>();
 

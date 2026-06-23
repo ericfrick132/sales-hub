@@ -191,7 +191,7 @@ public class SocialPostsController : ControllerBase
         var ch = new PostingChannel
         {
             Id = Guid.NewGuid(), ProductKey = req.ProductKey, Platform = platform,
-            Enabled = false,
+            Enabled = true,
             Format = Enum.TryParse<SocialPostFormat>(req.Format, true, out var f) ? f : SocialPostFormat.Post,
             AssetKind = Enum.TryParse<SocialAssetKind>(req.AssetKind, true, out var ak) ? ak : SocialAssetKind.Image,
             PromptTemplate = req.PromptTemplate ?? string.Empty,

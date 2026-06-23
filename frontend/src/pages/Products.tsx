@@ -17,8 +17,8 @@ const EMPTY: Product = {
   messageSteps: [],
   categoryCadences: [],
   aiSalesPlaybook: '',
-  autoPilot: false,
-  autoReengage: false
+  autoPilot: true,
+  autoReengage: true
 };
 
 export default function Products() {

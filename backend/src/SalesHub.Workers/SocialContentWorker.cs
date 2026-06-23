@@ -46,7 +46,7 @@ public class SocialContentWorker : BackgroundService
 
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        if (!await db.IsFlagOnAsync("posteos", _config.GetValue<bool>("Workers:PosteosAutoStart", false), ct))
+        if (!await db.IsFlagOnAsync("posteos", _config.GetValue<bool>("Workers:PosteosAutoStart", true), ct))
             return;
         var profiles = await db.PostingProfiles.Where(p => p.Enabled).ToListAsync(ct);
 

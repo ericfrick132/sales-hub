@@ -299,10 +299,10 @@ export default function InstagramFollow() {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
+                    className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
                     onClick={() => runMut.mutate(detailQ.data!.id)}
                     disabled={runMut.isPending}>
-                    Run ahora
+                    {runMut.isPending ? 'Corriendo…' : 'Run ahora'}
                   </button>
                   <button
                     className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"

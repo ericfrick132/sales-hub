@@ -35,7 +35,7 @@ public class FlagsController : ControllerBase
     {
         var map = (await _db.RuntimeFlags.AsNoTracking().ToListAsync(ct)).ToDictionary(r => r.Key, r => r.Enabled);
         var result = Defs.Select(d => new FlagDto(d.Key, d.Label,
-            map.TryGetValue(d.Key, out var v) ? v : _config.GetValue<bool>(d.ConfigKey, false)));
+            map.TryGetValue(d.Key, out var v) ? v : _config.GetValue<bool>(d.ConfigKey, true)));
         return Ok(result);
     }
 

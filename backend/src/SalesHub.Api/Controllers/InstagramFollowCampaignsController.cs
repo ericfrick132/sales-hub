@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Instagram;
@@ -16,15 +17,18 @@ public class InstagramFollowCampaignsController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly InstagramFollowService _follow;
     private readonly ILogger<InstagramFollowCampaignsController> _log;
+    private readonly IServiceScopeFactory _scopes;
 
     public InstagramFollowCampaignsController(
         ApplicationDbContext db,
         InstagramFollowService follow,
-        ILogger<InstagramFollowCampaignsController> log)
+        ILogger<InstagramFollowCampaignsController> log,
+        IServiceScopeFactory scopes)
     {
         _db = db;
         _follow = follow;
         _log = log;
+        _scopes = scopes;
     }
 
     [HttpGet]
@@ -207,22 +211,26 @@ public class InstagramFollowCampaignsController : ControllerBase
     [HttpPost("{id:guid}/run")]
     public async Task<IActionResult> RunNow(Guid id)
     {
-        var campaign = await _db.InstagramFollowCampaigns
-            .Include(c => c.InstagramAccount)
-            .FirstOrDefaultAsync(c => c.Id == id);
+        if (!await _db.InstagramFollowCampaigns.AnyAsync(c => c.Id == id)) return NotFound();
 
-        if (campaign is null) return NotFound();
+        // El scrape+follow con Playwright tarda (1-2 min); lo corremos en background con su
+        // propio scope y devolvemos al toque. La UI mira las stats/acciones para ver el avance.
+        _ = Task.Run(async () =>
+        {
+            using var scope = _scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var follow = scope.ServiceProvider.GetRequiredService<InstagramFollowService>();
+            var log = scope.ServiceProvider.GetRequiredService<ILogger<InstagramFollowCampaignsController>>();
+            try
+            {
+                var campaign = await db.InstagramFollowCampaigns.Include(c => c.InstagramAccount)
+                    .FirstOrDefaultAsync(c => c.Id == id);
+                if (campaign is not null) await follow.RunCampaignAsync(campaign);
+            }
+            catch (Exception ex) { log.LogError(ex, "Run manual de campaña {Id} falló", id); }
+        });
 
-        try
-        {
-            await _follow.RunCampaignAsync(campaign);
-            return Ok(new { ok = true });
-        }
-        catch (Exception ex)
-        {
-            _log.LogError(ex, "Error en run manual de campaña {Id}", id);
-            return BadRequest(new { error = ex.Message });
-        }
+        return Accepted(new { ok = true, message = "Run disparado. Mirá las stats en unos segundos." });
     }
 
     // DTOs

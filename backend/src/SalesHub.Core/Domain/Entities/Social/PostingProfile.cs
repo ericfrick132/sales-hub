@@ -14,7 +14,7 @@ public class PostingProfile
     public string ProductKey { get; set; } = string.Empty;
 
     /// <summary>Si está en false, el worker no genera contenido para este producto.</summary>
-    public bool Enabled { get; set; } = false;
+    public bool Enabled { get; set; } = true;
 
     // ── Base de marca (fija) ──────────────────────────────────────────────
     /// <summary>JSON con la paleta: {"primary":"#DDFD42","bg":"#0A0A0A",...}.</summary>

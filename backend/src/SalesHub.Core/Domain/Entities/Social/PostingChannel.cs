@@ -13,7 +13,7 @@ public class PostingChannel
     public string ProductKey { get; set; } = string.Empty;
     public SocialPlatform Platform { get; set; }
 
-    public bool Enabled { get; set; } = false;
+    public bool Enabled { get; set; } = true;
 
     /// <summary>Id del canal en Buffer para esta red (se completa al conectar).</summary>
     public string BufferChannelId { get; set; } = string.Empty;

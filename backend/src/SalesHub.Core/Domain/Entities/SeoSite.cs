@@ -39,7 +39,7 @@ public class SeoSite
     /// Modo autónomo: si está activo, el agente genera Y publica artículos solo, sin
     /// revisión humana, según <see cref="PublishCadenceHours"/>. El humano solo configura la cadencia.
     /// </summary>
-    public bool AutoPublish { get; set; } = false;
+    public bool AutoPublish { get; set; } = true;
 
     /// <summary>Cadencia de publicación en HORAS (ej. 24 = uno por día, 72 = cada 3 días). 0 = pausado.</summary>
     public int PublishCadenceHours { get; set; } = 0;

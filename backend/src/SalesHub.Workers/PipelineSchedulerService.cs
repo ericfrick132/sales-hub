@@ -48,7 +48,7 @@ public class PipelineSchedulerService : BackgroundService
 
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        if (!await db.IsFlagOnAsync("captacion", _config.GetValue<bool>("Workers:PipelineAutoStart", false), ct))
+        if (!await db.IsFlagOnAsync("captacion", _config.GetValue<bool>("Workers:PipelineAutoStart", true), ct))
             return;
         var pipeline = scope.ServiceProvider.GetRequiredService<PipelineService>();
 
