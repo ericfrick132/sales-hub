@@ -5,6 +5,7 @@ import type { GlobalMetrics } from '../lib/types';
 import MetricCards from '../components/MetricCards';
 import SendingControl from '../components/SendingControl';
 import ControlCenter from '../components/ControlCenter';
+import MainCalendar from '../components/MainCalendar';
 
 interface DailyActivity {
   date: string;
@@ -64,6 +65,8 @@ export default function AdminDashboard() {
         { label: 'Respondieron 7d', value: data.leadsReplied7d },
         { label: 'Cerrados 7d', value: data.leadsClosed7d }
       ]} />
+
+      <MainCalendar />
 
       <div>
         <h2 className="text-lg font-semibold mb-2">Actividad por vendedor (14 días)</h2>
