@@ -26,12 +26,7 @@ public class SeoContentWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var enabled = _config.GetValue<bool>("Seo:AutoStart", false);
-        if (!enabled)
-        {
-            _log.LogInformation("SeoContentWorker disabled (on-demand only). Set Seo:AutoStart=true to enable the autonomous agent.");
-            return;
-        }
+        // Gate por tick (flag DB 'seo' que pisa Seo:AutoStart) → toggle desde la UI.
 
         // Cada cuánto DESPIERTA a chequear si algún sitio cumplió su cadencia. La cadencia
         // real la define cada sitio en horas; este intervalo solo es la resolución del chequeo.
@@ -52,6 +47,8 @@ public class SeoContentWorker : BackgroundService
     {
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        if (!await db.IsFlagOnAsync("seo", _config.GetValue<bool>("Seo:AutoStart", false), ct))
+            return;
         var seo = scope.ServiceProvider.GetRequiredService<SeoContentService>();
 
         if (!seo.IsConfigured) { _log.LogWarning("SeoContentWorker: Claude sin configurar, salteo tick"); return; }

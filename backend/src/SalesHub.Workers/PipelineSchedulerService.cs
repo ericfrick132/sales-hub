@@ -25,13 +25,8 @@ public class PipelineSchedulerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var enabled = _config.GetValue<bool>("Workers:PipelineAutoStart", false);
-        if (!enabled)
-        {
-            _log.LogInformation("PipelineSchedulerService disabled (set Workers:PipelineAutoStart=true to enable). Admin triggers runs from /pipeline.");
-            return;
-        }
-        _log.LogInformation("PipelineSchedulerService started (autoStart=true)");
+        // Gate por tick (flag DB 'captacion' que pisa Workers:PipelineAutoStart) → toggle desde la UI.
+        _log.LogInformation("PipelineSchedulerService started (gate por flag 'captacion' / Workers:PipelineAutoStart)");
         await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -53,6 +48,8 @@ public class PipelineSchedulerService : BackgroundService
 
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        if (!await db.IsFlagOnAsync("captacion", _config.GetValue<bool>("Workers:PipelineAutoStart", false), ct))
+            return;
         var pipeline = scope.ServiceProvider.GetRequiredService<PipelineService>();
 
         var products = await db.Products.Where(p => p.Active).ToListAsync(ct);

@@ -40,6 +40,19 @@ export default function ControlCenter({ sellers }: { sellers: SellerLite[] }) {
     } catch (e: any) { toast.error(e.response?.data?.error ?? 'No se pudo cambiar el envío'); }
   }
 
+  const flagsQ = useQuery({
+    queryKey: ['runner-flags'],
+    queryFn: async () => (await api.get<{ key: string; label: string; enabled: boolean }[]>('/flags')).data,
+  });
+
+  async function toggleFlag(key: string, enabled: boolean) {
+    try {
+      await api.post(`/flags/${key}`, { enabled });
+      toast.success(enabled ? 'Runner encendido' : 'Runner apagado');
+      qc.invalidateQueries({ queryKey: ['runner-flags'] });
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló'); }
+  }
+
   async function toggleAuto(p: Product, patch: { autoPilot?: boolean; autoReengage?: boolean }) {
     const autoPilot = patch.autoPilot ?? p.autoPilot;
     const autoReengage = patch.autoReengage ?? p.autoReengage;
@@ -78,6 +91,22 @@ export default function ControlCenter({ sellers }: { sellers: SellerLite[] }) {
           Las apps ya responden solas si el <b>piloto</b> está en verde.
         </div>
       )}
+
+      {/* Runners automáticos (workers) */}
+      <div>
+        <h3 className="text-sm font-semibold mb-2">Runners automáticos</h3>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {(flagsQ.data ?? []).map((f) => (
+            <div key={f.key} className="flex items-center gap-3 border rounded-lg p-2.5">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm truncate">{f.label}</div>
+                <div className="text-[11px] text-slate-400">{f.enabled ? 'corriendo' : 'apagado'}</div>
+              </div>
+              <Switch on={f.enabled} onClick={() => toggleFlag(f.key, !f.enabled)} title={`Prender/apagar ${f.label}`} />
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Vendedores — envío */}
       <div>

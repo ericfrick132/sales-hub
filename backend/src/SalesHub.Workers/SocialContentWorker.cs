@@ -27,12 +27,9 @@ public class SocialContentWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_config.GetValue<bool>("Workers:PosteosAutoStart", false))
-        {
-            _log.LogInformation("SocialContentWorker disabled (set Workers:PosteosAutoStart=true). Se puede generar a demanda desde la API.");
-            return;
-        }
-        _log.LogInformation("SocialContentWorker started");
+        // El gate ahora se evalúa por tick (flag DB 'posteos' que pisa Workers:PosteosAutoStart),
+        // así se puede prender/apagar desde la UI sin reiniciar el contenedor.
+        _log.LogInformation("SocialContentWorker started (gate por flag 'posteos' / Workers:PosteosAutoStart)");
         await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -49,6 +46,8 @@ public class SocialContentWorker : BackgroundService
 
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        if (!await db.IsFlagOnAsync("posteos", _config.GetValue<bool>("Workers:PosteosAutoStart", false), ct))
+            return;
         var profiles = await db.PostingProfiles.Where(p => p.Enabled).ToListAsync(ct);
 
         foreach (var profile in profiles)

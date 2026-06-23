@@ -42,6 +42,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<SocialPost> SocialPosts => Set<SocialPost>();
     public DbSet<SocialPostAsset> SocialPostAssets => Set<SocialPostAsset>();
 
+    // Flags on/off de runners, toggleables desde la UI (override de Workers:*AutoStart).
+    public DbSet<RuntimeFlag> RuntimeFlags => Set<RuntimeFlag>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
