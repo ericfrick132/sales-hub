@@ -322,6 +322,20 @@ export interface AiCost {
   byFeatureToday: AiCostFeature[];
 }
 
+// Embudo de efectividad por aplicación (leads → contactados → ... → cerrados + tasas).
+export interface AppEffectiveness {
+  productKey: string;
+  leads: number;
+  contactados: number;
+  respondieron: number;
+  demos: number;
+  cerrados: number;
+  perdidos: number;
+  replyRate: number;
+  demoRate: number;
+  closeRate: number;
+}
+
 // Regla dura genérica de la IA de ventas (CRUD admin; se inyecta al system prompt).
 export interface AiRule {
   id: string;

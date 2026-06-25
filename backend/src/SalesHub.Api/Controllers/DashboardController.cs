@@ -62,6 +62,61 @@ public class DashboardController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Embudo de efectividad por aplicación: leads → contactados → respondieron → demos →
+    /// cerrados/perdidos + las tasas (% resp / % demo / % cierre). Filtrable por ventana
+    /// (cohorte de leads que entraron en ese período, por CreatedAt).
+    /// </summary>
+    [HttpGet("effectiveness")]
+    public async Task<IActionResult> Effectiveness([FromQuery] string period = "all", CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        DateTimeOffset? since = null;
+        switch ((period ?? "all").ToLowerInvariant())
+        {
+            case "today":
+                TimeZoneInfo arTz;
+                try { arTz = TimeZoneInfo.FindSystemTimeZoneById("America/Argentina/Buenos_Aires"); }
+                catch { arTz = TimeZoneInfo.CreateCustomTimeZone("AR", TimeSpan.FromHours(-3), "AR", "AR"); }
+                var nowAr = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, arTz);
+                since = new DateTimeOffset(nowAr.Year, nowAr.Month, nowAr.Day, 0, 0, 0, nowAr.Offset);
+                break;
+            case "7d": since = DateTimeOffset.UtcNow.AddDays(-7); break;
+            case "30d": since = DateTimeOffset.UtcNow.AddDays(-30); break;
+        }
+
+        var q = _db.Leads.AsNoTracking().Where(l => l.ProductKey != "");
+        if (since.HasValue) q = q.Where(l => l.CreatedAt >= since.Value);
+
+        var raw = await q
+            .GroupBy(l => l.ProductKey)
+            .Select(g => new
+            {
+                productKey = g.Key,
+                leads = g.Count(),
+                contactados = g.Count(l => l.SentAt != null),
+                respondieron = g.Count(l => l.FirstReplyAt != null),
+                demos = g.Count(l => l.DemoScheduledAt != null),
+                cerrados = g.Count(l => l.Status == LeadStatus.Closed),
+                perdidos = g.Count(l => l.Status == LeadStatus.Lost),
+            })
+            .ToListAsync(ct);
+
+        var result = raw
+            .Select(r => new
+            {
+                r.productKey, r.leads, r.contactados, r.respondieron, r.demos, r.cerrados, r.perdidos,
+                replyRate = r.contactados > 0 ? Math.Round((double)r.respondieron / r.contactados, 4) : 0,
+                demoRate = r.respondieron > 0 ? Math.Round((double)r.demos / r.respondieron, 4) : 0,
+                closeRate = r.contactados > 0 ? Math.Round((double)r.cerrados / r.contactados, 4) : 0,
+            })
+            .OrderByDescending(x => x.leads)
+            .ToList();
+
+        return Ok(result);
+    }
+
     [HttpGet("admin")]
     public async Task<ActionResult<GlobalMetrics>> Admin(CancellationToken ct)
     {

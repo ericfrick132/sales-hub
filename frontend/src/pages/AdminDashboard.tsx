@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import type { GlobalMetrics } from '../lib/types';
 import TeamCompliance from '../components/TeamCompliance';
 import AiCostCard from '../components/AiCostCard';
+import Effectiveness from '../components/Effectiveness';
 import SendingControl from '../components/SendingControl';
 import ControlCenter from '../components/ControlCenter';
 import MainCalendar from '../components/MainCalendar';
@@ -63,6 +64,8 @@ export default function AdminDashboard() {
       <TeamCompliance />
 
       <AiCostCard />
+
+      <Effectiveness />
 
       <TodayChecklist />
 
