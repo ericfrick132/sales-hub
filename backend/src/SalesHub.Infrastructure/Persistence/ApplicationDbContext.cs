@@ -45,6 +45,9 @@ public class ApplicationDbContext : DbContext
     // Flags on/off de runners, toggleables desde la UI (override de Workers:*AutoStart).
     public DbSet<RuntimeFlag> RuntimeFlags => Set<RuntimeFlag>();
 
+    // Objetivos de vendedor (metas precargadas por superadmin; progreso calculado en runtime).
+    public DbSet<SellerGoal> SellerGoals => Set<SellerGoal>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

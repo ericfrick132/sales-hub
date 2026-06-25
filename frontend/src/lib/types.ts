@@ -276,3 +276,27 @@ export interface SellerDashboard {
   todaySentCount: number;
   todayCap: number;
 }
+
+export type SellerGoalMetric = 'Contactos' | 'Respuestas' | 'Demos' | 'Cierres';
+export type SellerGoalPeriod = 'Daily' | 'Weekly';
+
+export interface SellerGoal {
+  id: string;
+  sellerId: string | null;
+  sellerName: string | null;
+  productKey: string | null;
+  metric: SellerGoalMetric;
+  period: SellerGoalPeriod;
+  target: number;
+  isActive: boolean;
+}
+
+export interface SellerGoalProgress {
+  goalId: string;
+  metric: SellerGoalMetric;
+  period: SellerGoalPeriod;
+  productKey: string | null;
+  target: number;
+  current: number;
+  percent: number;
+}

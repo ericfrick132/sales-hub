@@ -30,6 +30,14 @@ public class InstagramOptions
     public string? ProxyUrl { get; set; }
 
     /// <summary>
+    /// Bloquea la descarga de recursos pesados (imágenes, video/audio, fuentes)
+    /// en el navegador. Como cada byte sale por el 4G del proxy y se paga, esto
+    /// baja el consumo de una sesión de IG ~90% (de decenas de MB a &lt;3 MB) sin
+    /// afectar la automatización, que opera sobre el DOM/JS. Default: activado.
+    /// </summary>
+    public bool BlockHeavyResources { get; set; } = true;
+
+    /// <summary>
     /// Cantidad de fallos consecutivos de un selector antes de gatillar
     /// un re-análisis automático de la estructura. 0 = desactivado.
     /// </summary>

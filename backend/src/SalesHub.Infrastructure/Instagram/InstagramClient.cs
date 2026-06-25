@@ -103,6 +103,25 @@ public class InstagramClient : IAsyncDisposable
             Locale = "es-AR"
         });
 
+        // Bloqueo de recursos pesados para minimizar el consumo de datos del
+        // proxy mobile: cada byte que baja el navegador SALE POR EL 4G DEL CHIP
+        // y se paga. Bloqueando imágenes, video/audio y fuentes, una sesión de IG
+        // baja de decenas de MB a <3 MB sin romper la automatización (opera sobre
+        // el DOM/JS). NO bloqueamos document/script/xhr/fetch (la SPA dejaría de
+        // funcionar) ni stylesheet (para no alterar los chequeos de visibilidad
+        // que hace Playwright antes de cada Fill/Click).
+        if (_opts.BlockHeavyResources)
+        {
+            await _context.RouteAsync("**/*", async route =>
+            {
+                var type = route.Request.ResourceType;
+                if (type is "image" or "media" or "font")
+                    await route.AbortAsync();
+                else
+                    await route.ContinueAsync();
+            });
+        }
+
         // Restaurar cookies si existen
         if (!string.IsNullOrEmpty(account.SessionCookiesJson))
         {
@@ -929,52 +948,76 @@ public class InstagramClient : IAsyncDisposable
     private static readonly Regex SessionTokenRegex =
         new("session-[^-:@]+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    private const int MaxProxySessionTries = 6;
+    // Reintentos sobre la MISMA sesión (peer pinneado) antes de concluir que el
+    // peer está caído de verdad. Evita saltar de ciudad por un fallo transitorio
+    // (timeout, blip de red): el city-pin solo se abandona si falla repetidamente.
+    private const int StableSessionRetries = 3;
+
+    // Backoff corto entre reintentos de la sesión estable (ms).
+    private const int StableRetryDelayMs = 1_500;
+
+    // Una vez descartado el peer pinneado, cuántos peers alternativos probar.
+    // Rotar = cambiar de ciudad, así que lo mantenemos acotado y lo logueamos fuerte.
+    private const int MaxRotationTries = 3;
 
     /// <summary>
-    /// Devuelve un proxy cuya sesión llega a Instagram con certificado válido.
-    /// Verifica la sesión actual; si el peer la intercepta/bloquea (MITM, antivirus,
-    /// filtro), rota el token de sesión a otro peer y reintenta. Null si ninguna sirve.
+    /// Devuelve un proxy cuya sesión llega a Instagram con certificado válido,
+    /// PRIORIZANDO mantener el peer pinneado (misma IP/ciudad) para no disparar
+    /// "viajes imposibles" en IG. Solo rota a otro peer (cambio de ciudad) si la
+    /// sesión pinneada falla repetidamente — un fallo transitorio no la abandona.
+    /// Null si ni el peer pinneado ni los alternativos sirven.
     /// </summary>
     private async Task<Proxy?> ResolveWorkingProxyAsync(string rawProxy, string accountUser, CancellationToken ct)
     {
         var baseProxy = BuildProxy(rawProxy);
         if (baseProxy is null) return null;
 
-        var canRotate = baseProxy.Username is not null && SessionTokenRegex.IsMatch(baseProxy.Username);
-
-        for (var attempt = 0; attempt < MaxProxySessionTries; attempt++)
+        // Fase 1: insistir con la sesión PINNEADA. Un fallo transitorio no debe
+        // hacernos saltar de peer — reintentamos la misma sesión con backoff.
+        for (var attempt = 1; attempt <= StableSessionRetries; attempt++)
         {
-            // Intento 0: sesión tal cual. Siguientes: rotamos el token (si se puede).
-            Proxy candidate;
-            if (attempt == 0)
+            if (await ProxyReachesInstagramAsync(baseProxy, ct))
+                return baseProxy;
+
+            _log.LogWarning("Proxy de {User}: la sesión pinneada no llegó a IG (intento {N}/{Max}).",
+                accountUser, attempt, StableSessionRetries);
+
+            if (attempt < StableSessionRetries)
+                await Task.Delay(StableRetryDelayMs, ct);
+        }
+
+        // Sin token de sesión no hay nada que rotar: el peer pinneado es el único.
+        if (baseProxy.Username is null || !SessionTokenRegex.IsMatch(baseProxy.Username))
+        {
+            _log.LogWarning("Proxy de {User}: sesión pinneada caída y sin token de sesión para rotar.",
+                accountUser);
+            return null;
+        }
+
+        // Fase 2: el peer pinneado parece caído de verdad. Recién acá rotamos a
+        // otro peer, lo que implica un cambio de ciudad — lo logueamos fuerte.
+        _log.LogWarning("Proxy de {User}: abandonando el peer pinneado tras {N} fallos — ROTANDO de ciudad.",
+            accountUser, StableSessionRetries);
+
+        for (var rot = 1; rot <= MaxRotationTries; rot++)
+        {
+            var token = "s" + Guid.NewGuid().ToString("N")[..8];
+            var candidate = new Proxy
             {
-                candidate = baseProxy;
-            }
-            else if (canRotate)
-            {
-                var token = "s" + Guid.NewGuid().ToString("N")[..8];
-                candidate = new Proxy
-                {
-                    Server = baseProxy.Server,
-                    Username = SessionTokenRegex.Replace(baseProxy.Username!, "session-" + token),
-                    Password = baseProxy.Password
-                };
-            }
-            else
-            {
-                break; // sin token de sesión no hay nada que rotar
-            }
+                Server = baseProxy.Server,
+                Username = SessionTokenRegex.Replace(baseProxy.Username!, "session-" + token),
+                Password = baseProxy.Password
+            };
 
             if (await ProxyReachesInstagramAsync(candidate, ct))
             {
-                if (attempt > 0)
-                    _log.LogInformation("Proxy de {User}: sesión rotada OK al intento {N}.", accountUser, attempt + 1);
+                _log.LogInformation("Proxy de {User}: peer alternativo OK al intento {N} (nueva ciudad).",
+                    accountUser, rot);
                 return candidate;
             }
 
-            _log.LogWarning("Proxy de {User}: la sesión no llegó a IG (intento {N}/{Max}), rotando peer...",
-                accountUser, attempt + 1, MaxProxySessionTries);
+            _log.LogWarning("Proxy de {User}: peer alternativo no llegó a IG (intento {N}/{Max}).",
+                accountUser, rot, MaxRotationTries);
         }
 
         return null;

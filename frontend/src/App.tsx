@@ -25,6 +25,7 @@ import InstagramAccounts from './pages/InstagramAccounts';
 import Posteos from './pages/Posteos';
 import CalendarPosteos from './pages/CalendarPosteos';
 import Seo from './pages/Seo';
+import Objetivos from './pages/Objetivos';
 
 function SellerZonesRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -60,6 +61,7 @@ export default function App() {
           <>
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/sellers" element={<Sellers />} />
+            <Route path="/objetivos" element={<Objetivos />} />
             <Route path="/sellers/zones" element={<SellerZones />} />
             <Route path="/sellers/:id/zones" element={<SellerZonesRedirect />} />
             <Route path="/admin/sellers/:id" element={<SellerDetail />} />

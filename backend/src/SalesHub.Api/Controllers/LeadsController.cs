@@ -403,6 +403,7 @@ public class LeadsController : ControllerBase
         lead.Status = req.Status;
         if (req.Notes is not null) lead.Notes = req.Notes;
         if (req.Status == LeadStatus.Replied && lead.FirstReplyAt is null) lead.FirstReplyAt = DateTimeOffset.UtcNow;
+        if (req.Status == LeadStatus.DemoScheduled && lead.DemoScheduledAt is null) lead.DemoScheduledAt = DateTimeOffset.UtcNow;
         if (req.Status is LeadStatus.Closed or LeadStatus.Lost) lead.ClosedAt = DateTimeOffset.UtcNow;
         lead.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);

@@ -56,6 +56,7 @@ public class Lead
     public DateTimeOffset? QueuedAt { get; set; }
     public DateTimeOffset? SentAt { get; set; }
     public DateTimeOffset? FirstReplyAt { get; set; }
+    public DateTimeOffset? DemoScheduledAt { get; set; }
     public DateTimeOffset? ClosedAt { get; set; }
 
     public string? Notes { get; set; }
