@@ -100,6 +100,11 @@ public static class DependencyInjection
         // Reglas duras de la IA (cache 30s, leídas vía scope) — inyectadas al system prompt.
         services.AddSingleton<AiRulesProvider>();
         services.AddScoped<AiSuggestionService>();
+
+        // Onboarding de leads de anuncio de GymHero (reemplaza el chatbot de n8n).
+        services.AddHttpClient<GymHeroProvisionClient>();
+        services.AddScoped<IGymHeroProvisionClient>(sp => sp.GetRequiredService<GymHeroProvisionClient>());
+        services.AddScoped<GymHeroOnboardingService>();
         services.AddScoped<ConversationAgentService>();
         services.AddScoped<SeoContentService>();
         services.AddScoped<BlogPublisher>();

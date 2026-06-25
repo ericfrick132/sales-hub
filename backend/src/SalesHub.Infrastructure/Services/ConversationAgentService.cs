@@ -28,14 +28,15 @@ public class ConversationAgentService
     private readonly IEvolutionClient _evo;
     private readonly GroqWhisperClient _whisper;
     private readonly AiSuggestionService _suggestions;
+    private readonly GymHeroOnboardingService _onboarding;
     private readonly ISendScheduler _scheduler;
     private readonly ILogger<ConversationAgentService> _log;
 
     public ConversationAgentService(
         ApplicationDbContext db, IEvolutionClient evo, GroqWhisperClient whisper,
-        AiSuggestionService suggestions, ISendScheduler scheduler, ILogger<ConversationAgentService> log)
+        AiSuggestionService suggestions, GymHeroOnboardingService onboarding, ISendScheduler scheduler, ILogger<ConversationAgentService> log)
     {
-        _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _scheduler = scheduler; _log = log;
+        _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding; _scheduler = scheduler; _log = log;
     }
 
     public async Task<int> TickAsync(CancellationToken ct)
@@ -118,6 +119,8 @@ public class ConversationAgentService
             select new { LeadId = l.Id, LastText = last.Text }
         ).Take(BatchSize).ToListAsync(ct);
 
+        var onboardingOn = await _db.IsFlagOnAsync("onboarding", false, ct);
+
         var done = 0;
         foreach (var c in candidates)
         {
@@ -161,6 +164,25 @@ public class ConversationAgentService
                 lead.Status = LeadStatus.Lost;
                 lead.ClosedAt ??= DateTimeOffset.UtcNow;
                 await DeliverAsync(lead, AiSuggestionService.ScriptedCordialClose(wrong), LeadIntent.NotInterested, "script", ct);
+                done++;
+                continue;
+            }
+
+            // ── Onboarding de ads de GymHero (reemplaza el bot de n8n). Gated por flag 'onboarding'.
+            if (onboardingOn && lead.Source == LeadSource.WhatsAppAd && lead.ProductKey == "gymhero")
+            {
+                var ob = await _onboarding.ProcessAsync(lead, last, ct);
+                if (!ob.OffScript)
+                {
+                    if (!string.IsNullOrWhiteSpace(ob.Reply)) await OnboardingSendAsync(lead, ob.Reply!, ct);
+                    await _db.SaveChangesAsync(ct);
+                    done++;
+                    continue;
+                }
+                // Off-script (preguntó precio/info/etc.): la IA contesta y auto-enviamos (bot activo).
+                var (_, _, oreply) = await _suggestions.SuggestReplyWithIntentAsync(lead, lead.Product!, thread, ct);
+                if (!string.IsNullOrWhiteSpace(oreply)) await OnboardingSendAsync(lead, oreply!, ct);
+                await _db.SaveChangesAsync(ct);
                 done++;
                 continue;
             }
@@ -215,6 +237,50 @@ public class ConversationAgentService
         }
 
         return done;
+    }
+
+    /// <summary>
+    /// Envío del bot de onboarding: splittea por [NUEVO_MENSAJE] y manda cada parte (como n8n).
+    /// Auto-envía SIEMPRE (bypassa AutoPilot — es el bot). Si no se puede enviar (sin teléfono o
+    /// instancia desconectada), deja la respuesta como sugerencia.
+    /// </summary>
+    private async Task OnboardingSendAsync(Lead lead, string text, CancellationToken ct)
+    {
+        var parts = text.Split("[NUEVO_MENSAJE]", StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
+        if (parts.Count == 0) return;
+
+        var instance = lead.Seller?.EvolutionInstance;
+        var canSend = instance is not null && instance.Status == InstanceStatus.Connected
+            && !string.IsNullOrWhiteSpace(lead.WhatsappPhone);
+
+        if (!canSend)
+        {
+            lead.AiSuggestedReply = string.Join("\n", parts);
+            lead.AiSuggestedReplyAt = DateTimeOffset.UtcNow;
+            lead.UpdatedAt = DateTimeOffset.UtcNow;
+            return;
+        }
+
+        foreach (var p in parts)
+        {
+            var ok = await _evo.SendTextAsync(instance!.InstanceName, lead.WhatsappPhone!, p, ct);
+            _db.ConversationMessages.Add(new ConversationMessage
+            {
+                Id = Guid.NewGuid(),
+                LeadId = lead.Id,
+                SellerId = lead.SellerId,
+                Direction = MessageDirection.Outbound,
+                Status = ok ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Failed,
+                Text = p,
+                EvolutionInstance = instance.InstanceName,
+                Timestamp = DateTimeOffset.UtcNow,
+                IsRead = true,
+            });
+        }
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     /// <summary>

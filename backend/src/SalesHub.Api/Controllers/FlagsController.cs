@@ -23,6 +23,7 @@ public class FlagsController : ControllerBase
     private static readonly (string Key, string ConfigKey, string Label)[] Defs =
     {
         ("whatsapp", "Workers:WhatsAppAutoStart", "WhatsApp (envíos + respuestas IA)"),
+        ("onboarding", "Workers:OnboardingAutoStart", "Onboarding ads GymHero (reemplaza n8n)"),
         ("instagram", "Workers:InstagramAutoStart", "Instagram (DMs + follow + scraping)"),
         ("posteos", "Workers:PosteosAutoStart", "Posteos automáticos"),
         ("captacion", "Workers:PipelineAutoStart", "Captación de leads"),
