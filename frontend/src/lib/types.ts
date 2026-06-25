@@ -307,3 +307,17 @@ export interface SellerCompliance {
   overallPercent: number;
   goals: SellerGoalProgress[];
 }
+
+// Gasto de la API de Claude (la key de IA): costo USD + desglose por feature de hoy.
+export interface AiCostFeature {
+  feature: string;
+  costUsd: number;
+  calls: number;
+}
+
+export interface AiCost {
+  todayUsd: number;
+  last7dUsd: number;
+  last30dUsd: number;
+  byFeatureToday: AiCostFeature[];
+}

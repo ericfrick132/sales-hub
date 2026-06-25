@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { GlobalMetrics } from '../lib/types';
 import TeamCompliance from '../components/TeamCompliance';
+import AiCostCard from '../components/AiCostCard';
 import SendingControl from '../components/SendingControl';
 import ControlCenter from '../components/ControlCenter';
 import MainCalendar from '../components/MainCalendar';
@@ -60,6 +61,8 @@ export default function AdminDashboard() {
       <ControlCenter sellers={data.sellers} />
 
       <TeamCompliance />
+
+      <AiCostCard />
 
       <TodayChecklist />
 

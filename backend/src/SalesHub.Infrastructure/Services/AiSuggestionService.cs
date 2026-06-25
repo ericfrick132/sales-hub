@@ -78,7 +78,7 @@ public class AiSuggestionService
         var conversation = BuildConversation(lead, thread,
             instruction: "Clasificá el estado del prospecto según la conversación. Respondé con UNA sola palabra de la lista.");
 
-        var raw = await _claude.CompleteAsync(system, conversation, ct);
+        var raw = await _claude.CompleteAsync(system, conversation, "conversacion", ct);
         return ParseIntent(raw);
     }
 
@@ -98,7 +98,7 @@ public class AiSuggestionService
     private async Task<string?> CompleteWithPriceGuardrailAsync(
         string system, string conversation, Product product, CancellationToken ct)
     {
-        var reply = await _claude.CompleteAsync(system, conversation, ct);
+        var reply = await _claude.CompleteAsync(system, conversation, "conversacion", ct);
         if (string.IsNullOrWhiteSpace(reply)) return null;
 
         if (MentionsWrongPrice(reply, product.PriceDisplay))
@@ -110,7 +110,7 @@ public class AiSuggestionService
             var corrected = conversation +
                 $"\n\nIMPORTANTE: el precio EXACTO es \"{product.PriceDisplay}\". " +
                 "No menciones NINGÚN otro número de precio. Regenerá la respuesta:";
-            reply = await _claude.CompleteAsync(system, corrected, ct);
+            reply = await _claude.CompleteAsync(system, corrected, "conversacion", ct);
 
             if (string.IsNullOrWhiteSpace(reply) || MentionsWrongPrice(reply, product.PriceDisplay))
             {

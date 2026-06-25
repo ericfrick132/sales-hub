@@ -73,7 +73,7 @@ public class SeoContentService
         user.AppendLine();
         user.AppendLine("Devolvé entre 25 y 40 keywords. Incluí preguntas que un usuario le haría a ChatGPT (para GEO).");
 
-        var raw = await _claude.CompleteAsync(system.ToString(), user.ToString(), _opts.ResearchMaxTokens, _opts.ResearchModel, ct);
+        var raw = await _claude.CompleteAsync(system.ToString(), user.ToString(), _opts.ResearchMaxTokens, _opts.ResearchModel, "seo", ct);
         if (string.IsNullOrWhiteSpace(raw)) return new();
 
         var parsed = ParseKeywordArray(raw);
@@ -136,7 +136,7 @@ public class SeoContentService
         var system = BuildArticleSystemPrompt(site);
         var user = BuildArticleUserPrompt(site, keyword, type);
 
-        var raw = await _claude.CompleteAsync(system, user, _opts.ArticleMaxTokens, _opts.ArticleModel, ct);
+        var raw = await _claude.CompleteAsync(system, user, _opts.ArticleMaxTokens, _opts.ArticleModel, "seo", ct);
         if (string.IsNullOrWhiteSpace(raw)) return null;
 
         if (!TryExtractJsonObject(raw, out var json))
@@ -210,7 +210,7 @@ public class SeoContentService
         user.AppendLine("CUERPO (markdown):");
         user.AppendLine(article.BodyMarkdown);
 
-        var raw = await _claude.CompleteAsync(system, user.ToString(), 1500, _opts.ResearchModel, ct);
+        var raw = await _claude.CompleteAsync(system, user.ToString(), 1500, _opts.ResearchModel, "seo", ct);
         if (string.IsNullOrWhiteSpace(raw) || !TryExtractJsonObject(raw, out var json)) return article;
 
         using var doc = json;

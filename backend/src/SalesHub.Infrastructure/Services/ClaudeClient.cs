@@ -1,26 +1,33 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SalesHub.Core.Domain.Entities;
 using SalesHub.Infrastructure.Options;
+using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Infrastructure.Services;
 
 /// <summary>
 /// Cliente mínimo de la API de Claude (Anthropic Messages API). Una sola
 /// llamada: system prompt cacheado + un turno de usuario → texto. Devuelve null
-/// si falla o no hay key configurada.
+/// si falla o no hay key configurada. Cada llamada exitosa registra su uso
+/// (tokens + costo USD) en ai_usage_logs, etiquetado por <c>feature</c>, para
+/// el widget de gasto del dashboard.
 /// </summary>
 public class ClaudeClient
 {
     private readonly HttpClient _http;
     private readonly ClaudeOptions _opts;
+    private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<ClaudeClient> _log;
 
-    public ClaudeClient(HttpClient http, IOptions<ClaudeOptions> opts, ILogger<ClaudeClient> log)
+    public ClaudeClient(HttpClient http, IOptions<ClaudeOptions> opts, IServiceScopeFactory scopes, ILogger<ClaudeClient> log)
     {
         _http = http;
         _opts = opts.Value;
+        _scopes = scopes;
         _log = log;
         _http.BaseAddress = new Uri(_opts.BaseUrl.TrimEnd('/') + "/");
         _http.Timeout = TimeSpan.FromSeconds(_opts.TimeoutSeconds);
@@ -41,14 +48,22 @@ public class ClaudeClient
     /// turno variable (la conversación). Devuelve el texto generado o null.
     /// </summary>
     public Task<string?> CompleteAsync(string systemPrompt, string userMessage, CancellationToken ct = default)
-        => CompleteAsync(systemPrompt, userMessage, _opts.MaxTokens, null, ct);
+        => CompleteAsync(systemPrompt, userMessage, _opts.MaxTokens, null, "unknown", ct);
+
+    /// <summary>Igual, pero etiquetando dónde se gasta (feature) para el tracking de costo.</summary>
+    public Task<string?> CompleteAsync(string systemPrompt, string userMessage, string feature, CancellationToken ct = default)
+        => CompleteAsync(systemPrompt, userMessage, _opts.MaxTokens, null, feature, ct);
 
     /// <summary>
     /// Igual que la sobrecarga corta pero permite subir <paramref name="maxTokens"/>
     /// (artículos largos) y elegir un <paramref name="model"/> distinto al default
     /// (ej. Sonnet para contenido de calidad). Usado por el motor de SEO/GEO.
     /// </summary>
-    public async Task<string?> CompleteAsync(string systemPrompt, string userMessage, int maxTokens, string? model, CancellationToken ct = default)
+    public Task<string?> CompleteAsync(string systemPrompt, string userMessage, int maxTokens, string? model, CancellationToken ct = default)
+        => CompleteAsync(systemPrompt, userMessage, maxTokens, model, "unknown", ct);
+
+    /// <summary>Sobrecarga completa: maxTokens + model + feature (etiqueta de gasto).</summary>
+    public async Task<string?> CompleteAsync(string systemPrompt, string userMessage, int maxTokens, string? model, string feature, CancellationToken ct = default)
     {
         if (!IsConfigured)
         {
@@ -56,9 +71,10 @@ public class ClaudeClient
             return null;
         }
 
+        var usedModel = string.IsNullOrWhiteSpace(model) ? _opts.Model : model;
         var body = new
         {
-            model = string.IsNullOrWhiteSpace(model) ? _opts.Model : model,
+            model = usedModel,
             max_tokens = maxTokens,
             system = new[]
             {
@@ -85,6 +101,10 @@ public class ClaudeClient
                 return null;
             }
             var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+
+            // Registrar el uso (tokens + costo) — nos cobraron aunque no haya bloque de texto.
+            await LogUsageAsync(doc.RootElement, usedModel, feature, ct);
+
             // content: [ { type: "text", text: "..." }, ... ]
             if (doc.RootElement.TryGetProperty("content", out var content)
                 && content.ValueKind == JsonValueKind.Array)
@@ -106,6 +126,42 @@ public class ClaudeClient
         {
             _log.LogWarning(ex, "Claude completion threw");
             return null;
+        }
+    }
+
+    /// <summary>Lee usage.* de la respuesta, calcula el costo USD y lo persiste. Best-effort.</summary>
+    private async Task LogUsageAsync(JsonElement root, string model, string feature, CancellationToken ct)
+    {
+        try
+        {
+            int input = 0, output = 0, cacheRead = 0, cacheCreate = 0;
+            if (root.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
+            {
+                if (u.TryGetProperty("input_tokens", out var i) && i.ValueKind == JsonValueKind.Number) input = i.GetInt32();
+                if (u.TryGetProperty("output_tokens", out var o) && o.ValueKind == JsonValueKind.Number) output = o.GetInt32();
+                if (u.TryGetProperty("cache_read_input_tokens", out var cr) && cr.ValueKind == JsonValueKind.Number) cacheRead = cr.GetInt32();
+                if (u.TryGetProperty("cache_creation_input_tokens", out var cc) && cc.ValueKind == JsonValueKind.Number) cacheCreate = cc.GetInt32();
+            }
+
+            var entry = new AiUsageLog
+            {
+                Feature = string.IsNullOrWhiteSpace(feature) ? "unknown" : feature,
+                Model = model,
+                InputTokens = input,
+                OutputTokens = output,
+                CacheReadTokens = cacheRead,
+                CacheCreationTokens = cacheCreate,
+                CostUsd = ClaudePricing.CostUsd(model, input, output, cacheRead, cacheCreate),
+            };
+
+            using var scope = _scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Set<AiUsageLog>().Add(entry);
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "No pude registrar el uso de Claude");
         }
     }
 }

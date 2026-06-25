@@ -51,7 +51,7 @@ public class SocialContentGenerator
         }
         user.AppendLine("Recordá: SOLO el JSON.");
 
-        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), ct);
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), "social", ct);
         if (string.IsNullOrWhiteSpace(raw)) return null;
 
         var json = ExtractJson(raw);
@@ -112,7 +112,7 @@ public class SocialContentGenerator
         }
         user.AppendLine("Recordá: SOLO el JSON.");
 
-        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), ct);
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), "social", ct);
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var json = ExtractJson(raw);
         try

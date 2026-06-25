@@ -48,6 +48,9 @@ public class ApplicationDbContext : DbContext
     // Objetivos de vendedor (metas precargadas por superadmin; progreso calculado en runtime).
     public DbSet<SellerGoal> SellerGoals => Set<SellerGoal>();
 
+    // Uso de la API de Claude (tokens + costo USD por feature) para el widget de gasto.
+    public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

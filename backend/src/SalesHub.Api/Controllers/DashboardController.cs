@@ -22,6 +22,46 @@ public class DashboardController : ControllerBase
         _db = db; _scheduler = scheduler;
     }
 
+    /// <summary>
+    /// Gasto de la API de Claude (la key de IA): costo USD hoy / 7d / 30d + desglose
+    /// por feature de HOY (dónde se gasta: conversación de ventas, SEO, social).
+    /// </summary>
+    [HttpGet("ai-cost")]
+    public async Task<IActionResult> AiCost(CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        TimeZoneInfo arTz;
+        try { arTz = TimeZoneInfo.FindSystemTimeZoneById("America/Argentina/Buenos_Aires"); }
+        catch { arTz = TimeZoneInfo.CreateCustomTimeZone("AR", TimeSpan.FromHours(-3), "AR", "AR"); }
+
+        var now = DateTimeOffset.UtcNow;
+        var nowAr = TimeZoneInfo.ConvertTime(now, arTz);
+        var todayStart = new DateTimeOffset(nowAr.Year, nowAr.Month, nowAr.Day, 0, 0, 0, nowAr.Offset);
+        var since7 = now.AddDays(-7);
+        var since30 = now.AddDays(-30);
+
+        var logs = await _db.AiUsageLogs.AsNoTracking()
+            .Where(l => l.CreatedAt >= since30)
+            .Select(l => new { l.CreatedAt, l.Feature, l.CostUsd })
+            .ToListAsync(ct);
+
+        var todayLogs = logs.Where(l => l.CreatedAt >= todayStart).ToList();
+        var byFeatureToday = todayLogs
+            .GroupBy(l => l.Feature)
+            .Select(g => new { feature = g.Key, costUsd = g.Sum(x => x.CostUsd), calls = g.Count() })
+            .OrderByDescending(x => x.costUsd)
+            .ToList();
+
+        return Ok(new
+        {
+            todayUsd = todayLogs.Sum(x => x.CostUsd),
+            last7dUsd = logs.Where(l => l.CreatedAt >= since7).Sum(x => x.CostUsd),
+            last30dUsd = logs.Sum(x => x.CostUsd),
+            byFeatureToday,
+        });
+    }
+
     [HttpGet("admin")]
     public async Task<ActionResult<GlobalMetrics>> Admin(CancellationToken ct)
     {
