@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -66,8 +67,15 @@ public class ConversationService
                 ?? await MatchLeadByPhoneAsync(null, suffix, ct);
         if (lead is null)
         {
-            _log.LogInformation("Inbound message from unknown number {Phone}", phone);
-            return false;
+            // Número desconocido: ¿es un lead de anuncio (click-to-WhatsApp)? El texto
+            // pre-armado del ad trae "activar <app>". Si sí, lo creamos taggeado WhatsAppAd.
+            lead = await TryCreateAdLeadAsync(incoming, phone, instance, ct);
+            if (lead is null)
+            {
+                _log.LogInformation("Inbound message from unknown number {Phone} (no es lead de anuncio)", phone);
+                return false;
+            }
+            _log.LogInformation("Lead de anuncio creado: {Lead} app={Product} tel={Phone}", lead.Id, lead.ProductKey, phone);
         }
 
         // Dedup by WhatsApp message id.
@@ -275,6 +283,65 @@ public class ConversationService
         if (sellerId is not null)
             q = q.Where(l => l.SellerId == sellerId);
         return await q.OrderByDescending(l => l.CreatedAt).FirstOrDefaultAsync(ct);
+    }
+
+    // Intención típica del texto pre-armado de un anuncio click-to-WhatsApp.
+    private static readonly Regex AdIntentRx = new(
+        @"activar|quiero|me gustar|me interesa|informaci[oó]n|empezar|comenzar|probar|sumar",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Si un número DESCONOCIDO escribe el texto pre-armado de un anuncio (ej.
+    /// "me gustaría activar Gym Hero para mi gimnasio"), crea el lead taggeado como
+    /// <see cref="LeadSource.WhatsAppAd"/>, con el producto detectado del texto y
+    /// asignado al seller de la instancia (el dueño del número que recibió el ad).
+    /// Devuelve null si no parece un lead de anuncio (no creamos nada).
+    /// </summary>
+    private async Task<Lead?> TryCreateAdLeadAsync(IncomingMessage incoming, string phone, EvolutionInstance instance, CancellationToken ct)
+    {
+        if (!AdIntentRx.IsMatch(incoming.Text)) return null;
+
+        var lower = incoming.Text.ToLowerInvariant();
+        var compact = lower.Replace(" ", "");
+        var products = await _db.Products.Where(p => p.Active).ToListAsync(ct);
+        var product = products.FirstOrDefault(p =>
+            compact.Contains(p.ProductKey.ToLowerInvariant())
+            || (p.DisplayName.Length >= 3 && lower.Contains(p.DisplayName.ToLowerInvariant())));
+        if (product is null) return null; // no sabemos de qué app → no creamos un lead mal taggeado
+
+        var lead = new Lead
+        {
+            Id = Guid.NewGuid(),
+            ProductKey = product.ProductKey,
+            Source = LeadSource.WhatsAppAd,
+            Name = ExtractPushName(incoming.RawJson) ?? "Lead de anuncio",
+            WhatsappPhone = phone,
+            WhatsappValidated = true,
+            SellerId = instance.SellerId,
+            AssignedAt = DateTimeOffset.UtcNow,
+            Status = LeadStatus.Replied,        // ya escribió ellos
+            FirstReplyAt = incoming.Timestamp,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        _db.Leads.Add(lead);
+        return lead;
+    }
+
+    /// <summary>Nombre del contacto que manda Evolution en el payload (pushName), o null.</summary>
+    private static string? ExtractPushName(string rawJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            if (doc.RootElement.TryGetProperty("pushName", out var pn) && pn.ValueKind == JsonValueKind.String)
+            {
+                var name = pn.GetString();
+                return string.IsNullOrWhiteSpace(name) ? null : name!.Trim();
+            }
+        }
+        catch { /* no-op */ }
+        return null;
     }
 
     private static string? ExtractPhone(string? jid)
