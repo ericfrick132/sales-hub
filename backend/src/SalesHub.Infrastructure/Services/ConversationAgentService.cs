@@ -107,6 +107,7 @@ public class ConversationAgentService
         var candidates = await (
             from l in _db.Leads
             where l.AiSuggestedReply == null && l.SellerId != null
+                && l.Status != LeadStatus.Closed && l.Status != LeadStatus.Lost
             let last = _db.ConversationMessages
                 .Where(m => m.LeadId == l.Id)
                 .OrderByDescending(m => m.Timestamp)
@@ -133,61 +134,115 @@ public class ConversationAgentService
                 .OrderBy(m => m.Timestamp)
                 .ToListAsync(ct);
 
-            // 0) Clasificar el estado del lead analizando TODA la conversación y mover el
-            // status (interesado / no interesado / agendó / compró). Si quedó resuelto
-            // (no interesado o ya compró) no seguimos vendiendo.
-            var intent = await _suggestions.ClassifyLeadAsync(lead, lead.Product!, thread, ct);
-            if (ApplyIntentToStatus(lead, intent))
+            var last = c.LastText;
+
+            // ── Heurísticos SIN IA: resuelven gratis el ruido (auto-responders de los
+            // propios gimnasios, rechazos, números equivocados, pedidos de no contacto).
+            // Sacados de los chats reales de gymhero — patrones de bajo falso positivo.
+
+            // Pidió explícitamente que no le escriban → Lost, bloquear re-enganche, sin responder.
+            if (AiSuggestionService.IsHardStop(last))
             {
-                lead.AiSuggestedReply = null;
-                lead.AiSuggestedReplyAt = null;
+                lead.Status = LeadStatus.Lost;
+                lead.ClosedAt ??= DateTimeOffset.UtcNow;
+                lead.NudgeCount = MaxNudges; // no re-enganchar nunca
+                lead.AiSuggestedReply = null; lead.AiSuggestedReplyAt = null;
                 lead.UpdatedAt = DateTimeOffset.UtcNow;
                 await _db.SaveChangesAsync(ct);
-                _log.LogInformation("Lead {Lead} clasificado {Intent} → {Status}; no se genera respuesta",
-                    lead.Id, intent, lead.Status);
+                _log.LogInformation("Lead {Lead} pidió no contacto → Lost + stop (sin IA)", lead.Id);
                 done++;
                 continue;
             }
 
-            // 1) Reglas de keyword del vendedor — sin IA, sin costo.
-            var keywordReply = MatchKeywordRule(lead.Seller.KeywordRules, c.LastText);
-            var reply = keywordReply;
-
-            // 2) Fallback a Claude sólo si no matcheó ningún keyword.
-            if (reply is null && _suggestions.IsConfigured)
-                reply = await _suggestions.SuggestReplyAsync(lead, lead.Product!, thread, ct);
-
-            if (string.IsNullOrWhiteSpace(reply)) continue;
-
-            var src = keywordReply is not null ? "keyword" : "IA";
-
-            // Auto-respuesta a inbound (reactiva, bajo riesgo, "como una persona"):
-            // permitida con AutoPilot, en horario activo del vendedor y bajo el tope
-            // absoluto diario por número. needs_human nunca se auto-envía. Si no, queda sugerencia.
-            var canAutoReply = false;
-            if (lead.Product!.AutoPilot && intent != LeadIntent.NeedsHuman)
+            // Rechazo firme o número equivocado → cierre cordial scripteado (sin IA), Lost.
+            var wrong = AiSuggestionService.IsWrongNumber(last);
+            if (wrong || AiSuggestionService.IsFirmReject(last))
             {
-                var st = await SellerSendStateAsync(lead.Seller!, ct);
-                canAutoReply = st.active && st.sentToday < OutboxSender.MaxMessagesPerSellerPerDay;
+                lead.Status = LeadStatus.Lost;
+                lead.ClosedAt ??= DateTimeOffset.UtcNow;
+                await DeliverAsync(lead, AiSuggestionService.ScriptedCordialClose(wrong), LeadIntent.NotInterested, "script", ct);
+                done++;
+                continue;
             }
 
-            if (canAutoReply && await AutoSendAsync(lead, reply, ct))
+            // Auto-responder del propio gimnasio → re-pitch por texto scripteado (sin IA).
+            // Si el del otro lado SOLO dispara auto-responders (≥2), es un número desatendido
+            // o un bot: cortar (esto mata los loops IA-vs-IA que quemaban tokens).
+            if (AiSuggestionService.IsAutoResponder(last))
             {
-                _log.LogInformation("Auto-respondido a lead {Lead} (fuente: {Src})", lead.Id, src);
+                var autoCount = thread.Count(m => m.Direction == MessageDirection.Inbound
+                    && AiSuggestionService.IsAutoResponder(m.Text));
+                if (autoCount >= 2)
+                {
+                    lead.NudgeCount = Math.Max(lead.NudgeCount, 1);
+                    lead.UpdatedAt = DateTimeOffset.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                    continue;
+                }
+                await DeliverAsync(lead, AiSuggestionService.ScriptedAutoResponderReply(), LeadIntent.Unknown, "script", ct);
+                done++;
+                continue;
             }
-            else
+
+            // Regla de keyword del vendedor (sin IA), si configuró alguna.
+            var keywordReply = MatchKeywordRule(lead.Seller.KeywordRules, last);
+            if (keywordReply is not null)
             {
-                lead.AiSuggestedReply = reply;
-                lead.AiSuggestedReplyAt = DateTimeOffset.UtcNow;
+                await DeliverAsync(lead, keywordReply, LeadIntent.Unknown, "keyword", ct);
+                done++;
+                continue;
+            }
+
+            // ── Charla real: UNA sola llamada que clasifica el estado Y genera la respuesta.
+            if (!_suggestions.IsConfigured) continue;
+            var (intent, shouldReply, reply) = await _suggestions.SuggestReplyWithIntentAsync(lead, lead.Product!, thread, ct);
+
+            // Si quedó resuelto (no interesado / ya compró) no respondemos.
+            if (ApplyIntentToStatus(lead, intent))
+            {
+                lead.AiSuggestedReply = null; lead.AiSuggestedReplyAt = null;
                 lead.UpdatedAt = DateTimeOffset.UtcNow;
-                _log.LogInformation("Sugerencia generada para lead {Lead} (fuente: {Src})", lead.Id, src);
+                await _db.SaveChangesAsync(ct);
+                _log.LogInformation("Lead {Lead} clasificado {Intent} → {Status}; sin respuesta", lead.Id, intent, lead.Status);
+                done++;
+                continue;
             }
 
-            await _db.SaveChangesAsync(ct);
+            if (!shouldReply || string.IsNullOrWhiteSpace(reply)) continue;
+
+            await DeliverAsync(lead, reply!, intent, "IA", ct);
             done++;
         }
 
         return done;
+    }
+
+    /// <summary>
+    /// Entrega un texto al lead: auto-envía si el producto tiene AutoPilot, está en horario,
+    /// bajo el cap diario y no es needs_human; si no, lo deja como sugerencia para el vendedor.
+    /// </summary>
+    private async Task DeliverAsync(Lead lead, string text, LeadIntent intentForGate, string src, CancellationToken ct)
+    {
+        var canAutoReply = false;
+        if (lead.Product!.AutoPilot && intentForGate != LeadIntent.NeedsHuman)
+        {
+            var st = await SellerSendStateAsync(lead.Seller!, ct);
+            canAutoReply = st.active && st.sentToday < OutboxSender.MaxMessagesPerSellerPerDay;
+        }
+
+        if (canAutoReply && await AutoSendAsync(lead, text, ct))
+        {
+            _log.LogInformation("Auto-respondido a lead {Lead} (fuente: {Src})", lead.Id, src);
+        }
+        else
+        {
+            lead.AiSuggestedReply = text;
+            lead.AiSuggestedReplyAt = DateTimeOffset.UtcNow;
+            lead.UpdatedAt = DateTimeOffset.UtcNow;
+            _log.LogInformation("Sugerencia generada para lead {Lead} (fuente: {Src})", lead.Id, src);
+        }
+
+        await _db.SaveChangesAsync(ct);
     }
 
     /// <summary>

@@ -24,6 +24,11 @@ public class AiSuggestionService
         _log = log;
     }
 
+    // Cap del hilo enviado a la IA: en estas charlas el contexto lejano no se usa (los hilos
+    // largos son follow-ups repetidos, no diálogo acumulado). Con las últimas 8 interacciones
+    // alcanza para no repetir preguntas, y le pone techo al costo por llamada.
+    private const int MaxThreadMessages = 8;
+
     /// <summary>True si Claude está configurado — el worker no sugiere si no.</summary>
     public bool IsConfigured => _claude.IsConfigured;
 
@@ -99,6 +104,108 @@ public class AiSuggestionService
         return LeadIntent.Unknown;
     }
 
+    // ---- Camino económico: una sola llamada (clasifica + responde) -------------
+
+    /// <summary>
+    /// UNA llamada a Claude que clasifica el estado del prospecto Y genera la respuesta
+    /// (en vez de dos llamadas separadas). Devuelve intención + si conviene responder +
+    /// la respuesta (ya con guardrail de precio). Es el camino para la charla real.
+    /// </summary>
+    public async Task<(LeadIntent intent, bool shouldReply, string? reply)> SuggestReplyWithIntentAsync(
+        Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, CancellationToken ct)
+    {
+        if (!_claude.IsConfigured || thread.Count == 0) return (LeadIntent.Unknown, false, null);
+
+        var rulesBlock = await _rules.GetBlockAsync(null, ct);
+        var system = BuildSystemPrompt(product, rulesBlock) + MergedTaskInstruction;
+        var conversation = BuildConversation(lead, thread, instruction: null);
+
+        var raw = await _claude.CompleteAsync(system, conversation, "conversacion", ct);
+        var (intent, shouldReply, reply) = SplitIntentReply(raw);
+
+        if (shouldReply && !string.IsNullOrWhiteSpace(reply) && MentionsWrongPrice(reply!, product.PriceDisplay))
+        {
+            var corrected = conversation +
+                $"\n\nIMPORTANTE: el precio EXACTO es \"{product.PriceDisplay}\". No menciones NINGÚN otro número de precio. " +
+                "Regenerá respetando el formato (línea 1 `estado=...`, después el mensaje).";
+            var (i2, s2, r2) = SplitIntentReply(await _claude.CompleteAsync(system, corrected, "conversacion", ct));
+            if (i2 != LeadIntent.Unknown) intent = i2;
+            shouldReply = s2; reply = r2;
+            if (shouldReply && (string.IsNullOrWhiteSpace(reply) || MentionsWrongPrice(reply!, product.PriceDisplay)))
+                return (intent, false, null);
+        }
+
+        return (intent, shouldReply, reply);
+    }
+
+    private const string MergedTaskInstruction =
+        "\n\nTAREA DOBLE: además de responder, clasificá al prospecto. Tu salida tiene EXACTAMENTE este formato:\n" +
+        "primera línea: estado=<una de: interesado, no_interesado, agendo, compro, derivar, indefinido>\n" +
+        "de la segunda línea en adelante: el mensaje para el lead, en el estilo de siempre (minúscula, sin puntuación).\n" +
+        "si el prospecto ya cerró en contra (no_interesado) o ya compró (compro), NO escribas mensaje: poné solo `(sin respuesta)`.\n" +
+        "ante la duda entre interesado y no_interesado, elegí interesado. una objeción tipo \"ya tengo un sistema\" NO es no_interesado: es interesado, hay que repreguntar.";
+
+    private static (LeadIntent intent, bool shouldReply, string? reply) SplitIntentReply(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return (LeadIntent.Unknown, false, null);
+        var lines = raw.Replace("\r\n", "\n").Split('\n');
+        var intent = LeadIntent.Unknown;
+        var start = 0;
+        for (var i = 0; i < lines.Length && i < 2; i++)
+        {
+            var m = Regex.Match(lines[i], @"estado\s*[:=]\s*([a-záéíóú_]+)", RegexOptions.IgnoreCase);
+            if (m.Success) { intent = MapEstado(m.Groups[1].Value); start = i + 1; break; }
+        }
+        var reply = string.Join("\n", lines.Skip(start)).Trim();
+        var bare = reply.Replace("(", "").Replace(")", "").Trim();
+        if (reply.Length == 0 || bare.StartsWith("sin respuesta", StringComparison.OrdinalIgnoreCase))
+            return (intent, false, null);
+        return (intent, true, reply);
+    }
+
+    private static LeadIntent MapEstado(string s) => s.ToLowerInvariant() switch
+    {
+        "no_interesado" => LeadIntent.NotInterested,
+        "agendo" or "agendó" => LeadIntent.Scheduled,
+        "compro" or "compró" => LeadIntent.Won,
+        "derivar" => LeadIntent.NeedsHuman,
+        "interesado" => LeadIntent.Interested,
+        _ => LeadIntent.Unknown,
+    };
+
+    // ---- Heurísticos SIN IA (sacados de los chats reales de gymhero) -----------
+
+    private static readonly Regex AutoResponderRx = new(
+        @"gracias por (comunicarte|contactarte|tu mensaje|escribir)|en este momento no (estamos|podemos|puedo)|no (escuchamos|podemos escuchar|reproducir|recibimos) (audios|llamadas)|horario de atenci|asistente virtual|tu mensaje fue recib|a la brevedad|enseguida (te|estaremos)|nuevo n[uú]mero|deshabilitad|bienvenid",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex HardStopRx = new(
+        @"(dej[aá]|deje[ns]?|par[aá]) de (mandar|enviar|escribir)|no me (escrib|mand|contact)|dame de baja|me das de baja|no (quiero|deseo) (recibir|que me)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex FirmRejectRx = new(
+        @"no me interesa|no estoy interesad|no,? gracias|no necesito|no necesitamos|no me sirve",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex WrongNumberRx = new(
+        @"(te |se )?(confundiste|equivocaste)|n[uú]mero equivocado|equivocad|no (tengo|somos|es|tenemos) (un |una )?(gim|gimnasio)|no soy de (un |una )?(gim|gimnasio)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public static bool IsAutoResponder(string? t) => !string.IsNullOrWhiteSpace(t) && AutoResponderRx.IsMatch(t);
+    public static bool IsHardStop(string? t) => !string.IsNullOrWhiteSpace(t) && HardStopRx.IsMatch(t);
+    public static bool IsFirmReject(string? t) => !string.IsNullOrWhiteSpace(t) && FirmRejectRx.IsMatch(t);
+    public static bool IsWrongNumber(string? t) => !string.IsNullOrWhiteSpace(t) && WrongNumberRx.IsMatch(t);
+
+    /// <summary>Respuesta scripteada (sin IA) a un auto-responder de gimnasio: re-pitch por texto.</summary>
+    public static string ScriptedAutoResponderReply()
+        => "dale sin problema te escribo por acá\ncomo vienen cobrando las cuotas de los socios hoy";
+
+    /// <summary>Cierre cordial scripteado (sin IA) para rechazo firme o número equivocado.</summary>
+    public static string ScriptedCordialClose(bool wrongNumber)
+        => wrongNumber
+            ? "ah disculpá la confusión entonces éxitos"
+            : "dale sin drama cualquier cosa que necesites por acá ando";
+
     private async Task<string?> CompleteWithPriceGuardrailAsync(
         string system, string conversation, Product product, CancellationToken ct)
     {
@@ -162,6 +269,14 @@ public class AiSuggestionService
         }
         if (!string.IsNullOrWhiteSpace(product.CheckoutUrl))
             sb.AppendLine($"LINK DE CHECKOUT (mandalo cuando tenga sentido cerrar): {product.CheckoutUrl}");
+        sb.AppendLine();
+        sb.AppendLine("TÉCNICA (lo que MEJOR convierte en este producto, seguilo):");
+        sb.AppendLine("- si el lead dice que YA TIENE un sistema, NO te rindas: repreguntá si ese sistema le cobra automático por mercado pago o si sigue persiguiendo pagos a mano, y si ve en recepción quién está al día. ahí se abre la venta. una objeción tipo \"ya tengo\" es una oportunidad, no un no.");
+        sb.AppendLine("- si dice que NO tiene morosos, encarálo como plata que se le escapa sin darse cuenta (cobra dos veces el mismo mes, se olvida de alguien), no como perseguir morosos.");
+        sb.AppendLine("- si dice que no es el dueño, pedile el contacto o mail del dueño para mandarle la info directa.");
+        sb.AppendLine("- ante un \"ya tengo otro\", ofrecé que le migrás los datos gratis y que se configura en 1 día.");
+        sb.AppendLine("- si el lead dice que NO de forma firme, respondé UNA vez corto y cordial y cerrá. NUNCA insistas ni mandes otro mensaje: insistir sobre un no quema la marca.");
+        sb.AppendLine("- nada de charla de cortesía interminable: si no hay avance comercial en 1 o 2 mensajes, cerrá amable.");
         if (!string.IsNullOrWhiteSpace(product.AiSalesPlaybook))
         {
             sb.AppendLine();
@@ -180,7 +295,11 @@ public class AiSuggestionService
         sb.AppendLine($"LEAD: {lead.Name}");
         sb.AppendLine();
         sb.AppendLine("CONVERSACIÓN:");
-        foreach (var m in thread.OrderBy(m => m.Timestamp))
+        var ordered = thread.OrderBy(m => m.Timestamp).ToList();
+        var recent = ordered.Count <= MaxThreadMessages
+            ? ordered
+            : ordered.GetRange(ordered.Count - MaxThreadMessages, MaxThreadMessages);
+        foreach (var m in recent)
         {
             var who = m.Direction == MessageDirection.Outbound ? "VENDEDOR" : "LEAD";
             sb.AppendLine($"{who}: {m.Text}");
