@@ -63,6 +63,7 @@ export default function Layout() {
           { to: '/sellers', label: 'Vendedores' },
           { to: '/objetivos', label: 'Objetivos' },
           { to: '/products', label: 'Aplicaciones' },
+          { to: '/automatizaciones', label: 'Automatizaciones' },
         ] },
       ]
     : [
