@@ -68,7 +68,7 @@ public class DashboardController : ControllerBase
     /// (cohorte de leads que entraron en ese período, por CreatedAt).
     /// </summary>
     [HttpGet("effectiveness")]
-    public async Task<IActionResult> Effectiveness([FromQuery] string period = "all", CancellationToken ct = default)
+    public async Task<IActionResult> Effectiveness([FromQuery] string period = "all", [FromQuery] string origin = "all", CancellationToken ct = default)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
 
@@ -88,6 +88,19 @@ public class DashboardController : ControllerBase
 
         var q = _db.Leads.AsNoTracking().Where(l => l.ProductKey != "");
         if (since.HasValue) q = q.Where(l => l.CreatedAt >= since.Value);
+
+        // Entrante = nos escriben / vienen de un producto o anuncio (alta intención);
+        // Saliente = los buscamos y contactamos nosotros (frío, scraping).
+        var inbound = new[]
+        {
+            LeadSource.WhatsAppAd, LeadSource.DemoSignup, LeadSource.ProductOnboarding,
+            LeadSource.ProductReengage, LeadSource.ManualWhatsApp,
+        };
+        switch ((origin ?? "all").ToLowerInvariant())
+        {
+            case "inbound": q = q.Where(l => inbound.Contains(l.Source)); break;
+            case "outbound": q = q.Where(l => !inbound.Contains(l.Source)); break;
+        }
 
         var raw = await q
             .GroupBy(l => l.ProductKey)

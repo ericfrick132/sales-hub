@@ -10,6 +10,12 @@ const PERIODS = [
   { key: 'all', label: 'Todo' },
 ] as const;
 
+const ORIGINS = [
+  { key: 'all', label: 'Todos' },
+  { key: 'inbound', label: 'Entrante' },
+  { key: 'outbound', label: 'Saliente' },
+] as const;
+
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
 function Rate({ value }: { value: number }) {
@@ -25,10 +31,11 @@ function Rate({ value }: { value: number }) {
  */
 export default function Effectiveness() {
   const [period, setPeriod] = useState<string>('30d');
+  const [origin, setOrigin] = useState<string>('all');
   const { data, isLoading } = useQuery({
-    queryKey: ['effectiveness', period],
+    queryKey: ['effectiveness', period, origin],
     queryFn: async () =>
-      (await api.get<AppEffectiveness[]>('/dashboard/effectiveness', { params: { period } })).data,
+      (await api.get<AppEffectiveness[]>('/dashboard/effectiveness', { params: { period, origin } })).data,
     refetchInterval: 60000,
   });
 
@@ -38,18 +45,34 @@ export default function Effectiveness() {
     <div className="card p-5">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-lg font-semibold">Efectividad por aplicación</h2>
-        <div className="flex gap-1">
-          {PERIODS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => setPeriod(p.key)}
-              className={`text-xs px-2 py-1 rounded ${
-                period === p.key ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
+        <div className="flex gap-3 flex-wrap">
+          <div className="flex gap-1">
+            {ORIGINS.map((o) => (
+              <button
+                key={o.key}
+                onClick={() => setOrigin(o.key)}
+                className={`text-xs px-2 py-1 rounded ${
+                  origin === o.key ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+                title="Entrante = nos escriben (ads/producto) · Saliente = los contactamos nosotros"
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1">
+            {PERIODS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setPeriod(p.key)}
+                className={`text-xs px-2 py-1 rounded ${
+                  period === p.key ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
