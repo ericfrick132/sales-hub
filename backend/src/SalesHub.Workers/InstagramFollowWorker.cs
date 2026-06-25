@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using SalesHub.Infrastructure.Instagram;
+using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Workers;
 
@@ -38,6 +39,9 @@ public class InstagramFollowWorker : BackgroundService
             try
             {
                 using var scope = _scopes.CreateScope();
+                var gateDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                if (!await gateDb.IsFlagOnAsync("instagram", scope.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>("Workers:InstagramAutoStart", true), stoppingToken))
+                { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); continue; }
                 var service = scope.ServiceProvider.GetRequiredService<InstagramFollowService>();
                 await service.RunAllAsync(stoppingToken);
             }

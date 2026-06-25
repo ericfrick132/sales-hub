@@ -1,3 +1,4 @@
+using SalesHub.Infrastructure.Persistence;
 using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Workers;
@@ -25,6 +26,9 @@ public class ConversationAgentWorker : BackgroundService
             try
             {
                 using var scope = _scopes.CreateScope();
+                var gateDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                if (!await gateDb.IsFlagOnAsync("whatsapp", scope.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>("Workers:WhatsAppAutoStart", true), stoppingToken))
+                { await Task.Delay(TimeSpan.FromSeconds(20), stoppingToken); continue; }
                 var svc = scope.ServiceProvider.GetRequiredService<ConversationAgentService>();
                 var n = await svc.TickAsync(stoppingToken);
                 if (n > 0) _log.LogInformation("ConversationAgent processed {N}", n);

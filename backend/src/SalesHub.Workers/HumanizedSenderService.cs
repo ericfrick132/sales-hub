@@ -1,3 +1,4 @@
+using SalesHub.Infrastructure.Persistence;
 using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Workers;
@@ -21,6 +22,9 @@ public class HumanizedSenderService : BackgroundService
             try
             {
                 using var scope = _scopes.CreateScope();
+                var gateDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                if (!await gateDb.IsFlagOnAsync("whatsapp", scope.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>("Workers:WhatsAppAutoStart", true), stoppingToken))
+                { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); continue; }
                 var sender = scope.ServiceProvider.GetRequiredService<OutboxSender>();
                 var sent = await sender.TickAsync(stoppingToken);
                 if (sent > 0) _log.LogInformation("Sender tick dispatched {N}", sent);

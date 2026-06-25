@@ -1,4 +1,5 @@
 using SalesHub.Infrastructure.Instagram;
+using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Workers;
 
@@ -32,6 +33,9 @@ public class InstagramInboxWorker : BackgroundService
             try
             {
                 using var scope = _scopes.CreateScope();
+                var gateDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                if (!await gateDb.IsFlagOnAsync("instagram", scope.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>("Workers:InstagramAutoStart", true), stoppingToken))
+                { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); continue; }
                 var poller = scope.ServiceProvider.GetRequiredService<InstagramInboxPoller>();
                 await poller.PollAllAsync(stoppingToken);
             }

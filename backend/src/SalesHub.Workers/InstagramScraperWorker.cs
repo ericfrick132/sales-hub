@@ -44,7 +44,10 @@ public class InstagramScraperWorker : BackgroundService
         {
             try
             {
-                await RunScrapeAsync(stoppingToken);
+                using var gscope = _scopes.CreateScope();
+                var gdb = gscope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                if (await gdb.IsFlagOnAsync("instagram", gscope.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>("Workers:InstagramAutoStart", true), stoppingToken))
+                    await RunScrapeAsync(stoppingToken);
             }
             catch (Exception ex)
             {
@@ -62,6 +65,8 @@ public class InstagramScraperWorker : BackgroundService
     {
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        if (!await db.IsFlagOnAsync("instagram", scope.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>("Workers:InstagramAutoStart", true), ct))
+            return;
         var crypto = scope.ServiceProvider.GetRequiredService<InstagramEncryptionService>();
 
         var accounts = await db.InstagramAccounts
