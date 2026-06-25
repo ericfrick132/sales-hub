@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { GlobalMetrics } from '../lib/types';
-import MetricCards from '../components/MetricCards';
+import TeamCompliance from '../components/TeamCompliance';
 import SendingControl from '../components/SendingControl';
 import ControlCenter from '../components/ControlCenter';
 import MainCalendar from '../components/MainCalendar';
@@ -59,13 +59,7 @@ export default function AdminDashboard() {
 
       <ControlCenter sellers={data.sellers} />
 
-      <MetricCards cards={[
-        { label: 'Leads totales', value: data.totalLeads },
-        { label: 'Leads hoy', value: data.leadsToday },
-        { label: 'Enviados 7d', value: data.leadsSent7d },
-        { label: 'Respondieron 7d', value: data.leadsReplied7d },
-        { label: 'Cerrados 7d', value: data.leadsClosed7d }
-      ]} />
+      <TeamCompliance />
 
       <TodayChecklist />
 

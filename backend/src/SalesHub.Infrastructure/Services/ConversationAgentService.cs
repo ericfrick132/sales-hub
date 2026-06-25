@@ -203,14 +203,17 @@ public class ConversationAgentService
         {
             case LeadIntent.NotInterested:
                 if (lead.Status != LeadStatus.Lost) lead.Status = LeadStatus.Lost;
+                lead.ClosedAt ??= DateTimeOffset.UtcNow; // mismo criterio que LeadsController (Closed/Lost)
                 return true; // dado por cerrado: el re-enganche ya excluye Lost
 
             case LeadIntent.Won:
                 lead.Status = LeadStatus.Closed;
+                lead.ClosedAt ??= DateTimeOffset.UtcNow; // así cuenta para el objetivo de Cierres
                 return true;
 
             case LeadIntent.Scheduled:
                 if (lead.Status != LeadStatus.DemoScheduled) lead.Status = LeadStatus.DemoScheduled;
+                lead.DemoScheduledAt ??= DateTimeOffset.UtcNow; // así cuenta para el objetivo de Demos
                 return false; // agendó, pero seguimos la charla / confirmamos
 
             case LeadIntent.Interested:

@@ -124,6 +124,57 @@ public class SellerGoalsController : ControllerBase
         return result.OrderBy(r => r.Period).ThenBy(r => r.Metric).ToList();
     }
 
+    // ---------- Vista del admin: cumplimiento por vendedor (a vuelo de pájaro) ----------
+
+    [HttpGet("compliance")]
+    public async Task<ActionResult<IEnumerable<SellerComplianceDto>>> Compliance(
+        [FromQuery] SellerGoalPeriod period = SellerGoalPeriod.Daily, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        var sellers = await _db.Sellers
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.DisplayName)
+            .Select(s => new { s.Id, s.DisplayName })
+            .ToListAsync(ct);
+
+        // Solo metas "headline" (todas las apps) para que el vistazo no explote en
+        // vendedor × métrica × app. Las metas por-app se ven en /objetivos.
+        var goals = await _db.SellerGoals
+            .Where(g => g.IsActive && g.Period == period && g.ProductKey == null)
+            .ToListAsync(ct);
+        if (goals.Count == 0) return new List<SellerComplianceDto>();
+
+        var (from, to) = PeriodWindow(period);
+
+        var result = new List<SellerComplianceDto>();
+        foreach (var s in sellers)
+        {
+            // Por métrica, la meta específica del vendedor pisa a la global.
+            var effective = goals
+                .Where(g => g.SellerId == s.Id || g.SellerId == null)
+                .GroupBy(g => g.Metric)
+                .Select(grp => grp.OrderByDescending(g => g.SellerId.HasValue).First())
+                .ToList();
+            if (effective.Count == 0) continue;
+
+            var bars = new List<SellerGoalProgressDto>();
+            foreach (var g in effective)
+            {
+                var current = await CountActualAsync(s.Id, g, from, to, ct);
+                var pct = g.Target <= 0 ? 0 : (int)Math.Min(100, Math.Round(current * 100.0 / g.Target));
+                bars.Add(new SellerGoalProgressDto(
+                    g.Id, g.Metric.ToString(), g.Period.ToString(), g.ProductKey, g.Target, current, pct));
+            }
+
+            var overall = (int)Math.Round(bars.Average(b => b.Percent));
+            result.Add(new SellerComplianceDto(s.Id, s.DisplayName, overall, bars));
+        }
+
+        // Mejor cumplimiento arriba.
+        return result.OrderByDescending(r => r.OverallPercent).ToList();
+    }
+
     private async Task<int> CountActualAsync(Guid sellerId, SellerGoal g, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
         var q = _db.Leads.Where(l => l.SellerId == sellerId);

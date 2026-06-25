@@ -36,3 +36,13 @@ public record SellerGoalProgressDto(
     int Target,
     int Current,
     int Percent);
+
+/// <summary>
+/// Cumplimiento de UN vendedor (vista de pájaro del admin): % general + barritas
+/// por métrica. Solo metas "headline" (todas las apps) para mantenerlo de un vistazo.
+/// </summary>
+public record SellerComplianceDto(
+    Guid SellerId,
+    string SellerName,
+    int OverallPercent,
+    IReadOnlyList<SellerGoalProgressDto> Goals);

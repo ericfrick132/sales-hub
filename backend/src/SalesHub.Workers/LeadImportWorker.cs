@@ -88,50 +88,25 @@ public class LeadImportWorker : BackgroundService
         if (leads.Count == 0) return;
 
         using var scope = _scopes.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var assigner = scope.ServiceProvider.GetRequiredService<ILeadAssigner>();
-        var renderer = scope.ServiceProvider.GetRequiredService<IMessageRenderer>();
-        var product = await db.Products.FirstOrDefaultAsync(p => p.ProductKey == src.ProductKey, ct);
-        if (product is null) { _log.LogWarning("LeadImport {Pk}: producto inexistente en SalesHub", src.ProductKey); return; }
+        var ingest = scope.ServiceProvider.GetRequiredService<ILeadIngestService>();
 
         var toMark = new List<string>();
         var created = 0;
         foreach (var l in leads)
         {
             var extId = l.ExternalId.ToString();
-            var phone = CleanPhone(l.Phone);
-            // Sin teléfono no lo podemos contactar por el runner de WhatsApp; lo marcamos para no re-traerlo.
-            if (phone is null) { toMark.Add(extId); continue; }
-            // Dedup por teléfono+producto: si ya lo tenemos, marcamos en origen y seguimos.
-            if (await db.Leads.AnyAsync(x => x.ProductKey == src.ProductKey && x.WhatsappPhone == phone, ct))
-            { toMark.Add(extId); continue; }
+            var result = await ingest.IngestAsync(new LeadIngestRequest(
+                src.ProductKey, LeadSource.ProductReengage, extId, l.Name, l.BusinessName, l.Phone, l.Email), ct);
 
-            var lead = new Lead
+            if (result.Outcome == LeadIngestOutcome.NoProduct)
             {
-                Id = Guid.NewGuid(), ProductKey = src.ProductKey, Source = LeadSource.ProductReengage,
-                Name = string.IsNullOrWhiteSpace(l.Name) ? (l.BusinessName ?? "Lead") : l.Name!,
-                WhatsappPhone = phone, Status = LeadStatus.New,
-            };
-            db.Leads.Add(lead);
-
-            var sellerId = await assigner.PickForLeadAsync(src.ProductKey, null, null, ct);
-            if (sellerId is not null)
-            {
-                var seller = await db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == sellerId, ct);
-                if (seller is not null)
-                {
-                    lead.SellerId = seller.Id; lead.AssignedAt = DateTimeOffset.UtcNow; lead.Status = LeadStatus.Assigned;
-                    lead.RenderedMessage = renderer.Render(lead, product, seller);
-                    if (seller.EvolutionInstance is not null && lead.RenderedMessage is not null)
-                    {
-                        OutboxEnqueueHelper.EnqueueLeadMessages(db, renderer, lead, product, seller, phone, seller.EvolutionInstance.InstanceName);
-                        lead.Status = LeadStatus.Queued; lead.QueuedAt = DateTimeOffset.UtcNow;
-                    }
-                }
+                _log.LogWarning("LeadImport {Pk}: producto inexistente en SalesHub", src.ProductKey);
+                return; // no tiene sentido seguir con este source
             }
-            await db.SaveChangesAsync(ct);
+
+            // Created / Duplicate / NoPhone → ya está resuelto en origen: marcamos para no re-traerlo.
             toMark.Add(extId);
-            created++;
+            if (result.Outcome == LeadIngestOutcome.Created) created++;
         }
 
         foreach (var id in toMark)
@@ -145,12 +120,5 @@ public class LeadImportWorker : BackgroundService
             catch (Exception ex) { _log.LogWarning(ex, "LeadImport {Pk}: no pude marcar {Id}", src.ProductKey, id); }
         }
         _log.LogInformation("LeadImport {Pk}: {Created} leads nuevos, {Marked} marcados", src.ProductKey, created, toMark.Count);
-    }
-
-    private static string? CleanPhone(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return null;
-        var digits = new string(raw.Where(char.IsDigit).ToArray());
-        return digits.Length >= 8 ? digits : null;
     }
 }

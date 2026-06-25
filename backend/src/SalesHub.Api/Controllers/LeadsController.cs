@@ -21,6 +21,7 @@ public class LeadsController : ControllerBase
     private readonly IPhoneNormalizer _phone;
     private readonly IGooglePlacesEnricher _enricher;
     private readonly IEvolutionClient _evo;
+    private readonly IProductStatusNotifier _statusNotifier;
     private readonly ILogger<LeadsController> _log;
 
     public LeadsController(
@@ -30,10 +31,11 @@ public class LeadsController : ControllerBase
         IPhoneNormalizer phone,
         IGooglePlacesEnricher enricher,
         IEvolutionClient evo,
+        IProductStatusNotifier statusNotifier,
         ILogger<LeadsController> log)
     {
         _db = db; _renderer = renderer; _pipeline = pipeline; _phone = phone; _enricher = enricher;
-        _evo = evo; _log = log;
+        _evo = evo; _statusNotifier = statusNotifier; _log = log;
     }
 
     public record AssignRequest(Guid SellerId, bool AutoQueue = true);
@@ -407,6 +409,12 @@ public class LeadsController : ControllerBase
         if (req.Status is LeadStatus.Closed or LeadStatus.Lost) lead.ClosedAt = DateTimeOffset.UtcNow;
         lead.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
+
+        // Status-back al producto de origen (no-op si el lead no es de producto o no hay
+        // StatusWebhookUrl configurado para ese productKey).
+        await _statusNotifier.NotifyAsync(
+            lead.ProductKey, lead.ExternalId, req.Status.ToString(), req.Status == LeadStatus.Closed, ct);
+
         return ToDto(lead);
     }
 

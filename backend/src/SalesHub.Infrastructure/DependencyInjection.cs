@@ -65,6 +65,14 @@ public static class DependencyInjection
 
         services.AddScoped<IEvolutionClient>(sp => sp.GetRequiredService<EvolutionClient>());
 
+        // Cliente del endpoint de estado de cada producto (pull-guard del follow-up).
+        services.AddHttpClient<ProductStateClient>();
+        services.AddScoped<IProductStateClient>(sp => sp.GetRequiredService<ProductStateClient>());
+
+        // Notifica al producto el cambio de estado de venta (status-back).
+        services.AddHttpClient<ProductStatusNotifier>();
+        services.AddScoped<IProductStatusNotifier>(sp => sp.GetRequiredService<ProductStatusNotifier>());
+
         // Lead sources registered via IApifySource
         services.AddScoped<IApifySource, ApifyGoogleMapsSource>();
         services.AddScoped<IApifySource, ApifyMetaAdsLibrarySource>();
@@ -82,6 +90,7 @@ public static class DependencyInjection
         services.AddScoped<IPhoneNormalizer, PhoneNormalizer>();
         services.AddScoped<IMessageRenderer, MessageRenderer>();
         services.AddScoped<ILeadAssigner, LeadAssigner>();
+        services.AddScoped<ILeadIngestService, LeadIngestService>();
         services.AddScoped<ISendScheduler, SendScheduler>();
 
         services.AddScoped<PipelineService>();

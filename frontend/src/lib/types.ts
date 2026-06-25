@@ -300,3 +300,10 @@ export interface SellerGoalProgress {
   current: number;
   percent: number;
 }
+
+export interface SellerCompliance {
+  sellerId: string;
+  sellerName: string;
+  overallPercent: number;
+  goals: SellerGoalProgress[];
+}
