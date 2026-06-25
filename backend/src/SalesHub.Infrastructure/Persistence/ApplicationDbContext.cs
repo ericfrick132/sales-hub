@@ -51,6 +51,9 @@ public class ApplicationDbContext : DbContext
     // Uso de la API de Claude (tokens + costo USD por feature) para el widget de gasto.
     public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
 
+    // Reglas duras genéricas de la IA de ventas (CRUD admin; se inyectan al system prompt).
+    public DbSet<AiRule> AiRules => Set<AiRule>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

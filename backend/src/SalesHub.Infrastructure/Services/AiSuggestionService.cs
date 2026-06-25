@@ -14,11 +14,13 @@ namespace SalesHub.Infrastructure.Services;
 public class AiSuggestionService
 {
     private readonly ClaudeClient _claude;
+    private readonly AiRulesProvider _rules;
     private readonly ILogger<AiSuggestionService> _log;
 
-    public AiSuggestionService(ClaudeClient claude, ILogger<AiSuggestionService> log)
+    public AiSuggestionService(ClaudeClient claude, AiRulesProvider rules, ILogger<AiSuggestionService> log)
     {
         _claude = claude;
+        _rules = rules;
         _log = log;
     }
 
@@ -30,7 +32,8 @@ public class AiSuggestionService
         Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, CancellationToken ct)
     {
         if (thread.Count == 0) return null;
-        var system = BuildSystemPrompt(product);
+        var rulesBlock = await _rules.GetBlockAsync(null, ct);
+        var system = BuildSystemPrompt(product, rulesBlock);
         var conversation = BuildConversation(lead, thread, instruction: null);
         return await CompleteWithPriceGuardrailAsync(system, conversation, product, ct);
     }
@@ -42,7 +45,8 @@ public class AiSuggestionService
         Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, TimeSpan silentFor, CancellationToken ct)
     {
         if (thread.Count == 0) return null;
-        var system = BuildSystemPrompt(product);
+        var rulesBlock = await _rules.GetBlockAsync(null, ct);
+        var system = BuildSystemPrompt(product, rulesBlock);
         var hrs = Math.Max(1, (int)Math.Round(silentFor.TotalHours));
         var instruction =
             $"El lead venía hablando y se quedó callado hace ~{hrs} horas. Escribí un mensaje CORTO y " +
@@ -125,7 +129,7 @@ public class AiSuggestionService
     }
 
     /// <summary>Parte estática (se cachea): instrucciones base + contexto del producto.</summary>
-    private static string BuildSystemPrompt(Product product)
+    private static string BuildSystemPrompt(Product product, string extraRules)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Sos un vendedor argentino real escribiendo por WhatsApp (NO un bot). Generás SOLO");
@@ -164,6 +168,8 @@ public class AiSuggestionService
             sb.AppendLine("REGLAS Y PLAYBOOK DE ESTE PRODUCTO (prioritarias, seguilas al pie):");
             sb.AppendLine(product.AiSalesPlaybook);
         }
+        if (!string.IsNullOrWhiteSpace(extraRules))
+            sb.Append(extraRules);
         return sb.ToString();
     }
 

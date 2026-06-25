@@ -321,3 +321,12 @@ export interface AiCost {
   last30dUsd: number;
   byFeatureToday: AiCostFeature[];
 }
+
+// Regla dura genérica de la IA de ventas (CRUD admin; se inyecta al system prompt).
+export interface AiRule {
+  id: string;
+  text: string;
+  productKey: string | null;
+  isActive: boolean;
+  sortOrder: number;
+}
