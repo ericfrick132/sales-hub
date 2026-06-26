@@ -26,7 +26,6 @@ import Posteos from './pages/Posteos';
 import CalendarPosteos from './pages/CalendarPosteos';
 import Seo from './pages/Seo';
 import Objetivos from './pages/Objetivos';
-import Automatizaciones from './pages/Automatizaciones';
 import ReglasIa from './pages/ReglasIa';
 import OnboardingApps from './pages/OnboardingApps';
 
@@ -65,7 +64,6 @@ export default function App() {
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/sellers" element={<Sellers />} />
             <Route path="/objetivos" element={<Objetivos />} />
-            <Route path="/automatizaciones" element={<Automatizaciones />} />
             <Route path="/reglas-ia" element={<ReglasIa />} />
             <Route path="/onboarding-apps" element={<OnboardingApps />} />
             <Route path="/sellers/zones" element={<SellerZones />} />
