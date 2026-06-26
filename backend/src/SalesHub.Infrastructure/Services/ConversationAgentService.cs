@@ -318,8 +318,18 @@ public class ConversationAgentService
             return;
         }
 
+        var firstPart = true;
         foreach (var p in parts)
         {
+            // No mandar todo en ráfaga: a partir del 2º mensaje, mostrar "escribiendo…" y una
+            // pausa breve proporcional al largo (más humano, menos cara de bot).
+            if (!firstPart)
+            {
+                var pause = Math.Clamp(p.Length / 25, 2, 5);
+                try { await _evo.SetPresenceTypingAsync(instance!.InstanceName, lead.WhatsappPhone!, pause, ct); } catch { }
+                await Task.Delay(TimeSpan.FromSeconds(pause), ct);
+            }
+            firstPart = false;
             var ok = await _evo.SendTextAsync(instance!.InstanceName, lead.WhatsappPhone!, p, ct);
             _db.ConversationMessages.Add(new ConversationMessage
             {
