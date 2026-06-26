@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SalesHub.Infrastructure.Persistence;
@@ -12,9 +13,11 @@ using SalesHub.Infrastructure.Persistence;
 namespace SalesHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260626194500_AddOnboardingPersonas")]
+    partial class AddOnboardingPersonas
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3001,31 +3004,6 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_transcription_phones_phone");
 
                     b.ToTable("transcription_phones", (string)null);
-                });
-
-            modelBuilder.Entity("SalesHub.Core.Domain.Entities.TranscriptionSettings", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("enabled");
-
-                    b.Property<string>("InstanceName")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasColumnName("instance_name");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_transcription_settings");
-
-                    b.ToTable("transcription_settings", (string)null);
                 });
 
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.CompetitorComment", b =>

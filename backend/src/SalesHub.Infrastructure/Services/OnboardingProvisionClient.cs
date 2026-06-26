@@ -8,9 +8,10 @@ namespace SalesHub.Infrastructure.Services;
 /// <summary>Crea la cuenta de la app al cierre del onboarding (bot-register, genérico por app).</summary>
 public interface IOnboardingProvisionClient
 {
-    /// <summary>POST al endpoint de provisión de la app. Devuelve el accessUrl si se creó, null si falló.</summary>
+    /// <summary>POST al endpoint de provisión de la app. Devuelve el accessUrl si se creó, null si falló.
+    /// <paramref name="extraJson"/> son params extra a mergear en el body (ej. {"accountType":"gymowner"}).</summary>
     Task<string?> RegisterAsync(string url, string nameField, string businessName, string email,
-        string? contactName, string productKey, CancellationToken ct);
+        string? contactName, string productKey, CancellationToken ct, string? extraJson = null);
 }
 
 public class OnboardingProvisionClient : IOnboardingProvisionClient
@@ -25,7 +26,7 @@ public class OnboardingProvisionClient : IOnboardingProvisionClient
     }
 
     public async Task<string?> RegisterAsync(string url, string nameField, string businessName, string email,
-        string? contactName, string productKey, CancellationToken ct)
+        string? contactName, string productKey, CancellationToken ct, string? extraJson = null)
     {
         if (string.IsNullOrWhiteSpace(url)) { _log.LogWarning("Onboarding sin ProvisionUrl para {Product}", productKey); return null; }
         try
@@ -41,6 +42,17 @@ public class OnboardingProvisionClient : IOnboardingProvisionClient
                 ["utmMedium"] = "whatsapp",
                 ["utmCampaign"] = "chatbot-" + productKey,
             };
+            // Params extra por persona (ej. {"accountType":"gymowner"}) → se mergean al body.
+            if (!string.IsNullOrWhiteSpace(extraJson))
+            {
+                try
+                {
+                    using var extra = JsonDocument.Parse(extraJson);
+                    foreach (var p in extra.RootElement.EnumerateObject())
+                        payload[p.Name] = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : p.Value.ToString();
+                }
+                catch (Exception ex) { _log.LogWarning(ex, "Onboarding extra JSON inválido para {Product}", productKey); }
+            }
             var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
             using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
             if (!string.IsNullOrEmpty(_botKey)) req.Headers.Add("X-Bot-Key", _botKey);

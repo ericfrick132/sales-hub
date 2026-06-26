@@ -97,6 +97,8 @@ public static class DependencyInjection
         services.AddScoped<OutboxSender>();
         services.AddScoped<InstanceMonitor>();
         services.AddScoped<ConversationService>();
+        // Relay de transcripción de audios (notas de voz → texto, sólo números de la allowlist).
+        services.AddScoped<AudioTranscriptionRelay>();
         // Reglas duras de la IA (cache 30s, leídas vía scope) — inyectadas al system prompt.
         services.AddSingleton<AiRulesProvider>();
         services.AddScoped<AiSuggestionService>();

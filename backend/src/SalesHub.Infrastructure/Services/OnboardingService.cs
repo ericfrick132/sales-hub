@@ -37,9 +37,6 @@ public class OnboardingService
 
     public async Task<OnboardingResult> ProcessAsync(Lead lead, string lastMessage, OnboardingConfig cfg, CancellationToken ct)
     {
-        var n = cfg.Questions.Count;
-        if (n == 0) return new OnboardingResult(null, OffScript: true, Provisioned: false); // sin preguntas → IA libre
-
         var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
         if (ob is null)
         {
@@ -50,27 +47,76 @@ public class OnboardingService
         var msg = (lastMessage ?? string.Empty).Trim();
         var lower = msg.ToLowerInvariant();
 
+        // ── Apps multi-perfil: antes de las preguntas, elegir la persona ───────────────
+        var hasPersonas = !string.IsNullOrWhiteSpace(cfg.PersonaQuestion);
+        var personas = hasPersonas
+            ? await _db.Set<OnboardingPersona>().Where(p => p.ProductKey == cfg.ProductKey).OrderBy(p => p.SortOrder).ToListAsync(ct)
+            : new List<OnboardingPersona>();
+        if (personas.Count == 0) hasPersonas = false;
+        var persona = ob.PersonaKey is null ? null : personas.FirstOrDefault(p => p.Key == ob.PersonaKey);
+
+        if (hasPersonas && persona is null)
+        {
+            // Step 0 = recién llegó el ad → intro + pregunta de persona; -1 = esperando que elija.
+            if (ob.Step == 0)
+            {
+                ob.Step = -1;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult(Join(cfg.Intro, cfg.PersonaQuestion), OffScript: false, Provisioned: false);
+            }
+            var picked = DetectPersona(personas, lower);
+            if (picked is null && ob.GymRetries < 1)
+            {
+                ob.GymRetries++; // re-preguntamos una vez (el contador se resetea al fijar la persona)
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult("perdón, no te seguí 🙏 " + LastSegment(cfg.PersonaQuestion), OffScript: false, Provisioned: false);
+            }
+            persona = picked ?? personas[0]; // tras el re-ask, default a la primera
+            ob.PersonaKey = persona.Key;
+            ob.GymRetries = 0;
+            ob.Step = 1;
+            ob.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return new OnboardingResult(persona.Questions.Count > 0 ? persona.Questions[0] : persona.EmailPrompt,
+                OffScript: false, Provisioned: false);
+        }
+
+        // ── Settings activos: de la persona elegida, o del config si la app es de una sola persona ──
+        var questions = persona?.Questions ?? cfg.Questions;
+        var emailPrompt = persona is null ? cfg.EmailPrompt : persona.EmailPrompt;
+        var provisionUrl = persona is null ? cfg.ProvisionUrl : persona.ProvisionUrl;
+        var provisionNameField = persona is null ? cfg.ProvisionNameField : persona.ProvisionNameField;
+        var successMessage = persona is null ? cfg.SuccessMessage : persona.SuccessMessage;
+        var provisionExtra = persona?.ProvisionExtra;
+        var intro = cfg.Intro;
+
+        var n = questions.Count;
+        if (n == 0) return new OnboardingResult(null, OffScript: true, Provisioned: false); // sin preguntas → IA libre
+
         // Hasta qué paso se juntan datos: autoservicio tiene paso de mail (n+1); asistida termina en la última pregunta (n).
         var maxCollect = cfg.SelfServe ? n + 1 : n;
 
         // Off-script mientras junta datos → la IA responde, no avanza.
         if (ob.Step >= 1 && ob.Step <= maxCollect && KeywordRx.IsMatch(lower))
-            return new OnboardingResult(null, OffScript: true, Provisioned: false, PendingQuestion: PendingQuestion(ob.Step, n, cfg));
+            return new OnboardingResult(null, OffScript: true, Provisioned: false, PendingQuestion: PendingQuestion(ob.Step, n, questions, emailPrompt));
 
         string reply;
         var withAudio = false;
         var provisioned = false;
         if (ob.Step == 0)
         {
-            reply = Join(cfg.Intro, cfg.Questions[0]);
+            // Solo apps de una sola persona (las multi-persona ya pasaron por la selección).
+            reply = Join(intro, questions[0]);
             ob.Step = 1;
         }
         else if (ob.Step >= 1 && ob.Step <= n)
         {
-            var k = ob.Step; // el lead respondió la pregunta Questions[k-1]
+            var k = ob.Step; // el lead respondió la pregunta questions[k-1]
             if (k == 1 && IsBusinessNameSuspicious(msg) && ob.GymRetries < 1)
             {
-                reply = "jaja dale, en serio 🙏 " + LastSegment(cfg.Questions[0]);
+                reply = "jaja dale, en serio 🙏 " + LastSegment(questions[0]);
                 ob.GymRetries++;
             }
             else
@@ -78,12 +124,12 @@ public class OnboardingService
                 if (k == 1)
                 {
                     ob.GymName = Trunc(msg, 160);
-                    if (!string.IsNullOrWhiteSpace(ob.GymName)) lead.Name = ob.GymName!; // el negocio es el lead
+                    if (!string.IsNullOrWhiteSpace(ob.GymName)) lead.Name = ob.GymName!; // el negocio/persona es el lead
                 }
-                if (k < n) { reply = cfg.Questions[k]; ob.Step = k + 1; }
+                if (k < n) { reply = questions[k]; ob.Step = k + 1; }
                 else if (cfg.SelfServe) // última pregunta → audio del pitch (si hay) + pide mail
                 {
-                    reply = cfg.EmailPrompt; ob.Step = n + 1; withAudio = cfg.UsePitchAudio;
+                    reply = emailPrompt; ob.Step = n + 1; withAudio = cfg.UsePitchAudio;
                 }
                 else
                 {
@@ -105,8 +151,8 @@ public class OnboardingService
             else
             {
                 ob.Email = email.Value;
-                var url = await _provision.RegisterAsync(cfg.ProvisionUrl, cfg.ProvisionNameField,
-                    ob.GymName ?? lead.Name, ob.Email, ob.ContactName, cfg.ProductKey, ct);
+                var url = await _provision.RegisterAsync(provisionUrl, provisionNameField,
+                    ob.GymName ?? lead.Name, ob.Email, ob.ContactName, cfg.ProductKey, ct, provisionExtra);
                 if (string.IsNullOrWhiteSpace(url))
                 {
                     reply = "Uy, no pude crear la cuenta con ese mail. ¿Me lo confirmás escribiéndolo de nuevo?";
@@ -119,8 +165,8 @@ public class OnboardingService
                     provisioned = true;
                     lead.Status = LeadStatus.Closed; // cuenta creada = venta cerrada
                     lead.ClosedAt ??= DateTimeOffset.UtcNow;
-                    reply = (cfg.SuccessMessage ?? string.Empty).Replace("{accessUrl}", url);
-                    _log.LogInformation("Onboarding {Product} provisionado: lead={Lead}", cfg.ProductKey, lead.Id);
+                    reply = (successMessage ?? string.Empty).Replace("{accessUrl}", url);
+                    _log.LogInformation("Onboarding {Product} provisionado: lead={Lead} persona={Persona}", cfg.ProductKey, lead.Id, ob.PersonaKey ?? "-");
                 }
             }
         }
@@ -138,10 +184,27 @@ public class OnboardingService
         string.IsNullOrWhiteSpace(a) ? b : (string.IsNullOrWhiteSpace(b) ? a : a + NL + b);
 
     /// <summary>La pregunta pendiente a reenviar tras un off-script — solo la pregunta, sin el ack previo.</summary>
-    private static string? PendingQuestion(int step, int n, OnboardingConfig cfg)
+    private static string? PendingQuestion(int step, int n, List<string> questions, string emailPrompt)
     {
-        var raw = step <= n ? cfg.Questions[step - 1] : (step == n + 1 ? cfg.EmailPrompt : null);
+        var raw = step <= n ? questions[step - 1] : (step == n + 1 ? emailPrompt : null);
         return raw is null ? null : LastSegment(raw);
+    }
+
+    /// <summary>Detecta la persona elegida por el lead: por número ("1"/"2"), o por keywords de cada persona.</summary>
+    private static OnboardingPersona? DetectPersona(List<OnboardingPersona> personas, string lower)
+    {
+        var t = lower.Trim();
+        for (int i = 0; i < personas.Count; i++)
+        {
+            var num = (i + 1).ToString();
+            if (t == num || t.StartsWith(num + ")") || t.StartsWith(num + ".") || t.StartsWith(num + " ") || t.StartsWith(num + "-"))
+                return personas[i];
+        }
+        foreach (var p in personas)
+            foreach (var kw in p.Keywords)
+                if (!string.IsNullOrWhiteSpace(kw) && t.Contains(kw.Trim().ToLowerInvariant()))
+                    return p;
+        return null;
     }
 
     private static string LastSegment(string s)

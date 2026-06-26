@@ -12,6 +12,9 @@ public class LeadOnboarding
 
     public int Step { get; set; }
 
+    /// <summary>Persona elegida (Key de <see cref="OnboardingPersona"/>) en apps multi-perfil. null = una sola persona o aún no eligió.</summary>
+    public string? PersonaKey { get; set; }
+
     public string? ContactName { get; set; }   // nombre de la persona (pushName)
     public string? GymName { get; set; }
     public string? MemberCount { get; set; }

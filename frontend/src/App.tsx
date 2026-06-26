@@ -28,6 +28,7 @@ import Seo from './pages/Seo';
 import Objetivos from './pages/Objetivos';
 import ReglasIa from './pages/ReglasIa';
 import OnboardingApps from './pages/OnboardingApps';
+import Transcripcion from './pages/Transcripcion';
 
 function SellerZonesRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -66,6 +67,7 @@ export default function App() {
             <Route path="/objetivos" element={<Objetivos />} />
             <Route path="/reglas-ia" element={<ReglasIa />} />
             <Route path="/onboarding-apps" element={<OnboardingApps />} />
+            <Route path="/transcripcion" element={<Transcripcion />} />
             <Route path="/sellers/zones" element={<SellerZones />} />
             <Route path="/sellers/:id/zones" element={<SellerZonesRedirect />} />
             <Route path="/admin/sellers/:id" element={<SellerDetail />} />

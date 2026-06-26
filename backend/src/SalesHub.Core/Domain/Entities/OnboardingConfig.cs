@@ -35,6 +35,14 @@ public class OnboardingConfig
     /// <summary>Saludo inicial (puede tener [NUEVO_MENSAJE] para splittear). Ej: "buenas! soy Eric de GymHero."</summary>
     public string Intro { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Si la app tiene varios perfiles de cliente que entran por el mismo anuncio (ver
+    /// <see cref="OnboardingPersona"/>), esta es la pregunta que el bot hace DESPUÉS del intro para
+    /// saber con quién habla (ej. "¿tenés canchas que querés administrar, o sos jugador?"). Si está
+    /// vacío → la app es de una sola persona y se usan las <see cref="Questions"/> de abajo (legacy).
+    /// </summary>
+    public string PersonaQuestion { get; set; } = string.Empty;
+
     /// <summary>Preguntas del alta, en orden. La PRIMERA es el nombre del negocio.</summary>
     public List<string> Questions { get; set; } = new();
 

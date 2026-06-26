@@ -45,6 +45,10 @@ public class ApplicationDbContext : DbContext
     // Flags on/off de runners, toggleables desde la UI (override de Workers:*AutoStart).
     public DbSet<RuntimeFlag> RuntimeFlags => Set<RuntimeFlag>();
 
+    // Relay de transcripción de audios: allowlist de números + config global (on/off + línea).
+    public DbSet<TranscriptionPhone> TranscriptionPhones => Set<TranscriptionPhone>();
+    public DbSet<TranscriptionSettings> TranscriptionSettings => Set<TranscriptionSettings>();
+
     // Objetivos de vendedor (metas precargadas por superadmin; progreso calculado en runtime).
     public DbSet<SellerGoal> SellerGoals => Set<SellerGoal>();
 
@@ -57,6 +61,7 @@ public class ApplicationDbContext : DbContext
     // Onboarding de ads multi-app: estado por lead + config por producto.
     public DbSet<LeadOnboarding> LeadOnboardings => Set<LeadOnboarding>();
     public DbSet<OnboardingConfig> OnboardingConfigs => Set<OnboardingConfig>();
+    public DbSet<OnboardingPersona> OnboardingPersonas => Set<OnboardingPersona>();
     public DbSet<OnboardingAudio> OnboardingAudios => Set<OnboardingAudio>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

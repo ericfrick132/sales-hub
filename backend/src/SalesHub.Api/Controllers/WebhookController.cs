@@ -13,11 +13,12 @@ namespace SalesHub.Api.Controllers;
 public class WebhookController : ControllerBase
 {
     private readonly ConversationService _conv;
+    private readonly AudioTranscriptionRelay _relay;
     private readonly ILogger<WebhookController> _log;
 
-    public WebhookController(ConversationService conv, ILogger<WebhookController> log)
+    public WebhookController(ConversationService conv, AudioTranscriptionRelay relay, ILogger<WebhookController> log)
     {
-        _conv = conv; _log = log;
+        _conv = conv; _relay = relay; _log = log;
     }
 
     [HttpPost("evolution")]
@@ -56,6 +57,9 @@ public class WebhookController : ControllerBase
             {
                 var incoming = ParseMessage(instance, msg, topSender);
                 if (incoming is null) continue;
+                // Relay de transcripción: si es una nota de voz de un número de la allowlist,
+                // la transcribimos y respondemos el texto — sin pasarla al flujo de leads.
+                if (await _relay.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _conv.HandleIncomingAsync(incoming, ct)) handled++;
             }
             return Ok(new { handled });
