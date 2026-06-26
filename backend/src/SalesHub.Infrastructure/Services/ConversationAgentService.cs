@@ -169,7 +169,12 @@ public class ConversationAgentService
             }
 
             // ── Onboarding de ads de GymHero (reemplaza el bot de n8n). Gated por flag 'onboarding'.
-            if (onboardingOn && lead.Source == LeadSource.WhatsAppAd && lead.ProductKey == "gymhero")
+            // Solo arranca si el lead ya está en el flujo o es FRESCO (sin outbound previo): así
+            // prender el flag NO re-introduce leads viejos con historia (backfill / atendidos por n8n).
+            var runOnboarding = onboardingOn && lead.Source == LeadSource.WhatsAppAd && lead.ProductKey == "gymhero"
+                && (await _db.Set<LeadOnboarding>().AnyAsync(o => o.LeadId == lead.Id, ct)
+                    || !thread.Any(m => m.Direction == MessageDirection.Outbound));
+            if (runOnboarding)
             {
                 var ob = await _onboarding.ProcessAsync(lead, last, ct);
                 if (!ob.OffScript)

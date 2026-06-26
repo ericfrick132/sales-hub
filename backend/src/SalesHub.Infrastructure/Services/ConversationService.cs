@@ -304,8 +304,11 @@ public class ConversationService
         var lower = incoming.Text.ToLowerInvariant();
         var compact = lower.Replace(" ", "");
         var products = await _db.Products.Where(p => p.Active).ToListAsync(ct);
+        // OJO: guardas de longitud mínima. Un producto con ProductKey vacío hace que
+        // compact.Contains("") sea SIEMPRE true → matchearía primero y dejaría el lead sin
+        // producto (rompía el onboarding). Exigimos key/displayname con largo real.
         var product = products.FirstOrDefault(p =>
-            compact.Contains(p.ProductKey.ToLowerInvariant())
+            (p.ProductKey.Length >= 2 && compact.Contains(p.ProductKey.ToLowerInvariant()))
             || (p.DisplayName.Length >= 3 && lower.Contains(p.DisplayName.ToLowerInvariant())));
         if (product is null) return null; // no sabemos de qué app → no creamos un lead mal taggeado
 
