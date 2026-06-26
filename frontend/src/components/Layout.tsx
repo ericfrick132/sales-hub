@@ -64,6 +64,7 @@ export default function Layout() {
           { to: '/objetivos', label: 'Objetivos' },
           { to: '/products', label: 'Aplicaciones' },
           { to: '/reglas-ia', label: 'Reglas IA' },
+          { to: '/onboarding-apps', label: 'Onboarding apps' },
           { to: '/automatizaciones', label: 'Automatizaciones' },
         ] },
       ]

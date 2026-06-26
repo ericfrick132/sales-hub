@@ -344,3 +344,15 @@ export interface AiRule {
   isActive: boolean;
   sortOrder: number;
 }
+
+export interface OnboardingAppConfig {
+  productKey: string;
+  displayName: string;
+  enabled: boolean;
+  intro: string;
+  questions: string[];
+  emailPrompt: string;
+  provisionUrl: string;
+  provisionNameField: string;
+  successMessage: string;
+}
