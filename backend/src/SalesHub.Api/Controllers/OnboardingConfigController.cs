@@ -21,7 +21,8 @@ public class OnboardingConfigController : ControllerBase
 
     public record ConfigDto(string ProductKey, string DisplayName, bool Enabled, bool SelfServe, string Intro,
         List<string> Questions, string EmailPrompt, string ProvisionUrl, string ProvisionNameField,
-        string SuccessMessage, string ClosingMessage, bool UsePitchAudio, int AudioCount);
+        string SuccessMessage, string ClosingMessage, bool UsePitchAudio,
+        int ReplyDelayMinSec, int ReplyDelayMaxSec, int AudioCount);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -41,7 +42,7 @@ public class OnboardingConfigController : ControllerBase
             return new ConfigDto(p.ProductKey, p.DisplayName, c?.Enabled ?? false, c?.SelfServe ?? true, c?.Intro ?? "",
                 c?.Questions ?? new(), c?.EmailPrompt ?? "", c?.ProvisionUrl ?? "",
                 c?.ProvisionNameField ?? "name", c?.SuccessMessage ?? "", c?.ClosingMessage ?? "",
-                c?.UsePitchAudio ?? false, ac);
+                c?.UsePitchAudio ?? false, c?.ReplyDelayMinSec ?? 0, c?.ReplyDelayMaxSec ?? 0, ac);
         });
         return Ok(result);
     }
@@ -58,6 +59,8 @@ public class OnboardingConfigController : ControllerBase
         c.Enabled = dto.Enabled;
         c.SelfServe = dto.SelfServe;
         c.UsePitchAudio = dto.UsePitchAudio;
+        c.ReplyDelayMinSec = Math.Max(0, dto.ReplyDelayMinSec);
+        c.ReplyDelayMaxSec = Math.Max(0, dto.ReplyDelayMaxSec);
         c.ClosingMessage = dto.ClosingMessage ?? "";
         c.Intro = dto.Intro ?? "";
         c.Questions = (dto.Questions ?? new()).Where(q => !string.IsNullOrWhiteSpace(q)).Select(q => q.Trim()).ToList();

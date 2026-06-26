@@ -116,7 +116,7 @@ public class ConversationAgentService
             where last != null
                 && last.Direction == MessageDirection.Inbound
                 && last.Text != "[audio]"
-            select new { LeadId = l.Id, LastText = last.Text }
+            select new { LeadId = l.Id, LastText = last.Text, LastAt = last.Timestamp }
         ).Take(BatchSize).ToListAsync(ct);
 
         var onboardingOn = await _db.IsFlagOnAsync("onboarding", false, ct);
@@ -179,6 +179,15 @@ public class ConversationAgentService
             var runOnboarding = onbCfg is not null && lead.Source == LeadSource.WhatsAppAd
                 && (await _db.Set<LeadOnboarding>().AnyAsync(o => o.LeadId == lead.Id, ct)
                     || !thread.Any(m => m.Direction == MessageDirection.Outbound));
+
+            // Espera humana configurable: random estable entre Min y Max seg desde el mensaje del lead.
+            if (runOnboarding && onbCfg!.ReplyDelayMaxSec > 0)
+            {
+                var range = onbCfg.ReplyDelayMaxSec - onbCfg.ReplyDelayMinSec;
+                var delaySec = onbCfg.ReplyDelayMinSec + (range <= 0 ? 0 : (int)(Math.Abs(c.LastAt.ToUnixTimeSeconds()) % (range + 1)));
+                if (DateTimeOffset.UtcNow < c.LastAt.AddSeconds(delaySec)) continue; // todavía no es hora de responder
+            }
+
             if (runOnboarding)
             {
                 var ob = await _onboarding.ProcessAsync(lead, last, onbCfg!, ct);

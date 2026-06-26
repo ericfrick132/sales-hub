@@ -358,6 +358,8 @@ export interface OnboardingAppConfig {
   successMessage: string;
   closingMessage: string;
   usePitchAudio: boolean;
+  replyDelayMinSec: number;
+  replyDelayMaxSec: number;
   audioCount: number;
 }
 

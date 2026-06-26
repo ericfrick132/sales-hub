@@ -204,6 +204,17 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
         </Field>
       )}
 
+      <Field label="Espera antes de responder (random entre min y max — 0 = instantáneo)">
+        <div className="flex items-center gap-2">
+          <input type="number" min={0} className="input w-24" value={form.replyDelayMinSec}
+            onChange={(e) => setForm((f) => ({ ...f, replyDelayMinSec: Math.max(0, parseInt(e.target.value) || 0) }))} />
+          <span className="text-slate-400">a</span>
+          <input type="number" min={0} className="input w-24" value={form.replyDelayMaxSec}
+            onChange={(e) => setForm((f) => ({ ...f, replyDelayMaxSec: Math.max(0, parseInt(e.target.value) || 0) }))} />
+          <span className="text-xs text-slate-500">seg · ej. 120 a 3600 = 2 min a 1 hora</span>
+        </div>
+      </Field>
+
       <AudioSection productKey={form.productKey} usePitchAudio={form.usePitchAudio}
         onToggle={(v) => setForm((f) => ({ ...f, usePitchAudio: v }))} />
 

@@ -24,6 +24,14 @@ public class OnboardingConfig
     /// <summary>Si hay audios cargados para esta app, mandar una nota de voz (variante al azar) en el pitch.</summary>
     public bool UsePitchAudio { get; set; }
 
+    /// <summary>
+    /// Espera (humana) antes de cada respuesta del bot: random entre Min y Max segundos desde el
+    /// mensaje del lead. 0/0 = instantáneo. Ej: 120/3600 = entre 2 min y 1 hora (evita el "bot que
+    /// contesta al toque" y baja la detección de Meta).
+    /// </summary>
+    public int ReplyDelayMinSec { get; set; }
+    public int ReplyDelayMaxSec { get; set; }
+
     /// <summary>Saludo inicial (puede tener [NUEVO_MENSAJE] para splittear). Ej: "buenas! soy Eric de GymHero."</summary>
     public string Intro { get; set; } = string.Empty;
 
