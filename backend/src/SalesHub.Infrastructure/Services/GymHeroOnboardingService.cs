@@ -7,8 +7,9 @@ using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Infrastructure.Services;
 
-/// <summary>Resultado de procesar un turno de onboarding.</summary>
-public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned);
+/// <summary>Resultado de procesar un turno de onboarding. PendingQuestion (solo en off-script
+/// durante el alta) es la pregunta del guion a reenviar después de la respuesta de la IA.</summary>
+public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, string? PendingQuestion = null);
 
 /// <summary>
 /// Onboarding scripteado de los leads de anuncio de GymHero — réplica fiel del chatbot de
@@ -45,9 +46,10 @@ public class GymHeroOnboardingService
         var msg = (lastMessage ?? string.Empty).Trim();
         var lower = msg.ToLowerInvariant();
 
-        // Off-script: del paso 1 en adelante, si pregunta precio/info/etc. → la IA responde, no avanza.
+        // Off-script: del paso 1 en adelante, si pregunta precio/info/etc. → la IA responde corto
+        // (no avanza) y después reenviamos la pregunta pendiente del alta.
         if (ob.Step >= 1 && ob.Step <= 4 && KeywordRx.IsMatch(lower))
-            return new OnboardingResult(null, OffScript: true, Provisioned: false);
+            return new OnboardingResult(null, OffScript: true, Provisioned: false, PendingQuestion: PendingQuestionFor(ob.Step));
 
         string reply;
         switch (ob.Step)
@@ -132,6 +134,17 @@ public class GymHeroOnboardingService
         "[NUEVO_MENSAJE]Tenés 7 días gratis para probar todo." +
         "[NUEVO_MENSAJE]Después es el plan Starter: $50.000/mes, todo incluido (socios, clases e instructores ilimitados)." +
         "[NUEVO_MENSAJE]Y te dejo un código: ARRANCA20 — 20% OFF el primer mes. Lo cargás cuando actives el plan.";
+
+    /// <summary>La pregunta del guion que está pendiente en cada paso, para reenviarla después
+    /// de que la IA conteste un off-script.</summary>
+    private static string? PendingQuestionFor(int step) => step switch
+    {
+        1 => "cómo se llama tu gimnasio o centro deportivo?",
+        2 => "cuantos socios tenés más o menos? (no cobramos por socio, es solo para conocerte)",
+        3 => "como llevás hoy los cobros y las cuotas? (Excel, papel, algún sistema)",
+        4 => "pasame tu mail y con eso te creo la cuenta",
+        _ => null,
+    };
 
     private static string? Trunc(string s, int n) => string.IsNullOrEmpty(s) ? s : (s.Length > n ? s[..n] : s);
 

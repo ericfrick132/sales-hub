@@ -184,9 +184,13 @@ public class ConversationAgentService
                     done++;
                     continue;
                 }
-                // Off-script (preguntó precio/info/etc.): la IA contesta y auto-enviamos (bot activo).
-                var (_, _, oreply) = await _suggestions.SuggestReplyWithIntentAsync(lead, lead.Product!, thread, ct);
-                if (!string.IsNullOrWhiteSpace(oreply)) await OnboardingSendAsync(lead, oreply!, ct);
+                // Off-script (preguntó precio/info/etc.): la IA contesta CORTO (sin follow-up) y
+                // después reenviamos la pregunta pendiente del alta, para que el guion siga su curso.
+                var aside = await _suggestions.AnswerOnboardingAsideAsync(lead, lead.Product!, thread, ct);
+                var parts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(aside)) parts.Add(aside!);
+                if (!string.IsNullOrWhiteSpace(ob.PendingQuestion)) parts.Add(ob.PendingQuestion!);
+                if (parts.Count > 0) await OnboardingSendAsync(lead, string.Join("[NUEVO_MENSAJE]", parts), ct);
                 await _db.SaveChangesAsync(ct);
                 done++;
                 continue;

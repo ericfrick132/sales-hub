@@ -138,6 +138,38 @@ public class AiSuggestionService
         return (intent, shouldReply, reply);
     }
 
+    /// <summary>
+    /// Responde una pregunta puntual de un lead que está EN MEDIO del alta automática (off-script).
+    /// Respuesta corta, solo lo que preguntó, SIN follow-up ni cierre — el sistema reenvía la
+    /// pregunta pendiente del alta justo después.
+    /// </summary>
+    public async Task<string?> AnswerOnboardingAsideAsync(
+        Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, CancellationToken ct)
+    {
+        if (!_claude.IsConfigured || thread.Count == 0) return null;
+
+        var rulesBlock = await _rules.GetBlockAsync(null, ct);
+        var system = BuildSystemPrompt(product, rulesBlock) + OnboardingAsideInstruction;
+        var conversation = BuildConversation(lead, thread, instruction: null);
+
+        var reply = await _claude.CompleteAsync(system, conversation, "onboarding", ct);
+        if (!string.IsNullOrWhiteSpace(reply) && MentionsWrongPrice(reply!, product.PriceDisplay))
+        {
+            var corrected = conversation +
+                $"\n\nIMPORTANTE: el precio EXACTO es \"{product.PriceDisplay}\". No menciones NINGÚN otro número de precio.";
+            reply = await _claude.CompleteAsync(system, corrected, "onboarding", ct);
+            if (!string.IsNullOrWhiteSpace(reply) && MentionsWrongPrice(reply!, product.PriceDisplay)) return null;
+        }
+        return string.IsNullOrWhiteSpace(reply) ? null : reply!.Trim();
+    }
+
+    private const string OnboardingAsideInstruction =
+        "\n\nCONTEXTO CRÍTICO: el lead está en el ALTA AUTOMÁTICA (un flujo guiado de preguntas) y te hizo una " +
+        "pregunta puntual fuera del guion. Respondé SOLO esa pregunta, en 1 frase corta y directa. " +
+        "PROHIBIDO TERMINANTE: hacer otra pregunta, agregar cierre/CTA, invitar a avanzar o despedirte. " +
+        "Inmediatamente DESPUÉS de tu respuesta el sistema reenvía la pregunta pendiente del alta, así que tu " +
+        "mensaje tiene que ser SOLO el dato que te pidió, nada más. No repitas vos la pregunta del alta.";
+
     private const string MergedTaskInstruction =
         "\n\nTAREA DOBLE: además de responder, clasificá al prospecto. Tu salida tiene EXACTAMENTE este formato:\n" +
         "primera línea: estado=<una de: interesado, no_interesado, agendo, compro, derivar, indefinido>\n" +
