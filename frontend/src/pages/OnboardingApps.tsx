@@ -1,8 +1,98 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
-import type { OnboardingAppConfig } from '../lib/types';
+import type { OnboardingAppConfig, OnboardingAudioVariant } from '../lib/types';
+
+/** Grabador del audio del pitch: graba del micrófono, sube y lista las variantes (el motor rota). */
+function AudioSection({ productKey, usePitchAudio, onToggle }: {
+  productKey: string; usePitchAudio: boolean; onToggle: (v: boolean) => void;
+}) {
+  const qc = useQueryClient();
+  const { data: audios } = useQuery({
+    queryKey: ['onb-audios', productKey],
+    queryFn: async () => (await api.get<OnboardingAudioVariant[]>(`/onboarding-configs/${productKey}/audios`)).data,
+  });
+  const [recording, setRecording] = useState(false);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['onb-audios', productKey] });
+    qc.invalidateQueries({ queryKey: ['onboarding-configs'] });
+  };
+
+  const upload = useMutation({
+    mutationFn: async (blob: Blob) => {
+      const fd = new FormData();
+      fd.append('file', blob, 'pitch.webm');
+      return api.post(`/onboarding-configs/${productKey}/audios`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    },
+    onSuccess: () => { invalidate(); toast.success('Audio guardado'); },
+    onError: () => toast.error('No se pudo subir el audio'),
+  });
+  const del = useMutation({
+    mutationFn: async (id: string) => api.delete(`/onboarding-configs/${productKey}/audios/${id}`),
+    onSuccess: invalidate,
+  });
+
+  const start = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        upload.mutate(new Blob(chunksRef.current, { type: 'audio/webm' }));
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      rec.start();
+      recRef.current = rec;
+      setRecording(true);
+    } catch {
+      toast.error('No pude acceder al micrófono');
+    }
+  };
+  const stop = () => { recRef.current?.stop(); setRecording(false); };
+
+  const play = async (id: string) => {
+    const resp = await api.get(`/onboarding-configs/${productKey}/audios/${id}/play`, { responseType: 'blob' });
+    new Audio(URL.createObjectURL(resp.data as Blob)).play();
+  };
+
+  const list = audios ?? [];
+  return (
+    <div className="border-t pt-3 space-y-2">
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" checked={usePitchAudio} onChange={(e) => onToggle(e.target.checked)} />
+        <span className="font-medium">🎙 Mandar un audio en el pitch</span>
+        <span className="text-slate-400">({list.length} variante{list.length === 1 ? '' : 's'})</span>
+      </label>
+      <p className="text-xs text-slate-500">
+        Grabá varias tomas del pitch en tu voz — el motor rota al azar para que Meta no fichee el mismo archivo.
+      </p>
+      <div className="flex items-center gap-2">
+        {recording ? (
+          <button type="button" className="btn-danger" onClick={stop}>⏹ Detener</button>
+        ) : (
+          <button type="button" className="btn-secondary" onClick={start} disabled={upload.isPending}>🎙 Grabar toma</button>
+        )}
+        {upload.isPending && <span className="text-xs text-slate-500">subiendo…</span>}
+      </div>
+      {list.length > 0 && (
+        <div className="space-y-1">
+          {list.map((a, i) => (
+            <div key={a.id} className="flex items-center gap-2 text-sm">
+              <span className="text-slate-500 w-8">#{i + 1}</span>
+              <button type="button" className="btn-secondary py-1 px-2" onClick={() => play(a.id)}>▶</button>
+              <span className="text-slate-400">{Math.max(1, Math.round(a.durationMs / 1000))}s</span>
+              <button type="button" className="btn-danger py-1 px-2 ml-auto" onClick={() => del.mutate(a.id)}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * CRUD del onboarding de ads POR APP (multi-app). Cuando un lead de anuncio dice "activar [App]",
@@ -113,6 +203,9 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
             onChange={(e) => setForm((f) => ({ ...f, closingMessage: e.target.value }))} />
         </Field>
       )}
+
+      <AudioSection productKey={form.productKey} usePitchAudio={form.usePitchAudio}
+        onToggle={(v) => setForm((f) => ({ ...f, usePitchAudio: v }))} />
 
       <div className="flex justify-end">
         <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>

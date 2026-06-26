@@ -9,7 +9,7 @@ namespace SalesHub.Infrastructure.Services;
 
 /// <summary>Resultado de procesar un turno de onboarding. PendingQuestion (solo en off-script
 /// durante el alta) es la pregunta del guion a reenviar después de la respuesta de la IA.</summary>
-public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, string? PendingQuestion = null);
+public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, string? PendingQuestion = null, bool WithPitchAudio = false);
 
 /// <summary>
 /// Motor de onboarding de ads GENÉRICO y multi-app. Lee la <see cref="OnboardingConfig"/> de cada
@@ -58,6 +58,8 @@ public class OnboardingService
             return new OnboardingResult(null, OffScript: true, Provisioned: false, PendingQuestion: PendingQuestion(ob.Step, n, cfg));
 
         string reply;
+        var withAudio = false;
+        var provisioned = false;
         if (ob.Step == 0)
         {
             reply = Join(cfg.Intro, cfg.Questions[0]);
@@ -79,13 +81,17 @@ public class OnboardingService
                     if (!string.IsNullOrWhiteSpace(ob.GymName)) lead.Name = ob.GymName!; // el negocio es el lead
                 }
                 if (k < n) { reply = cfg.Questions[k]; ob.Step = k + 1; }
-                else if (cfg.SelfServe) { reply = cfg.EmailPrompt; ob.Step = n + 1; } // → pide mail y provisiona
+                else if (cfg.SelfServe) // última pregunta → audio del pitch (si hay) + pide mail
+                {
+                    reply = cfg.EmailPrompt; ob.Step = n + 1; withAudio = cfg.UsePitchAudio;
+                }
                 else
                 {
-                    // venta asistida: cierre con pitch + handoff a demo, sin mail ni provisión.
+                    // venta asistida: audio del pitch (si hay) o cierre por texto, y handoff a demo.
                     reply = cfg.ClosingMessage;
                     lead.Status = LeadStatus.Interested;
                     ob.Step = n + 2; // terminado; el vendedor coordina la demo
+                    withAudio = cfg.UsePitchAudio;
                 }
             }
         }
@@ -110,6 +116,7 @@ public class OnboardingService
                     ob.AccessUrl = url;
                     ob.ProvisionedAt = DateTimeOffset.UtcNow;
                     ob.Step = n + 2;
+                    provisioned = true;
                     lead.Status = LeadStatus.Closed; // cuenta creada = venta cerrada
                     lead.ClosedAt ??= DateTimeOffset.UtcNow;
                     reply = (cfg.SuccessMessage ?? string.Empty).Replace("{accessUrl}", url);
@@ -124,7 +131,7 @@ public class OnboardingService
 
         ob.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return new OnboardingResult(reply, OffScript: false, Provisioned: ob.Step == n + 2);
+        return new OnboardingResult(reply, OffScript: false, Provisioned: provisioned, WithPitchAudio: withAudio);
     }
 
     private static string Join(string a, string b) =>

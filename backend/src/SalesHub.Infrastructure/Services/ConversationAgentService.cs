@@ -184,7 +184,11 @@ public class ConversationAgentService
                 var ob = await _onboarding.ProcessAsync(lead, last, onbCfg!, ct);
                 if (!ob.OffScript)
                 {
-                    if (!string.IsNullOrWhiteSpace(ob.Reply)) await OnboardingSendAsync(lead, ob.Reply!, ct);
+                    // Audio del pitch (nota de voz, variante al azar). En autoservicio el audio precede al
+                    // texto (mail); en venta asistida el audio ES el cierre (no mandamos el texto).
+                    var sentAudio = ob.WithPitchAudio && await TrySendPitchAudioAsync(lead, onbCfg!.ProductKey, ct);
+                    if ((!sentAudio || onbCfg!.SelfServe) && !string.IsNullOrWhiteSpace(ob.Reply))
+                        await OnboardingSendAsync(lead, ob.Reply!, ct);
                     await _db.SaveChangesAsync(ct);
                     done++;
                     continue;
@@ -251,6 +255,35 @@ public class ConversationAgentService
         }
 
         return done;
+    }
+
+    /// <summary>
+    /// Manda la nota de voz del pitch: elige una variante de audio al azar de la app (rotación
+    /// anti-detección de Meta) y la envía como PTT por Evolution. False si no hay audios o falló.
+    /// </summary>
+    private async Task<bool> TrySendPitchAudioAsync(Lead lead, string productKey, CancellationToken ct)
+    {
+        var instance = lead.Seller?.EvolutionInstance;
+        if (instance is null || instance.Status != InstanceStatus.Connected || string.IsNullOrWhiteSpace(lead.WhatsappPhone))
+            return false;
+        var audios = await _db.OnboardingAudios.Where(a => a.ProductKey == productKey).Select(a => a.Data).ToListAsync(ct);
+        if (audios.Count == 0) return false;
+        var pick = audios[Random.Shared.Next(audios.Count)];
+        var ok = await _evo.SendPreparedVoiceNoteAsync(instance.InstanceName, lead.WhatsappPhone!, pick, ct);
+        if (!ok) return false;
+        _db.ConversationMessages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = lead.SellerId,
+            Direction = MessageDirection.Outbound,
+            Status = MessageDeliveryStatus.Sent,
+            Text = "[audio]",
+            EvolutionInstance = instance.InstanceName,
+            Timestamp = DateTimeOffset.UtcNow,
+            IsRead = true,
+        });
+        return true;
     }
 
     /// <summary>

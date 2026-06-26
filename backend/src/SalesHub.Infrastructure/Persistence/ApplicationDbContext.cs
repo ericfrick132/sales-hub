@@ -57,6 +57,7 @@ public class ApplicationDbContext : DbContext
     // Onboarding de ads multi-app: estado por lead + config por producto.
     public DbSet<LeadOnboarding> LeadOnboardings => Set<LeadOnboarding>();
     public DbSet<OnboardingConfig> OnboardingConfigs => Set<OnboardingConfig>();
+    public DbSet<OnboardingAudio> OnboardingAudios => Set<OnboardingAudio>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -357,4 +357,12 @@ export interface OnboardingAppConfig {
   provisionNameField: string;
   successMessage: string;
   closingMessage: string;
+  usePitchAudio: boolean;
+  audioCount: number;
+}
+
+export interface OnboardingAudioVariant {
+  id: string;
+  durationMs: number;
+  createdAt: string;
 }

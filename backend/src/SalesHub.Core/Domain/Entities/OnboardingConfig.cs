@@ -21,6 +21,9 @@ public class OnboardingConfig
     /// </summary>
     public bool SelfServe { get; set; } = true;
 
+    /// <summary>Si hay audios cargados para esta app, mandar una nota de voz (variante al azar) en el pitch.</summary>
+    public bool UsePitchAudio { get; set; }
+
     /// <summary>Saludo inicial (puede tener [NUEVO_MENSAJE] para splittear). Ej: "buenas! soy Eric de GymHero."</summary>
     public string Intro { get; set; } = string.Empty;
 

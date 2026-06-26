@@ -21,7 +21,7 @@ public class OnboardingConfigController : ControllerBase
 
     public record ConfigDto(string ProductKey, string DisplayName, bool Enabled, bool SelfServe, string Intro,
         List<string> Questions, string EmailPrompt, string ProvisionUrl, string ProvisionNameField,
-        string SuccessMessage, string ClosingMessage);
+        string SuccessMessage, string ClosingMessage, bool UsePitchAudio, int AudioCount);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -30,13 +30,18 @@ public class OnboardingConfigController : ControllerBase
             .Where(p => p.Active && p.ProductKey != "")
             .OrderBy(p => p.DisplayName).ToListAsync(ct);
         var configs = await _db.OnboardingConfigs.AsNoTracking().ToDictionaryAsync(c => c.ProductKey, ct);
+        var audioCounts = (await _db.OnboardingAudios.AsNoTracking()
+                .GroupBy(a => a.ProductKey).Select(g => new { g.Key, C = g.Count() }).ToListAsync(ct))
+            .ToDictionary(x => x.Key, x => x.C);
 
         var result = products.Select(p =>
         {
             configs.TryGetValue(p.ProductKey, out var c);
+            audioCounts.TryGetValue(p.ProductKey, out var ac);
             return new ConfigDto(p.ProductKey, p.DisplayName, c?.Enabled ?? false, c?.SelfServe ?? true, c?.Intro ?? "",
                 c?.Questions ?? new(), c?.EmailPrompt ?? "", c?.ProvisionUrl ?? "",
-                c?.ProvisionNameField ?? "name", c?.SuccessMessage ?? "", c?.ClosingMessage ?? "");
+                c?.ProvisionNameField ?? "name", c?.SuccessMessage ?? "", c?.ClosingMessage ?? "",
+                c?.UsePitchAudio ?? false, ac);
         });
         return Ok(result);
     }
@@ -52,6 +57,7 @@ public class OnboardingConfigController : ControllerBase
 
         c.Enabled = dto.Enabled;
         c.SelfServe = dto.SelfServe;
+        c.UsePitchAudio = dto.UsePitchAudio;
         c.ClosingMessage = dto.ClosingMessage ?? "";
         c.Intro = dto.Intro ?? "";
         c.Questions = (dto.Questions ?? new()).Where(q => !string.IsNullOrWhiteSpace(q)).Select(q => q.Trim()).ToList();
