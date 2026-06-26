@@ -56,6 +56,15 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
         </label>
       </div>
 
+      <div className="flex items-center gap-2 text-sm">
+        <span className="font-medium">Modo:</span>
+        <select className="input w-auto py-1" value={form.selfServe ? 'self' : 'assisted'}
+          onChange={(e) => setForm((f) => ({ ...f, selfServe: e.target.value === 'self' }))}>
+          <option value="self">Autoservicio (crea la cuenta)</option>
+          <option value="assisted">Venta asistida (deriva a demo)</option>
+        </select>
+      </div>
+
       <Field label="Intro (saludo inicial)">
         <textarea className="input min-h-[60px]" value={form.intro}
           onChange={(e) => setForm((f) => ({ ...f, intro: e.target.value }))} />
@@ -75,26 +84,35 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
         </div>
       </div>
 
-      <Field label="Pedido del mail (antes de crear la cuenta)">
-        <textarea className="input min-h-[44px]" value={form.emailPrompt}
-          onChange={(e) => setForm((f) => ({ ...f, emailPrompt: e.target.value }))} />
-      </Field>
+      {form.selfServe ? (
+        <>
+          <Field label="Pedido del mail (antes de crear la cuenta)">
+            <textarea className="input min-h-[44px]" value={form.emailPrompt}
+              onChange={(e) => setForm((f) => ({ ...f, emailPrompt: e.target.value }))} />
+          </Field>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Field label="Endpoint de provisión (bot-register)">
-          <input className="input" value={form.provisionUrl}
-            onChange={(e) => setForm((f) => ({ ...f, provisionUrl: e.target.value }))} />
-        </Field>
-        <Field label="Campo del nombre en el body (ej. gymName)">
-          <input className="input" value={form.provisionNameField}
-            onChange={(e) => setForm((f) => ({ ...f, provisionNameField: e.target.value }))} />
-        </Field>
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Endpoint de provisión (bot-register)">
+              <input className="input" value={form.provisionUrl}
+                onChange={(e) => setForm((f) => ({ ...f, provisionUrl: e.target.value }))} />
+            </Field>
+            <Field label="Campo del nombre en el body (ej. gymName)">
+              <input className="input" value={form.provisionNameField}
+                onChange={(e) => setForm((f) => ({ ...f, provisionNameField: e.target.value }))} />
+            </Field>
+          </div>
 
-      <Field label="Mensaje de éxito (usá {accessUrl} para el link)">
-        <textarea className="input min-h-[90px]" value={form.successMessage}
-          onChange={(e) => setForm((f) => ({ ...f, successMessage: e.target.value }))} />
-      </Field>
+          <Field label="Mensaje de éxito (usá {accessUrl} para el link)">
+            <textarea className="input min-h-[90px]" value={form.successMessage}
+              onChange={(e) => setForm((f) => ({ ...f, successMessage: e.target.value }))} />
+          </Field>
+        </>
+      ) : (
+        <Field label="Cierre (pitch + handoff a demo, sin mail)">
+          <textarea className="input min-h-[90px]" value={form.closingMessage}
+            onChange={(e) => setForm((f) => ({ ...f, closingMessage: e.target.value }))} />
+        </Field>
+      )}
 
       <div className="flex justify-end">
         <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>

@@ -50,8 +50,11 @@ public class OnboardingService
         var msg = (lastMessage ?? string.Empty).Trim();
         var lower = msg.ToLowerInvariant();
 
-        // Off-script mientras junta datos (pasos 1..n+1) → la IA responde, no avanza.
-        if (ob.Step >= 1 && ob.Step <= n + 1 && KeywordRx.IsMatch(lower))
+        // Hasta qué paso se juntan datos: autoservicio tiene paso de mail (n+1); asistida termina en la última pregunta (n).
+        var maxCollect = cfg.SelfServe ? n + 1 : n;
+
+        // Off-script mientras junta datos → la IA responde, no avanza.
+        if (ob.Step >= 1 && ob.Step <= maxCollect && KeywordRx.IsMatch(lower))
             return new OnboardingResult(null, OffScript: true, Provisioned: false, PendingQuestion: PendingQuestion(ob.Step, n, cfg));
 
         string reply;
@@ -76,7 +79,14 @@ public class OnboardingService
                     if (!string.IsNullOrWhiteSpace(ob.GymName)) lead.Name = ob.GymName!; // el negocio es el lead
                 }
                 if (k < n) { reply = cfg.Questions[k]; ob.Step = k + 1; }
-                else { reply = cfg.EmailPrompt; ob.Step = n + 1; }
+                else if (cfg.SelfServe) { reply = cfg.EmailPrompt; ob.Step = n + 1; } // → pide mail y provisiona
+                else
+                {
+                    // venta asistida: cierre con pitch + handoff a demo, sin mail ni provisión.
+                    reply = cfg.ClosingMessage;
+                    lead.Status = LeadStatus.Interested;
+                    ob.Step = n + 2; // terminado; el vendedor coordina la demo
+                }
             }
         }
         else if (ob.Step == n + 1)

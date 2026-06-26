@@ -19,8 +19,9 @@ public class OnboardingConfigController : ControllerBase
     private readonly ApplicationDbContext _db;
     public OnboardingConfigController(ApplicationDbContext db) { _db = db; }
 
-    public record ConfigDto(string ProductKey, string DisplayName, bool Enabled, string Intro,
-        List<string> Questions, string EmailPrompt, string ProvisionUrl, string ProvisionNameField, string SuccessMessage);
+    public record ConfigDto(string ProductKey, string DisplayName, bool Enabled, bool SelfServe, string Intro,
+        List<string> Questions, string EmailPrompt, string ProvisionUrl, string ProvisionNameField,
+        string SuccessMessage, string ClosingMessage);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -33,9 +34,9 @@ public class OnboardingConfigController : ControllerBase
         var result = products.Select(p =>
         {
             configs.TryGetValue(p.ProductKey, out var c);
-            return new ConfigDto(p.ProductKey, p.DisplayName, c?.Enabled ?? false, c?.Intro ?? "",
+            return new ConfigDto(p.ProductKey, p.DisplayName, c?.Enabled ?? false, c?.SelfServe ?? true, c?.Intro ?? "",
                 c?.Questions ?? new(), c?.EmailPrompt ?? "", c?.ProvisionUrl ?? "",
-                c?.ProvisionNameField ?? "name", c?.SuccessMessage ?? "");
+                c?.ProvisionNameField ?? "name", c?.SuccessMessage ?? "", c?.ClosingMessage ?? "");
         });
         return Ok(result);
     }
@@ -50,6 +51,8 @@ public class OnboardingConfigController : ControllerBase
         if (c is null) { c = new OnboardingConfig { ProductKey = productKey }; _db.OnboardingConfigs.Add(c); }
 
         c.Enabled = dto.Enabled;
+        c.SelfServe = dto.SelfServe;
+        c.ClosingMessage = dto.ClosingMessage ?? "";
         c.Intro = dto.Intro ?? "";
         c.Questions = (dto.Questions ?? new()).Where(q => !string.IsNullOrWhiteSpace(q)).Select(q => q.Trim()).ToList();
         c.EmailPrompt = dto.EmailPrompt ?? "";

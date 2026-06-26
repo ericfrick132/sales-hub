@@ -349,10 +349,12 @@ export interface OnboardingAppConfig {
   productKey: string;
   displayName: string;
   enabled: boolean;
+  selfServe: boolean;
   intro: string;
   questions: string[];
   emailPrompt: string;
   provisionUrl: string;
   provisionNameField: string;
   successMessage: string;
+  closingMessage: string;
 }

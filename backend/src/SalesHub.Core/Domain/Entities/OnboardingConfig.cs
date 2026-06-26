@@ -14,6 +14,13 @@ public class OnboardingConfig
 
     public bool Enabled { get; set; }
 
+    /// <summary>
+    /// true = autoservicio: al final pide el mail y crea la cuenta (gymhero, bunker, unistock).
+    /// false = venta asistida: termina con <see cref="ClosingMessage"/> y deriva a demo (turnospro,
+    /// playcrew, archicloud) — NO pide mail ni provisiona, marca el lead Interested.
+    /// </summary>
+    public bool SelfServe { get; set; } = true;
+
     /// <summary>Saludo inicial (puede tener [NUEVO_MENSAJE] para splittear). Ej: "buenas! soy Eric de GymHero."</summary>
     public string Intro { get; set; } = string.Empty;
 
@@ -29,8 +36,11 @@ public class OnboardingConfig
     /// <summary>Nombre del campo del body al que mapea el nombre del negocio (ej. "gymName", "businessName").</summary>
     public string ProvisionNameField { get; set; } = "name";
 
-    /// <summary>Mensaje de éxito (puede tener [NUEVO_MENSAJE] y el placeholder {accessUrl}).</summary>
+    /// <summary>Mensaje de éxito autoservicio (puede tener [NUEVO_MENSAJE] y el placeholder {accessUrl}).</summary>
     public string SuccessMessage { get; set; } = string.Empty;
+
+    /// <summary>Cierre para venta asistida (SelfServe=false): pitch + handoff a demo. Sin mail ni provisión.</summary>
+    public string ClosingMessage { get; set; } = string.Empty;
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
