@@ -54,8 +54,9 @@ public class ApplicationDbContext : DbContext
     // Reglas duras genéricas de la IA de ventas (CRUD admin; se inyectan al system prompt).
     public DbSet<AiRule> AiRules => Set<AiRule>();
 
-    // Onboarding scripteado de leads de anuncio de GymHero (reemplaza el bot de n8n).
+    // Onboarding de ads multi-app: estado por lead + config por producto.
     public DbSet<LeadOnboarding> LeadOnboardings => Set<LeadOnboarding>();
+    public DbSet<OnboardingConfig> OnboardingConfigs => Set<OnboardingConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -28,13 +28,13 @@ public class ConversationAgentService
     private readonly IEvolutionClient _evo;
     private readonly GroqWhisperClient _whisper;
     private readonly AiSuggestionService _suggestions;
-    private readonly GymHeroOnboardingService _onboarding;
+    private readonly OnboardingService _onboarding;
     private readonly ISendScheduler _scheduler;
     private readonly ILogger<ConversationAgentService> _log;
 
     public ConversationAgentService(
         ApplicationDbContext db, IEvolutionClient evo, GroqWhisperClient whisper,
-        AiSuggestionService suggestions, GymHeroOnboardingService onboarding, ISendScheduler scheduler, ILogger<ConversationAgentService> log)
+        AiSuggestionService suggestions, OnboardingService onboarding, ISendScheduler scheduler, ILogger<ConversationAgentService> log)
     {
         _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding; _scheduler = scheduler; _log = log;
     }
@@ -120,6 +120,10 @@ public class ConversationAgentService
         ).Take(BatchSize).ToListAsync(ct);
 
         var onboardingOn = await _db.IsFlagOnAsync("onboarding", false, ct);
+        // Configs de onboarding habilitadas, por app (multi-app). Vacío si el flag está off.
+        var onbConfigs = onboardingOn
+            ? await _db.OnboardingConfigs.Where(c => c.Enabled).ToDictionaryAsync(c => c.ProductKey, ct)
+            : new Dictionary<string, OnboardingConfig>();
 
         var done = 0;
         foreach (var c in candidates)
@@ -168,15 +172,16 @@ public class ConversationAgentService
                 continue;
             }
 
-            // ── Onboarding de ads de GymHero (reemplaza el bot de n8n). Gated por flag 'onboarding'.
+            // ── Onboarding de ads MULTI-APP. Gated por flag 'onboarding' + config Enabled de la app.
             // Solo arranca si el lead ya está en el flujo o es FRESCO (sin outbound previo): así
             // prender el flag NO re-introduce leads viejos con historia (backfill / atendidos por n8n).
-            var runOnboarding = onboardingOn && lead.Source == LeadSource.WhatsAppAd && lead.ProductKey == "gymhero"
+            onbConfigs.TryGetValue(lead.ProductKey, out var onbCfg);
+            var runOnboarding = onbCfg is not null && lead.Source == LeadSource.WhatsAppAd
                 && (await _db.Set<LeadOnboarding>().AnyAsync(o => o.LeadId == lead.Id, ct)
                     || !thread.Any(m => m.Direction == MessageDirection.Outbound));
             if (runOnboarding)
             {
-                var ob = await _onboarding.ProcessAsync(lead, last, ct);
+                var ob = await _onboarding.ProcessAsync(lead, last, onbCfg!, ct);
                 if (!ob.OffScript)
                 {
                     if (!string.IsNullOrWhiteSpace(ob.Reply)) await OnboardingSendAsync(lead, ob.Reply!, ct);

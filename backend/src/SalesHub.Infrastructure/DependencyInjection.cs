@@ -101,10 +101,10 @@ public static class DependencyInjection
         services.AddSingleton<AiRulesProvider>();
         services.AddScoped<AiSuggestionService>();
 
-        // Onboarding de leads de anuncio de GymHero (reemplaza el chatbot de n8n).
-        services.AddHttpClient<GymHeroProvisionClient>();
-        services.AddScoped<IGymHeroProvisionClient>(sp => sp.GetRequiredService<GymHeroProvisionClient>());
-        services.AddScoped<GymHeroOnboardingService>();
+        // Onboarding de ads multi-app (config por producto en onboarding_configs).
+        services.AddHttpClient<OnboardingProvisionClient>();
+        services.AddScoped<IOnboardingProvisionClient>(sp => sp.GetRequiredService<OnboardingProvisionClient>());
+        services.AddScoped<OnboardingService>();
         services.AddScoped<ConversationAgentService>();
         services.AddScoped<SeoContentService>();
         services.AddScoped<BlogPublisher>();

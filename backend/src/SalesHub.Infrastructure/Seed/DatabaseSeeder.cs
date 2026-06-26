@@ -17,6 +17,42 @@ public static class DatabaseSeeder
         await BackfillCategoryOverridesAsync(db, ct);
         await SeedPostingProfilesAsync(db, ct);
         await SeedPostingChannelsAsync(db, ct);
+        await SeedOnboardingConfigsAsync(db, ct);
+    }
+
+    /// <summary>
+    /// Seed de la config de onboarding de GymHero (los valores que venían hardcodeados, ahora data).
+    /// Idempotente: solo crea la fila si no existe. Las otras apps se configuran desde el CRUD admin.
+    /// </summary>
+    private static async Task SeedOnboardingConfigsAsync(ApplicationDbContext db, CancellationToken ct)
+    {
+        if (await db.OnboardingConfigs.AnyAsync(c => c.ProductKey == "gymhero", ct)) return;
+
+        db.OnboardingConfigs.Add(new OnboardingConfig
+        {
+            ProductKey = "gymhero",
+            Enabled = true,
+            Intro = "buenas! soy Eric de GymHero." +
+                "[NUEVO_MENSAJE]Te hago 3 preguntas rapidas para conocer tu centro deportivo y ayudarte mejor",
+            Questions = new List<string>
+            {
+                "Pregunta 1/3: cómo se llama tu gimnasio o centro deportivo?",
+                "dale, anotado[NUEVO_MENSAJE]Pregunta 2/3: cuantos socios tenés más o menos? (no cobramos por socio, es solo para conocerte)",
+                "perfecto![NUEVO_MENSAJE]Pregunta 3/3: como llevás hoy los cobros y las cuotas? (Excel, papel, algún sistema)",
+            },
+            EmailPrompt = "Pasame tu mail y con eso te creo la cuenta ahora mismo. De paso te mando un código de descuento.",
+            ProvisionUrl = "https://gymhero.fitness/api/tenants/bot-register",
+            ProvisionNameField = "gymName",
+            SuccessMessage = "¡Listo! Te dejé la cuenta creada y lista para usar." +
+                "[NUEVO_MENSAJE]Entrá directo desde este link, ya quedás adentro (sin formularios):" +
+                "[NUEVO_MENSAJE]{accessUrl}" +
+                "[NUEVO_MENSAJE]Te dejo un video de 5 minutos con GymHero funcionando:" +
+                "[NUEVO_MENSAJE]https://www.loom.com/share/02d97a7ccc804d0189f7bf9cf1af8fbf" +
+                "[NUEVO_MENSAJE]Tenés 7 días gratis para probar todo." +
+                "[NUEVO_MENSAJE]Después es el plan Starter: $50.000/mes, todo incluido (socios, clases e instructores ilimitados)." +
+                "[NUEVO_MENSAJE]Y te dejo un código: ARRANCA20 — 20% OFF el primer mes. Lo cargás cuando actives el plan.",
+        });
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>
