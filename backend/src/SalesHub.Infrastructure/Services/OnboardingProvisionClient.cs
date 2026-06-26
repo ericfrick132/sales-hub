@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace SalesHub.Infrastructure.Services;
@@ -16,10 +17,11 @@ public class OnboardingProvisionClient : IOnboardingProvisionClient
 {
     private readonly HttpClient _http;
     private readonly ILogger<OnboardingProvisionClient> _log;
+    private readonly string? _botKey;
 
-    public OnboardingProvisionClient(HttpClient http, ILogger<OnboardingProvisionClient> log)
+    public OnboardingProvisionClient(HttpClient http, IConfiguration config, ILogger<OnboardingProvisionClient> log)
     {
-        _http = http; _log = log;
+        _http = http; _log = log; _botKey = config["BotRegister:Key"];
     }
 
     public async Task<string?> RegisterAsync(string url, string nameField, string businessName, string email,
@@ -40,7 +42,9 @@ public class OnboardingProvisionClient : IOnboardingProvisionClient
                 ["utmCampaign"] = "chatbot-" + productKey,
             };
             var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-            var resp = await _http.PostAsync(url, content, ct);
+            using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            if (!string.IsNullOrEmpty(_botKey)) req.Headers.Add("X-Bot-Key", _botKey);
+            var resp = await _http.SendAsync(req, ct);
             if (!resp.IsSuccessStatusCode)
             {
                 _log.LogWarning("bot-register {Product} falló: {Status}", productKey, resp.StatusCode);
