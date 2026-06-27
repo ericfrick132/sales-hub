@@ -63,6 +63,57 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
+    /// Reportes del follow-up de abandono unificado, POR APP: cuántos abandonos se detectaron
+    /// (triggered), pasos enviados (por canal), convertidos (entraron) y abandonados (gave_up),
+    /// con la tasa de conversión. Se alimenta de FollowupEvent (lo reportan las apps).
+    /// </summary>
+    [HttpGet("followup-metrics")]
+    public async Task<IActionResult> FollowupMetrics([FromQuery] string period, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        var now = DateTimeOffset.UtcNow;
+        DateTimeOffset since = (period ?? "7d") switch
+        {
+            "today" => now.AddHours(-24),
+            "30d" => now.AddDays(-30),
+            "all" => DateTimeOffset.UnixEpoch,
+            _ => now.AddDays(-7),
+        };
+
+        var events = await _db.FollowupEvents.AsNoTracking()
+            .Where(e => e.CreatedAt >= since)
+            .Select(e => new { e.ProductKey, e.Trigger, e.EventType, e.Channel })
+            .ToListAsync(ct);
+
+        // Agrupado por (app, trigger) — agnóstico: el trigger lo define cada app.
+        var rows = events
+            .GroupBy(e => new { e.ProductKey, Trigger = e.Trigger ?? "" })
+            .Select(g =>
+            {
+                var triggered = g.Count(x => x.EventType == "triggered");
+                var converted = g.Count(x => x.EventType == "converted");
+                return new
+                {
+                    productKey = g.Key.ProductKey,
+                    trigger = g.Key.Trigger,
+                    triggered,
+                    sent = g.Count(x => x.EventType == "step_sent"),
+                    byChannel = g.Where(x => x.EventType == "step_sent" && x.Channel != null)
+                        .GroupBy(x => x.Channel!)
+                        .ToDictionary(c => c.Key, c => c.Count()),
+                    converted,
+                    gaveUp = g.Count(x => x.EventType == "gave_up"),
+                    conversionRate = triggered > 0 ? Math.Round((double)converted / triggered, 3) : 0.0,
+                };
+            })
+            .OrderBy(x => x.productKey).ThenBy(x => x.trigger)
+            .ToList();
+
+        return Ok(new { period = period ?? "7d", rows });
+    }
+
+    /// <summary>
     /// Embudo de efectividad por aplicación: leads → contactados → respondieron → demos →
     /// cerrados/perdidos + las tasas (% resp / % demo / % cierre). Filtrable por ventana
     /// (cohorte de leads que entraron en ese período, por CreatedAt).

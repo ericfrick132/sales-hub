@@ -66,6 +66,7 @@ export default function Layout() {
           { to: '/reglas-ia', label: 'Reglas IA' },
           { to: '/onboarding-apps', label: 'Onboarding apps' },
           { to: '/transcripcion', label: 'Transcripción' },
+          { to: '/seguimientos', label: 'Seguimientos' },
         ] },
       ]
     : [

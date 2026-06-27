@@ -94,6 +94,57 @@ public class HubController : ControllerBase
         return Ok(new { outboxId = outbox.Id, leadId = lead.Id });
     }
 
+    /// <summary>
+    /// Contrato común: la app baja TODAS sus secuencias de follow-up ACTIVAS (config central,
+    /// agnóstica). Devuelve una lista de { trigger, steps[] } — la app elige cuáles ejecutar
+    /// según sus propios disparadores. Solo lectura.
+    /// </summary>
+    [HttpGet("followup-config")]
+    public async Task<IActionResult> GetFollowupConfig([FromQuery] string productKey, CancellationToken ct)
+    {
+        if (!ValidApiKey()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(productKey)) return BadRequest(new { error = "productKey requerido" });
+
+        var sequences = await _db.FollowupSequences.AsNoTracking()
+            .Where(s => s.ProductKey == productKey && s.Enabled)
+            .OrderBy(s => s.Trigger)
+            .ToListAsync(ct);
+
+        return Ok(new
+        {
+            sequences = sequences.Select(s => new
+            {
+                trigger = s.Trigger,
+                steps = s.Steps.OrderBy(x => x.Order).ToList(),
+            }),
+        });
+    }
+
+    /// <summary>
+    /// Contrato común: la app REPORTA un evento de su follow-up (triggered/step_sent/converted/
+    /// gave_up) para los reportes centralizados por app. NO dispara ningún envío — es telemetría.
+    /// </summary>
+    [HttpPost("followup-events")]
+    public async Task<IActionResult> IngestFollowupEvent([FromBody] HubFollowupEventRequest req, CancellationToken ct)
+    {
+        if (!ValidApiKey()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(req.ProductKey) || string.IsNullOrWhiteSpace(req.EventType))
+            return BadRequest(new { error = "productKey y eventType requeridos" });
+
+        _db.FollowupEvents.Add(new FollowupEvent
+        {
+            ProductKey = req.ProductKey,
+            Trigger = string.IsNullOrWhiteSpace(req.Trigger) ? null : req.Trigger.Trim(),
+            ExternalRef = req.ExternalRef,
+            EventType = req.EventType.Trim().ToLowerInvariant(),
+            StepIndex = req.StepIndex ?? -1,
+            Channel = string.IsNullOrWhiteSpace(req.Channel) ? null : req.Channel.Trim().ToLowerInvariant(),
+            Detail = req.Detail,
+        });
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { ok = true });
+    }
+
     private static LeadSource MapSource(string? leadType) => (leadType ?? string.Empty).ToLowerInvariant() switch
     {
         "ad" or "ads" or "anuncio" => LeadSource.WhatsAppAd,
@@ -134,3 +185,12 @@ public record HubSendRequest(
     string? ExternalId,
     string? Phone,
     string Text);
+
+public record HubFollowupEventRequest(
+    string ProductKey,
+    string? Trigger,
+    string? ExternalRef,
+    string EventType,
+    int? StepIndex,
+    string? Channel,
+    string? Detail);

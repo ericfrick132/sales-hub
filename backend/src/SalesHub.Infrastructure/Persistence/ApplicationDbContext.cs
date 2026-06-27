@@ -49,6 +49,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<TranscriptionPhone> TranscriptionPhones => Set<TranscriptionPhone>();
     public DbSet<TranscriptionSettings> TranscriptionSettings => Set<TranscriptionSettings>();
 
+    // Follow-up de abandono unificado y AGNÓSTICO: secuencias genéricas por (app, trigger) +
+    // telemetría que reportan las apps, para reportes centralizados por app.
+    public DbSet<FollowupSequence> FollowupSequences => Set<FollowupSequence>();
+    public DbSet<FollowupEvent> FollowupEvents => Set<FollowupEvent>();
+
     // Objetivos de vendedor (metas precargadas por superadmin; progreso calculado en runtime).
     public DbSet<SellerGoal> SellerGoals => Set<SellerGoal>();
 
