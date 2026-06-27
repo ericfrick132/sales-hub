@@ -140,7 +140,8 @@ public class OutboxSender
                        || (o.Lead != null && whitelist!.Contains(o.Lead.ProductKey)))
                 let leadInProgress = _db.Outbox.Any(x =>
                     x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
-                orderby leadInProgress descending, o.ScheduledAt
+                // Prioridad primero (re-enganche caliente salta la fila), después "en progreso", después FIFO.
+                orderby o.Priority descending, leadInProgress descending, o.ScheduledAt
                 select o
             ).Take(20).ToListAsync(ct);
             MessageOutbox? next = null;

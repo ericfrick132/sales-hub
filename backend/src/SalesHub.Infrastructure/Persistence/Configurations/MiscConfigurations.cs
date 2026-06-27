@@ -33,6 +33,7 @@ public class MessageOutboxConfiguration : IEntityTypeConfiguration<MessageOutbox
         b.Property(x => x.Status).HasConversion<int>();
         b.Property(x => x.Error).HasColumnType("text");
         b.Property(x => x.CadenceCategory).HasMaxLength(64);
+        b.Property(x => x.Priority).HasDefaultValue(50);
         b.HasIndex(x => new { x.Status, x.ScheduledAt });
         b.HasIndex(x => new { x.SellerId, x.Status, x.ScheduledAt });
         b.HasOne(x => x.Lead).WithMany().HasForeignKey(x => x.LeadId).OnDelete(DeleteBehavior.Cascade);

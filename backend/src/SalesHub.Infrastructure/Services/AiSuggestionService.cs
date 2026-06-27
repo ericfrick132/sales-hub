@@ -63,6 +63,60 @@ public class AiSuggestionService
     }
 
     /// <summary>
+    /// Re-enganche + SCORE en una sola llamada a Claude. El score (0-100) = qué tan caliente está
+    /// el lead (probabilidad de cierre), y se usa como PRIORIDAD en la cola de envíos (los calientes
+    /// salen primero). Devuelve (mensaje, score); mensaje null si no hay nada para mandar.
+    /// </summary>
+    public async Task<(string? message, int score)> SuggestReengagementWithScoreAsync(
+        Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, TimeSpan silentFor, CancellationToken ct)
+    {
+        if (!_claude.IsConfigured || thread.Count == 0) return (null, 0);
+        var rulesBlock = await _rules.GetBlockAsync(null, ct);
+        var system = BuildSystemPrompt(product, rulesBlock);
+        var hrs = Math.Max(1, (int)Math.Round(silentFor.TotalHours));
+        var instruction =
+            $"El lead venía hablando y se quedó callado hace ~{hrs} horas. DOS TAREAS:\n" +
+            "1) Puntuá del 0 al 100 qué tan CALIENTE está (probabilidad de que compre): 100 = listo para cerrar, " +
+            "0 = perdido/sin interés. Mirá lo que dijo, sus objeciones y el contexto.\n" +
+            "2) Escribí un mensaje CORTO y natural para retomar, sin sonar desesperado ni repetir, variando el " +
+            "enfoque si ya le mandaste seguimientos. Si tiene sentido movelo a una demo o el checkout. Si ya cerró " +
+            "en contra, no escribas mensaje.\n" +
+            "FORMATO EXACTO: primera línea `score=NN` (solo el número). De la segunda línea en adelante, el mensaje " +
+            "en el estilo de siempre. Si no hay nada para mandar, poné solo `(sin respuesta)` después del score.";
+        var conversation = BuildConversation(lead, thread, instruction);
+
+        var (score, message) = SplitScoreReply(await _claude.CompleteAsync(system, conversation, "conversacion", ct));
+        if (!string.IsNullOrWhiteSpace(message) && MentionsWrongPrice(message!, product.PriceDisplay))
+        {
+            var corrected = conversation +
+                $"\n\nIMPORTANTE: el precio EXACTO es \"{product.PriceDisplay}\". No menciones NINGÚN otro número de precio. " +
+                "Regenerá respetando el formato (línea 1 `score=NN`, después el mensaje).";
+            (score, message) = SplitScoreReply(await _claude.CompleteAsync(system, corrected, "conversacion", ct));
+            if (!string.IsNullOrWhiteSpace(message) && MentionsWrongPrice(message!, product.PriceDisplay))
+                return (null, score);
+        }
+        return (string.IsNullOrWhiteSpace(message) ? null : message!.Trim(), score);
+    }
+
+    private static (int score, string? message) SplitScoreReply(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return (0, null);
+        var lines = raw.Replace("\r\n", "\n").Split('\n');
+        var score = 0;
+        var start = 0;
+        for (var i = 0; i < lines.Length && i < 2; i++)
+        {
+            var m = Regex.Match(lines[i], @"score\s*[:=]\s*(\d{1,3})", RegexOptions.IgnoreCase);
+            if (m.Success) { score = Math.Clamp(int.Parse(m.Groups[1].Value), 0, 100); start = i + 1; break; }
+        }
+        var message = string.Join("\n", lines.Skip(start)).Trim();
+        var bare = message.Replace("(", "").Replace(")", "").Trim();
+        if (message.Length == 0 || bare.StartsWith("sin respuesta", StringComparison.OrdinalIgnoreCase))
+            return (score, null);
+        return (score, message);
+    }
+
+    /// <summary>
     /// Clasifica el ESTADO del prospecto analizando toda la conversación. Devuelve una
     /// intención (interested / not_interested / scheduled / won / needs_human / unknown)
     /// que el ConversationAgent mapea a LeadStatus. No genera respuesta — solo analiza.

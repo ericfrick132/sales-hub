@@ -494,7 +494,6 @@ public class ConversationAgentService
         ).Take(BatchSize).ToListAsync(ct);
 
         var done = 0;
-        var nudgesSentThisTick = 0;
         foreach (var c in candidates)
         {
             var lead = await _db.Leads
@@ -507,32 +506,45 @@ public class ConversationAgentService
             // AutoReengage). El proactivo es lo más baneable, así que es un toggle aparte.
             var autoReengage = lead.Product!.AutoPilot && lead.Product!.AutoReengage;
 
-            // Si vamos a auto-enviar, validar límites anti-ban ANTES de gastar la llamada
-            // a la IA: no rafaguear, respetar horario activo y el cap diario del vendedor.
-            if (autoReengage)
-            {
-                if (nudgesSentThisTick >= MaxNudgesPerTickGlobal) break;
-                var st = await SellerSendStateAsync(lead.Seller!, ct);
-                if (!st.active || st.sentToday >= st.dailyCap)
-                    continue; // fuera de horario o cap alcanzado → se reintenta más tarde
-            }
-
             var thread = await _db.ConversationMessages
                 .Where(m => m.LeadId == lead.Id)
                 .OrderBy(m => m.Timestamp)
                 .ToListAsync(ct);
 
-            var msg = await _suggestions.SuggestReengagementAsync(
+            // Una sola llamada a Claude: mensaje de re-enganche + score (0-100) del lead.
+            var (msg, score) = await _suggestions.SuggestReengagementWithScoreAsync(
                 lead, lead.Product!, thread, now - c.LastAt, ct);
             if (string.IsNullOrWhiteSpace(msg)) continue;
+            lead.Score = score; // el análisis ⇒ prioridad en la cola
 
-            if (autoReengage)
+            var instance = lead.Seller!.EvolutionInstance;
+            var canQueue = autoReengage && instance is not null
+                && instance.Status == InstanceStatus.Connected
+                && !string.IsNullOrWhiteSpace(lead.WhatsappPhone);
+
+            if (canQueue)
             {
-                if (!await AutoSendAsync(lead, msg, ct)) continue; // no marcar nudge si no se envió
-                nudgesSentThisTick++;
+                // Encolar en la cola HUMANIZADA (OutboxSender + SendScheduler) con prioridad = score.
+                // No mandamos directo: el sender respeta warmup/jitter/burst/caps y los CALIENTES
+                // (score alto) saltan la fila. Así el re-enganche vende sin rafaguear.
+                _db.Outbox.Add(new MessageOutbox
+                {
+                    Id = Guid.NewGuid(),
+                    LeadId = lead.Id,
+                    SellerId = lead.SellerId!.Value,
+                    Channel = MessageChannel.WhatsApp,
+                    EvolutionInstance = instance!.InstanceName,
+                    WhatsappPhone = lead.WhatsappPhone!,
+                    Message = msg!,
+                    StepIndex = null,       // snapshot estático: el sender manda Message tal cual
+                    Priority = score,
+                    ScheduledAt = now,
+                    Status = OutboxStatus.Scheduled,
+                });
             }
             else
             {
+                // No auto (o sin instancia/teléfono): dejar como sugerencia para el vendedor.
                 lead.AiSuggestedReply = msg;
                 lead.AiSuggestedReplyAt = now;
             }
@@ -542,8 +554,8 @@ public class ConversationAgentService
             lead.UpdatedAt = now;
             await _db.SaveChangesAsync(ct);
             done++;
-            _log.LogInformation("Re-enganche {Mode} a lead {Lead} (nudge {N}/{Max})",
-                autoReengage ? "auto-enviado" : "sugerido", lead.Id, lead.NudgeCount, MaxNudges);
+            _log.LogInformation("Re-enganche {Mode} a lead {Lead} (score {Score}, nudge {N}/{Max})",
+                canQueue ? "encolado" : "sugerido", lead.Id, score, lead.NudgeCount, MaxNudges);
         }
 
         return done;

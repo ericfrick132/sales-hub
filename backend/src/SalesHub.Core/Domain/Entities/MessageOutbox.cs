@@ -55,5 +55,12 @@ public class MessageOutbox
     public int Attempts { get; set; }
     public string? Error { get; set; }
 
+    /// <summary>
+    /// Prioridad de envío (más alto = sale antes, DENTRO de los caps/humanización del sender).
+    /// La cadencia normal queda en el default 50. El re-enganche lo setea = score del análisis
+    /// del lead (0-100): los calientes salen primero, los fríos después de los leads frescos.
+    /// </summary>
+    public int Priority { get; set; } = 50;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
