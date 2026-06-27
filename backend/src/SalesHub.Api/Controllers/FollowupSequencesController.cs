@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Domain.Entities;
+using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Api.Controllers;
@@ -33,11 +34,19 @@ public class FollowupSequencesController : ControllerBase
             .OrderBy(p => p.DisplayName)
             .Select(p => new { p.ProductKey, p.DisplayName })
             .ToListAsync(ct);
-        // Re-enganche inteligente ACTIVO = la app alimenta leads a sales-hub (tiene leads).
-        // Las que no pushean leads quedan marcadas como TODO en la UI.
-        var withLeads = (await _db.Leads.AsNoTracking().Select(l => l.ProductKey).Distinct().ToListAsync(ct)).ToHashSet();
+        // Re-enganche inteligente ACTIVO = la app alimenta SUS PROPIOS leads a sales-hub
+        // (sources app-fed: OTP/onboarding/reengage/demo/ad), no los prospectos que scrapeamos.
+        // Las que no pushean sus leads quedan marcadas como TODO en la UI.
+        var fedSources = new[]
+        {
+            LeadSource.ProductOnboarding, LeadSource.ProductReengage,
+            LeadSource.DemoSignup, LeadSource.WhatsAppAd,
+        };
+        var fedKeys = (await _db.Leads.AsNoTracking()
+            .Where(l => fedSources.Contains(l.Source))
+            .Select(l => l.ProductKey).Distinct().ToListAsync(ct)).ToHashSet();
         var products = prods
-            .Select(p => new ProductRef(p.ProductKey, p.DisplayName, withLeads.Contains(p.ProductKey)))
+            .Select(p => new ProductRef(p.ProductKey, p.DisplayName, fedKeys.Contains(p.ProductKey)))
             .ToList();
         var nameByKey = products.ToDictionary(p => p.ProductKey, p => p.DisplayName);
 
