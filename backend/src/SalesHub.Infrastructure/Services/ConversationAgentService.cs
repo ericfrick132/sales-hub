@@ -176,8 +176,16 @@ public class ConversationAgentService
             // Solo arranca si el lead ya está en el flujo o es FRESCO (sin outbound previo): así
             // prender el flag NO re-introduce leads viejos con historia (backfill / atendidos por n8n).
             onbConfigs.TryGetValue(lead.ProductKey, out var onbCfg);
-            var runOnboarding = onbCfg is not null && lead.Source == LeadSource.WhatsAppAd
-                && (await _db.Set<LeadOnboarding>().AnyAsync(o => o.LeadId == lead.Id, ct)
+            // El onboarding (alta + provisión de la cuenta) corre para leads de anuncio, y AHORA
+            // también para los RE-ENGANCHADOS de productos self-serve: así el re-enganche no los
+            // deja en "interesado" sino que los lleva hasta CREAR la cuenta solo. A los re-enganchados
+            // los dejamos entrar aunque tengan historia de mensajes (ese es justo el punto).
+            var isReengage = lead.Source == LeadSource.ProductReengage;
+            var onbEligible = onbCfg is not null
+                && (lead.Source == LeadSource.WhatsAppAd || (isReengage && onbCfg.SelfServe));
+            var runOnboarding = onbEligible
+                && (isReengage
+                    || await _db.Set<LeadOnboarding>().AnyAsync(o => o.LeadId == lead.Id, ct)
                     || !thread.Any(m => m.Direction == MessageDirection.Outbound));
 
             // Espera humana configurable: random estable entre Min y Max seg desde el mensaje del lead.
