@@ -5,7 +5,10 @@ import { api } from '../lib/api';
 import Switch from '../components/Switch';
 
 type Step = { order: number; delayMinutes: number; channel: string; subject: string | null; body: string };
-type Sequence = { id: string; productKey: string; displayName: string; trigger: string; enabled: boolean; steps: Step[] };
+type Sequence = {
+  id: string; productKey: string; displayName: string; trigger: string; enabled: boolean; steps: Step[];
+  backlogColdMessage: string | null; backlogWarmMessage: string | null; backlogColdAfterDays: number | null;
+};
 type ProductRef = { productKey: string; displayName: string; reengageActive: boolean };
 type SequencesResp = { sequences: Sequence[]; products: ProductRef[] };
 
@@ -51,6 +54,7 @@ export default function Seguimientos() {
   const create = useMutation({
     mutationFn: async () => api.put('/followup-sequences', {
       productKey: newProduct, trigger: newTrigger.trim(), enabled: false, steps: [],
+      backlogColdMessage: null, backlogWarmMessage: null, backlogColdAfterDays: null,
     }),
     onSuccess: () => { setNewTrigger(''); invalidate(); toast.success('Secuencia creada'); },
     onError: (e: any) => toast.error(e?.response?.data?.error ?? 'No se pudo crear'),
@@ -199,11 +203,18 @@ export default function Seguimientos() {
 function SequenceCard({ seq, onChanged }: { seq: Sequence; onChanged: () => void }) {
   const [enabled, setEnabled] = useState(seq.enabled);
   const [steps, setSteps] = useState<Step[]>(seq.steps);
+  const [coldMsg, setColdMsg] = useState(seq.backlogColdMessage ?? '');
+  const [warmMsg, setWarmMsg] = useState(seq.backlogWarmMessage ?? '');
+  const [coldAfterDays, setColdAfterDays] = useState<string>(
+    seq.backlogColdAfterDays != null ? String(seq.backlogColdAfterDays) : '');
 
   const save = useMutation({
     mutationFn: async () => api.put('/followup-sequences', {
       productKey: seq.productKey, trigger: seq.trigger, enabled,
       steps: steps.map((s, i) => ({ ...s, order: i })),
+      backlogColdMessage: coldMsg.trim() || null,
+      backlogWarmMessage: warmMsg.trim() || null,
+      backlogColdAfterDays: coldAfterDays.trim() ? Math.max(1, parseInt(coldAfterDays, 10) || 0) || null : null,
     }),
     onSuccess: () => { onChanged(); toast.success('Guardado'); },
     onError: () => toast.error('No se pudo guardar'),
@@ -259,6 +270,33 @@ function SequenceCard({ seq, onChanged }: { seq: Sequence; onChanged: () => void
           </div>
         ))}
         <button className="btn-secondary text-xs" onClick={addStep}>+ Agregar paso</button>
+      </div>
+
+      {/* BACKLOG (abandonos viejos): un solo toque, no el flujo de pasos en vivo */}
+      <div className="rounded border border-amber-200 bg-amber-50/40 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-sm font-semibold text-amber-800">Mensajes de backlog (abandonos viejos)</div>
+          <label className="flex items-center gap-1.5 text-xs text-slate-500">
+            pasan a "frío" después de
+            <input type="number" min={1} className="input w-20 py-1" placeholder="14"
+              value={coldAfterDays} onChange={(e) => setColdAfterDays(e.target.value)} />
+            días
+          </label>
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Un solo toque suave para los abandonos rancios (no el flujo de pasos en vivo). Si lo dejás vacío,
+          la app usa su texto por defecto. Placeholders: {'{code}'}, {'{name}'}…
+        </p>
+        <div>
+          <label className="text-xs text-slate-500">Tibio (abandono reciente dentro de la ventana)</label>
+          <textarea className="input min-h-[64px]" placeholder="(vacío = la app usa su texto por defecto)"
+            value={warmMsg} onChange={(e) => setWarmMsg(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs text-slate-500">Frío / reactivación (abandono más viejo que el umbral)</label>
+          <textarea className="input min-h-[64px]" placeholder="(vacío = la app usa su texto por defecto)"
+            value={coldMsg} onChange={(e) => setColdMsg(e.target.value)} />
+        </div>
       </div>
 
       <div className="flex justify-between gap-2">

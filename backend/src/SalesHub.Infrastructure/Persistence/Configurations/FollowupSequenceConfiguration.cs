@@ -24,5 +24,11 @@ public class FollowupSequenceConfiguration : IEntityTypeConfiguration<FollowupSe
                 v => string.IsNullOrWhiteSpace(v) || !v.TrimStart().StartsWith('[')
                     ? new List<FollowupStep>()
                     : JsonSerializer.Deserialize<List<FollowupStep>>(v, (JsonSerializerOptions?)null) ?? new());
+
+        // BACKLOG (abandonos viejos): mensajes configurables por app, fuera de los pasos del
+        // flujo en vivo. Nullables → la app cae a su literal hardcodeado si están vacíos.
+        b.Property(x => x.BacklogColdMessage).HasColumnName("backlog_cold_message");
+        b.Property(x => x.BacklogWarmMessage).HasColumnName("backlog_warm_message");
+        b.Property(x => x.BacklogColdAfterDays).HasColumnName("backlog_cold_after_days");
     }
 }

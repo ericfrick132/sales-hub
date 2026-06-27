@@ -116,6 +116,10 @@ public class HubController : ControllerBase
             {
                 trigger = s.Trigger,
                 steps = s.Steps.OrderBy(x => x.Order).ToList(),
+                // BACKLOG (abandonos viejos): mensajes opcionales; null = la app usa su literal.
+                backlogColdMessage = s.BacklogColdMessage,
+                backlogWarmMessage = s.BacklogWarmMessage,
+                backlogColdAfterDays = s.BacklogColdAfterDays,
             }),
         });
     }

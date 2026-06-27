@@ -22,6 +22,25 @@ public class FollowupSequence
     /// <summary>Pasos de la secuencia (jsonb).</summary>
     public List<FollowupStep> Steps { get; set; } = new();
 
+    /// <summary>
+    /// BACKLOG (abandonos VIEJOS): mensaje de "reactivación" frío para los más rancios
+    /// (más viejos que <see cref="BacklogColdAfterDays"/>). Opaco para sales-hub; la app lo
+    /// renderiza. Null = la app usa su fallback hardcodeado. No es un paso del flujo en vivo.
+    /// </summary>
+    public string? BacklogColdMessage { get; set; }
+
+    /// <summary>
+    /// BACKLOG (abandonos VIEJOS): mensaje "tibio" para los abandonos recientes dentro de la
+    /// ventana de backlog. Null = la app usa su fallback hardcodeado.
+    /// </summary>
+    public string? BacklogWarmMessage { get; set; }
+
+    /// <summary>
+    /// Umbral en días para que un abandono del backlog pase de "tibio" a "frío". Null = la app
+    /// usa su default (ej. env OtpFollowup:ColdAfterDays o su literal).
+    /// </summary>
+    public int? BacklogColdAfterDays { get; set; }
+
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 

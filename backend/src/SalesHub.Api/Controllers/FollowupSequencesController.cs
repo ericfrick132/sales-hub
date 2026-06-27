@@ -22,9 +22,18 @@ public class FollowupSequencesController : ControllerBase
     public FollowupSequencesController(ApplicationDbContext db) { _db = db; }
 
     public record StepDto(int Order, int DelayMinutes, string Channel, string? Subject, string Body);
-    public record SequenceDto(Guid Id, string ProductKey, string DisplayName, string Trigger, bool Enabled, List<StepDto> Steps);
+    public record SequenceDto(
+        Guid Id, string ProductKey, string DisplayName, string Trigger, bool Enabled, List<StepDto> Steps,
+        string? BacklogColdMessage, string? BacklogWarmMessage, int? BacklogColdAfterDays);
     public record ProductRef(string ProductKey, string DisplayName, bool ReengageActive);
-    public record SaveSequenceRequest(string ProductKey, string Trigger, bool Enabled, List<StepDto> Steps);
+    public record SaveSequenceRequest(
+        string ProductKey, string Trigger, bool Enabled, List<StepDto> Steps,
+        string? BacklogColdMessage, string? BacklogWarmMessage, int? BacklogColdAfterDays);
+
+    private static SequenceDto ToDto(FollowupSequence s, string displayName) => new(
+        s.Id, s.ProductKey, displayName, s.Trigger, s.Enabled,
+        s.Steps.OrderBy(x => x.Order).Select(x => new StepDto(x.Order, x.DelayMinutes, x.Channel, x.Subject, x.Body)).ToList(),
+        s.BacklogColdMessage, s.BacklogWarmMessage, s.BacklogColdAfterDays);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -53,12 +62,21 @@ public class FollowupSequencesController : ControllerBase
         var seqs = await _db.FollowupSequences.AsNoTracking()
             .OrderBy(s => s.ProductKey).ThenBy(s => s.Trigger).ToListAsync(ct);
 
-        var sequences = seqs.Select(s => new SequenceDto(
-            s.Id, s.ProductKey, nameByKey.TryGetValue(s.ProductKey, out var dn) ? dn : s.ProductKey,
-            s.Trigger, s.Enabled,
-            s.Steps.OrderBy(x => x.Order).Select(x => new StepDto(x.Order, x.DelayMinutes, x.Channel, x.Subject, x.Body)).ToList()));
+        var sequences = seqs.Select(s =>
+            ToDto(s, nameByKey.TryGetValue(s.ProductKey, out var dn) ? dn : s.ProductKey));
 
         return Ok(new { sequences, products });
+    }
+
+    /// <summary>GET de una secuencia puntual (steps + mensajes de backlog) por id.</summary>
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetOne(Guid id, CancellationToken ct)
+    {
+        var s = await _db.FollowupSequences.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (s is null) return NotFound();
+        var displayName = await _db.Products.AsNoTracking()
+            .Where(p => p.ProductKey == s.ProductKey).Select(p => p.DisplayName).FirstOrDefaultAsync(ct);
+        return Ok(ToDto(s, displayName ?? s.ProductKey));
     }
 
     [HttpPut]
@@ -85,6 +103,10 @@ public class FollowupSequencesController : ControllerBase
                 Body = (x.Body ?? "").Trim(),
             })
             .ToList();
+        // BACKLOG (abandonos viejos): null/vacío = la app cae a su literal hardcodeado.
+        s.BacklogColdMessage = string.IsNullOrWhiteSpace(req.BacklogColdMessage) ? null : req.BacklogColdMessage.Trim();
+        s.BacklogWarmMessage = string.IsNullOrWhiteSpace(req.BacklogWarmMessage) ? null : req.BacklogWarmMessage.Trim();
+        s.BacklogColdAfterDays = req.BacklogColdAfterDays is > 0 ? req.BacklogColdAfterDays : null;
         s.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true, id = s.Id });
