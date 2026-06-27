@@ -22,17 +22,23 @@ public class FollowupSequencesController : ControllerBase
 
     public record StepDto(int Order, int DelayMinutes, string Channel, string? Subject, string Body);
     public record SequenceDto(Guid Id, string ProductKey, string DisplayName, string Trigger, bool Enabled, List<StepDto> Steps);
-    public record ProductRef(string ProductKey, string DisplayName);
+    public record ProductRef(string ProductKey, string DisplayName, bool ReengageActive);
     public record SaveSequenceRequest(string ProductKey, string Trigger, bool Enabled, List<StepDto> Steps);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
-        var products = await _db.Products.AsNoTracking()
+        var prods = await _db.Products.AsNoTracking()
             .Where(p => p.Active && p.ProductKey != "")
             .OrderBy(p => p.DisplayName)
-            .Select(p => new ProductRef(p.ProductKey, p.DisplayName))
+            .Select(p => new { p.ProductKey, p.DisplayName })
             .ToListAsync(ct);
+        // Re-enganche inteligente ACTIVO = la app alimenta leads a sales-hub (tiene leads).
+        // Las que no pushean leads quedan marcadas como TODO en la UI.
+        var withLeads = (await _db.Leads.AsNoTracking().Select(l => l.ProductKey).Distinct().ToListAsync(ct)).ToHashSet();
+        var products = prods
+            .Select(p => new ProductRef(p.ProductKey, p.DisplayName, withLeads.Contains(p.ProductKey)))
+            .ToList();
         var nameByKey = products.ToDictionary(p => p.ProductKey, p => p.DisplayName);
 
         var seqs = await _db.FollowupSequences.AsNoTracking()

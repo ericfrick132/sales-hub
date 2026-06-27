@@ -6,7 +6,7 @@ import Switch from '../components/Switch';
 
 type Step = { order: number; delayMinutes: number; channel: string; subject: string | null; body: string };
 type Sequence = { id: string; productKey: string; displayName: string; trigger: string; enabled: boolean; steps: Step[] };
-type ProductRef = { productKey: string; displayName: string };
+type ProductRef = { productKey: string; displayName: string; reengageActive: boolean };
 type SequencesResp = { sequences: Sequence[]; products: ProductRef[] };
 
 type MetricRow = {
@@ -67,6 +67,50 @@ export default function Seguimientos() {
         <p className="text-sm text-slate-500">
           Config central por app: tiempos, mensaje y canal de cada paso. Las apps la bajan y la
           ejecutan con sus propios canales. Acá ves los reportes de lo que reportan.
+        </p>
+      </div>
+
+      {/* COBERTURA POR APP */}
+      <div className="card p-4">
+        <h2 className="text-lg font-semibold mb-2">Cobertura por app</h2>
+        <div className="overflow-x-auto -mx-1">
+          <table className="min-w-full text-sm">
+            <thead className="text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-2 py-1 text-left">App</th>
+                <th className="px-2 py-1 text-center">Follow-up de abandono</th>
+                <th className="px-2 py-1 text-center">Re-enganche inteligente</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {products.map((p) => {
+                const hasFollowup = sequences.some((s) => s.productKey === p.productKey);
+                return (
+                  <tr key={p.productKey} className="hover:bg-slate-50">
+                    <td className="px-2 py-1.5 font-medium">{p.displayName}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      {hasFollowup
+                        ? <span className="text-emerald-600 font-semibold">✓</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      {p.reengageActive
+                        ? <span className="text-emerald-600 font-semibold">✓</span>
+                        : <span className="badge bg-amber-100 text-amber-700"
+                            title="Esta app no pushea sus leads a sales-hub todavía → falta conectar el push de leads (/api/hub/leads) para que el re-enganche inteligente la cubra.">
+                            TODO
+                          </span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[11px] text-slate-400 mt-2">
+          <b>Abandono</b> = tiene secuencia de follow-up (lo ejecuta la app). <b>Re-enganche inteligente</b> = la app
+          alimenta leads a sales-hub y entran al re-enganche analizado + priorizado por score (hoy: gymhero / turnos-pro).
+          <b> TODO</b> = falta conectar el push de leads de esa app.
         </p>
       </div>
 
