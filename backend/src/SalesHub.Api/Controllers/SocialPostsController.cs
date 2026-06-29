@@ -19,14 +19,18 @@ public class SocialPostsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly SocialContentGenerator _generator;
-    private readonly AiImageGenerator _imageGen;
+    private readonly IEnumerable<ISocialAssetGenerator> _assetGenerators;
     private readonly ISocialPublisher _publisher;
+    private readonly IWarmrDistributor _warmr;
     private readonly ILogger<SocialPostsController> _log;
 
-    public SocialPostsController(ApplicationDbContext db, SocialContentGenerator generator, AiImageGenerator imageGen, ISocialPublisher publisher, ILogger<SocialPostsController> log)
+    public SocialPostsController(ApplicationDbContext db, SocialContentGenerator generator, IEnumerable<ISocialAssetGenerator> assetGenerators, ISocialPublisher publisher, IWarmrDistributor warmr, ILogger<SocialPostsController> log)
     {
-        _db = db; _generator = generator; _imageGen = imageGen; _publisher = publisher; _log = log;
+        _db = db; _generator = generator; _assetGenerators = assetGenerators; _publisher = publisher; _warmr = warmr; _log = log;
     }
+
+    private ISocialAssetGenerator? GeneratorFor(SocialAssetKind kind) =>
+        _assetGenerators.FirstOrDefault(g => g.CanHandle(kind == SocialAssetKind.Video ? "video" : "image"));
 
     // ── Perfiles de marca ──────────────────────────────────────────────────
     [HttpGet("profiles")]
@@ -173,8 +177,10 @@ public class SocialPostsController : ControllerBase
         if (req.Enabled.HasValue) ch.Enabled = req.Enabled.Value;
         if (req.BufferChannelId != null) ch.BufferChannelId = req.BufferChannelId;
         if (req.PromptTemplate != null) ch.PromptTemplate = req.PromptTemplate;
+        if (req.WarmrAccount != null) ch.WarmrAccount = req.WarmrAccount;
         if (!string.IsNullOrWhiteSpace(req.Format) && Enum.TryParse<SocialPostFormat>(req.Format, true, out var f)) ch.Format = f;
         if (!string.IsNullOrWhiteSpace(req.AssetKind) && Enum.TryParse<SocialAssetKind>(req.AssetKind, true, out var ak)) ch.AssetKind = ak;
+        if (!string.IsNullOrWhiteSpace(req.Distribution) && Enum.TryParse<SocialDistribution>(req.Distribution, true, out var dist)) ch.Distribution = dist;
         ch.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(ch);
@@ -194,6 +200,8 @@ public class SocialPostsController : ControllerBase
             Enabled = true,
             Format = Enum.TryParse<SocialPostFormat>(req.Format, true, out var f) ? f : SocialPostFormat.Post,
             AssetKind = Enum.TryParse<SocialAssetKind>(req.AssetKind, true, out var ak) ? ak : SocialAssetKind.Image,
+            Distribution = Enum.TryParse<SocialDistribution>(req.Distribution, true, out var dist) ? dist : SocialDistribution.Buffer,
+            WarmrAccount = req.WarmrAccount ?? string.Empty,
             PromptTemplate = req.PromptTemplate ?? string.Empty,
         };
         _db.PostingChannels.Add(ch);
@@ -231,18 +239,70 @@ public class SocialPostsController : ControllerBase
     }
 
     /// <summary>
-    /// Auto-genera la imagen del posteo con IA, la guarda en la DB y deja el AssetUrl
-    /// apuntando al endpoint público. El front lo previsualiza antes de subir a Buffer.
+    /// Genera un posteo ORIGINAL inspirado en un post de competencia que el usuario curó.
+    /// Si se pasa channelId, hereda red/formato/asset/distribución de ese canal.
+    /// </summary>
+    [HttpPost("generate-from-inspiration")]
+    public async Task<IActionResult> GenerateFromInspiration([FromBody] InspirationRequest req, CancellationToken ct)
+    {
+        var profile = await _db.PostingProfiles.FirstOrDefaultAsync(p => p.ProductKey == req.ProductKey, ct);
+        if (profile == null) return NotFound(new { error = "No hay PostingProfile para ese producto." });
+        if (!_generator.IsConfigured) return BadRequest(new { error = "Claude no está configurado (falta Claude:ApiKey)." });
+
+        var insp = await _db.CompetitorPosts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == req.CompetitorPostId, ct);
+        if (insp == null) return NotFound(new { error = "No existe ese post de inspiración." });
+        var comp = await _db.Competitors.AsNoTracking().FirstOrDefaultAsync(c => c.Id == insp.CompetitorId, ct);
+        var sourceLabel = comp != null ? $"{comp.Platform} @{comp.Handle}" : "competencia";
+
+        PostingChannel? ch = null;
+        if (req.ChannelId.HasValue)
+        {
+            ch = await _db.PostingChannels.FirstOrDefaultAsync(c => c.Id == req.ChannelId.Value, ct);
+            if (ch == null) return NotFound(new { error = "No existe ese canal." });
+        }
+
+        var recent = await _db.SocialPosts.Where(s => s.ProductKey == req.ProductKey)
+            .OrderByDescending(s => s.CreatedAt).Select(s => s.Concept).Take(15).ToListAsync(ct);
+
+        var gen = await _generator.GenerateFromInspirationAsync(profile, ch, insp.Caption ?? "", insp.Hashtags, sourceLabel, recent, ct);
+        if (gen == null) return StatusCode(502, new { error = "El generador no devolvió contenido." });
+
+        var post = new SocialPost
+        {
+            Id = Guid.NewGuid(), ProductKey = req.ProductKey,
+            Platform = ch?.Platform ?? SocialPlatform.Instagram,
+            BufferChannelId = ch?.BufferChannelId ?? string.Empty,
+            Format = Enum.TryParse<SocialPostFormat>(gen.Format, true, out var f) ? f : (ch?.Format ?? SocialPostFormat.Post),
+            AssetKind = gen.AssetKind == "video" ? SocialAssetKind.Video : SocialAssetKind.Image,
+            ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt,
+            Caption = gen.Caption, Hashtags = gen.Hashtags, GenerationModel = "claude",
+            RawJson = gen.RawJson, Status = SocialPostStatus.DraftReady,
+            InspirationPostId = insp.Id,
+            Target = ch?.Distribution ?? SocialDistribution.Buffer,
+            WarmrAccount = ch?.WarmrAccount ?? string.Empty,
+        };
+        _db.SocialPosts.Add(post);
+        await _db.SaveChangesAsync(ct);
+        return Ok(post);
+    }
+
+    /// <summary>
+    /// Auto-genera el asset del posteo con IA (imagen → AiImageGenerator, video → fal.ai),
+    /// lo guarda en la DB y deja el AssetUrl apuntando al endpoint público. El front lo
+    /// previsualiza antes de distribuir (Buffer o cola Warmr).
     /// </summary>
     [HttpPost("{id:guid}/generate-asset")]
     public async Task<IActionResult> GenerateAsset(Guid id, CancellationToken ct)
     {
         var post = await _db.SocialPosts.FirstOrDefaultAsync(s => s.Id == id, ct);
         if (post == null) return NotFound();
-        if (post.AssetKind != SocialAssetKind.Image)
-            return BadRequest(new { error = "Por ahora solo se generan imágenes (el video sigue siendo manual)." });
-        if (!_imageGen.IsConfigured)
-            return BadRequest(new { error = "El generador de imagen no está configurado (falta ImageGen:ApiKey)." });
+        var gen = GeneratorFor(post.AssetKind);
+        if (gen == null)
+            return BadRequest(new { error = $"No hay generador para asset '{post.AssetKind}'." });
+        if (!gen.IsConfigured)
+            return BadRequest(new { error = post.AssetKind == SocialAssetKind.Video
+                ? "El generador de video (fal.ai) no está configurado (falta Fal:ApiKey / FAL_KEY)."
+                : "El generador de imagen no está configurado (falta ImageGen:ApiKey)." });
         var profile = await _db.PostingProfiles.FirstOrDefaultAsync(p => p.ProductKey == post.ProductKey, ct);
         if (profile == null) return NotFound(new { error = "Falta el PostingProfile de la app." });
 
@@ -250,11 +310,11 @@ public class SocialPostsController : ControllerBase
         post.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
 
-        var asset = await _imageGen.GenerateForPostAsync(profile, post, ct);
+        var asset = await gen.GenerateForPostAsync(profile, post, ct);
         if (asset == null)
         {
             post.Status = SocialPostStatus.Error;
-            post.Error = "No se pudo generar la imagen (revisá la API key / logs del proveedor).";
+            post.Error = "No se pudo generar el asset (revisá la API key / logs del proveedor).";
             post.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
             return StatusCode(502, new { error = post.Error });
@@ -275,6 +335,8 @@ public class SocialPostsController : ControllerBase
     /// </summary>
     [AllowAnonymous]
     [HttpGet("assets/{id:guid}.png")]
+    [HttpGet("assets/{id:guid}.mp4")]
+    [HttpGet("assets/{id:guid}")]
     public async Task<IActionResult> GetAsset(Guid id, CancellationToken ct)
     {
         var asset = await _db.SocialPostAssets.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
@@ -336,6 +398,49 @@ public class SocialPostsController : ControllerBase
         return res.Success ? Ok(post) : BadRequest(new { error = res.Error, post });
     }
 
+    // ── Distribución por Warmr (handoff: cola → subida manual a Cloud Drop) ──
+    /// <summary>Modo de distribución Warmr (handoff vs auto) para que la UI lo muestre.</summary>
+    [HttpGet("warmr/info")]
+    public IActionResult WarmrInfo() => Ok(new { mode = _warmr.Mode, isConfigured = _warmr.IsConfigured });
+
+    /// <summary>
+    /// Despacha el posteo a Warmr. En handoff lo deja ReadyForWarmr: aparece en la cola
+    /// con su asset + caption + cuenta + slot para que lo subas a mano a Cloud Drop.
+    /// </summary>
+    [HttpPost("{id:guid}/dispatch-warmr")]
+    public async Task<IActionResult> DispatchWarmr(Guid id, [FromBody] DispatchWarmrRequest? req, CancellationToken ct)
+    {
+        var post = await _db.SocialPosts.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (post == null) return NotFound();
+        if (!string.IsNullOrWhiteSpace(req?.WarmrAccount)) post.WarmrAccount = req!.WarmrAccount!;
+        var res = await _warmr.DispatchAsync(post, ct);
+        await _db.SaveChangesAsync(ct);
+        return res.Success ? Ok(post) : BadRequest(new { error = res.Error, post });
+    }
+
+    /// <summary>Cola de handoff: posteos listos para subir a Warmr Cloud Drop.</summary>
+    [HttpGet("warmr/queue")]
+    public async Task<IActionResult> WarmrQueue([FromQuery] string? productKey, CancellationToken ct)
+    {
+        var q = _db.SocialPosts.AsNoTracking().Where(s => s.Status == SocialPostStatus.ReadyForWarmr);
+        if (!string.IsNullOrWhiteSpace(productKey)) q = q.Where(s => s.ProductKey == productKey);
+        var posts = await q.OrderBy(s => s.ScheduledAt ?? s.CreatedAt).Take(200).ToListAsync(ct);
+        return Ok(posts);
+    }
+
+    /// <summary>Marca un posteo de la cola como ya subido a Warmr (lo sacó el humano).</summary>
+    [HttpPost("{id:guid}/warmr-uploaded")]
+    public async Task<IActionResult> WarmrUploaded(Guid id, CancellationToken ct)
+    {
+        var post = await _db.SocialPosts.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (post == null) return NotFound();
+        post.Status = SocialPostStatus.WarmrUploaded;
+        post.PostedAt = DateTimeOffset.UtcNow;
+        post.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(post);
+    }
+
     [HttpPost("{id:guid}/reject")]
     public async Task<IActionResult> Reject(Guid id, CancellationToken ct)
     {
@@ -360,12 +465,21 @@ public class SocialPostsController : ControllerBase
     }
 
     public class GenerateRequest { public string ProductKey { get; set; } = string.Empty; }
+    public class InspirationRequest
+    {
+        public string ProductKey { get; set; } = string.Empty;
+        public Guid CompetitorPostId { get; set; }
+        public Guid? ChannelId { get; set; }
+    }
+    public class DispatchWarmrRequest { public string? WarmrAccount { get; set; } }
     public class UpdateChannelRequest
     {
         public bool? Enabled { get; set; }
         public string? BufferChannelId { get; set; }
         public string? Format { get; set; }
         public string? AssetKind { get; set; }
+        public string? Distribution { get; set; }
+        public string? WarmrAccount { get; set; }
         public string? PromptTemplate { get; set; }
     }
     public class CreateChannelRequest
@@ -374,6 +488,8 @@ public class SocialPostsController : ControllerBase
         public string Platform { get; set; } = string.Empty;
         public string? Format { get; set; }
         public string? AssetKind { get; set; }
+        public string? Distribution { get; set; }
+        public string? WarmrAccount { get; set; }
         public string? PromptTemplate { get; set; }
     }
     public class PushRequest

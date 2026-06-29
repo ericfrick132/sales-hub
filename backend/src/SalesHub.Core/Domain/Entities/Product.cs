@@ -65,6 +65,13 @@ public class Product
     // así que se opta-in por producto.
     public bool AutoReengage { get; set; } = true;
 
+    // Transporte gestionado por la APP: si true, sales-hub NO manda el WhatsApp de este
+    // producto por Evolution. Deja los mensajes en el outbox para que la app los baje
+    // (GET /api/hub/outbound), los mande por SU propia Evolution y ackee (/hub/outbound/ack).
+    // El pacing/cap y el cerebro (IA/onboarding) se quedan en sales-hub. Default false =
+    // sales-hub manda como siempre (no rompe nada).
+    public bool AppManagedTransport { get; set; } = false;
+
     // Instrucciones de venta para el agente de IA que sugiere respuestas en
     // Conversaciones (tono, objeciones comunes, cuándo mandar precio/checkout).
     // Texto libre por vertical. Vacío = el agente usa solo las instrucciones base.

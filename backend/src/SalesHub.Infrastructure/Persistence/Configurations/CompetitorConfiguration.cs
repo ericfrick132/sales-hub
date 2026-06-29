@@ -30,7 +30,10 @@ public class CompetitorPostConfiguration : IEntityTypeConfiguration<CompetitorPo
         b.Property(x => x.Caption).HasColumnType("text");
         b.Property(x => x.Hashtags).HasColumnType("text[]");
         b.Property(x => x.RawJson).HasColumnType("jsonb");
+        b.Property(x => x.MediaUrl).HasMaxLength(1024);
+        b.Property(x => x.ThumbnailUrl).HasMaxLength(1024);
         b.HasIndex(x => new { x.CompetitorId, x.ExternalPostId }).IsUnique();
+        b.HasIndex(x => x.Curated);
         b.HasOne(x => x.Competitor)
             .WithMany(x => x.Posts)
             .HasForeignKey(x => x.CompetitorId)

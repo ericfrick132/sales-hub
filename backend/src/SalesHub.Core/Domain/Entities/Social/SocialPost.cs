@@ -20,7 +20,7 @@ public enum SocialPostFormat
     Video = 5
 }
 
-/// <summary>Qué asset lleva → decide el generador (imagen=Canva, video=Higgsfield).</summary>
+/// <summary>Qué asset lleva → decide el generador (imagen=AiImageGenerator, video=fal.ai).</summary>
 public enum SocialAssetKind
 {
     Image = 1,
@@ -28,10 +28,22 @@ public enum SocialAssetKind
 }
 
 /// <summary>
+/// Por dónde se distribuye el posteo. Buffer = API oficial (cuentas business).
+/// Warmr = posteo nativo por device real (cuentas frescas/multi-cuenta, video corto).
+/// Warmr no tiene API → el tramo final es una cola de handoff (subida manual a Cloud Drop).
+/// </summary>
+public enum SocialDistribution
+{
+    Buffer = 1,
+    Warmr = 2
+}
+
+/// <summary>
 /// Ciclo de vida de un posteo:
-/// Idea → (genera asset) GeneratingAsset → DraftReady → (sube a Buffer) PushedToBuffer
-/// → Scheduled/Posted. Rejected/Error son terminales. Empezamos siempre como draft
-/// en Buffer; el humano aprueba/agenda allá.
+/// Idea → (genera asset) GeneratingAsset → DraftReady → distribución.
+/// Buffer: → PushedToBuffer → Scheduled/Posted.
+/// Warmr (sin API): → ReadyForWarmr (cola de handoff) → WarmrUploaded (el humano lo subió a Cloud Drop).
+/// Rejected/Error son terminales.
 /// </summary>
 public enum SocialPostStatus
 {
@@ -42,7 +54,9 @@ public enum SocialPostStatus
     Scheduled = 5,
     Posted = 6,
     Rejected = 7,
-    Error = 8
+    Error = 8,
+    ReadyForWarmr = 9,
+    WarmrUploaded = 10
 }
 
 /// <summary>
@@ -60,11 +74,21 @@ public class SocialPost
     public SocialAssetKind AssetKind { get; set; } = SocialAssetKind.Image;
     public SocialPostStatus Status { get; set; } = SocialPostStatus.Idea;
 
+    // ── Distribución ──────────────────────────────────────────────────────
+    /// <summary>Por dónde sale: Buffer (API) o Warmr (device real, handoff).</summary>
+    public SocialDistribution Target { get; set; } = SocialDistribution.Buffer;
+    /// <summary>Cuenta/handle de Warmr destino (cuando Target = Warmr).</summary>
+    public string WarmrAccount { get; set; } = string.Empty;
+
+    // ── Inspiración ───────────────────────────────────────────────────────
+    /// <summary>CompetitorPost que inspiró este posteo (si se generó por replicación).</summary>
+    public Guid? InspirationPostId { get; set; }
+
     // ── Contenido generado ────────────────────────────────────────────────
     public string ContentPillar { get; set; } = string.Empty;
     /// <summary>Concepto/idea del posteo (lo que comunica).</summary>
     public string Concept { get; set; } = string.Empty;
-    /// <summary>Prompt para el generador de asset (Higgsfield/Canva).</summary>
+    /// <summary>Prompt para el generador de asset (fal.ai para video / AiImageGenerator para imagen).</summary>
     public string Prompt { get; set; } = string.Empty;
     public string Caption { get; set; } = string.Empty;
     public List<string> Hashtags { get; set; } = new();

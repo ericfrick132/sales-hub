@@ -40,6 +40,11 @@ services:
       ImageGen__Model: "${IMAGEGEN_MODEL:-gpt-image-1.5}"
       ImageGen__ApiKey: "${IMAGEGEN_API_KEY:-}"
       ImageGen__PublicBaseUrl: "${IMAGEGEN_PUBLIC_BASE_URL:-http://localhost:8080}"
+      Buffer__Token: "${BUFFER_TOKEN:-}"
+      Fal__ApiKey: "${FAL_KEY:-}"
+      Fal__VideoModel: "${FAL_VIDEO_MODEL:-fal-ai/bytedance/seedance/v1/pro/text-to-video}"
+      Fal__PublicBaseUrl: "${IMAGEGEN_PUBLIC_BASE_URL:-http://localhost:8080}"
+      Warmr__Mode: "${WARMR_MODE:-handoff}"
     ports:
       - "8080:8080"
 
@@ -62,6 +67,11 @@ services:
       ImageGen__Model: "${IMAGEGEN_MODEL:-gpt-image-1.5}"
       ImageGen__ApiKey: "${IMAGEGEN_API_KEY:-}"
       ImageGen__PublicBaseUrl: "${IMAGEGEN_PUBLIC_BASE_URL:-http://localhost:8080}"
+      Buffer__Token: "${BUFFER_TOKEN:-}"
+      Fal__ApiKey: "${FAL_KEY:-}"
+      Fal__VideoModel: "${FAL_VIDEO_MODEL:-fal-ai/bytedance/seedance/v1/pro/text-to-video}"
+      Fal__PublicBaseUrl: "${IMAGEGEN_PUBLIC_BASE_URL:-http://localhost:8080}"
+      Warmr__Mode: "${WARMR_MODE:-handoff}"
       TZ: "America/Argentina/Buenos_Aires"
 
   frontend:

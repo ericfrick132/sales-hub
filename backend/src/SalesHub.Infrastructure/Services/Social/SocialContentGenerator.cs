@@ -23,6 +23,16 @@ public class SocialContentGenerator
 
     public bool IsConfigured => _claude.IsConfigured;
 
+    /// <summary>
+    /// Receta para que Claude escriba prompts de VIDEO de calidad (reemplaza la "magia"
+    /// de apps tipo Higgsfield: la ponemos en el system prompt y se la pasamos a fal.ai).
+    /// </summary>
+    private const string VideoPromptRecipe =
+        "IMPORTANTE — si el assetKind es 'video', el campo 'prompt' (en INGLÉS) tiene que ser un prompt de video bien armado con esta estructura: " +
+        "[sujeto + escena] + [acción/movimiento concreto] + [movimiento de cámara: dolly in/pan/handheld/orbit/static] + " +
+        "[tipo de plano: wide/medium/close-up] + [luz y mood] + [estilo visual] + [ritmo]. " +
+        "Es para un clip VERTICAL corto (~5s) con un hook visual fuerte en el primer segundo. No pidas texto en pantalla largo.";
+
     public async Task<GeneratedPost?> GenerateAsync(PostingProfile p, IReadOnlyList<string> recentConcepts, CancellationToken ct = default)
     {
         if (!_claude.IsConfigured) { _log.LogWarning("Claude no configurado — no se genera contenido"); return null; }
@@ -41,6 +51,7 @@ public class SocialContentGenerator
         sys.AppendLine("El campo 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta y estética de la marca.");
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un objeto JSON válido, sin texto extra ni markdown, con estas claves:");
         sys.AppendLine("{\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine(VideoPromptRecipe);
 
         var user = new StringBuilder();
         user.AppendLine("Generá 1 idea de posteo nueva. Elegí un pilar y un formato adecuado.");
@@ -102,6 +113,7 @@ public class SocialContentGenerator
         sys.AppendLine();
         sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies). Caption en español rioplatense (voseo). El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"caption\":string, \"hashtags\":string[]}");
+        if (ch.AssetKind == SocialAssetKind.Video) sys.AppendLine(VideoPromptRecipe);
 
         var user = new StringBuilder();
         user.AppendLine($"Generá 1 idea nueva para {ch.Platform} ({ch.Format}).");
@@ -138,6 +150,90 @@ public class SocialContentGenerator
             return null;
         }
     }
+
+    /// <summary>
+    /// Genera una adaptación ORIGINAL inspirada en un post de la competencia que el
+    /// usuario marcó como "me gusta esto, replicalo". Toma el hook/ángulo/estructura
+    /// del post de referencia pero lo reescribe para NUESTRA marca y producto (no es
+    /// una copia, no menciona al competidor). Si se pasa un canal, fija formato/asset.
+    /// </summary>
+    public async Task<GeneratedPost?> GenerateFromInspirationAsync(
+        PostingProfile p, PostingChannel? ch,
+        string inspirationCaption, IReadOnlyList<string> inspirationHashtags, string inspirationSource,
+        IReadOnlyList<string> recentConcepts, CancellationToken ct = default)
+    {
+        if (!_claude.IsConfigured) { _log.LogWarning("Claude no configurado — no se genera inspiración"); return null; }
+
+        var platform = ch?.Platform.ToString() ?? "Instagram/TikTok";
+        var sys = new StringBuilder();
+        sys.AppendLine($"Sos el generador de contenido social del producto '{p.ProductKey}' para la red {platform}.");
+        sys.AppendLine($"Audiencia: {p.TargetAudience}.");
+        sys.AppendLine($"Tono/voz de marca: {p.BrandVoice}");
+        sys.AppendLine($"Guía de marca: {p.BrandGuidelines}");
+        sys.AppendLine($"Paleta (no la cambies): {p.BrandColorsJson}. Fuentes: {p.BrandFonts}.");
+        if (p.ContentPillars.Count > 0)
+            sys.AppendLine($"Pilares de contenido: {string.Join(" | ", p.ContentPillars)}.");
+        if (ch != null && !string.IsNullOrWhiteSpace(ch.PromptTemplate))
+        {
+            sys.AppendLine();
+            sys.AppendLine("INSTRUCCIONES ESPECÍFICAS DE ESTA RED:");
+            sys.AppendLine(ch.PromptTemplate);
+        }
+        sys.AppendLine();
+        sys.AppendLine("Te paso un posteo de la COMPETENCIA que funcionó bien. Tu tarea: crear una adaptación ORIGINAL para NUESTRA marca.");
+        sys.AppendLine("Tomá el hook, el ángulo y la estructura que lo hacen bueno, pero reescribilo 100% para nuestro producto y audiencia.");
+        sys.AppendLine("NO lo copies textual. NO menciones ni nombres al competidor. Caption en español rioplatense (voseo).");
+        sys.AppendLine("El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
+        if (ch != null)
+            sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies).");
+        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine(VideoPromptRecipe);
+
+        var user = new StringBuilder();
+        user.AppendLine("=== POSTEO DE REFERENCIA (competencia) ===");
+        user.AppendLine($"Red de origen: {inspirationSource}");
+        user.AppendLine($"Caption: {Truncate(inspirationCaption, 1200)}");
+        if (inspirationHashtags.Count > 0)
+            user.AppendLine($"Hashtags: {string.Join(" ", inspirationHashtags.Take(20).Select(t => "#" + t.TrimStart('#')))}");
+        user.AppendLine("=== FIN REFERENCIA ===");
+        user.AppendLine();
+        user.AppendLine("Generá 1 adaptación original para nuestra marca basada en lo que hace bueno a ese posteo.");
+        if (recentConcepts.Count > 0)
+        {
+            user.AppendLine("Evitá repetir estos conceptos recientes nuestros:");
+            foreach (var c in recentConcepts.Take(15)) user.AppendLine($"- {c}");
+        }
+        user.AppendLine("Recordá: SOLO el JSON.");
+
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), "social", ct);
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var json = ExtractJson(raw);
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            var hashtags = new List<string>();
+            if (r.TryGetProperty("hashtags", out var h) && h.ValueKind == JsonValueKind.Array)
+                hashtags.AddRange(h.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0));
+            return new GeneratedPost(
+                Pillar: Str(r, "pillar"),
+                // Si hay canal, manda el canal; si no, lo que eligió Claude.
+                AssetKind: ch != null ? (ch.AssetKind == SocialAssetKind.Video ? "video" : "image") : Str(r, "assetKind", "image").ToLowerInvariant(),
+                Format: ch != null ? ch.Format.ToString().ToLowerInvariant() : Str(r, "format", "post").ToLowerInvariant(),
+                Concept: Str(r, "concept"),
+                Prompt: Str(r, "prompt"),
+                Caption: Str(r, "caption"),
+                Hashtags: hashtags,
+                RawJson: json);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "No pude parsear JSON de Claude (inspiración)");
+            return null;
+        }
+    }
+
+    private static string Truncate(string s, int n) => string.IsNullOrEmpty(s) || s.Length <= n ? (s ?? "") : s[..n] + "…";
 
     private static string Str(JsonElement e, string key, string def = "") =>
         e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? def) : def;

@@ -24,6 +24,8 @@ import InstagramFollow from './pages/InstagramFollow';
 import InstagramAccounts from './pages/InstagramAccounts';
 import Posteos from './pages/Posteos';
 import CalendarPosteos from './pages/CalendarPosteos';
+import Inspiracion from './pages/Inspiracion';
+import WarmrQueue from './pages/WarmrQueue';
 import Seo from './pages/Seo';
 import Objetivos from './pages/Objetivos';
 import ReglasIa from './pages/ReglasIa';
@@ -83,6 +85,8 @@ export default function App() {
             <Route path="/trends" element={<Trends />} />
             <Route path="/posteos" element={<Posteos />} />
             <Route path="/calendario" element={<CalendarPosteos />} />
+            <Route path="/inspiracion" element={<Inspiracion />} />
+            <Route path="/warmr" element={<WarmrQueue />} />
           </>
         )}
         <Route path="*" element={<Navigate to="/" replace />} />

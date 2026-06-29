@@ -9,6 +9,8 @@ namespace SalesHub.Core.Abstractions;
 /// </summary>
 public interface ISocialAssetGenerator
 {
+    /// <summary>¿Está configurado el proveedor (API key presente)?</summary>
+    bool IsConfigured { get; }
     /// <summary>"image" | "video".</summary>
     bool CanHandle(string assetKind);
     Task<AssetResult?> GenerateAsync(string prompt, string assetKind, CancellationToken ct = default);

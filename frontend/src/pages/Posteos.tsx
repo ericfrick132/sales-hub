@@ -12,12 +12,14 @@ interface PostingProfile {
 }
 interface PostingChannel {
   id: string; productKey: string; platform: string; enabled: boolean;
-  bufferChannelId: string; format: string; assetKind: string; promptTemplate: string;
+  bufferChannelId: string; format: string; assetKind: string;
+  distribution: string; warmrAccount: string; promptTemplate: string;
 }
 interface SocialPost {
   id: string; productKey: string; platform: string; format: string; assetKind: string;
   status: string; contentPillar: string; concept: string; caption: string;
-  hashtags: string[]; assetUrl?: string; bufferChannelId: string; error?: string;
+  hashtags: string[]; assetUrl?: string; thumbnailUrl?: string; target?: string;
+  bufferChannelId: string; error?: string;
 }
 
 const PLATFORMS = ['Instagram', 'TikTok', 'YouTube', 'Facebook', 'Twitter', 'LinkedIn'];
@@ -26,6 +28,10 @@ const FORMATS = ['Story', 'Reel', 'Post', 'Carousel', 'Video'];
 function colorOf(json: string, key: string, def: string) {
   try { return JSON.parse(json)[key] ?? def; } catch { return def; }
 }
+
+const isVideoAsset = (p: { assetKind: string; assetUrl?: string }) =>
+  p.assetKind === 'Video' || (p.assetUrl?.toLowerCase().endsWith('.mp4') ?? false);
+const isWarmr = (p: { target?: string }) => p.target === 'Warmr';
 
 export default function Posteos() {
   const qc = useQueryClient();
@@ -73,6 +79,7 @@ export default function Posteos() {
       await api.put(`/posteos/posting-channels/${c.id}`, {
         enabled: c.enabled, bufferChannelId: c.bufferChannelId,
         format: c.format, assetKind: c.assetKind, promptTemplate: c.promptTemplate,
+        distribution: c.distribution, warmrAccount: c.warmrAccount,
       });
       toast.success('Canal guardado');
       qc.invalidateQueries({ queryKey: ['posteos-channels', productKey] });
@@ -95,13 +102,14 @@ export default function Posteos() {
     } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló', { id: t }); }
   }
 
-  // Genera la imagen con IA (la guarda en la DB y deja el assetUrl listo). Devuelve el post actualizado.
+  // Genera el asset con IA (imagen o video; lo guarda en la DB y deja el assetUrl listo). Devuelve el post actualizado.
   async function generateAsset(p: SocialPost): Promise<SocialPost | null> {
     setBusyAsset(p.id);
-    const t = toast.loading('Generando imagen con IA…');
+    const kind = p.assetKind === 'Video' ? 'video' : 'imagen';
+    const t = toast.loading(`Generando ${kind} con IA…${p.assetKind === 'Video' ? ' (puede tardar un minuto)' : ''}`);
     try {
       const { data } = await api.post<SocialPost>(`/posteos/${p.id}/generate-asset`);
-      toast.success('Imagen generada', { id: t });
+      toast.success(`${kind === 'video' ? 'Video' : 'Imagen'} generado`, { id: t });
       qc.invalidateQueries({ queryKey: ['posteos-posts', productKey] });
       return data;
     } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló', { id: t }); return null; }
@@ -115,7 +123,7 @@ export default function Posteos() {
   }
 
   async function pushPost(p: SocialPost) {
-    if (!p.assetUrl) { toast.error('Generá la imagen primero'); return; }
+    if (!p.assetUrl) { toast.error('Generá el asset primero'); return; }
     const t = toast.loading('Subiendo a Buffer (draft)…');
     try {
       await api.post(`/posteos/${p.id}/push`, { assetUrl: p.assetUrl });
@@ -124,6 +132,21 @@ export default function Posteos() {
       qc.invalidateQueries({ queryKey: ['posteos-posts', productKey] });
     } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló', { id: t }); }
   }
+
+  // Warmr no tiene API → manda el posteo a la cola de handoff (subida manual a Cloud Drop).
+  async function dispatchWarmr(p: SocialPost) {
+    if (!p.assetUrl) { toast.error('Generá el asset primero'); return; }
+    const t = toast.loading('Enviando a la cola de Warmr…');
+    try {
+      await api.post(`/posteos/${p.id}/dispatch-warmr`, {});
+      toast.success('En la cola de Warmr — subí el clip a Cloud Drop', { id: t });
+      setPreview(null);
+      qc.invalidateQueries({ queryKey: ['posteos-posts', productKey] });
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló', { id: t }); }
+  }
+
+  // Distribuye según el destino del posteo (Warmr o Buffer).
+  const distribute = (p: SocialPost) => (isWarmr(p) ? dispatchWarmr(p) : pushPost(p));
 
   async function rejectPost(id: string) {
     try { await api.post(`/posteos/${id}/reject`); qc.invalidateQueries({ queryKey: ['posteos-posts', productKey] }); }
@@ -217,6 +240,7 @@ export default function Posteos() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[11px] font-mono bg-slate-100 rounded px-1.5 py-0.5">{p.platform} · {p.format} · {p.assetKind}</span>
                       <StatusChip status={p.status} />
+                      <span className={`text-[11px] rounded px-1.5 py-0.5 ${isWarmr(p) ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'}`}>{isWarmr(p) ? '→ Warmr' : '→ Buffer'}</span>
                       {p.contentPillar && <span className="text-[11px] text-slate-500">{p.contentPillar}</span>}
                     </div>
                     <div className="font-medium mt-1">{p.concept}</div>
@@ -224,20 +248,20 @@ export default function Posteos() {
                     {p.hashtags?.length > 0 && <div className="text-[11px] text-sky-600 mt-1">{p.hashtags.map((h) => (h.startsWith('#') ? h : '#' + h)).join(' ')}</div>}
                     {p.error && <div className="text-[11px] text-red-600 mt-1">{p.error}</div>}
                     {p.assetUrl && (
-                      <button type="button" onClick={() => setPreview(p)} className="mt-2 block" title="Ver imagen">
-                        <img src={p.assetUrl} alt="preview" className="w-28 h-28 object-cover rounded-lg border hover:opacity-90" />
-                      </button>
+                      isVideoAsset(p)
+                        ? <video src={p.assetUrl} controls className="mt-2 w-40 rounded-lg border" />
+                        : <button type="button" onClick={() => setPreview(p)} className="mt-2 block" title="Ver imagen">
+                            <img src={p.assetUrl} alt="preview" className="w-28 h-28 object-cover rounded-lg border hover:opacity-90" />
+                          </button>
                     )}
                     <div className="flex gap-2 mt-2 flex-wrap items-center">
-                      {p.assetKind === 'Image' && (
-                        <button className="btn-secondary text-[11px]" disabled={busyAsset === p.id}
-                          onClick={() => generateAndPreview(p)}>
-                          {busyAsset === p.id ? 'Generando…' : p.assetUrl ? 'Regenerar imagen' : 'Generar imagen'}
-                        </button>
-                      )}
+                      <button className="btn-secondary text-[11px]" disabled={busyAsset === p.id}
+                        onClick={() => generateAndPreview(p)}>
+                        {busyAsset === p.id ? 'Generando…' : p.assetUrl ? `Regenerar ${p.assetKind === 'Video' ? 'video' : 'imagen'}` : `Generar ${p.assetKind === 'Video' ? 'video' : 'imagen'}`}
+                      </button>
                       <button className="btn-primary text-[11px] disabled:opacity-40 disabled:cursor-not-allowed"
-                        disabled={!p.assetUrl} title={!p.assetUrl ? 'Generá la imagen primero' : ''}
-                        onClick={() => pushPost(p)}>Subir a Buffer (draft)</button>
+                        disabled={!p.assetUrl} title={!p.assetUrl ? 'Generá el asset primero' : ''}
+                        onClick={() => distribute(p)}>{isWarmr(p) ? 'Enviar a cola Warmr' : 'Subir a Buffer (draft)'}</button>
                       <button className="btn-secondary text-[11px]" onClick={() => rejectPost(p.id)}>Rechazar</button>
                       <button className="text-[11px] text-red-600" onClick={() => deletePost(p.id)}>Borrar</button>
                     </div>
@@ -255,7 +279,7 @@ export default function Posteos() {
           post={preview}
           busy={busyAsset === preview.id}
           onClose={() => setPreview(null)}
-          onPush={() => pushPost(preview)}
+          onDistribute={() => distribute(preview)}
           onRegenerate={() => generateAndPreview(preview)}
         />
       )}
@@ -263,8 +287,8 @@ export default function Posteos() {
   );
 }
 
-function PreviewModal({ post, busy, onClose, onPush, onRegenerate }: {
-  post: SocialPost; busy: boolean; onClose: () => void; onPush: () => void; onRegenerate: () => void;
+function PreviewModal({ post, busy, onClose, onDistribute, onRegenerate }: {
+  post: SocialPost; busy: boolean; onClose: () => void; onDistribute: () => void; onRegenerate: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -274,12 +298,14 @@ function PreviewModal({ post, busy, onClose, onPush, onRegenerate }: {
           <button className="text-slate-400 hover:text-slate-600 text-xl leading-none" onClick={onClose}>×</button>
         </div>
         {post.assetUrl
-          ? <img src={post.assetUrl} alt="preview" className="w-full rounded-lg border" />
-          : <div className="text-sm text-slate-500 py-10 text-center">Sin imagen.</div>}
+          ? (isVideoAsset(post)
+              ? <video src={post.assetUrl} controls className="w-full rounded-lg border" />
+              : <img src={post.assetUrl} alt="preview" className="w-full rounded-lg border" />)
+          : <div className="text-sm text-slate-500 py-10 text-center">Sin asset.</div>}
         <div className="text-xs text-slate-600 mt-2 whitespace-pre-wrap">{post.caption}</div>
         <div className="flex gap-2 mt-3">
-          <button className="btn-primary text-sm flex-1 disabled:opacity-40" disabled={!post.assetUrl || busy} onClick={onPush}>
-            Subir a Buffer (draft)
+          <button className="btn-primary text-sm flex-1 disabled:opacity-40" disabled={!post.assetUrl || busy} onClick={onDistribute}>
+            {isWarmr(post) ? 'Enviar a cola Warmr' : 'Subir a Buffer (draft)'}
           </button>
           <button className="btn-secondary text-sm disabled:opacity-40" disabled={busy} onClick={onRegenerate}>
             {busy ? 'Generando…' : 'Regenerar'}
@@ -355,8 +381,15 @@ function ChannelRow({ channel, onSave, onGenerate }: { channel: PostingChannel; 
           <option value="Image">Imagen</option>
           <option value="Video">Video</option>
         </select>
-        <input className="input flex-1 min-w-[140px]" placeholder="Buffer channelId" value={c.bufferChannelId}
-          onChange={(e) => set('bufferChannelId', e.target.value)} />
+        <select className="input w-32" value={c.distribution} onChange={(e) => set('distribution', e.target.value)} title="Por dónde se distribuye">
+          <option value="Buffer">→ Buffer (API)</option>
+          <option value="Warmr">→ Warmr (device)</option>
+        </select>
+        {c.distribution === 'Warmr'
+          ? <input className="input flex-1 min-w-[140px]" placeholder="Cuenta Warmr (@handle)" value={c.warmrAccount}
+              onChange={(e) => set('warmrAccount', e.target.value)} />
+          : <input className="input flex-1 min-w-[140px]" placeholder="Buffer channelId" value={c.bufferChannelId}
+              onChange={(e) => set('bufferChannelId', e.target.value)} />}
       </div>
       <textarea className="input w-full mt-2 text-xs font-mono" rows={4} placeholder="Prompt propio de esta red para esta app…"
         value={c.promptTemplate} onChange={(e) => set('promptTemplate', e.target.value)} />
@@ -373,6 +406,7 @@ function StatusChip({ status }: { status: string }) {
     Idea: 'bg-slate-100 text-slate-600', DraftReady: 'bg-sky-100 text-sky-700',
     GeneratingAsset: 'bg-amber-100 text-amber-700', PushedToBuffer: 'bg-emerald-100 text-emerald-700',
     Scheduled: 'bg-emerald-100 text-emerald-700', Posted: 'bg-emerald-200 text-emerald-800',
+    ReadyForWarmr: 'bg-violet-100 text-violet-700', WarmrUploaded: 'bg-emerald-200 text-emerald-800',
     Rejected: 'bg-slate-200 text-slate-500', Error: 'bg-red-100 text-red-700',
   };
   return <span className={`text-[11px] rounded px-1.5 py-0.5 ${map[status] ?? 'bg-slate-100'}`}>{status}</span>;

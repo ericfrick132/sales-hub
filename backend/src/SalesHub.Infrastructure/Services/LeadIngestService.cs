@@ -46,6 +46,17 @@ public class LeadIngestService : ILeadIngestService
         _db.Leads.Add(lead);
 
         var sellerId = await _assigner.PickForLeadAsync(req.ProductKey, null, null, ct);
+        // Transporte gestionado por la app: el assigner sólo devuelve vendedores con instancia
+        // CONECTADA en sales-hub. Para productos relay no hace falta (manda la app), así que
+        // caemos a cualquier vendedor activo que maneje el producto, sólo para tracking/CRM.
+        if (sellerId is null && product.AppManagedTransport)
+        {
+            var actives = await _db.Sellers.Where(s => s.IsActive).ToListAsync(ct);
+            var match = actives.FirstOrDefault(s =>
+                s.VerticalsWhitelist == null || s.VerticalsWhitelist.Count == 0
+                || s.VerticalsWhitelist.Contains(req.ProductKey));
+            sellerId = match?.Id;
+        }
         if (sellerId is not null)
         {
             var seller = await _db.Sellers.Include(s => s.EvolutionInstance)
@@ -56,10 +67,15 @@ public class LeadIngestService : ILeadIngestService
                 lead.AssignedAt = DateTimeOffset.UtcNow;
                 lead.Status = LeadStatus.Assigned;
                 lead.RenderedMessage = _renderer.Render(lead, product, seller);
-                if (seller.EvolutionInstance is not null && lead.RenderedMessage is not null)
+                // Relay: encolamos el opener aunque el vendedor no tenga instancia conectada en
+                // sales-hub (la app provee el transporte). No-relay: igual que antes.
+                var canQueue = lead.RenderedMessage is not null
+                    && (seller.EvolutionInstance is not null || product.AppManagedTransport);
+                if (canQueue)
                 {
                     OutboxEnqueueHelper.EnqueueLeadMessages(
-                        _db, _renderer, lead, product, seller, phone, seller.EvolutionInstance.InstanceName);
+                        _db, _renderer, lead, product, seller, phone,
+                        seller.EvolutionInstance?.InstanceName ?? string.Empty);
                     lead.Status = LeadStatus.Queued;
                     lead.QueuedAt = DateTimeOffset.UtcNow;
                 }

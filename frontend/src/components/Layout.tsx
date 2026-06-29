@@ -49,8 +49,10 @@ export default function Layout() {
           { to: '/instagram/follow', label: 'Auto-follow IG' },
         ] },
         { title: 'Contenido', items: [
+          { to: '/inspiracion', label: 'Inspiración' },
           { to: '/posteos', label: 'Posteos' },
           { to: '/calendario', label: 'Calendario' },
+          { to: '/warmr', label: 'Cola Warmr' },
           { to: '/seo', label: 'SEO / Contenido' },
           { to: '/audio-analytics', label: 'Audios y estrategias' },
         ] },

@@ -56,6 +56,10 @@ public class InstagramCompetitorScraper
             var post = await _db.CompetitorPosts.FirstOrDefaultAsync(p => p.CompetitorId == competitor.Id && p.ExternalPostId == externalId, ct);
             if (post is null)
             {
+                var videoUrl = GetStr(item, "videoUrl");
+                var displayUrl = GetStr(item, "displayUrl");
+                var isVideo = string.Equals(GetStr(item, "type"), "Video", StringComparison.OrdinalIgnoreCase)
+                              || !string.IsNullOrWhiteSpace(videoUrl);
                 post = new CompetitorPost
                 {
                     Id = Guid.NewGuid(),
@@ -67,6 +71,9 @@ public class InstagramCompetitorScraper
                     Likes = GetInt(item, "likesCount") ?? 0,
                     CommentsCount = GetInt(item, "commentsCount") ?? 0,
                     Hashtags = ExtractHashtags(GetStr(item, "caption") ?? ""),
+                    MediaUrl = isVideo ? (videoUrl ?? displayUrl) : displayUrl,
+                    ThumbnailUrl = displayUrl,
+                    IsVideo = isVideo,
                     RawJson = item.GetRawText()
                 };
                 _db.CompetitorPosts.Add(post);

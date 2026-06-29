@@ -149,6 +149,170 @@ public class HubController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // TRANSPORTE GESTIONADO POR LA APP (refactor "apps mandan, sales-hub orquesta").
+    // Para productos con AppManagedTransport=true: sales-hub NO manda por Evolution; deja
+    // los mensajes en el outbox y la app los baja acá, los manda por SU Evolution y ackea.
+    // El inbound que recibe la app lo reenvía a /hub/inbound → el cerebro lo procesa.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// La app baja los mensajes que tiene que MANDAR ella (por su propia Evolution). Sólo
+    /// productos AppManagedTransport. Devuelve filas "due" (ya paceadas por ScheduledAt)
+    /// respetando el cap diario y la ventana horaria del producto, y las RECLAMA (LockedAt)
+    /// para no servirlas dos veces. La app debe ackear cada una con /hub/outbound/ack.
+    /// </summary>
+    [HttpGet("outbound")]
+    public async Task<IActionResult> GetOutbound([FromQuery] string productKey, CancellationToken ct)
+    {
+        if (!ValidApiKey()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(productKey)) return BadRequest(new { error = "productKey requerido" });
+
+        var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.ProductKey == productKey, ct);
+        if (product is null || !product.AppManagedTransport)
+            return Ok(Array.Empty<object>());
+
+        var now = DateTimeOffset.UtcNow;
+        var ar = now.ToOffset(TimeSpan.FromHours(-3)); // AR no tiene DST
+
+        // Ventana horaria del producto (hora AR). Start>=End = sin restricción.
+        if (product.SendHourStart < product.SendHourEnd
+            && (ar.Hour < product.SendHourStart || ar.Hour >= product.SendHourEnd))
+            return Ok(Array.Empty<object>());
+
+        // Cap diario anti-ban: contactos NUEVOS (leads distintos) ya enviados hoy.
+        var dayStart = new DateTimeOffset(ar.Date, TimeSpan.FromHours(-3));
+        var cap = product.DailyLimit > 0 ? product.DailyLimit : 60;
+        var contactedToday = await _db.Outbox
+            .Where(o => o.Status == OutboxStatus.Sent && o.SentAt != null && o.SentAt >= dayStart
+                     && o.Lead != null && o.Lead.ProductKey == productKey)
+            .Select(o => o.LeadId).Distinct().CountAsync(ct);
+        if (contactedToday >= cap)
+            return Ok(Array.Empty<object>());
+
+        var claimCutoff = now.AddMinutes(-5);
+        var rows = await (
+            from o in _db.Outbox
+            where o.Status == OutboxStatus.Scheduled
+               && o.Channel == MessageChannel.WhatsApp
+               && o.ScheduledAt <= now
+               && o.Lead != null && o.Lead.ProductKey == productKey
+               && (o.LockedAt == null || o.LockedAt < claimCutoff)
+            orderby o.Priority descending, o.ScheduledAt
+            select o
+        ).Take(20).ToListAsync(ct);
+
+        foreach (var o in rows) o.LockedAt = now; // reclamar (re-servible tras 5 min si la app murió)
+        if (rows.Count > 0) await _db.SaveChangesAsync(ct);
+
+        return Ok(rows.Select(o => new
+        {
+            id = o.Id,
+            leadId = o.LeadId,
+            phone = o.WhatsappPhone,
+            text = o.Message,
+            priority = o.Priority,
+        }));
+    }
+
+    /// <summary>La app confirma el resultado del envío de un mensaje bajado de /hub/outbound.</summary>
+    [HttpPost("outbound/ack")]
+    public async Task<IActionResult> AckOutbound([FromBody] HubOutboundAck req, CancellationToken ct)
+    {
+        if (!ValidApiKey()) return Unauthorized();
+        var o = await _db.Outbox.FirstOrDefaultAsync(x => x.Id == req.Id, ct);
+        if (o is null) return Ok(new { ok = false, error = "outbox no encontrado" });
+
+        if (string.Equals(req.Status, "sent", StringComparison.OrdinalIgnoreCase))
+        {
+            o.Status = OutboxStatus.Sent;
+            o.SentAt = DateTimeOffset.UtcNow;
+            o.LockedAt = null;
+            o.Error = null;
+        }
+        else
+        {
+            o.Attempts++;
+            o.Error = req.Error;
+            if (o.Attempts >= 3) o.Status = OutboxStatus.Failed;
+            else o.LockedAt = null; // liberar para que se re-sirva
+        }
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Hub ack outbox {Id}: {Status} (attempts {N})", o.Id, o.Status, o.Attempts);
+        return Ok(new { ok = true, status = o.Status.ToString() });
+    }
+
+    /// <summary>
+    /// La app reenvía un WhatsApp INBOUND que recibió por su Evolution. Lo registramos en la
+    /// conversación del lead (match por producto + últimos 8 dígitos del teléfono) y marcamos
+    /// Replied; el cerebro (ConversationAgentService) lo levanta solo en su tick.
+    /// </summary>
+    [HttpPost("inbound")]
+    public async Task<IActionResult> Inbound([FromBody] HubInboundRequest req, CancellationToken ct)
+    {
+        if (!ValidApiKey()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(req.ProductKey) || string.IsNullOrWhiteSpace(req.Phone) || string.IsNullOrWhiteSpace(req.Text))
+            return BadRequest(new { error = "productKey, phone y text requeridos" });
+
+        var digits = new string(req.Phone.Where(char.IsDigit).ToArray());
+        if (digits.Length < 8) return BadRequest(new { error = "teléfono inválido" });
+        var suffix = digits[^8..];
+
+        // Dedup por id del proveedor.
+        if (!string.IsNullOrWhiteSpace(req.ProviderMessageId)
+            && await _db.ConversationMessages.AnyAsync(m => m.WhatsappMessageId == req.ProviderMessageId, ct))
+            return Ok(new { matched = true, dedup = true });
+
+        var lead = await _db.Leads
+            .Where(l => l.ProductKey == req.ProductKey && l.WhatsappPhone != null
+                && l.WhatsappPhone
+                    .Replace(" ", "").Replace("-", "").Replace("+", "")
+                    .Replace("(", "").Replace(")", "").Replace(".", "")
+                    .EndsWith(suffix))
+            .OrderByDescending(l => l.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (lead is null)
+        {
+            _log.LogInformation("Hub inbound sin lead: {Pk}/{Phone}", req.ProductKey, digits);
+            return Ok(new { matched = false });
+        }
+
+        var ts = req.TimestampUnix is long u ? DateTimeOffset.FromUnixTimeSeconds(u) : DateTimeOffset.UtcNow;
+        _db.ConversationMessages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = lead.SellerId,
+            Direction = MessageDirection.Inbound,
+            Status = MessageDeliveryStatus.Received,
+            Text = req.Text,
+            WhatsappMessageId = req.ProviderMessageId,
+            Timestamp = ts,
+            IsRead = false,
+        });
+
+        var isFirstReply = lead.FirstReplyAt is null;
+        if (isFirstReply) lead.FirstReplyAt = ts;
+        if (lead.Status is LeadStatus.Sent or LeadStatus.Queued or LeadStatus.Assigned)
+            lead.Status = LeadStatus.Replied;
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // Cortar el drip: si respondió, los steps de outreach pendientes ya no van.
+        if (isFirstReply)
+        {
+            var pending = await _db.Outbox
+                .Where(o => o.LeadId == lead.Id && o.Status == OutboxStatus.Scheduled)
+                .ToListAsync(ct);
+            foreach (var o in pending) o.Status = OutboxStatus.Cancelled;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Hub inbound: lead {Lead} ({Pk}) → Replied", lead.Id, req.ProductKey);
+        return Ok(new { matched = true, leadId = lead.Id });
+    }
+
     private static LeadSource MapSource(string? leadType) => (leadType ?? string.Empty).ToLowerInvariant() switch
     {
         "ad" or "ads" or "anuncio" => LeadSource.WhatsAppAd,
@@ -198,3 +362,16 @@ public record HubFollowupEventRequest(
     int? StepIndex,
     string? Channel,
     string? Detail);
+
+public record HubOutboundAck(
+    Guid Id,
+    string? Status,           // "sent" | "failed"
+    string? ProviderMessageId,
+    string? Error);
+
+public record HubInboundRequest(
+    string ProductKey,
+    string? Phone,
+    string? Text,
+    string? ProviderMessageId,
+    long? TimestampUnix);

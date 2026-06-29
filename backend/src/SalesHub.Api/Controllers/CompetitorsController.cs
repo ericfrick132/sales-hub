@@ -74,4 +74,36 @@ public class CompetitorsController : ControllerBase
                 select new { c.Id, c.AuthorHandle, c.Text, c.PostedAt, PostId = p.Id, p.PostUrl };
         return Ok(await q.Take(Math.Min(limit, 500)).ToListAsync(ct));
     }
+
+    public record CurateRequest(bool Curated);
+
+    /// <summary>Marca/desmarca un post de competidor como inspiración ("me gusta esto, replicalo").</summary>
+    [HttpPost("posts/{postId:guid}/curate")]
+    public async Task<IActionResult> Curate(Guid postId, [FromBody] CurateRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var post = await _db.CompetitorPosts.FirstOrDefaultAsync(p => p.Id == postId, ct);
+        if (post is null) return NotFound();
+        post.Curated = req.Curated;
+        post.CuratedAt = req.Curated ? DateTimeOffset.UtcNow : null;
+        await _db.SaveChangesAsync(ct);
+        return Ok(post);
+    }
+
+    /// <summary>Board de inspiración: posts curados (cross-competidor), con el handle de origen.</summary>
+    [HttpGet("inspiration")]
+    public async Task<IActionResult> Inspiration([FromQuery] string? vertical, [FromQuery] int limit = 60, CancellationToken ct = default)
+    {
+        var q = from p in _db.CompetitorPosts.AsNoTracking()
+                join c in _db.Competitors on p.CompetitorId equals c.Id
+                where p.Curated && (string.IsNullOrEmpty(vertical) || c.Vertical == vertical)
+                orderby p.CuratedAt descending
+                select new
+                {
+                    p.Id, p.Caption, p.Hashtags, p.MediaUrl, p.ThumbnailUrl, p.PostUrl,
+                    p.IsVideo, p.Likes, p.CommentsCount, p.CuratedAt,
+                    Source = c.Handle, c.Platform, c.Vertical
+                };
+        return Ok(await q.Take(Math.Min(limit, 200)).ToListAsync(ct));
+    }
 }

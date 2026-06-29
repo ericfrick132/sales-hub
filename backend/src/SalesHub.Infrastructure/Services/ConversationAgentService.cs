@@ -316,6 +316,10 @@ public class ConversationAgentService
             .Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
         if (parts.Count == 0) return;
 
+        // Transporte gestionado por la app: encolar para que la app mande por SU Evolution
+        // (no requiere instancia de sales-hub conectada).
+        if (lead.Product?.AppManagedTransport == true) { EnqueueRelay(lead, parts); return; }
+
         var instance = lead.Seller?.EvolutionInstance;
         var canSend = instance is not null && instance.Status == InstanceStatus.Connected
             && !string.IsNullOrWhiteSpace(lead.WhatsappPhone);
@@ -365,6 +369,17 @@ public class ConversationAgentService
     /// </summary>
     private async Task DeliverAsync(Lead lead, string text, LeadIntent intentForGate, string src, CancellationToken ct)
     {
+        // Relay: si el producto delega el transporte a la app, encolamos la respuesta (la app la
+        // manda por su Evolution). Respetamos AutoPilot + needs_human; el cap/pacing lo aplica el
+        // endpoint /hub/outbound. No requiere instancia de sales-hub conectada.
+        if (lead.Product!.AutoPilot && intentForGate != LeadIntent.NeedsHuman && lead.Product.AppManagedTransport)
+        {
+            EnqueueRelay(lead, new[] { text });
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("Relay: respuesta encolada para lead {Lead} (la app manda; fuente {Src})", lead.Id, src);
+            return;
+        }
+
         var canAutoReply = false;
         if (lead.Product!.AutoPilot && intentForGate != LeadIntent.NeedsHuman)
         {
@@ -632,6 +647,59 @@ public class ConversationAgentService
         lead.AiSuggestedReplyAt = null;
         lead.UpdatedAt = DateTimeOffset.UtcNow;
         return ok;
+    }
+
+    /// <summary>
+    /// Producto con transporte gestionado por la app (AppManagedTransport): en vez de mandar por
+    /// la Evolution de sales-hub, ENCOLA cada parte en el outbox (Scheduled) para que la app la baje
+    /// por GET /hub/outbound y la mande por SU propia línea. No requiere instancia de sales-hub
+    /// conectada. Registra el outbound en la conversación (corta el loop del bot). Prioridad alta:
+    /// son respuestas de una charla activa, salen antes que los openers fríos.
+    /// </summary>
+    private void EnqueueRelay(Lead lead, IEnumerable<string> parts)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (lead.SellerId is null || string.IsNullOrWhiteSpace(lead.WhatsappPhone))
+        {
+            lead.AiSuggestedReply = string.Join("\n", parts);
+            lead.AiSuggestedReplyAt = now; lead.UpdatedAt = now;
+            return;
+        }
+        var inst = lead.Seller?.EvolutionInstance?.InstanceName ?? "";
+        foreach (var raw in parts)
+        {
+            var p = raw?.Trim();
+            if (string.IsNullOrWhiteSpace(p)) continue;
+            _db.Outbox.Add(new MessageOutbox
+            {
+                Id = Guid.NewGuid(),
+                LeadId = lead.Id,
+                SellerId = lead.SellerId.Value,
+                Channel = MessageChannel.WhatsApp,
+                EvolutionInstance = inst,   // referencia; la app manda por SU instancia
+                WhatsappPhone = lead.WhatsappPhone!,
+                Message = p,
+                StepIndex = null,
+                Priority = 90,              // charla activa: salta la fila de openers
+                ScheduledAt = now,
+                Status = OutboxStatus.Scheduled,
+            });
+            _db.ConversationMessages.Add(new ConversationMessage
+            {
+                Id = Guid.NewGuid(),
+                LeadId = lead.Id,
+                SellerId = lead.SellerId,
+                Direction = MessageDirection.Outbound,
+                Status = MessageDeliveryStatus.Sent,
+                Text = p,
+                EvolutionInstance = inst,
+                Timestamp = now,
+                IsRead = true,
+            });
+        }
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
+        lead.UpdatedAt = now;
     }
 
     /// <summary>

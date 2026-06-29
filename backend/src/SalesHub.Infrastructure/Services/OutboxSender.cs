@@ -138,6 +138,9 @@ public class OutboxSender
                    && o.ScheduledAt <= now
                    && (!hasWhitelist
                        || (o.Lead != null && whitelist!.Contains(o.Lead.ProductKey)))
+                   // Transporte gestionado por la app: estas filas las sirve GET /hub/outbound
+                   // (las manda la app por su propia Evolution); sales-hub NO las manda por Evolution.
+                   && !(o.Lead != null && _db.Products.Any(p => p.ProductKey == o.Lead.ProductKey && p.AppManagedTransport))
                 let leadInProgress = _db.Outbox.Any(x =>
                     x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
                 // Prioridad primero (re-enganche caliente salta la fila), después "en progreso", después FIFO.

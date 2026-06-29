@@ -31,8 +31,9 @@ public static class DependencyInjection
 
         // Módulo Posteos
         services.Configure<BufferOptions>(config.GetSection("Buffer"));
-        services.Configure<HiggsfieldOptions>(config.GetSection("Higgsfield"));
+        services.Configure<FalOptions>(config.GetSection("Fal"));
         services.Configure<ImageGenOptions>(config.GetSection("ImageGen"));
+        services.Configure<WarmrOptions>(config.GetSection("Warmr"));
 
         // Módulo SEO/GEO
         services.Configure<SeoOptions>(config.GetSection("Seo"));
@@ -54,6 +55,11 @@ public static class DependencyInjection
         services.AddScoped<SocialContentGenerator>();
         services.AddHttpClient<AiImageGenerator>();
         services.AddScoped<ISocialAssetGenerator>(sp => sp.GetRequiredService<AiImageGenerator>());
+        // 2° generador de asset: video por fal.ai (API key, headless). Se resuelve por CanHandle("video").
+        services.AddHttpClient<FalVideoGenerator>();
+        services.AddScoped<ISocialAssetGenerator>(sp => sp.GetRequiredService<FalVideoGenerator>());
+        // Distribución por Warmr (handoff: deja el posteo en la cola para subida manual a Cloud Drop).
+        services.AddScoped<IWarmrDistributor, WarmrHandoffDistributor>();
         services.AddHttpClient<GoogleAutocompleteClient>();
         services.AddHttpClient<GitHubContentClient>();
         services.AddHttpClient<GooglePlacesSource>();

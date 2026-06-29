@@ -21,8 +21,14 @@ public class PostingChannel
     /// <summary>Formato a generar para esta red: Story / Reel / Post / Carousel / Video.</summary>
     public SocialPostFormat Format { get; set; } = SocialPostFormat.Post;
 
-    /// <summary>Imagen o video (decide el generador: Canva vs Higgsfield).</summary>
+    /// <summary>Imagen o video (decide el generador: AiImageGenerator vs fal.ai).</summary>
     public SocialAssetKind AssetKind { get; set; } = SocialAssetKind.Image;
+
+    /// <summary>Por dónde se distribuye este canal: Buffer (API) o Warmr (device real).</summary>
+    public SocialDistribution Distribution { get; set; } = SocialDistribution.Buffer;
+
+    /// <summary>Cuenta/handle de Warmr destino (cuando Distribution = Warmr).</summary>
+    public string WarmrAccount { get; set; } = string.Empty;
 
     /// <summary>Prompt/instrucciones específicas de ESTA red para ESTA app.</summary>
     public string PromptTemplate { get; set; } = string.Empty;

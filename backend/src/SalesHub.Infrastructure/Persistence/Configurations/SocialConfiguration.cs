@@ -35,6 +35,8 @@ public class PostingChannelConfiguration : IEntityTypeConfiguration<PostingChann
         b.Property(x => x.Platform).HasConversion<string>().HasMaxLength(32);
         b.Property(x => x.Format).HasConversion<string>().HasMaxLength(32);
         b.Property(x => x.AssetKind).HasConversion<string>().HasMaxLength(32);
+        b.Property(x => x.Distribution).HasConversion<string>().HasMaxLength(16);
+        b.Property(x => x.WarmrAccount).HasMaxLength(128);
         b.Property(x => x.BufferChannelId).HasMaxLength(64);
         b.Property(x => x.PromptTemplate).HasColumnType("text");
         b.HasIndex(x => new { x.ProductKey, x.Platform }).IsUnique()
@@ -54,6 +56,8 @@ public class SocialPostConfiguration : IEntityTypeConfiguration<SocialPost>
         b.Property(x => x.Format).HasConversion<string>().HasMaxLength(32);
         b.Property(x => x.AssetKind).HasConversion<string>().HasMaxLength(32);
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
+        b.Property(x => x.Target).HasConversion<string>().HasMaxLength(16);
+        b.Property(x => x.WarmrAccount).HasMaxLength(128);
         b.Property(x => x.BufferChannelId).HasMaxLength(64);
         b.Property(x => x.ContentPillar).HasMaxLength(128);
         b.Property(x => x.Concept).HasColumnType("text");
@@ -69,6 +73,7 @@ public class SocialPostConfiguration : IEntityTypeConfiguration<SocialPost>
         b.HasIndex(x => new { x.ProductKey, x.Status });
         b.HasIndex(x => x.Status);
         b.HasIndex(x => x.CreatedAt);
+        b.HasIndex(x => x.InspirationPostId);
     }
 }
 

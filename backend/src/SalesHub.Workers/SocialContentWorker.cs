@@ -95,6 +95,8 @@ public class SocialContentWorker : BackgroundService
             BufferChannelId = channel.BufferChannelId,
             Format = channel.Format,
             AssetKind = channel.AssetKind,
+            Target = channel.Distribution,
+            WarmrAccount = channel.WarmrAccount,
             ContentPillar = gen.Pillar,
             Concept = gen.Concept,
             Prompt = gen.Prompt,
@@ -125,35 +127,54 @@ public class SocialContentWorker : BackgroundService
         post.Status = SocialPostStatus.DraftReady;
         await db.SaveChangesAsync(ct);
 
-        // Auto-publicar: agenda en Buffer y Buffer publica solo en el slot (SaveAsDraft=false).
-        // Para volver a "draft + aprobación humana" sin tocar código: Workers:PosteosAutoPublish=false.
-        var autoPublish = _config.GetValue<bool>("Workers:PosteosAutoPublish", true);
-
-        // Push a Buffer (solo si hay asset + canal mapeado)
-        if (!string.IsNullOrWhiteSpace(post.AssetUrl) && !string.IsNullOrWhiteSpace(post.BufferChannelId))
+        // Ruteo de distribución según el canal: Warmr (handoff) vs Buffer (API).
+        if (channel.Distribution == SocialDistribution.Warmr)
         {
-            var publisher = scope.ServiceProvider.GetRequiredService<ISocialPublisher>();
-            var res = await publisher.CreatePostAsync(new PublishRequest
+            // Warmr no tiene API → dejamos el posteo en la cola de handoff (ReadyForWarmr)
+            // con su asset/caption/cuenta/slot para subida manual a Cloud Drop.
+            if (!string.IsNullOrWhiteSpace(post.AssetUrl))
             {
-                ChannelId = post.BufferChannelId,
-                Service = channel.Platform.ToString().ToLowerInvariant(),
-                Caption = BuildCaption(post),
-                ImageUrl = post.AssetKind == SocialAssetKind.Image ? post.AssetUrl : null,
-                VideoUrl = post.AssetKind == SocialAssetKind.Video ? post.AssetUrl : null,
-                ThumbnailUrl = post.ThumbnailUrl,
-                InstagramType = post.Format.ToString().ToLowerInvariant(),
-                ScheduledAt = post.ScheduledAt,
-                SaveAsDraft = !autoPublish,
-                Automatic = true,
-            }, ct);
-
-            if (res.Success)
-            {
-                post.Status = autoPublish ? SocialPostStatus.Scheduled : SocialPostStatus.PushedToBuffer;
-                post.BufferPostId = res.ExternalPostId;
+                var warmr = scope.ServiceProvider.GetRequiredService<IWarmrDistributor>();
+                await warmr.DispatchAsync(post, ct);
+                await db.SaveChangesAsync(ct);
             }
-            else { post.Status = SocialPostStatus.Error; post.Error = res.Error; }
-            await db.SaveChangesAsync(ct);
+            else
+            {
+                _log.LogWarning("Posteo Warmr sin asset (no se encola): {Product}/{Net}", profile.ProductKey, channel.Platform);
+            }
+        }
+        else
+        {
+            // Buffer: auto-publica en el slot (SaveAsDraft=false); para volver a "draft +
+            // aprobación humana" sin tocar código → Workers:PosteosAutoPublish=false.
+            var autoPublish = _config.GetValue<bool>("Workers:PosteosAutoPublish", true);
+
+            // Push a Buffer (solo si hay asset + canal mapeado)
+            if (!string.IsNullOrWhiteSpace(post.AssetUrl) && !string.IsNullOrWhiteSpace(post.BufferChannelId))
+            {
+                var publisher = scope.ServiceProvider.GetRequiredService<ISocialPublisher>();
+                var res = await publisher.CreatePostAsync(new PublishRequest
+                {
+                    ChannelId = post.BufferChannelId,
+                    Service = channel.Platform.ToString().ToLowerInvariant(),
+                    Caption = BuildCaption(post),
+                    ImageUrl = post.AssetKind == SocialAssetKind.Image ? post.AssetUrl : null,
+                    VideoUrl = post.AssetKind == SocialAssetKind.Video ? post.AssetUrl : null,
+                    ThumbnailUrl = post.ThumbnailUrl,
+                    InstagramType = post.Format.ToString().ToLowerInvariant(),
+                    ScheduledAt = post.ScheduledAt,
+                    SaveAsDraft = !autoPublish,
+                    Automatic = true,
+                }, ct);
+
+                if (res.Success)
+                {
+                    post.Status = autoPublish ? SocialPostStatus.Scheduled : SocialPostStatus.PushedToBuffer;
+                    post.BufferPostId = res.ExternalPostId;
+                }
+                else { post.Status = SocialPostStatus.Error; post.Error = res.Error; }
+                await db.SaveChangesAsync(ct);
+            }
         }
 
         _log.LogInformation("Posteo {Status} para {Product}: {Concept}", post.Status, profile.ProductKey, post.Concept);

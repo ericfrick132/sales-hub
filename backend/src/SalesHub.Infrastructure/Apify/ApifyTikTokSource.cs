@@ -58,17 +58,22 @@ public class ApifyTikTokSource
             var exists = _db.CompetitorPosts.Any(p => p.CompetitorId == competitor.Id && p.ExternalPostId == externalId);
             if (exists) continue;
 
+            var webUrl = GetStr(item, "webVideoUrl") ?? GetStr(item, "videoUrl");
+            var cover = GetNestedStr(item, "videoMeta", "coverUrl") ?? GetStr(item, "covers");
             _db.CompetitorPosts.Add(new CompetitorPost
             {
                 Id = Guid.NewGuid(),
                 CompetitorId = competitor.Id,
                 ExternalPostId = externalId,
-                PostUrl = GetStr(item, "webVideoUrl") ?? GetStr(item, "videoUrl"),
+                PostUrl = webUrl,
                 Caption = GetStr(item, "text"),
                 PostedAt = ParseDate(item, "createTimeISO") ?? ParseDate(item, "createTime"),
                 Likes = GetInt(item, "diggCount") ?? 0,
                 CommentsCount = GetInt(item, "commentCount") ?? 0,
                 Hashtags = ExtractHashtags(item),
+                MediaUrl = webUrl,
+                ThumbnailUrl = cover,
+                IsVideo = true,
                 RawJson = item.GetRawText()
             });
             saved++;
@@ -99,6 +104,8 @@ public class ApifyTikTokSource
 
     private static string? GetStr(JsonElement e, string p)
         => e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    private static string? GetNestedStr(JsonElement e, string parent, string child)
+        => e.TryGetProperty(parent, out var pv) && pv.ValueKind == JsonValueKind.Object ? GetStr(pv, child) : null;
     private static int? GetInt(JsonElement e, string p)
         => e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
     private static DateTimeOffset? ParseDate(JsonElement e, string p)
