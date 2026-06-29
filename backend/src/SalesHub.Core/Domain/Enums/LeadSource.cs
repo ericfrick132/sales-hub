@@ -24,5 +24,8 @@ public enum LeadSource
     WhatsAppAd = 402,
     // Lead que arrancó el onboarding/OTP de un producto (alta intención; incluye
     // los que pidieron OTP y NO completaron el setup → recuperación de abandono).
-    ProductOnboarding = 403
+    ProductOnboarding = 403,
+    // Lead que dejó sus datos en un formulario instantáneo de Meta (Lead Ad): teléfono +
+    // respuestas de calificación, ingerido por el webhook /api/webhooks/meta-leads.
+    MetaLeadAd = 404
 }
