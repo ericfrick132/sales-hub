@@ -64,7 +64,7 @@ public class ProductsController : ControllerBase
         return NoContent();
     }
 
-    public record AutomationRequest(bool AutoPilot, bool AutoReengage);
+    public record AutomationRequest(bool AutoPilot, bool AutoReengage, bool? AppManagedTransport = null);
 
     /// <summary>
     /// Switch on/off del piloto automático y el re-enganche, sin tocar el resto de la
@@ -79,6 +79,8 @@ public class ProductsController : ControllerBase
         p.AutoPilot = req.AutoPilot;
         // El re-enganche sólo tiene sentido con piloto automático prendido.
         p.AutoReengage = req.AutoPilot && req.AutoReengage;
+        // Transporte gestionado por la app (relay): si viene, lo seteamos; null = no tocar.
+        if (req.AppManagedTransport is bool amt) p.AppManagedTransport = amt;
         p.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return ToDto(p);
