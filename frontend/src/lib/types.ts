@@ -83,7 +83,14 @@ export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   ManualMaps: 'Maps',
   ManualInstagram: 'Instagram',
   ManualWhatsApp: 'WhatsApp',
-  ManualWeb: 'Web'
+  ManualWeb: 'Web',
+  BrowserCapture: 'Captura web',
+  InstagramScraper: 'Instagram (scraper)',
+  DemoSignup: 'Demo / alta producto',
+  ProductReengage: 'Re-enganche producto',
+  WhatsAppAd: 'WhatsApp Ad (CTWA)',
+  ProductOnboarding: 'Onboarding / OTP',
+  MetaLeadAd: 'Meta Lead Ads'
 };
 
 export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
@@ -102,7 +109,9 @@ export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
 export type LeadSource =
   | 'GooglePlaces' | 'ApifyGoogleMaps' | 'ApifyMetaAdsLibrary'
   | 'ApifyInstagram' | 'ApifyFacebookPages' | 'Manual'
-  | 'ManualMaps' | 'ManualInstagram' | 'ManualWhatsApp' | 'ManualWeb';
+  | 'ManualMaps' | 'ManualInstagram' | 'ManualWhatsApp' | 'ManualWeb'
+  | 'BrowserCapture' | 'InstagramScraper' | 'DemoSignup' | 'ProductReengage'
+  | 'WhatsAppAd' | 'ProductOnboarding' | 'MetaLeadAd';
 
 export interface Lead {
   id: string;
