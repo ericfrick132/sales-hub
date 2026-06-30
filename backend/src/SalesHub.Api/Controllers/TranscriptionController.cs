@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Api.Controllers;
 
@@ -25,9 +26,11 @@ public class TranscriptionController : ControllerBase
 
     public record PhoneDto(Guid Id, string Phone, string? Label);
     public record InstanceDto(string InstanceName, string? PhoneNumber, string? Label, string Status);
-    public record ConfigDto(bool Enabled, string? InstanceName, List<InstanceDto> Instances, List<PhoneDto> Phones);
+    public record ConfigDto(bool Enabled, string? InstanceName, bool BatchMode, int BatchWindowSeconds,
+        List<InstanceDto> Instances, List<PhoneDto> Phones);
     public record SetEnabledRequest(bool Enabled);
     public record SetInstanceRequest(string? InstanceName);
+    public record SetBatchRequest(bool BatchMode, int? WindowSeconds);
     public record AddPhoneRequest(string Phone, string? Label);
 
     [HttpGet]
@@ -44,7 +47,9 @@ public class TranscriptionController : ControllerBase
             .OrderBy(p => p.CreatedAt)
             .Select(p => new PhoneDto(p.Id, p.Phone, p.Label))
             .ToListAsync(ct);
-        return Ok(new ConfigDto(s?.Enabled ?? false, s?.InstanceName, instances, phones));
+        var window = s is null || s.BatchWindowSeconds < 1 ? 10 : s.BatchWindowSeconds;
+        return Ok(new ConfigDto(s?.Enabled ?? false, s?.InstanceName,
+            s?.BatchMode ?? false, window, instances, phones));
     }
 
     [HttpPost("enabled")]
@@ -55,7 +60,22 @@ public class TranscriptionController : ControllerBase
         s.Enabled = req.Enabled;
         s.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
+        AudioTranscriptionRelay.InvalidateCache();
         return Ok(new { enabled = s.Enabled });
+    }
+
+    [HttpPost("batch")]
+    public async Task<IActionResult> SetBatch([FromBody] SetBatchRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var s = await GetOrCreateAsync(ct);
+        s.BatchMode = req.BatchMode;
+        if (req.WindowSeconds is int w)
+            s.BatchWindowSeconds = Math.Clamp(w, 3, 120);
+        s.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        AudioTranscriptionRelay.InvalidateCache();
+        return Ok(new { batchMode = s.BatchMode, batchWindowSeconds = s.BatchWindowSeconds });
     }
 
     [HttpPost("instance")]
@@ -70,6 +90,7 @@ public class TranscriptionController : ControllerBase
         s.InstanceName = name;
         s.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
+        AudioTranscriptionRelay.InvalidateCache();
         return Ok(new { instanceName = s.InstanceName });
     }
 
@@ -87,6 +108,7 @@ public class TranscriptionController : ControllerBase
         var p = new TranscriptionPhone { Phone = digits, Label = label };
         _db.TranscriptionPhones.Add(p);
         await _db.SaveChangesAsync(ct);
+        AudioTranscriptionRelay.InvalidateCache();
         return Ok(new PhoneDto(p.Id, p.Phone, p.Label));
     }
 
@@ -98,6 +120,7 @@ public class TranscriptionController : ControllerBase
         if (p is null) return NotFound();
         _db.TranscriptionPhones.Remove(p);
         await _db.SaveChangesAsync(ct);
+        AudioTranscriptionRelay.InvalidateCache();
         return NoContent();
     }
 

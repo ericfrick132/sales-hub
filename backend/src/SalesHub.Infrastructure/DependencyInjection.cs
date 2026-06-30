@@ -105,6 +105,9 @@ public static class DependencyInjection
         services.AddScoped<ConversationService>();
         // Relay de transcripción de audios (notas de voz → texto, sólo números de la allowlist).
         services.AddScoped<AudioTranscriptionRelay>();
+        // Acumulador del modo batch: junta imágenes/texto/audio y responde un PDF (debounce).
+        // Singleton: vive entre webhooks (cada uno es un request) y al cerrar el batch abre su scope.
+        services.AddSingleton<TranscriptionBatchAccumulator>();
         // Reglas duras de la IA (cache 30s, leídas vía scope) — inyectadas al system prompt.
         services.AddSingleton<AiRulesProvider>();
         services.AddScoped<AiSuggestionService>();

@@ -6,7 +6,14 @@ import Switch from '../components/Switch';
 
 type Instance = { instanceName: string; phoneNumber: string | null; label: string | null; status: string };
 type Phone = { id: string; phone: string; label: string | null };
-type Config = { enabled: boolean; instanceName: string | null; instances: Instance[]; phones: Phone[] };
+type Config = {
+  enabled: boolean;
+  instanceName: string | null;
+  batchMode: boolean;
+  batchWindowSeconds: number;
+  instances: Instance[];
+  phones: Phone[];
+};
 
 /**
  * Módulo de transcripción de audios (relay personal): cuando un número autorizado
@@ -24,6 +31,7 @@ export default function Transcripcion() {
 
   const [phone, setPhone] = useState('');
   const [label, setLabel] = useState('');
+  const [windowSecs, setWindowSecs] = useState('');
 
   const toggle = useMutation({
     mutationFn: async (enabled: boolean) => api.post('/transcription/enabled', { enabled }),
@@ -34,6 +42,12 @@ export default function Transcripcion() {
     mutationFn: async (instanceName: string | null) => api.post('/transcription/instance', { instanceName }),
     onSuccess: () => { invalidate(); toast.success('Línea actualizada'); },
     onError: (e: any) => toast.error(e?.response?.data?.error ?? 'No se pudo guardar la línea'),
+  });
+  const setBatch = useMutation({
+    mutationFn: async (vars: { batchMode: boolean; windowSeconds?: number }) =>
+      api.post('/transcription/batch', vars),
+    onSuccess: (_r, vars) => { invalidate(); toast.success(vars.batchMode ? 'Modo batch activado' : 'Modo batch desactivado'); },
+    onError: () => toast.error('No se pudo cambiar el modo batch'),
   });
   const add = useMutation({
     mutationFn: async () => api.post('/transcription/phones', { phone: phone.trim(), label: label.trim() || null }),
@@ -91,6 +105,55 @@ export default function Transcripcion() {
           <p className="text-xs text-amber-600">⚠️ El módulo está activo pero no elegiste línea: no va a transcribir nada hasta que selecciones una.</p>
         )}
         <p className="text-xs text-slate-400">El relay sólo escucha en esta línea; los audios a otras líneas no se tocan.</p>
+      </div>
+
+      <div className="card p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium">Modo batch (PDF)</div>
+            <div className="text-xs text-slate-500">
+              Junta las imágenes, el texto y los audios que mandés seguido y te devuelve un único PDF
+              (imágenes en orden → texto → transcripción de los audios). Si está apagado, cada nota de voz
+              se responde como texto.
+            </div>
+          </div>
+          <Switch
+            on={!!data?.batchMode}
+            disabled={isLoading || setBatch.isPending}
+            onClick={() => setBatch.mutate({ batchMode: !data?.batchMode })}
+          />
+        </div>
+        {data?.batchMode && (
+          <div className="flex items-end gap-2 pt-1">
+            <div className="flex-1 max-w-[220px]">
+              <label className="text-xs font-medium text-slate-600">Ventana entre mensajes (segundos)</label>
+              <input
+                className="input mt-1"
+                type="number"
+                min={3}
+                max={120}
+                value={windowSecs !== '' ? windowSecs : String(data?.batchWindowSeconds ?? 10)}
+                onChange={(e) => setWindowSecs(e.target.value)}
+              />
+            </div>
+            <button
+              className="btn-primary"
+              disabled={setBatch.isPending}
+              onClick={() => {
+                const w = parseInt(windowSecs || String(data?.batchWindowSeconds ?? 10), 10);
+                setBatch.mutate({ batchMode: true, windowSeconds: Number.isNaN(w) ? 10 : w });
+                setWindowSecs('');
+              }}
+            >
+              Guardar
+            </button>
+          </div>
+        )}
+        {data?.batchMode && (
+          <p className="text-xs text-slate-400">
+            Pasados esos segundos sin un mensaje nuevo, se cierra el batch y se arma el PDF.
+          </p>
+        )}
       </div>
 
       <div className="card p-4 space-y-3">

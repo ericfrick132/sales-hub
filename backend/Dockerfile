@@ -32,6 +32,8 @@ WORKDIR /app
 # wget para el healthcheck del docker-compose (la imagen aspnet no lo trae → el
 # contenedor figuraba 'unhealthy' aunque /health respondiera OK).
 # El resto: deps de sistema para Chromium (Playwright).
+# libfontconfig1: lo necesita QuestPDF/SkiaSharp para generar el PDF del modo batch
+# de transcripción (en Linux Skia inicializa fontconfig aunque la fuente vaya embebida).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         wget \
@@ -39,6 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 \
         libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
         libasound2 libatspi2.0-0 \
+        libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/out ./
 COPY --from=build /ms-playwright /ms-playwright
