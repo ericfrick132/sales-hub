@@ -25,6 +25,13 @@ interface SocialPost {
 const PLATFORMS = ['Instagram', 'TikTok', 'YouTube', 'Facebook', 'Twitter', 'LinkedIn'];
 const FORMATS = ['Story', 'Reel', 'Post', 'Carousel', 'Video'];
 
+// Red del posteo → "service" del canal en Buffer (para filtrar el dropdown de cuentas).
+const SERVICE_BY_PLATFORM: Record<string, string> = {
+  Instagram: 'instagram', TikTok: 'tiktok', Facebook: 'facebook',
+  Twitter: 'twitter', YouTube: 'youtube', LinkedIn: 'linkedin',
+};
+type BufferChannel = { id: string; name: string; service: string };
+
 function colorOf(json: string, key: string, def: string) {
   try { return JSON.parse(json)[key] ?? def; } catch { return def; }
 }
@@ -205,10 +212,7 @@ export default function Posteos() {
                 ))}
               </div>
               {bufferQ.isError && (
-                <div className="text-[11px] text-amber-600 mt-2">⚠️ No pude leer los canales de Buffer (revisá el token). Igual podés pegar el channelId a mano.</div>
-              )}
-              {bufferQ.data && (
-                <div className="text-[11px] text-slate-500 mt-2">Canales Buffer: {bufferQ.data.map((c) => `${c.service}:${c.id.slice(-6)}`).join(' · ') || '—'}</div>
+                <div className="text-[11px] text-amber-600 mt-2">⚠️ No pude leer tus canales de Buffer (revisá el token). Podés pegar el channelId a mano abajo.</div>
               )}
             </div>
 
@@ -217,7 +221,7 @@ export default function Posteos() {
 
             {/* Redes */}
             <div className="card p-4">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-1">
                 <h3 className="font-semibold">Redes</h3>
                 <div className="flex gap-1 flex-wrap">
                   {PLATFORMS.filter((p) => !usedPlatforms.has(p)).map((p) => (
@@ -225,8 +229,11 @@ export default function Posteos() {
                   ))}
                 </div>
               </div>
+              <p className="text-xs text-slate-500 mb-3">
+                Una red postea sola solo si: <b>la app está activa</b> (arriba) <b>+</b> la red está <b>Activa</b> <b>+</b> tiene una <b>cuenta destino</b> elegida.
+              </p>
               <div className="space-y-3">
-                {channels.map((c) => <ChannelRow key={c.id} channel={c} onSave={saveChannel} onGenerate={() => generate(c.id)} />)}
+                {channels.map((c) => <ChannelRow key={c.id} channel={c} bufferChannels={bufferQ.data} onSave={saveChannel} onGenerate={() => generate(c.id)} />)}
                 {channels.length === 0 && <div className="text-sm text-slate-500">Sin redes. Agregá una arriba.</div>}
               </div>
             </div>
@@ -364,35 +371,76 @@ function CadenceEditor({ profile, onSave }: { profile: PostingProfile; onSave: (
   );
 }
 
-function ChannelRow({ channel, onSave, onGenerate }: { channel: PostingChannel; onSave: (c: PostingChannel) => void; onGenerate: () => void }) {
+function ChannelRow({ channel, bufferChannels, onSave, onGenerate }:
+  { channel: PostingChannel; bufferChannels?: BufferChannel[]; onSave: (c: PostingChannel) => void; onGenerate: () => void }) {
   const [c, setC] = useState(channel);
+  const [showPrompt, setShowPrompt] = useState(false);
   const set = <K extends keyof PostingChannel>(k: K, v: PostingChannel[K]) => setC((x) => ({ ...x, [k]: v }));
+
+  const isWarmrDist = c.distribution === 'Warmr';
+  // Cuentas de Buffer que matchean esta red (un canal de IG solo puede ir a una cuenta de IG).
+  const svc = SERVICE_BY_PLATFORM[c.platform];
+  const matching = (bufferChannels ?? []).filter((b) => !svc || b.service === svc);
+  const dest = bufferChannels?.find((b) => b.id === c.bufferChannelId);
+  const hasDest = isWarmrDist ? !!c.warmrAccount.trim() : !!c.bufferChannelId.trim();
+
+  // Estado claro de la red.
+  const state = !c.enabled
+    ? { label: 'Pausada', cls: 'bg-slate-100 text-slate-500' }
+    : !hasDest
+      ? { label: 'Falta destino', cls: 'bg-amber-100 text-amber-700' }
+      : { label: 'Lista', cls: 'bg-emerald-100 text-emerald-700' };
+
   return (
     <div className="border rounded-lg p-3">
+      {/* Línea 1: red + Activa + estado + a dónde va */}
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="font-medium w-24">{c.platform}</span>
+        <span className="font-medium w-20">{c.platform}</span>
         <label className="flex items-center gap-1 text-xs">
           <input type="checkbox" checked={c.enabled} onChange={(e) => set('enabled', e.target.checked)} /> Activa
         </label>
-        <select className="input w-32" value={c.format} onChange={(e) => set('format', e.target.value)}>
+        <span className={`text-[11px] rounded px-1.5 py-0.5 ${state.cls}`}>{state.label}</span>
+        <span className="text-[11px] text-slate-400 ml-auto">
+          → {isWarmrDist ? `Warmr ${c.warmrAccount || '(sin cuenta)'}` : (dest ? `${dest.name}` : 'Buffer (sin cuenta)')}
+        </span>
+      </div>
+
+      {/* Línea 2: formato · asset · distribución · cuenta destino */}
+      <div className="flex items-center gap-2 flex-wrap mt-2">
+        <select className="input w-28" value={c.format} onChange={(e) => set('format', e.target.value)} title="Formato">
           {FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
         </select>
-        <select className="input w-32" value={c.assetKind} onChange={(e) => set('assetKind', e.target.value)}>
+        <select className="input w-28" value={c.assetKind} onChange={(e) => set('assetKind', e.target.value)} title="Imagen o video">
           <option value="Image">Imagen</option>
           <option value="Video">Video</option>
         </select>
-        <select className="input w-32" value={c.distribution} onChange={(e) => set('distribution', e.target.value)} title="Por dónde se distribuye">
+        <select className="input w-36" value={c.distribution} onChange={(e) => set('distribution', e.target.value)} title="Por dónde se distribuye">
           <option value="Buffer">→ Buffer (API)</option>
           <option value="Warmr">→ Warmr (device)</option>
         </select>
-        {c.distribution === 'Warmr'
-          ? <input className="input flex-1 min-w-[140px]" placeholder="Cuenta Warmr (@handle)" value={c.warmrAccount}
-              onChange={(e) => set('warmrAccount', e.target.value)} />
-          : <input className="input flex-1 min-w-[140px]" placeholder="Buffer channelId" value={c.bufferChannelId}
-              onChange={(e) => set('bufferChannelId', e.target.value)} />}
+        {isWarmrDist ? (
+          <input className="input flex-1 min-w-[160px]" placeholder="Cuenta Warmr (@handle)" value={c.warmrAccount}
+            onChange={(e) => set('warmrAccount', e.target.value)} />
+        ) : matching.length > 0 ? (
+          <select className="input flex-1 min-w-[180px]" value={c.bufferChannelId} onChange={(e) => set('bufferChannelId', e.target.value)} title="Cuenta de Buffer destino">
+            <option value="">— elegí cuenta —</option>
+            {matching.map((b) => <option key={b.id} value={b.id}>{b.name} · {b.service}</option>)}
+          </select>
+        ) : (
+          <input className="input flex-1 min-w-[160px]" placeholder={`Sin cuenta de ${c.platform} en Buffer — pegá el channelId`}
+            value={c.bufferChannelId} onChange={(e) => set('bufferChannelId', e.target.value)} />
+        )}
       </div>
-      <textarea className="input w-full mt-2 text-xs font-mono" rows={4} placeholder="Prompt propio de esta red para esta app…"
-        value={c.promptTemplate} onChange={(e) => set('promptTemplate', e.target.value)} />
+
+      {/* Prompt propio (colapsable, no más muro de texto) */}
+      <button type="button" onClick={() => setShowPrompt((s) => !s)} className="text-xs text-slate-500 hover:text-slate-700 mt-2">
+        {showPrompt ? '▾' : '▸'} Prompt propio de esta red
+      </button>
+      {showPrompt && (
+        <textarea className="input w-full mt-1 text-xs font-mono" rows={5} placeholder="Instrucciones propias de esta red para esta app…"
+          value={c.promptTemplate} onChange={(e) => set('promptTemplate', e.target.value)} />
+      )}
+
       <div className="flex gap-2 mt-2">
         <button className="btn-primary text-xs" onClick={() => onSave(c)}>Guardar</button>
         <button className="btn-secondary text-xs" onClick={onGenerate}>Generar ahora</button>
