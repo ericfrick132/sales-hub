@@ -158,9 +158,13 @@ public class HubController : ControllerBase
 
     /// <summary>
     /// La app baja los mensajes que tiene que MANDAR ella (por su propia Evolution). Sólo
-    /// productos AppManagedTransport. Devuelve filas "due" (ya paceadas por ScheduledAt)
-    /// respetando el cap diario y la ventana horaria del producto, y las RECLAMA (LockedAt)
-    /// para no servirlas dos veces. La app debe ackear cada una con /hub/outbound/ack.
+    /// productos AppManagedTransport. Devuelve filas "due" (ya paceadas por ScheduledAt) y las
+    /// RECLAMA (LockedAt) para no servirlas dos veces. La app debe ackear cada una con /hub/outbound/ack.
+    ///
+    /// PACING POR LÍNEA (no por producto): varias apps pueden compartir UNA sola instancia de
+    /// Evolution (p.ej. "Eric Frick"). Si cada producto tirara a su propio ritmo, la línea compartida
+    /// se satura y la banean. Por eso el gap mínimo y el cap diario se aplican sobre la INSTANCIA
+    /// (across todos los productos), serializando los envíos de esa línea aunque tiren varias apps.
     /// </summary>
     [HttpGet("outbound")]
     public async Task<IActionResult> GetOutbound([FromQuery] string productKey, CancellationToken ct)
@@ -180,18 +184,13 @@ public class HubController : ControllerBase
             && (ar.Hour < product.SendHourStart || ar.Hour >= product.SendHourEnd))
             return Ok(Array.Empty<object>());
 
-        // Cap diario anti-ban: contactos NUEVOS (leads distintos) ya enviados hoy.
-        var dayStart = new DateTimeOffset(ar.Date, TimeSpan.FromHours(-3));
-        var cap = product.DailyLimit > 0 ? product.DailyLimit : 60;
-        var contactedToday = await _db.Outbox
-            .Where(o => o.Status == OutboxStatus.Sent && o.SentAt != null && o.SentAt >= dayStart
-                     && o.Lead != null && o.Lead.ProductKey == productKey)
-            .Select(o => o.LeadId).Distinct().CountAsync(ct);
-        if (contactedToday >= cap)
-            return Ok(Array.Empty<object>());
+        var gapSeconds = _config.GetValue("Hub:LineGapSeconds", 45);   // gap mínimo entre envíos de la misma línea
+        var lineDailyCap = _config.GetValue("Hub:LineDailyCap", 120);  // tope diario de leads distintos por línea
+        var batch = Math.Max(_config.GetValue("Hub:OutboundBatch", 1), 1); // chico a propósito: el gap controla el ritmo
 
+        // 1) Elegir el/los candidato(s) top del producto pedido (todavía sin reclamar).
         var claimCutoff = now.AddMinutes(-5);
-        var rows = await (
+        var candidates = await (
             from o in _db.Outbox
             where o.Status == OutboxStatus.Scheduled
                && o.Channel == MessageChannel.WhatsApp
@@ -200,12 +199,33 @@ public class HubController : ControllerBase
                && (o.LockedAt == null || o.LockedAt < claimCutoff)
             orderby o.Priority descending, o.ScheduledAt
             select o
-        ).Take(20).ToListAsync(ct);
+        ).Take(batch).ToListAsync(ct);
+        if (candidates.Count == 0) return Ok(Array.Empty<object>());
 
-        foreach (var o in rows) o.LockedAt = now; // reclamar (re-servible tras 5 min si la app murió)
-        if (rows.Count > 0) await _db.SaveChangesAsync(ct);
+        // 2) La LÍNEA = instancia Evolution del candidato. El pacing es POR LÍNEA (across TODOS los
+        // productos que compartan esa instancia), no por producto.
+        var line = candidates[0].EvolutionInstance;
 
-        return Ok(rows.Select(o => new
+        // GAP mínimo: si la línea mandó algo hace menos de gapSeconds, está "ocupada" → reintentar luego.
+        var gapCutoff = now.AddSeconds(-gapSeconds);
+        var lineBusy = await _db.Outbox.AnyAsync(o =>
+            o.EvolutionInstance == line && o.Status == OutboxStatus.Sent
+            && o.SentAt != null && o.SentAt > gapCutoff, ct);
+        if (lineBusy) return Ok(Array.Empty<object>());
+
+        // CAP diario de la LÍNEA: leads distintos ya enviados hoy por esa instancia (across productos).
+        var dayStart = new DateTimeOffset(ar.Date, TimeSpan.FromHours(-3));
+        var lineContactedToday = await _db.Outbox
+            .Where(o => o.EvolutionInstance == line && o.Status == OutboxStatus.Sent
+                     && o.SentAt != null && o.SentAt >= dayStart)
+            .Select(o => o.LeadId).Distinct().CountAsync(ct);
+        if (lineContactedToday >= lineDailyCap) return Ok(Array.Empty<object>());
+
+        // 3) Reclamar y devolver (array plano; mismo shape que antes).
+        foreach (var o in candidates) o.LockedAt = now; // re-servible tras 5 min si la app murió
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(candidates.Select(o => new
         {
             id = o.Id,
             leadId = o.LeadId,
