@@ -37,7 +37,7 @@ public class AiSuggestionService
         Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, CancellationToken ct)
     {
         if (thread.Count == 0) return null;
-        var rulesBlock = await _rules.GetBlockAsync(null, ct);
+        var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
         var system = BuildSystemPrompt(product, rulesBlock);
         var conversation = BuildConversation(lead, thread, instruction: null);
         return await CompleteWithPriceGuardrailAsync(system, conversation, product, ct);
@@ -50,7 +50,7 @@ public class AiSuggestionService
         Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, TimeSpan silentFor, CancellationToken ct)
     {
         if (thread.Count == 0) return null;
-        var rulesBlock = await _rules.GetBlockAsync(null, ct);
+        var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
         var system = BuildSystemPrompt(product, rulesBlock);
         var hrs = Math.Max(1, (int)Math.Round(silentFor.TotalHours));
         var instruction =
@@ -71,7 +71,7 @@ public class AiSuggestionService
         Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, TimeSpan silentFor, CancellationToken ct)
     {
         if (!_claude.IsConfigured || thread.Count == 0) return (null, 0);
-        var rulesBlock = await _rules.GetBlockAsync(null, ct);
+        var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
         var system = BuildSystemPrompt(product, rulesBlock);
         var hrs = Math.Max(1, (int)Math.Round(silentFor.TotalHours));
         var instruction =
@@ -170,7 +170,7 @@ public class AiSuggestionService
     {
         if (!_claude.IsConfigured || thread.Count == 0) return (LeadIntent.Unknown, false, null);
 
-        var rulesBlock = await _rules.GetBlockAsync(null, ct);
+        var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
         var system = BuildSystemPrompt(product, rulesBlock) + MergedTaskInstruction;
         var conversation = BuildConversation(lead, thread, instruction: null);
 
@@ -202,7 +202,7 @@ public class AiSuggestionService
     {
         if (!_claude.IsConfigured || thread.Count == 0) return null;
 
-        var rulesBlock = await _rules.GetBlockAsync(null, ct);
+        var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
         var system = BuildSystemPrompt(product, rulesBlock) + OnboardingAsideInstruction;
         var conversation = BuildConversation(lead, thread, instruction: null);
 
