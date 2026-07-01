@@ -339,6 +339,23 @@ public class ConversationAgentService
     private static bool AsksForAccessLink(string? msg)
         => !string.IsNullOrWhiteSpace(msg) && AccessLinkRx.IsMatch(msg!);
 
+    // Salvavidas determinístico: el prompt ya prohíbe "boludo" pero el modelo a veces lo ignora.
+    // Lo sacamos SIEMPRE del texto que sale al lead (cualquier fuente: aside, chat, sugerencia),
+    // pase lo que pase. Nunca, jamás, sale un "boludo".
+    private static readonly Regex BoludoRx = new(
+        @"\b(bolud[oa]s?|boludit[oa]s?|bolu|boludez(?:es)?|boludeando|pelotud[oa]s?)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static string StripBoludo(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text ?? string.Empty;
+        var t = BoludoRx.Replace(text!, " ");
+        t = Regex.Replace(t, @"[ \t]+([,.;:!?])", "$1");     // espacio huérfano antes de puntuación
+        t = Regex.Replace(t, @"(^|\n)[ \t]*,[ \t]*", "$1");  // coma que quedó abriendo una línea
+        t = Regex.Replace(t, @"[ \t]{2,}", " ");
+        return t.Trim();
+    }
+
     /// <summary>
     /// Envío del bot de onboarding: splittea por [NUEVO_MENSAJE] y manda cada parte (como n8n).
     /// Auto-envía SIEMPRE (bypassa AutoPilot — es el bot). Si no se puede enviar (sin teléfono o
@@ -346,6 +363,7 @@ public class ConversationAgentService
     /// </summary>
     private async Task OnboardingSendAsync(Lead lead, string text, CancellationToken ct)
     {
+        text = StripBoludo(text);
         var parts = text.Split("[NUEVO_MENSAJE]", StringSplitOptions.RemoveEmptyEntries)
             .Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
         if (parts.Count == 0) return;
@@ -403,6 +421,7 @@ public class ConversationAgentService
     /// </summary>
     private async Task DeliverAsync(Lead lead, string text, LeadIntent intentForGate, string src, CancellationToken ct)
     {
+        text = StripBoludo(text);
         // Relay: si el producto delega el transporte a la app, encolamos la respuesta (la app la
         // manda por su Evolution). Respetamos AutoPilot + needs_human; el cap/pacing lo aplica el
         // endpoint /hub/outbound. No requiere instancia de sales-hub conectada.
