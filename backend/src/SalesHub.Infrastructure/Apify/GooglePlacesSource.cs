@@ -26,6 +26,14 @@ public class GooglePlacesSource : IApifySource
 
     public async Task<SourceRunResult> RunAsync(SourceRunRequest request, CancellationToken ct = default)
     {
+        // Guard: nunca scrapear para un producto SIN ProductKey (ej. un "producto fantasma" vacío
+        // que quedó active=true). Sin esto, cae al término default "negocio" y crea leads con
+        // product_key vacío que no se mensajean nunca (así aparecieron ~900 leads huérfanos).
+        if (string.IsNullOrWhiteSpace(request.Product?.ProductKey))
+        {
+            _log.LogWarning("Scrape con producto sin ProductKey — se omite (evita leads huérfanos)");
+            return new SourceRunResult(Source, Array.Empty<Lead>(), null, 0);
+        }
         if (string.IsNullOrWhiteSpace(_google.PlacesApiKey))
         {
             _log.LogWarning("Google Places API key missing — skipping");
