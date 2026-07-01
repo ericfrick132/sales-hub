@@ -218,11 +218,11 @@ public class AiSuggestionService
     }
 
     private const string OnboardingAsideInstruction =
-        "\n\nCONTEXTO CRÍTICO: el lead está en el ALTA AUTOMÁTICA (un flujo guiado de preguntas) y te hizo una " +
-        "pregunta puntual fuera del guion. Respondé SOLO esa pregunta, en 1 frase corta y directa. " +
-        "PROHIBIDO TERMINANTE: hacer otra pregunta, agregar cierre/CTA, invitar a avanzar o despedirte. " +
-        "Inmediatamente DESPUÉS de tu respuesta el sistema reenvía la pregunta pendiente del alta, así que tu " +
-        "mensaje tiene que ser SOLO el dato que te pidió, nada más. No repitas vos la pregunta del alta.";
+        "\n\nCONTEXTO: el lead está en el ALTA por WhatsApp (un flujo guiado) y te hizo una duda o consulta " +
+        "fuera del guion. Respondé SOLO esa duda, de forma natural y humana, breve (1-2 frases, tono de amigo, " +
+        "voseo es-AR). NO cierres con '¿alguna otra duda?' ni frases de bot, NO te despidas, NO empujes a avanzar " +
+        "y NO le pidas el mail vos mismo — si corresponde, el sistema sigue el flujo cuando el lead esté listo. " +
+        "Resolvé la duda, con calidez, y nada más.";
 
     private const string MergedTaskInstruction =
         "\n\nTAREA DOBLE: además de responder, clasificá al prospecto. Tu salida tiene EXACTAMENTE este formato:\n" +

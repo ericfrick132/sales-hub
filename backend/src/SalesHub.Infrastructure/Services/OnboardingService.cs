@@ -33,6 +33,11 @@ public class OnboardingService
         @"\b(precio|costo|cuesta|cu[aá]nto sale|cu[aá]nto vale|valor|tarifa|presupuesto|info|informaci[oó]n|qu[eé] es|c[oó]mo funciona|para qu[eé] sirve|qu[eé] hace|demo|prueba|gratis|trial|probar|funcion(a|es)|features|caracter[ií]sticas|qu[eé] incluye)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex EmailRx = new(@"[^\s@]+@[^\s@]+\.[^\s@]+", RegexOptions.Compiled);
+    // Señales de que el lead está preguntando/dudando en vez de contestar. En el paso del mail
+    // esto evita el "pasame el mail" robótico: primero resolvemos la duda, después pedimos el mail.
+    private static readonly Regex DoubtRx = new(
+        @"(\?|no s[eé]\b|no estoy segur|no entiend|(duda|consulta|pregunta)s?\b|y si\b|se puede|puedo\b|es seguro|no me convence|desconf[ií])",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private const string NL = "[NUEVO_MENSAJE]";
 
     public async Task<OnboardingResult> ProcessAsync(Lead lead, string lastMessage, OnboardingConfig cfg, CancellationToken ct)
@@ -99,8 +104,19 @@ public class OnboardingService
         var maxCollect = cfg.SelfServe ? n + 1 : n;
 
         // Off-script mientras junta datos → la IA responde, no avanza.
-        if (ob.Step >= 1 && ob.Step <= maxCollect && KeywordRx.IsMatch(lower))
-            return new OnboardingResult(null, OffScript: true, Provisioned: false, PendingQuestion: PendingQuestion(ob.Step, n, questions, emailPrompt));
+        //  - En las preguntas (1..n): keyword de precio/info → la IA contesta y el sistema RE-PREGUNTA.
+        //  - En el paso del mail (n+1): si NO viene un mail y el lead pregunta/duda → la IA contesta
+        //    ORGÁNICO y NO reenvía el pedido de mail (primero la duda; el mail se pide después, sin
+        //    insistir). Si el mensaje trae un mail NO es off-script aunque matchee keywords (ej.
+        //    "info@migym.com") → lo dejamos provisionar.
+        var atEmailStep = ob.Step == n + 1;
+        var inCollect = ob.Step >= 1 && ob.Step <= maxCollect;
+        var isDoubt = atEmailStep
+            ? (!EmailRx.IsMatch(msg) && (KeywordRx.IsMatch(lower) || DoubtRx.IsMatch(msg)))
+            : KeywordRx.IsMatch(lower);
+        if (inCollect && isDoubt)
+            return new OnboardingResult(null, OffScript: true, Provisioned: false,
+                PendingQuestion: atEmailStep ? null : PendingQuestion(ob.Step, n, questions, emailPrompt));
 
         string reply;
         var withAudio = false;
@@ -146,7 +162,9 @@ public class OnboardingService
             var email = EmailRx.Match(msg);
             if (!email.Success)
             {
-                reply = "Necesito un mail válido para crear la cuenta. Me lo pasás de nuevo?";
+                // Las dudas ya se resolvieron arriba (off-script). Acá el lead no mandó mail ni
+                // pregunta → recordatorio SUAVE, sin insistir ni sonar a bot. El mail sale cuando quiera.
+                reply = "cuando quieras me pasás tu mail y te dejo la cuenta lista al toque 🙌";
             }
             else
             {

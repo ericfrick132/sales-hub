@@ -15,10 +15,11 @@ public class LeadIngestService : ILeadIngestService
     private readonly ApplicationDbContext _db;
     private readonly ILeadAssigner _assigner;
     private readonly IMessageRenderer _renderer;
+    private readonly OnboardingService _onboarding;
 
-    public LeadIngestService(ApplicationDbContext db, ILeadAssigner assigner, IMessageRenderer renderer)
+    public LeadIngestService(ApplicationDbContext db, ILeadAssigner assigner, IMessageRenderer renderer, OnboardingService onboarding)
     {
-        _db = db; _assigner = assigner; _renderer = renderer;
+        _db = db; _assigner = assigner; _renderer = renderer; _onboarding = onboarding;
     }
 
     public async Task<LeadIngestResult> IngestAsync(LeadIngestRequest req, CancellationToken ct = default)
@@ -73,9 +74,39 @@ public class LeadIngestService : ILeadIngestService
                     && (seller.EvolutionInstance is not null || product.AppManagedTransport);
                 if (canQueue)
                 {
-                    OutboxEnqueueHelper.EnqueueLeadMessages(
-                        _db, _renderer, lead, product, seller, phone,
-                        seller.EvolutionInstance?.InstanceName ?? string.Empty);
+                    var instanceName = seller.EvolutionInstance?.InstanceName ?? string.Empty;
+
+                    // Meta Lead Ads = ya completaron un formulario (nos conocen). NO les mandamos el
+                    // drip de venta con nota de voz: arrancamos DERECHO el onboarding (intro + 1ª
+                    // pregunta) como primer mensaje. El resto del alta lo sigue el loop reply-driven
+                    // (fedToClose ya lo habilita). Solo si el producto tiene onboarding self-serve
+                    // habilitado y el flag prendido; si no, cae al drip normal.
+                    var startedOnboarding = false;
+                    if (lead.Source == LeadSource.MetaLeadAd
+                        && await _db.IsFlagOnAsync("onboarding", false, ct))
+                    {
+                        var onbCfg = await _db.OnboardingConfigs.FirstOrDefaultAsync(
+                            c => c.Enabled && c.SelfServe && c.ProductKey == product.ProductKey, ct);
+                        if (onbCfg is not null)
+                        {
+                            // Crea el LeadOnboarding (Step→1) y devuelve intro + 1ª pregunta; la
+                            // encolamos como texto por el mismo outbox del drip (mismo transporte, sin
+                            // audio). Al responder, el loop reply-driven sigue desde la 2ª pregunta.
+                            var ob = await _onboarding.ProcessAsync(lead, string.Empty, onbCfg, ct);
+                            if (!string.IsNullOrWhiteSpace(ob.Reply))
+                            {
+                                OutboxEnqueueHelper.EnqueueOnboardingText(
+                                    _db, lead, seller, phone, instanceName, ob.Reply!);
+                                startedOnboarding = true;
+                            }
+                        }
+                    }
+
+                    if (!startedOnboarding)
+                    {
+                        OutboxEnqueueHelper.EnqueueLeadMessages(
+                            _db, _renderer, lead, product, seller, phone, instanceName);
+                    }
                     lead.Status = LeadStatus.Queued;
                     lead.QueuedAt = DateTimeOffset.UtcNow;
                 }

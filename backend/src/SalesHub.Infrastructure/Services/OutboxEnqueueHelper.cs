@@ -137,6 +137,51 @@ public static class OutboxEnqueueHelper
     }
 
     /// <summary>
+    /// Encola un mensaje del bot de onboarding (ej. intro + 1ª pregunta) como filas de TEXTO
+    /// en el MISMO outbox que usa el drip — mismo transporte (directo por OutboxSender o relay
+    /// por /hub/outbound) y SIN audio. Splittea por [NUEVO_MENSAJE] igual que OnboardingSendAsync.
+    /// StepIndex queda null: el sender manda el snapshot tal cual, no re-resuelve cadencia.
+    ///
+    /// Se usa para leads que arrancan DERECHO en el onboarding (ej. Meta Lead Ads, que ya
+    /// completaron un formulario) en vez del drip de venta con nota de voz.
+    /// </summary>
+    public static int EnqueueOnboardingText(
+        ApplicationDbContext db,
+        Lead lead,
+        Seller seller,
+        string whatsappPhone,
+        string instanceName,
+        string text,
+        DateTimeOffset? scheduledAt = null)
+    {
+        var parts = text.Split(new[] { "[NUEVO_MENSAJE]" }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Trim())
+            .Where(p => p.Length > 0)
+            .ToList();
+        var when = scheduledAt ?? DateTimeOffset.UtcNow;
+        var count = 0;
+        foreach (var p in parts)
+        {
+            db.Outbox.Add(new MessageOutbox
+            {
+                Id = Guid.NewGuid(),
+                LeadId = lead.Id,
+                SellerId = seller.Id,
+                Channel = MessageChannel.WhatsApp,
+                EvolutionInstance = instanceName,
+                WhatsappPhone = whatsappPhone,
+                Message = p,
+                ScheduledAt = when,
+                Status = OutboxStatus.Scheduled
+            });
+            count++;
+            // +1s para orden estable entre partes que comparten ScheduledAt.
+            when = when.AddSeconds(1);
+        }
+        return count;
+    }
+
+    /// <summary>
     /// Devuelve los steps efectivos a usar para este lead (override de la
     /// categoría si existe + tiene contenido, sino el MessageSteps default
     /// del producto). También retorna la "categoría" lógica para identificar
