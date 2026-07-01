@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SalesHub.Core.Abstractions;
@@ -17,6 +18,9 @@ public class ConversationAgentService
 {
     private const int MaxTranscriptionAttempts = 3;
     private const int BatchSize = 10;
+    // Horas tras crear la cuenta en que seguimos atendiendo al lead aunque quedó Closed
+    // (reenviar el link, contestar "cómo funciona"). Después vuelve a quedar excluido.
+    private const int PostSignupGraceHours = 72;
 
     // Re-enganche: cuántas horas de silencio esperamos antes de un nudge, y el tope.
     private const int ReengageAfterHours = 48;
@@ -105,10 +109,18 @@ public class ConversationAgentService
     {
         // Leads sin sugerencia cuyo último mensaje es del lead. Si el último es
         // "[audio]" todavía sin transcribir, esperamos al próximo tick.
+        // Los Closed normalmente no entran (venta cerrada). EXCEPCIÓN: un lead al que RECIÉN le
+        // creamos la cuenta (LeadOnboarding provisionado, ventana de gracia) suele seguir escribiendo
+        // ("pasame el link", "cómo funciona") — no lo dejamos hablando solo. Fuera de la ventana
+        // vuelve a quedar excluido.
+        var postSignupGraceStart = DateTimeOffset.UtcNow.AddHours(-PostSignupGraceHours);
         var candidates = await (
             from l in _db.Leads
             where l.AiSuggestedReply == null && l.SellerId != null
-                && l.Status != LeadStatus.Closed && l.Status != LeadStatus.Lost
+                && l.Status != LeadStatus.Lost
+                && (l.Status != LeadStatus.Closed
+                    || _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
+                        && o.ProvisionedAt != null && o.ProvisionedAt > postSignupGraceStart))
             let last = _db.ConversationMessages
                 .Where(m => m.LeadId == l.Id)
                 .OrderByDescending(m => m.Timestamp)
@@ -172,6 +184,20 @@ public class ConversationAgentService
                 continue;
             }
 
+            // ── Post-alta: si ya le creamos la cuenta (onboarding provisionado), el alta terminó.
+            // Le damos SOPORTE en vez de dejarlo mudo: si pide el link se lo reenviamos al toque
+            // (ya lo tenemos); el resto de dudas las contesta el aside del onboarding más abajo.
+            var onb = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
+            if (onb?.ProvisionedAt != null && !string.IsNullOrWhiteSpace(onb.AccessUrl)
+                && AsksForAccessLink(last))
+            {
+                await OnboardingSendAsync(lead,
+                    $"tu link de acceso, entrás directo (sin formularios):[NUEVO_MENSAJE]{onb.AccessUrl}", ct);
+                await _db.SaveChangesAsync(ct);
+                done++;
+                continue;
+            }
+
             // ── Onboarding de ads MULTI-APP. Gated por flag 'onboarding' + config Enabled de la app.
             // Solo arranca si el lead ya está en el flujo o es FRESCO (sin outbound previo): así
             // prender el flag NO re-introduce leads viejos con historia (backfill / atendidos por n8n).
@@ -187,7 +213,7 @@ public class ConversationAgentService
                 && (lead.Source == LeadSource.WhatsAppAd || (fedToClose && onbCfg.SelfServe));
             var runOnboarding = onbEligible
                 && (fedToClose
-                    || await _db.Set<LeadOnboarding>().AnyAsync(o => o.LeadId == lead.Id, ct)
+                    || onb is not null
                     || !thread.Any(m => m.Direction == MessageDirection.Outbound));
 
             // Espera humana configurable: random estable entre Min y Max seg desde el mensaje del lead.
@@ -304,6 +330,14 @@ public class ConversationAgentService
         });
         return true;
     }
+
+    private static readonly Regex AccessLinkRx = new(
+        @"(link|enlace|url|ingres|entrar|acced|acceso|logue|log ?in|inici[aá]r? sesi[oó]n|no me lleg|no puedo entrar|c[oó]mo entro|d[oó]nde entro|clave|contrase|password)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>El lead ya provisionado pide el acceso/link/credenciales → se lo reenviamos.</summary>
+    private static bool AsksForAccessLink(string? msg)
+        => !string.IsNullOrWhiteSpace(msg) && AccessLinkRx.IsMatch(msg!);
 
     /// <summary>
     /// Envío del bot de onboarding: splittea por [NUEVO_MENSAJE] y manda cada parte (como n8n).

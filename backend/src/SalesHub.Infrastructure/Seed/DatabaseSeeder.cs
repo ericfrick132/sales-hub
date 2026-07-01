@@ -43,14 +43,13 @@ public static class DatabaseSeeder
             EmailPrompt = "Pasame tu mail y con eso te creo la cuenta ahora mismo. De paso te mando un código de descuento.",
             ProvisionUrl = "https://gymhero.fitness/api/tenants/bot-register",
             ProvisionNameField = "gymName",
-            SuccessMessage = "¡Listo! Te dejé la cuenta creada y lista para usar." +
-                "[NUEVO_MENSAJE]Entrá directo desde este link, ya quedás adentro (sin formularios):" +
+            // El link va SOLO y claro (nada de muro de info al final: si mandamos video + precio +
+            // descuento todo junto, el lead scrollea, no ve el link y lo vuelve a pedir). El resto
+            // (video/precio/descuento) se lo damos después, cuando pregunta o por seguimiento.
+            SuccessMessage = "¡listo! ya te creé la cuenta 🙌" +
+                "[NUEVO_MENSAJE]entrá con este link y ya quedás adentro (sin formularios):" +
                 "[NUEVO_MENSAJE]{accessUrl}" +
-                "[NUEVO_MENSAJE]Te dejo un video de 5 minutos con GymHero funcionando:" +
-                "[NUEVO_MENSAJE]https://www.loom.com/share/02d97a7ccc804d0189f7bf9cf1af8fbf" +
-                "[NUEVO_MENSAJE]Tenés 7 días gratis para probar todo." +
-                "[NUEVO_MENSAJE]Después es el plan Starter: $50.000/mes, todo incluido (socios, clases e instructores ilimitados)." +
-                "[NUEVO_MENSAJE]Y te dejo un código: ARRANCA20 — 20% OFF el primer mes. Lo cargás cuando actives el plan.",
+                "[NUEVO_MENSAJE]tenés 7 días gratis para probar todo. cualquier duda escribime por acá y te ayudo 👇",
         });
         await db.SaveChangesAsync(ct);
     }
