@@ -132,7 +132,10 @@ public class OnboardingService
             var k = ob.Step; // el lead respondió la pregunta questions[k-1]
             if (k == 1 && IsBusinessNameSuspicious(msg) && ob.GymRetries < 1)
             {
-                reply = "jaja dale, en serio 🙏 " + LastSegment(questions[0]);
+                // El nombre del negocio se convierte en el subdominio del tenant (la app lo
+                // auto-deriva, no lo pide). Si el lead manda una frase/oración en vez del nombre,
+                // el subdominio sale impresentable → re-preguntamos por el nombre solo.
+                reply = "jaja perdón 🙏 decime solo el nombre del negocio";
                 ob.GymRetries++;
             }
             else
@@ -251,6 +254,17 @@ public class OnboardingService
             if (low == b) return true;
             if (Regex.IsMatch(low, "(^|\\s)" + Regex.Escape(b) + "($|\\s)")) return true;
         }
+        // Respuesta que es una FRASE/oración en vez de un nombre (ej. "te comento estoy por
+        // abrir el lugar de estética y engrese en el links…"). Los nombres reales son cortos
+        // (1-5 palabras); si el lead se pone a CONTAR en vez de NOMBRAR, el nombre se guarda
+        // sucio y el subdominio del tenant sale impresentable. Re-preguntamos por el nombre solo.
+        var words = low.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+        if (words > 8 || t.Length > 60) return true;
+        // Marcadores de que están describiendo/contando (no nombrando). Solo si ya es más largo
+        // que un nombre corto, para no falsear con un nombre real que use una de estas palabras.
+        if (words >= 4 && Regex.IsMatch(low,
+            @"\b(estoy|quiero|quer[ií]a|tengo|necesito|me\s+gustar[ií]a|todav[ií]a|reci[eé]n|voy\s+a|estamos|te\s+comento|a[uú]n\s+no|no\s+tengo|abrir\s+(el|un|una)|estoy\s+por|por\s+abrir|pensando\s+en)\b"))
+            return true;
         return false;
     }
 }
