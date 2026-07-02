@@ -33,7 +33,10 @@ public class ConversationService
         string? MessageId,
         string Text,
         DateTimeOffset Timestamp,
-        string RawJson);
+        string RawJson,
+        // Saliente/propio (self-chat o envío nuestro). El flujo de leads lo ignora; el relay de
+        // transcripción SÍ lo usa (mandarte un audio a vos mismo es un caso válido).
+        bool FromMe = false);
 
     /// <summary>Called by the Evolution webhook on every inbound message.</summary>
     public async Task<bool> HandleIncomingAsync(IncomingMessage incoming, CancellationToken ct)

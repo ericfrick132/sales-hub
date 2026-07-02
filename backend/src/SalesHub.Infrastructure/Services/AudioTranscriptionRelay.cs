@@ -75,7 +75,12 @@ public class AudioTranscriptionRelay
         // Qué tipo de mensaje es (lo leemos del JSON crudo, no del placeholder).
         var (kind, caption) = Classify(incoming.RawJson);
 
-        if (!cfg.BatchMode)
+        // Self-message (te lo mandás a vos mismo → fromMe): SOLO notas de voz y SIEMPRE modo clásico.
+        // Nuestra propia respuesta (texto/PDF) también llega como fromMe; al exigir audio la ignoramos
+        // y no se arma un loop de transcribir-nuestra-propia-respuesta.
+        var selfMessage = incoming.FromMe;
+
+        if (!cfg.BatchMode || selfMessage)
         {
             // Modo clásico: sólo notas de voz. Cualquier otra cosa sigue el flujo normal.
             if (kind != BatchItemKind.Audio) return false;
@@ -101,7 +106,7 @@ public class AudioTranscriptionRelay
                 return true; // webhook duplicado: ya lo tomamos.
         }
 
-        if (cfg.BatchMode)
+        if (cfg.BatchMode && !selfMessage)
         {
             var item = kind!.Value switch
             {

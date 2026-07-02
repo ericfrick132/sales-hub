@@ -59,7 +59,11 @@ public class WebhookController : ControllerBase
                 if (incoming is null) continue;
                 // Relay de transcripción: si es una nota de voz de un número de la allowlist,
                 // la transcribimos y respondemos el texto — sin pasarla al flujo de leads.
+                // Incluye los self-messages (fromMe): mandarte un audio a vos mismo es válido.
                 if (await _relay.TryHandleAsync(incoming, ct)) { handled++; continue; }
+                // El flujo normal de leads IGNORA los fromMe (nuestros propios envíos salientes);
+                // sólo el relay los usa.
+                if (incoming.FromMe) continue;
                 if (await _conv.HandleIncomingAsync(incoming, ct)) handled++;
             }
             return Ok(new { handled });
@@ -73,10 +77,12 @@ public class WebhookController : ControllerBase
 
     private static ConversationService.IncomingMessage? ParseMessage(string instance, JsonElement msg, string? topSender)
     {
-        // Only inbound messages (fromMe=false).
+        // fromMe: mensaje propio/saliente. NO lo descartamos acá — el relay de transcripción lo
+        // necesita (self-chat: te mandás un audio a vos mismo). El flujo de leads lo ignora aparte.
+        bool fromMe = false;
         if (msg.TryGetProperty("key", out var key))
         {
-            if (key.TryGetProperty("fromMe", out var fromMe) && fromMe.ValueKind == JsonValueKind.True) return null;
+            if (key.TryGetProperty("fromMe", out var fm) && fm.ValueKind == JsonValueKind.True) fromMe = true;
         }
         else return null;
 
@@ -142,7 +148,7 @@ public class WebhookController : ControllerBase
         var timestamp = ts > 0 ? DateTimeOffset.FromUnixTimeSeconds(ts) : DateTimeOffset.UtcNow;
 
         return new ConversationService.IncomingMessage(
-            instance, remoteJid, phoneOverride, messageId, text!, timestamp, msg.GetRawText());
+            instance, remoteJid, phoneOverride, messageId, text!, timestamp, msg.GetRawText(), fromMe);
     }
 
     private static string? TryGetString(JsonElement el, string prop) =>
