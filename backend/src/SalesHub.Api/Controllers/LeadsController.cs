@@ -466,9 +466,12 @@ public class LeadsController : ControllerBase
     [HttpPost("{id:guid}/send-now")]
     public async Task<IActionResult> SendNow(Guid id, CancellationToken ct)
     {
-        const int MaxStepDelaySeconds = 600; // 10 min cap para no colgar el HTTP
+        // "Enviar ahora" es un request HTTP SINCRÓNICO: no puede bloquearse minutos o el proxy
+        // lo mata (salía el 1er mensaje y después "fallaba"). A diferencia del sender de fondo,
+        // acá NO esperamos los delays largos de la cadencia ni la duración COMPLETA del audio.
+        const int MaxStepDelaySeconds = 3;   // cap chico del delay entre steps (mandamos casi de corrido)
+        const int MaxRecordingSeconds = 4;   // "grabando…" un toque, no los ~75s reales del audio
         const int IntraStepDelayMs = 1500;   // texto previo + audio en mismo step (legacy)
-        const int PresenceChunkSeconds = 25; // refresh del indicador "recording…" / "escribiendo…"
 
         var callerId = CurrentUser.Id(User);
         var isAdmin = CurrentUser.IsAdmin(User);
@@ -610,15 +613,11 @@ public class LeadsController : ControllerBase
                             // Mostramos "grabando audio…" por exactamente esa
                             // duración, esperamos, y recién ahí enviamos.
                             var prep = await _evo.PrepareVoiceNoteAsync(asset.Content, ct);
-                            var dur = Math.Max(1, prep.DurationSeconds);
-                            var rem = dur;
-                            while (rem > 0)
-                            {
-                                var chunk = Math.Min(PresenceChunkSeconds, rem);
-                                await _evo.SetPresenceRecordingAsync(instance, jid, chunk, ct);
-                                await Task.Delay(chunk * 1000, ct);
-                                rem -= chunk;
-                            }
+                            // Mostramos "grabando…" un ratito (NO la duración completa del audio, que
+                            // colgaba el request) y mandamos.
+                            var presence = Math.Min(Math.Max(1, prep.DurationSeconds), MaxRecordingSeconds);
+                            await _evo.SetPresenceRecordingAsync(instance, jid, presence, ct);
+                            await Task.Delay(presence * 1000, ct);
                             var okv = await _evo.SendPreparedVoiceNoteAsync(instance, lead.WhatsappPhone!, prep.OggBytes, ct);
                             if (!okv) return StatusCode(502, new { error = $"Falló el step {i + 1} (audio)" });
                             PersistSent(lead, seller, instance, $"[audio: {asset.FileName}]", asset.Id);
