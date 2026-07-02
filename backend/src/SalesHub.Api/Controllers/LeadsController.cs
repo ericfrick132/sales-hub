@@ -247,7 +247,7 @@ public class LeadsController : ControllerBase
     [HttpGet("mine")]
     public async Task<ActionResult<IEnumerable<LeadDto>>> Mine(
         [FromQuery] LeadStatus? status, [FromQuery] string? productKey, [FromQuery] Guid? sellerId,
-        [FromQuery] int limit = 200, CancellationToken ct = default)
+        [FromQuery] LeadSource[]? source, [FromQuery] int limit = 200, CancellationToken ct = default)
     {
         var isAdmin = CurrentUser.IsAdmin(User);
         var callerId = CurrentUser.Id(User);
@@ -260,6 +260,8 @@ public class LeadsController : ControllerBase
         else if (sellerId is not null) q = q.Where(l => l.SellerId == sellerId);
         if (status is not null) q = q.Where(l => l.Status == status);
         if (!string.IsNullOrWhiteSpace(productKey)) q = q.Where(l => l.ProductKey == productKey);
+        // Filtro por fuente(s): permite ?source=MetaLeadAd&source=WhatsAppAd (drill-down de anuncios).
+        if (source is { Length: > 0 }) q = q.Where(l => source.Contains(l.Source));
         q = q.OrderByDescending(l => l.AssignedAt ?? l.CreatedAt).Take(Math.Min(limit, 500));
         return (await q.ToListAsync(ct)).Select(ToDto).ToList();
     }

@@ -18,8 +18,9 @@ type TabKey = 'mine' | 'pool';
 
 const STATUSES: LeadStatus[] = ['Assigned', 'Queued', 'Sent', 'Replied', 'Interested', 'DemoScheduled', 'Closed', 'Lost'];
 
-const SOURCE_FILTER_OPTIONS: { value: LeadSource | ''; label: string }[] = [
+const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Todos' },
+  { value: 'ads', label: 'Anuncios (Meta + WhatsApp)' },
   { value: 'ApifyGoogleMaps', label: 'Google Maps (Apify)' },
   { value: 'GooglePlaces', label: 'Google Places' },
   { value: 'ApifyInstagram', label: 'Instagram (Apify)' },
@@ -77,16 +78,22 @@ export default function MyLeads() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab: TabKey = (searchParams.get('tab') as TabKey) === 'pool' ? 'pool' : 'mine';
   const [tab, setTab] = useState<TabKey>(initialTab);
-  const [status, setStatus] = useState<LeadStatus | ''>('');
-  const [productKey, setProductKey] = useState('');
-  const [sourceFilter, setSourceFilter] = useState<LeadSource | ''>('');
+  // Filtros deep-linkables: se inicializan desde la URL (drill-down desde el dashboard) y se
+  // reflejan de vuelta en la URL. Ej: /leads?product=gymhero&source=MetaLeadAd&source=WhatsAppAd
+  const [status, setStatus] = useState<LeadStatus | ''>((searchParams.get('status') as LeadStatus) || '');
+  const [productKey, setProductKey] = useState(searchParams.get('product') || '');
+  const [sources, setSources] = useState<LeadSource[]>(() => searchParams.getAll('source') as LeadSource[]);
   const [showAdd, setShowAdd] = useState(false);
   const qc = useQueryClient();
 
   useEffect(() => {
-    if (tab === 'pool') setSearchParams({ tab: 'pool' }, { replace: true });
-    else setSearchParams({}, { replace: true });
-  }, [tab, setSearchParams]);
+    const sp = new URLSearchParams();
+    if (tab === 'pool') sp.set('tab', 'pool');
+    if (productKey) sp.set('product', productKey);
+    if (status) sp.set('status', status);
+    for (const s of sources) sp.append('source', s);
+    setSearchParams(sp, { replace: true });
+  }, [tab, productKey, status, sources, setSearchParams]);
 
   const products = useQuery({
     queryKey: ['products-min'],
@@ -94,26 +101,30 @@ export default function MyLeads() {
   });
 
   const leadsQ = useQuery({
-    queryKey: ['leads', tab, status, productKey],
+    queryKey: ['leads', tab, status, productKey, sources.join(',')],
     queryFn: async () => {
-      const params: Record<string, string> = {};
-      if (productKey) params.productKey = productKey;
+      const params = new URLSearchParams();
+      if (productKey) params.set('productKey', productKey);
       if (tab === 'pool') {
         const { data } = await api.get<Lead[]>('/leads/pool', { params });
         return data;
       }
-      if (status) params.status = status;
+      if (status) params.set('status', status);
+      // Filtro por fuente(s) en el backend (soporta varias, ej. anuncios = Meta + WhatsApp),
+      // así no queda capado a las primeras 500 filas antes de filtrar.
+      for (const s of sources) params.append('source', s);
       const { data } = await api.get<Lead[]>('/leads/mine', { params });
       return data;
     }
   });
 
-  // Filter by source on the client — small lists, avoids backend changes.
+  // El pool no filtra por fuente en el backend → lo hacemos acá; para 'mine' ya viene filtrado
+  // (este filtro queda como no-op consistente).
   const leads = useMemo(() => {
     const all = leadsQ.data ?? [];
-    if (!sourceFilter) return all;
-    return all.filter((l) => l.source === sourceFilter);
-  }, [leadsQ.data, sourceFilter]);
+    if (sources.length === 0) return all;
+    return all.filter((l) => sources.includes(l.source));
+  }, [leadsQ.data, sources]);
 
   async function claim(leadId: string) {
     try {
@@ -200,7 +211,20 @@ export default function MyLeads() {
         </div>
         <div>
           <label className="text-xs text-slate-500">Origen</label>
-          <select className="input" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as LeadSource | '')}>
+          <select
+            className="input"
+            value={
+              sources.length === 0
+                ? ''
+                : sources.length === 2 && sources.includes('MetaLeadAd') && sources.includes('WhatsAppAd')
+                  ? 'ads'
+                  : sources[0]
+            }
+            onChange={(e) => {
+              const v = e.target.value;
+              setSources(v === '' ? [] : v === 'ads' ? (['MetaLeadAd', 'WhatsAppAd'] as LeadSource[]) : [v as LeadSource]);
+            }}
+          >
             {SOURCE_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>

@@ -181,6 +181,54 @@ public class DashboardController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Leads de ANUNCIOS por app: Meta Lead Ads (formularios) + WhatsApp Ads (click-to-WhatsApp).
+    /// Una fila por producto → alimenta las cards del dashboard con drill-down a /leads filtrado.
+    /// </summary>
+    [HttpGet("ad-leads")]
+    public async Task<IActionResult> AdLeads(CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        var adSources = new[] { LeadSource.MetaLeadAd, LeadSource.WhatsAppAd };
+        var since7d = DateTimeOffset.UtcNow.AddDays(-7);
+
+        var raw = await _db.Leads.AsNoTracking()
+            .Where(l => adSources.Contains(l.Source) && l.ProductKey != "")
+            .GroupBy(l => new { l.ProductKey, l.Source })
+            .Select(g => new
+            {
+                g.Key.ProductKey,
+                g.Key.Source,
+                total = g.Count(),
+                last7d = g.Count(l => l.CreatedAt >= since7d),
+            })
+            .ToListAsync(ct);
+
+        var names = await _db.Products.AsNoTracking()
+            .Select(p => new { p.ProductKey, p.DisplayName })
+            .ToListAsync(ct);
+        var nameByKey = names
+            .GroupBy(p => p.ProductKey)
+            .ToDictionary(g => g.Key, g => g.First().DisplayName);
+
+        var result = raw
+            .GroupBy(r => r.ProductKey)
+            .Select(g => new AdLeadsRow(
+                g.Key,
+                nameByKey.TryGetValue(g.Key, out var dn) && !string.IsNullOrWhiteSpace(dn) ? dn : g.Key,
+                g.Where(x => x.Source == LeadSource.MetaLeadAd).Sum(x => x.total),
+                g.Where(x => x.Source == LeadSource.WhatsAppAd).Sum(x => x.total),
+                g.Sum(x => x.total),
+                g.Sum(x => x.last7d)))
+            .OrderByDescending(x => x.Total)
+            .ToList();
+
+        return Ok(result);
+    }
+
+    public record AdLeadsRow(string ProductKey, string DisplayName, int MetaLeadAd, int WhatsAppAd, int Total, int Last7d);
+
     [HttpGet("admin")]
     public async Task<ActionResult<GlobalMetrics>> Admin(CancellationToken ct)
     {

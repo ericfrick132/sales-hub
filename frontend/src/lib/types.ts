@@ -345,6 +345,16 @@ export interface AppEffectiveness {
   closeRate: number;
 }
 
+// Leads de anuncios (Meta Lead Ads + WhatsApp Ads) por app — para las cards del dashboard.
+export interface AdLeads {
+  productKey: string;
+  displayName: string;
+  metaLeadAd: number;
+  whatsAppAd: number;
+  total: number;
+  last7d: number;
+}
+
 // Regla dura genérica de la IA de ventas (CRUD admin; se inyecta al system prompt).
 export interface AiRule {
   id: string;

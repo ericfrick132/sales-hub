@@ -9,6 +9,7 @@ import SendingControl from '../components/SendingControl';
 import ControlCenter from '../components/ControlCenter';
 import MainCalendar from '../components/MainCalendar';
 import TodayChecklist from '../components/TodayChecklist';
+import AdLeadsCard from '../components/AdLeadsCard';
 
 interface DailyActivity {
   date: string;
@@ -60,6 +61,8 @@ export default function AdminDashboard() {
       <h1 className="text-xl md:text-2xl font-bold">Hoy</h1>
 
       <ControlCenter sellers={data.sellers} />
+
+      <AdLeadsCard />
 
       <TeamCompliance />
 
