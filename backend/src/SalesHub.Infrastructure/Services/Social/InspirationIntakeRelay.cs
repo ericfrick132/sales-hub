@@ -377,8 +377,10 @@ public class InspirationIntakeRelay
     }
 
     /// <summary>
-    /// Pregunta "¿para qué es?" con un MENÚ NUMERADO de los temas existentes
-    /// (contestás "2" y listo). Texto libre sigue creando un tema nuevo.
+    /// Pregunta "¿para qué es?" con un MENÚ NUMERADO: primero los temas ya usados
+    /// (los más recientes) y después TODAS las apps (elegir una app guarda en su tema
+    /// "general"). Texto libre sigue creando un tema nuevo. La respuesta numérica
+    /// banca 2 dígitos, así que el menú puede pasar de 9.
     /// Se saltea si ya preguntamos hace poco (ráfaga de imágenes).
     /// </summary>
     private async Task AskTopicIfDueAsync(ConversationService.IncomingMessage incoming, CancellationToken ct)
@@ -386,36 +388,40 @@ public class InspirationIntakeRelay
         if (DateTimeOffset.UtcNow - _lastTopicAskAt < AskCooldown) return;
         _lastTopicAskAt = DateTimeOffset.UtcNow;
 
-        // Temas ya usados, los más recientes primero (hasta 9 para que el menú sea de 1 dígito).
         var topics = await _db.InspirationItems.AsNoTracking()
             .Where(i => !i.PendingTopic && i.Topic != "sin-clasificar")
             .GroupBy(i => new { i.Topic, i.ProductKey })
             .Select(g => new { g.Key.Topic, g.Key.ProductKey, Last = g.Max(x => x.CreatedAt) })
             .OrderByDescending(x => x.Last)
-            .Take(9)
+            .Take(6)
             .ToListAsync(ct);
+        var apps = await _db.PostingProfiles.AsNoTracking()
+            .OrderBy(p => p.ProductKey).Select(p => p.ProductKey).ToListAsync(ct);
 
-        if (topics.Count == 0)
+        var menu = topics.Select(t => new MenuOption(t.Topic, t.ProductKey)).ToList();
+        foreach (var app in apps)
+            if (!menu.Any(m => m.Topic == "general" && m.ProductKey == app))
+                menu.Add(new MenuOption("general", app));
+
+        if (menu.Count == 0)
         {
             _lastMenu = null;
-            var apps = await _db.PostingProfiles.AsNoTracking()
-                .OrderBy(p => p.ProductKey).Select(p => p.ProductKey).ToListAsync(ct);
-            var appsHint = apps.Count > 0 ? $" Si es para una app, arrancá con su nombre ({string.Join("/", apps)})." : "";
             await ReplyAsync(incoming,
                 "¡buena! ¿Para qué es esto? Contestame el tema (ej: \"motivación\" o \"gymhero motivación\")." +
-                appsHint + " Mandá \"cancelar\" para descartarla.", ct);
+                " Mandá \"cancelar\" para descartarla.", ct);
             return;
         }
 
-        var menu = topics.Select(t => new MenuOption(t.Topic, t.ProductKey)).ToList();
         _lastMenu = menu;
 
         var sb = new StringBuilder();
         sb.AppendLine("¡buena! ¿Para qué es? Contestá el número:");
         for (var i = 0; i < menu.Count; i++)
         {
-            var app = menu[i].ProductKey is null ? "" : $" ({menu[i].ProductKey})";
-            sb.AppendLine($"{i + 1}. {menu[i].Topic}{app}");
+            // Las entradas de app (tema "general") se muestran como la app a secas.
+            sb.AppendLine(menu[i].Topic == "general" && menu[i].ProductKey is not null
+                ? $"{i + 1}. {menu[i].ProductKey}"
+                : $"{i + 1}. {menu[i].Topic}{(menu[i].ProductKey is null ? "" : $" ({menu[i].ProductKey})")}");
         }
         sb.Append("O escribí un tema nuevo (ej: \"gymhero motivación\"). \"cancelar\" descarta.");
         await ReplyAsync(incoming, sb.ToString(), ct);

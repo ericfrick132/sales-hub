@@ -42,6 +42,32 @@ public class SocialPostsController : ControllerBase
         return Ok(profiles);
     }
 
+    /// <summary>Crea el perfil de una app nueva (ej. efcloud). Los canales se agregan con posting-channels.</summary>
+    [HttpPost("profiles")]
+    public async Task<IActionResult> CreateProfile([FromBody] CreateProfileRequest req, CancellationToken ct)
+    {
+        var key = (req.ProductKey ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(key)) return BadRequest(new { error = "productKey requerido." });
+        if (await _db.PostingProfiles.AnyAsync(p => p.ProductKey == key, ct))
+            return Conflict(new { error = "Ya existe un perfil para esa app." });
+
+        var p = new PostingProfile
+        {
+            Id = Guid.NewGuid(),
+            ProductKey = key,
+            Enabled = false, // se prende cuando la marca/canales están configurados
+            BrandVoice = req.BrandVoice ?? string.Empty,
+            BrandGuidelines = req.BrandGuidelines ?? string.Empty,
+            TargetAudience = req.TargetAudience ?? string.Empty,
+            ContentPillars = req.ContentPillars ?? new List<string>(),
+            PostHours = req.PostHours ?? new List<int> { 10, 18 },
+            PostsPerDay = req.PostsPerDay ?? 1,
+        };
+        _db.PostingProfiles.Add(p);
+        await _db.SaveChangesAsync(ct);
+        return Ok(p);
+    }
+
     [HttpPut("profiles/{productKey}")]
     public async Task<IActionResult> UpdateProfile(string productKey, [FromBody] UpdateProfileRequest req, CancellationToken ct)
     {
@@ -790,5 +816,15 @@ public class SocialPostsController : ControllerBase
         public List<string>? ContentPillars { get; set; }
         public string? BrandVoice { get; set; }
         public string? BrandGuidelines { get; set; }
+    }
+    public class CreateProfileRequest
+    {
+        public string ProductKey { get; set; } = string.Empty;
+        public string? BrandVoice { get; set; }
+        public string? BrandGuidelines { get; set; }
+        public string? TargetAudience { get; set; }
+        public List<string>? ContentPillars { get; set; }
+        public List<int>? PostHours { get; set; }
+        public int? PostsPerDay { get; set; }
     }
 }
