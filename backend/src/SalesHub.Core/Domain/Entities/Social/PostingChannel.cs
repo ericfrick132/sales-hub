@@ -27,6 +27,13 @@ public class PostingChannel
     /// <summary>Por dónde se distribuye este canal: Buffer (API) o Warmr (device real).</summary>
     public SocialDistribution Distribution { get; set; } = SocialDistribution.Buffer;
 
+    /// <summary>
+    /// Solo Distribution=Buffer: publica por "Notify Me" en vez de auto-publicar.
+    /// Buffer manda un push a la app móvil en el slot y el post se termina a mano
+    /// en la app nativa (permite audio trending/stickers, que la API no soporta).
+    /// </summary>
+    public bool NotifyPublish { get; set; }
+
     /// <summary>Cuenta/handle de Warmr destino (cuando Distribution = Warmr).</summary>
     public string WarmrAccount { get; set; } = string.Empty;
 

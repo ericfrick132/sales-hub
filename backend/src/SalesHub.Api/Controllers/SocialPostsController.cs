@@ -177,6 +177,7 @@ public class SocialPostsController : ControllerBase
         var ch = await _db.PostingChannels.FirstOrDefaultAsync(c => c.Id == id, ct);
         if (ch == null) return NotFound();
         if (req.Enabled.HasValue) ch.Enabled = req.Enabled.Value;
+        if (req.NotifyPublish.HasValue) ch.NotifyPublish = req.NotifyPublish.Value;
         if (req.BufferChannelId != null) ch.BufferChannelId = req.BufferChannelId;
         if (req.PromptTemplate != null) ch.PromptTemplate = req.PromptTemplate;
         if (req.WarmrAccount != null) ch.WarmrAccount = req.WarmrAccount;
@@ -205,6 +206,7 @@ public class SocialPostsController : ControllerBase
             Distribution = Enum.TryParse<SocialDistribution>(req.Distribution, true, out var dist) ? dist : SocialDistribution.Buffer,
             WarmrAccount = req.WarmrAccount ?? string.Empty,
             PromptTemplate = req.PromptTemplate ?? string.Empty,
+            NotifyPublish = req.NotifyPublish ?? false,
         };
         _db.PostingChannels.Add(ch);
         await _db.SaveChangesAsync(ct);
@@ -376,6 +378,12 @@ public class SocialPostsController : ControllerBase
         // asDraft=false + scheduledAt → Buffer lo auto-publica en esa fecha (agendado real).
         var asDraft = req?.AsDraft ?? true;
 
+        // Notify Me: si el canal de esta app×red lo pide, Buffer no auto-publica sino
+        // que manda push a la app móvil para terminar el post nativo (audio trending).
+        var postingChannel = await _db.PostingChannels.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.ProductKey == post.ProductKey && c.Platform == post.Platform, ct);
+        var notify = req?.NotifyPublish ?? postingChannel?.NotifyPublish ?? false;
+
         // Si ya había una copia en Buffer (ej. el draft que sube el worker), la borramos
         // antes de re-crear para no duplicar al reprogramar/republicar.
         if (!string.IsNullOrWhiteSpace(post.BufferPostId))
@@ -396,7 +404,7 @@ public class SocialPostsController : ControllerBase
             InstagramType = post.Format.ToString().ToLowerInvariant(),
             ScheduledAt = req?.ScheduledAt,
             SaveAsDraft = asDraft,
-            Automatic = true,
+            Automatic = !notify,
         }, ct);
 
         if (res.Success)
@@ -710,6 +718,7 @@ public class SocialPostsController : ControllerBase
         public string? Distribution { get; set; }
         public string? WarmrAccount { get; set; }
         public string? PromptTemplate { get; set; }
+        public bool? NotifyPublish { get; set; }
     }
     public class CreateChannelRequest
     {
@@ -720,6 +729,7 @@ public class SocialPostsController : ControllerBase
         public string? Distribution { get; set; }
         public string? WarmrAccount { get; set; }
         public string? PromptTemplate { get; set; }
+        public bool? NotifyPublish { get; set; }
     }
     public class PushRequest
     {
@@ -728,6 +738,8 @@ public class SocialPostsController : ControllerBase
         public DateTimeOffset? ScheduledAt { get; set; }
         /// <summary>true (default) = borrador en Buffer; false + ScheduledAt = agendar y auto-publicar.</summary>
         public bool? AsDraft { get; set; }
+        /// <summary>Override de Notify Me; si es null se usa la config del canal (app×red).</summary>
+        public bool? NotifyPublish { get; set; }
     }
     public class UpdatePostRequest
     {

@@ -14,6 +14,7 @@ interface PostingChannel {
   id: string; productKey: string; platform: string; enabled: boolean;
   bufferChannelId: string; format: string; assetKind: string;
   distribution: string; warmrAccount: string; promptTemplate: string;
+  notifyPublish: boolean;
 }
 interface SocialPost {
   id: string; productKey: string; platform: string; format: string; assetKind: string;
@@ -87,6 +88,7 @@ export default function Posteos() {
         enabled: c.enabled, bufferChannelId: c.bufferChannelId,
         format: c.format, assetKind: c.assetKind, promptTemplate: c.promptTemplate,
         distribution: c.distribution, warmrAccount: c.warmrAccount,
+        notifyPublish: c.notifyPublish,
       });
       toast.success('Canal guardado');
       qc.invalidateQueries({ queryKey: ['posteos-channels', productKey] });
@@ -402,6 +404,7 @@ function ChannelRow({ channel, bufferChannels, onSave, onGenerate }:
         <span className={`text-[11px] rounded px-1.5 py-0.5 ${state.cls}`}>{state.label}</span>
         <span className="text-[11px] text-slate-400 ml-auto">
           → {isWarmrDist ? `Warmr ${c.warmrAccount || '(sin cuenta)'}` : (dest ? `${dest.name}` : 'Buffer (sin cuenta)')}
+          {!isWarmrDist && c.notifyPublish ? ' · 📲 Notify Me' : ''}
         </span>
       </div>
 
@@ -431,6 +434,15 @@ function ChannelRow({ channel, bufferChannels, onSave, onGenerate }:
             value={c.bufferChannelId} onChange={(e) => set('bufferChannelId', e.target.value)} />
         )}
       </div>
+
+      {/* Notify Me: Buffer manda push y publicás nativo desde la app (habilita audio trending) */}
+      {!isWarmrDist && (
+        <label className="flex items-center gap-1.5 text-xs mt-2 text-slate-600"
+          title="Buffer no auto-publica: te manda una notificación al teléfono en el slot y terminás el post en la app nativa (podés agregar audio trending, stickers, etc). Requiere la app móvil de Buffer con notificaciones.">
+          <input type="checkbox" checked={c.notifyPublish} onChange={(e) => set('notifyPublish', e.target.checked)} />
+          📲 Notify Me (push al teléfono, publicación nativa — recomendado para video/Reels con audio trending)
+        </label>
+      )}
 
       {/* Prompt propio (colapsable, no más muro de texto) */}
       <button type="button" onClick={() => setShowPrompt((s) => !s)} className="text-xs text-slate-500 hover:text-slate-700 mt-2">

@@ -164,7 +164,7 @@ public class SocialContentWorker : BackgroundService
                     InstagramType = post.Format.ToString().ToLowerInvariant(),
                     ScheduledAt = post.ScheduledAt,
                     SaveAsDraft = !autoPublish,
-                    Automatic = true,
+                    Automatic = !channel.NotifyPublish,
                 }, ct);
 
                 if (res.Success)
