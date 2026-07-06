@@ -27,6 +27,12 @@ public class SocialContentGenerator
     /// Receta para que Claude escriba prompts de VIDEO de calidad (reemplaza la "magia"
     /// de apps tipo Higgsfield: la ponemos en el system prompt y se la pasamos a fal.ai).
     /// </summary>
+    /// <summary>
+    /// El default global (400, pensado para respuestas de venta cortas) trunca el JSON
+    /// del posteo (concepto + prompt cinematográfico + caption + hashtags) → parse error.
+    /// </summary>
+    private const int SocialMaxTokens = 1200;
+
     private const string VideoPromptRecipe =
         "IMPORTANTE — si el assetKind es 'video', el campo 'prompt' (en INGLÉS) tiene que ser un prompt de video bien armado con esta estructura: " +
         "[sujeto + escena] + [acción/movimiento concreto] + [movimiento de cámara: dolly in/pan/handheld/orbit/static] + " +
@@ -62,7 +68,7 @@ public class SocialContentGenerator
         }
         user.AppendLine("Recordá: SOLO el JSON.");
 
-        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), "social", ct);
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), SocialMaxTokens, null, "social", ct);
         if (string.IsNullOrWhiteSpace(raw)) return null;
 
         var json = ExtractJson(raw);
@@ -124,7 +130,7 @@ public class SocialContentGenerator
         }
         user.AppendLine("Recordá: SOLO el JSON.");
 
-        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), "social", ct);
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), SocialMaxTokens, null, "social", ct);
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var json = ExtractJson(raw);
         try
@@ -194,7 +200,7 @@ public class SocialContentGenerator
         AppendRecent(user, recentConcepts);
         user.AppendLine("Recordá: SOLO el JSON.");
 
-        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), inspirationImages, "social", ct);
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), inspirationImages, SocialMaxTokens, null, "social", ct);
         return Parse(raw, ch, "inspiración");
     }
 
@@ -237,7 +243,7 @@ public class SocialContentGenerator
         AppendRecent(user, recentConcepts);
         user.AppendLine("Recordá: SOLO el JSON.");
 
-        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), images, "social", ct);
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), images, SocialMaxTokens, null, "social", ct);
         return Parse(raw, ch, $"inspiración propia '{topic}'");
     }
 
