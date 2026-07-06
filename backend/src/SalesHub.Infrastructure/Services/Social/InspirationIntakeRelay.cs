@@ -11,20 +11,23 @@ using SalesHub.Infrastructure.Persistence;
 namespace SalesHub.Infrastructure.Services.Social;
 
 /// <summary>
-/// Intake de inspiraciones por WhatsApp: el número MAESTRO (config en
-/// <c>inspiration_settings</c>) manda una imagen / texto / link a la línea
-/// configurada, la guardamos como <see cref="InspirationItem"/> pendiente y el
-/// bot repregunta "¿para qué es?". La siguiente respuesta de texto del maestro
-/// etiqueta TODO lo pendiente reciente con el tema (y la app, si la primera
-/// palabra matchea un productKey de Posteos).
+/// Intake maestro por WhatsApp: el número MAESTRO (config en <c>inspiration_settings</c>)
+/// manda contenido a la línea configurada y el bot lo rutea a INSPIRACIÓN (módulo
+/// Posteos) o al PDF de requerimientos (batch de transcripción). Convive con el relay
+/// de transcripción en la misma línea: este corre PRIMERO pero sólo para el maestro,
+/// y deja pasar los audios sueltos (siguen yendo a transcripción clásica).
 ///
-/// Se engancha en el webhook ANTES del flujo de leads, igual que el relay de
-/// transcripción. La imagen se persiste al toque (aunque nunca conteste, queda
-/// en "Sin clasificar" en la web) — no hay estado volátil que se pueda perder.
+/// Dos formas de uso:
+///  - SESIÓN primero: mandás "insp" o "pdf" → por 30 min todo va directo a ese modo
+///    sin preguntas ("listo" cierra; en inspiración, al cerrar pregunta el tema).
+///  - CONTENIDO primero: mandás una imagen/idea sin sesión → el bot pregunta
+///    "¿Qué hago con esto? 1. Inspiración 2. PDF" y tu número rutea lo acumulado.
 ///
-/// Loop-guard: nuestras respuestas llegan como fromMe cuando el maestro es la
-/// propia línea (self-chat); todas arrancan con <see cref="BotPrefix"/> y esos
-/// textos se ignoran.
+/// Las inspiraciones quedan <see cref="InspirationItem.PendingTopic"/> hasta que
+/// contestás el tema (menú numerado de temas existentes, o texto = tema nuevo).
+///
+/// Loop-guard: nuestras respuestas llegan como fromMe cuando el maestro es la propia
+/// línea (self-chat); todas arrancan con <see cref="BotPrefix"/> y esos textos se ignoran.
 /// </summary>
 public class InspirationIntakeRelay
 {
@@ -34,40 +37,55 @@ public class InspirationIntakeRelay
     /// <summary>Ventana para considerar "pendiente reciente" al etiquetar con la respuesta.</summary>
     private static readonly TimeSpan PendingWindow = TimeSpan.FromMinutes(60);
 
+    /// <summary>Duración (sliding) de una sesión de modo abierta con "insp"/"pdf".</summary>
+    private static readonly TimeSpan SessionTtl = TimeSpan.FromMinutes(30);
+
     /// <summary>Máximo de bytes de imagen que guardamos (WhatsApp comprime a ~2-3 MB igual).</summary>
     private const int MaxImageBytes = 15 * 1024 * 1024;
 
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
+    private readonly TranscriptionBatchAccumulator _batch;
     private readonly ILogger<InspirationIntakeRelay> _log;
 
     private static readonly Regex NonDigit = new(@"\D", RegexOptions.Compiled);
     private static readonly Regex UrlRegex = new(@"https?://\S+", RegexOptions.Compiled);
 
-    // Dedup de message IDs por si Evolution reentrega el webhook (mismo patrón
-    // que el relay de transcripción; single-user, no necesita persistencia).
+    // ── Estado en memoria (single-user; mismo patrón que el relay de transcripción) ──
+
+    // Dedup de message IDs por si Evolution reentrega el webhook.
     private static readonly ConcurrentDictionary<string, DateTimeOffset> Recent = new();
     private static readonly TimeSpan RecentTtl = TimeSpan.FromMinutes(10);
 
-    // Última vez que preguntamos "¿para qué es?" — para no repetir la pregunta
-    // por cada imagen de una ráfaga.
-    private static DateTimeOffset _lastAskAt = DateTimeOffset.MinValue;
+    // Cooldowns para no repetir preguntas en una ráfaga de mensajes.
+    private static DateTimeOffset _lastTopicAskAt = DateTimeOffset.MinValue;
+    private static DateTimeOffset _lastRouteAskAt = DateTimeOffset.MinValue;
     private static readonly TimeSpan AskCooldown = TimeSpan.FromMinutes(2);
 
-    // Menú numerado que mandamos con la última pregunta: la respuesta "2" se
-    // resuelve contra este snapshot (single-user; si el server reinició en el
-    // medio, re-mandamos el menú fresco).
+    // Menú numerado de temas que mandamos con la última pregunta: "2" se resuelve
+    // contra este snapshot (si el server reinició en el medio, re-mandamos fresco).
     private static volatile IReadOnlyList<MenuOption>? _lastMenu;
     private sealed record MenuOption(string Topic, string? ProductKey);
+
+    // Sesión de modo abierta con "insp"/"pdf" (sliding TTL).
+    private enum IntakeMode { Inspiration, Pdf }
+    private sealed record Session(IntakeMode Mode, DateTimeOffset Until);
+    private static volatile Session? _session;
+
+    // Contenido que llegó SIN sesión y espera la respuesta "1/2" para rutearse.
+    private sealed record UnroutedItem(IntakeKind Kind, string? Caption, string? Mime, string? Text, string RawJson, DateTimeOffset At);
+    private static readonly object UnroutedLock = new();
+    private static readonly List<UnroutedItem> Unrouted = new();
+    private const int UnroutedCap = 30;
 
     private sealed record ConfigSnapshot(bool Enabled, string? InstanceName, string? MasterSuffix);
     private sealed record CacheEntry(ConfigSnapshot Snap, DateTimeOffset Until);
     private static volatile CacheEntry? _cache;
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(15);
 
-    public InspirationIntakeRelay(ApplicationDbContext db, IEvolutionClient evo, ILogger<InspirationIntakeRelay> log)
+    public InspirationIntakeRelay(ApplicationDbContext db, IEvolutionClient evo, TranscriptionBatchAccumulator batch, ILogger<InspirationIntakeRelay> log)
     {
-        _db = db; _evo = evo; _log = log;
+        _db = db; _evo = evo; _batch = batch; _log = log;
     }
 
     /// <summary>Fuerza recargar la config en el próximo mensaje (llamar al guardar cambios).</summary>
@@ -75,7 +93,8 @@ public class InspirationIntakeRelay
 
     /// <summary>
     /// true si el mensaje era del número maestro en la línea configurada y lo procesamos
-    /// (el webhook NO debe pasarlo al flujo normal). false = sigue el flujo normal.
+    /// (el webhook NO debe pasarlo al flujo normal ni al relay de transcripción).
+    /// false = sigue el flujo normal (incluye los audios sueltos del maestro).
     /// </summary>
     public async Task<bool> TryHandleAsync(ConversationService.IncomingMessage incoming, CancellationToken ct)
     {
@@ -91,134 +110,260 @@ public class InspirationIntakeRelay
         if (Suffix(phone) != cfg.MasterSuffix) return false;
 
         var (kind, caption, mime) = Classify(incoming.RawJson);
-        if (kind is null) return false; // audio/sticker/etc: no es nuestro, sigue el flujo normal
+        if (kind is null) return false; // sticker/video/etc: no es nuestro
 
         // Loop-guard: nuestra propia respuesta en self-chat llega como texto fromMe con el prefijo.
         if (kind == IntakeKind.Text && incoming.Text.TrimStart().StartsWith(BotPrefix, StringComparison.Ordinal))
             return true; // es nuestro eco: interceptar y no hacer nada
 
-        if (incoming.MessageId is not null)
+        var session = CurrentSession();
+
+        // Audio: sólo lo agarramos dentro de una sesión PDF; suelto sigue a transcripción.
+        if (kind == IntakeKind.Audio)
         {
-            CleanupRecent();
-            if (!Recent.TryAdd(incoming.MessageId, incoming.Timestamp))
-                return true; // webhook duplicado
+            if (session?.Mode != IntakeMode.Pdf) return false;
+            if (IsDuplicate(incoming)) return true;
+            RenewSession(session);
+            _batch.Enqueue(incoming.InstanceName, phone, new BatchItem(BatchItemKind.Audio, null, incoming.RawJson), await BatchWindowAsync(ct));
+            return true;
         }
 
-        switch (kind)
+        if (IsDuplicate(incoming)) return true;
+
+        return kind switch
         {
-            case IntakeKind.Image:
-                await HandleImageAsync(incoming, caption, mime, ct);
-                return true;
-            case IntakeKind.Text:
-                await HandleTextAsync(incoming, ct);
-                return true;
-            default:
-                return false;
-        }
+            IntakeKind.Image => await HandleImageAsync(incoming, phone, session, caption, mime, ct),
+            IntakeKind.Text => await HandleTextAsync(incoming, phone, session, ct),
+            _ => false,
+        };
     }
 
-    // ── Imagen: guardar ya (pendiente) y preguntar para qué es ──────────────
-    private async Task HandleImageAsync(ConversationService.IncomingMessage incoming, string? caption, string? mime, CancellationToken ct)
+    // ── Imagen ───────────────────────────────────────────────────────────────
+    private async Task<bool> HandleImageAsync(ConversationService.IncomingMessage incoming, string phone, Session? session, string? caption, string? mime, CancellationToken ct)
     {
-        var bytes = await _evo.GetMediaBase64Async(incoming.InstanceName, incoming.RawJson, ct);
-        if (bytes is null || bytes.Length == 0)
+        if (session?.Mode == IntakeMode.Pdf)
         {
-            _log.LogWarning("Inspiración: no se pudo bajar la imagen (instance={I})", incoming.InstanceName);
-            await ReplyAsync(incoming, "no pude bajar esa imagen 😕. Probá mandarla de nuevo.", ct);
-            return;
-        }
-        if (bytes.Length > MaxImageBytes)
-        {
-            await ReplyAsync(incoming, "esa imagen es muy pesada. Mandala como foto normal (no como archivo).", ct);
-            return;
+            RenewSession(session);
+            _batch.Enqueue(incoming.InstanceName, phone, new BatchItem(BatchItemKind.Image, caption, incoming.RawJson), await BatchWindowAsync(ct));
+            return true;
         }
 
-        _db.InspirationItems.Add(new InspirationItem
+        if (session?.Mode == IntakeMode.Inspiration)
         {
-            Id = Guid.NewGuid(),
-            Topic = "sin-clasificar",
-            Note = string.IsNullOrWhiteSpace(caption) ? null : caption.Trim(),
-            MimeType = string.IsNullOrWhiteSpace(mime) ? "image/jpeg" : mime,
-            ImageContent = bytes,
-            SizeBytes = bytes.Length,
-            PendingTopic = true,
-        });
-        await _db.SaveChangesAsync(ct);
+            RenewSession(session);
+            await SaveImageInspirationAsync(incoming, caption, mime, ct); // sin preguntar: el tema va al cerrar con "listo"
+            return true;
+        }
 
-        await AskTopicIfDueAsync(incoming, ct);
+        // Sin sesión pero ya esperando el TEMA (ráfaga post-ruteo): se suma en silencio.
+        if (await HasPendingTopicAsync(ct))
+        {
+            await SaveImageInspirationAsync(incoming, caption, mime, ct);
+            return true;
+        }
+
+        // Sin contexto: a la cola sin rutear + preguntar qué hacer.
+        AddUnrouted(new UnroutedItem(IntakeKind.Image, caption, mime, null, incoming.RawJson, DateTimeOffset.UtcNow));
+        await AskRouteIfDueAsync(incoming, ct);
+        return true;
     }
 
-    // ── Texto: o es la respuesta al "¿para qué es?", o es una idea/link nueva ─
-    private async Task HandleTextAsync(ConversationService.IncomingMessage incoming, CancellationToken ct)
+    // ── Texto ────────────────────────────────────────────────────────────────
+    private async Task<bool> HandleTextAsync(ConversationService.IncomingMessage incoming, string phone, Session? session, CancellationToken ct)
     {
         var text = incoming.Text.Trim();
-        if (text.Length == 0) return;
+        if (text.Length == 0) return true;
+        var lower = text.ToLowerInvariant();
 
+        // Dentro de una sesión, el texto es contenido (salvo "listo" que la cierra).
+        if (session is not null)
+        {
+            if (lower is "listo" or "cerrar" or "salir")
+            {
+                _session = null;
+                if (session.Mode == IntakeMode.Inspiration && await HasPendingTopicAsync(ct))
+                {
+                    _lastTopicAskAt = DateTimeOffset.MinValue; // forzar la pregunta
+                    await AskTopicIfDueAsync(incoming, ct);
+                }
+                else
+                {
+                    await ReplyAsync(incoming, session.Mode == IntakeMode.Pdf
+                        ? "cerré el modo PDF. El PDF sale solo tras unos segundos de inactividad 📄."
+                        : "cerré el modo inspiración.", ct);
+                }
+                return true;
+            }
+
+            RenewSession(session);
+            if (session.Mode == IntakeMode.Pdf)
+            {
+                _batch.Enqueue(incoming.InstanceName, phone, new BatchItem(BatchItemKind.Text, text, null), await BatchWindowAsync(ct));
+                return true;
+            }
+            await SaveTextInspirationAsync(text, ct); // idea de texto, tema al cerrar
+            return true;
+        }
+
+        // ¿Estamos esperando el TEMA de inspiraciones pendientes?
+        if (await HasPendingTopicAsync(ct))
+        {
+            await HandleTopicAnswerAsync(incoming, text, ct);
+            return true;
+        }
+
+        // ¿Hay contenido sin rutear esperando el "1/2"?
+        if (HasUnrouted())
+        {
+            await HandleRouteAnswerAsync(incoming, phone, text, lower, ct);
+            return true;
+        }
+
+        // Comandos para abrir sesión de modo.
+        if (lower is "insp" or "inspiracion" or "inspiración" or "ideas")
+        {
+            _session = new Session(IntakeMode.Inspiration, DateTimeOffset.UtcNow + SessionTtl);
+            await ReplyAsync(incoming,
+                "modo INSPIRACIÓN abierto (30 min): todo lo que mandes lo guardo directo. " +
+                "Mandá \"listo\" al terminar y te pregunto el tema.", ct);
+            return true;
+        }
+        if (lower is "pdf" or "requerimiento" or "req")
+        {
+            _session = new Session(IntakeMode.Pdf, DateTimeOffset.UtcNow + SessionTtl);
+            await ReplyAsync(incoming,
+                "modo PDF abierto (30 min): mandame imágenes/texto/audios y tras unos segundos " +
+                "de inactividad te devuelvo el PDF armado. \"listo\" cierra el modo.", ct);
+            return true;
+        }
+
+        // Sin contexto: idea de texto / link → a la cola sin rutear + preguntar.
+        AddUnrouted(new UnroutedItem(IntakeKind.Text, null, null, text, incoming.RawJson, DateTimeOffset.UtcNow));
+        await AskRouteIfDueAsync(incoming, ct);
+        return true;
+    }
+
+    // ── Respuesta al "¿qué hago con esto?" (1/2) ─────────────────────────────
+    private async Task HandleRouteAnswerAsync(ConversationService.IncomingMessage incoming, string phone, string text, string lower, CancellationToken ct)
+    {
+        if (lower is "cancelar")
+        {
+            var n = TakeUnrouted().Count;
+            await ReplyAsync(incoming, $"listo, descarté {n} mensaje(s).", ct);
+            return;
+        }
+
+        if (lower is "1" or "insp" or "inspiracion" or "inspiración" or "ideas")
+        {
+            var items = TakeUnrouted();
+            var saved = 0;
+            foreach (var u in items)
+            {
+                if (u.Kind == IntakeKind.Image)
+                {
+                    if (await SaveImageInspirationFromRawAsync(incoming.InstanceName, u.RawJson, u.Caption, u.Mime, ct)) saved++;
+                }
+                else if (!string.IsNullOrWhiteSpace(u.Text))
+                {
+                    await SaveTextInspirationAsync(u.Text!, ct);
+                    saved++;
+                }
+            }
+            if (saved == 0)
+            {
+                await ReplyAsync(incoming, "no pude guardar nada de eso 😕 (¿imagen vencida?). Probá mandarlo de nuevo.", ct);
+                return;
+            }
+            _lastTopicAskAt = DateTimeOffset.MinValue; // forzar la pregunta del tema
+            await AskTopicIfDueAsync(incoming, ct);
+            return;
+        }
+
+        if (lower is "2" or "pdf" or "requerimiento" or "req")
+        {
+            var items = TakeUnrouted();
+            var window = await BatchWindowAsync(ct);
+            foreach (var u in items)
+            {
+                var bi = u.Kind == IntakeKind.Image
+                    ? new BatchItem(BatchItemKind.Image, u.Caption, u.RawJson)
+                    : new BatchItem(BatchItemKind.Text, u.Text, null);
+                _batch.Enqueue(incoming.InstanceName, phone, bi, window);
+            }
+            await ReplyAsync(incoming, $"dale, armo el PDF con {items.Count} mensaje(s) 📄 — sale en unos segundos.", ct);
+            return;
+        }
+
+        // Cualquier otro texto mientras espera el ruteo: lo tratamos como más contenido.
+        AddUnrouted(new UnroutedItem(IntakeKind.Text, null, null, text, incoming.RawJson, DateTimeOffset.UtcNow));
+        await AskRouteIfDueAsync(incoming, ct);
+    }
+
+    // ── Respuesta al "¿para qué tema es?" ────────────────────────────────────
+    private async Task HandleTopicAnswerAsync(ConversationService.IncomingMessage incoming, string text, CancellationToken ct)
+    {
         var since = DateTimeOffset.UtcNow - PendingWindow;
         var pending = await _db.InspirationItems
             .Where(i => i.PendingTopic && i.CreatedAt >= since)
             .OrderBy(i => i.CreatedAt)
             .ToListAsync(ct);
+        if (pending.Count == 0) return;
 
-        if (pending.Count > 0)
+        if (string.Equals(text, "cancelar", StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(text, "cancelar", StringComparison.OrdinalIgnoreCase))
-            {
-                _db.InspirationItems.RemoveRange(pending);
-                await _db.SaveChangesAsync(ct);
-                await ReplyAsync(incoming, $"listo, descarté {pending.Count} inspiración(es).", ct);
-                return;
-            }
-
-            string? productKey; string topic;
-
-            // Respuesta numérica → opción del último menú que mandamos.
-            if (int.TryParse(text, out var n))
-            {
-                var menu = _lastMenu;
-                if (menu is null || n < 1 || n > menu.Count)
-                {
-                    // Menú perdido (reinicio) o número fuera de rango: re-mandamos fresco.
-                    _lastAskAt = DateTimeOffset.MinValue;
-                    await AskTopicIfDueAsync(incoming, ct);
-                    return;
-                }
-                (topic, productKey) = (menu[n - 1].Topic, menu[n - 1].ProductKey);
-            }
-            else
-            {
-                (productKey, topic) = await ParseTopicAsync(text, ct);
-            }
-
-            foreach (var item in pending)
-            {
-                item.Topic = topic;
-                item.ProductKey = productKey ?? item.ProductKey;
-                item.PendingTopic = false;
-            }
+            _db.InspirationItems.RemoveRange(pending);
             await _db.SaveChangesAsync(ct);
-            _lastMenu = null;
-
-            var appLabel = productKey is null ? "" : $" ({productKey})";
-            await ReplyAsync(incoming,
-                $"guardé {pending.Count} inspiración(es) en \"{topic}\"{appLabel} ✅. " +
-                "Las uso para los próximos posteos (tema + estilo visual).", ct);
+            await ReplyAsync(incoming, $"listo, descarté {pending.Count} inspiración(es).", ct);
             return;
         }
 
-        // Sin pendientes: es una idea nueva de texto (o un link).
-        var url = UrlRegex.Match(text).Value;
-        _db.InspirationItems.Add(new InspirationItem
-        {
-            Id = Guid.NewGuid(),
-            Topic = "sin-clasificar",
-            Note = text,
-            SourceUrl = string.IsNullOrEmpty(url) ? null : url,
-            PendingTopic = true,
-        });
-        await _db.SaveChangesAsync(ct);
+        string? productKey; string topic;
 
-        await AskTopicIfDueAsync(incoming, ct);
+        // Respuesta numérica → opción del último menú que mandamos.
+        if (int.TryParse(text, out var n))
+        {
+            var menu = _lastMenu;
+            if (menu is null || n < 1 || n > menu.Count)
+            {
+                // Menú perdido (reinicio) o número fuera de rango: re-mandamos fresco.
+                _lastTopicAskAt = DateTimeOffset.MinValue;
+                await AskTopicIfDueAsync(incoming, ct);
+                return;
+            }
+            (topic, productKey) = (menu[n - 1].Topic, menu[n - 1].ProductKey);
+        }
+        else
+        {
+            (productKey, topic) = await ParseTopicAsync(text, ct);
+        }
+
+        foreach (var item in pending)
+        {
+            item.Topic = topic;
+            item.ProductKey = productKey ?? item.ProductKey;
+            item.PendingTopic = false;
+        }
+        await _db.SaveChangesAsync(ct);
+        _lastMenu = null;
+
+        var appLabel = productKey is null ? "" : $" ({productKey})";
+        await ReplyAsync(incoming,
+            $"guardé {pending.Count} inspiración(es) en \"{topic}\"{appLabel} ✅. " +
+            "Las uso para los próximos posteos (tema + estilo visual).", ct);
+    }
+
+    // ── Preguntas del bot ────────────────────────────────────────────────────
+
+    /// <summary>Pregunta "¿qué hago con esto?" (1=inspiración, 2=PDF), con cooldown por ráfaga.</summary>
+    private async Task AskRouteIfDueAsync(ConversationService.IncomingMessage incoming, CancellationToken ct)
+    {
+        if (DateTimeOffset.UtcNow - _lastRouteAskAt < AskCooldown) return;
+        _lastRouteAskAt = DateTimeOffset.UtcNow;
+        await ReplyAsync(incoming,
+            "¿Qué hago con esto? Contestá:\n" +
+            "1. 💡 Inspiración (posteos)\n" +
+            "2. 📄 PDF de requerimientos\n" +
+            "Tip: mandá \"insp\" o \"pdf\" ANTES la próxima y no te pregunto. \"cancelar\" descarta.", ct);
     }
 
     /// <summary>
@@ -228,8 +373,8 @@ public class InspirationIntakeRelay
     /// </summary>
     private async Task AskTopicIfDueAsync(ConversationService.IncomingMessage incoming, CancellationToken ct)
     {
-        if (DateTimeOffset.UtcNow - _lastAskAt < AskCooldown) return;
-        _lastAskAt = DateTimeOffset.UtcNow;
+        if (DateTimeOffset.UtcNow - _lastTopicAskAt < AskCooldown) return;
+        _lastTopicAskAt = DateTimeOffset.UtcNow;
 
         // Temas ya usados, los más recientes primero (hasta 9 para que el menú sea de 1 dígito).
         var topics = await _db.InspirationItems.AsNoTracking()
@@ -266,6 +411,57 @@ public class InspirationIntakeRelay
         await ReplyAsync(incoming, sb.ToString(), ct);
     }
 
+    // ── Persistencia de inspiraciones ────────────────────────────────────────
+
+    private async Task SaveImageInspirationAsync(ConversationService.IncomingMessage incoming, string? caption, string? mime, CancellationToken ct)
+    {
+        if (!await SaveImageInspirationFromRawAsync(incoming.InstanceName, incoming.RawJson, caption, mime, ct))
+            await ReplyAsync(incoming, "no pude bajar esa imagen 😕. Probá mandarla de nuevo.", ct);
+    }
+
+    private async Task<bool> SaveImageInspirationFromRawAsync(string instance, string rawJson, string? caption, string? mime, CancellationToken ct)
+    {
+        var bytes = await _evo.GetMediaBase64Async(instance, rawJson, ct);
+        if (bytes is null || bytes.Length == 0 || bytes.Length > MaxImageBytes)
+        {
+            _log.LogWarning("Inspiración: no se pudo bajar/guardar la imagen (instance={I}, bytes={B})", instance, bytes?.Length ?? 0);
+            return false;
+        }
+
+        _db.InspirationItems.Add(new InspirationItem
+        {
+            Id = Guid.NewGuid(),
+            Topic = "sin-clasificar",
+            Note = string.IsNullOrWhiteSpace(caption) ? null : caption.Trim(),
+            MimeType = string.IsNullOrWhiteSpace(mime) ? "image/jpeg" : mime,
+            ImageContent = bytes,
+            SizeBytes = bytes.Length,
+            PendingTopic = true,
+        });
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    private async Task SaveTextInspirationAsync(string text, CancellationToken ct)
+    {
+        var url = UrlRegex.Match(text).Value;
+        _db.InspirationItems.Add(new InspirationItem
+        {
+            Id = Guid.NewGuid(),
+            Topic = "sin-clasificar",
+            Note = text,
+            SourceUrl = string.IsNullOrEmpty(url) ? null : url,
+            PendingTopic = true,
+        });
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private Task<bool> HasPendingTopicAsync(CancellationToken ct)
+    {
+        var since = DateTimeOffset.UtcNow - PendingWindow;
+        return _db.InspirationItems.AsNoTracking().AnyAsync(i => i.PendingTopic && i.CreatedAt >= since, ct);
+    }
+
     /// <summary>
     /// "gymhero motivación" → (gymhero, "motivación"); "humor padel" → (null, "humor padel").
     /// La primera palabra sólo se toma como app si matchea un productKey real.
@@ -287,6 +483,63 @@ public class InspirationIntakeRelay
         return (productKey, Truncate(rest.Length == 0 ? "general" : rest, 128));
     }
 
+    // ── Sesión / cola sin rutear ─────────────────────────────────────────────
+
+    private static Session? CurrentSession()
+    {
+        var s = _session;
+        if (s is null) return null;
+        if (DateTimeOffset.UtcNow >= s.Until) { _session = null; return null; }
+        return s;
+    }
+
+    private static void RenewSession(Session s) => _session = s with { Until = DateTimeOffset.UtcNow + SessionTtl };
+
+    private static void AddUnrouted(UnroutedItem item)
+    {
+        lock (UnroutedLock)
+        {
+            // Purga de viejos (>60 min) — si quedó colgado, no contamina el próximo envío.
+            var cutoff = DateTimeOffset.UtcNow - PendingWindow;
+            Unrouted.RemoveAll(u => u.At < cutoff);
+            if (Unrouted.Count < UnroutedCap) Unrouted.Add(item);
+        }
+    }
+
+    private static bool HasUnrouted()
+    {
+        lock (UnroutedLock)
+        {
+            var cutoff = DateTimeOffset.UtcNow - PendingWindow;
+            Unrouted.RemoveAll(u => u.At < cutoff);
+            return Unrouted.Count > 0;
+        }
+    }
+
+    private static List<UnroutedItem> TakeUnrouted()
+    {
+        lock (UnroutedLock)
+        {
+            var items = Unrouted.ToList();
+            Unrouted.Clear();
+            return items;
+        }
+    }
+
+    /// <summary>Ventana de debounce del batch PDF (config de transcripción; default 10s).</summary>
+    private async Task<int> BatchWindowAsync(CancellationToken ct)
+    {
+        var s = await _db.TranscriptionSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        return s is null || s.BatchWindowSeconds < 1 ? 10 : s.BatchWindowSeconds;
+    }
+
+    private bool IsDuplicate(ConversationService.IncomingMessage incoming)
+    {
+        if (incoming.MessageId is null) return false;
+        CleanupRecent();
+        return !Recent.TryAdd(incoming.MessageId, incoming.Timestamp);
+    }
+
     private Task ReplyAsync(ConversationService.IncomingMessage incoming, string text, CancellationToken ct)
         => _evo.SendTextAsync(incoming.InstanceName, incoming.FromJid, $"{BotPrefix} {text}", ct);
 
@@ -306,9 +559,9 @@ public class InspirationIntakeRelay
         return snap;
     }
 
-    private enum IntakeKind { Image, Text }
+    private enum IntakeKind { Image, Text, Audio }
 
-    /// <summary>Clasifica desde el JSON crudo: imagen (o doc imagen), texto, o nada nuestro.</summary>
+    /// <summary>Clasifica desde el JSON crudo: imagen (o doc imagen), texto, audio, o nada nuestro.</summary>
     private static (IntakeKind? Kind, string? Caption, string? Mime) Classify(string rawJson)
     {
         try
@@ -319,6 +572,8 @@ public class InspirationIntakeRelay
 
             if (body.TryGetProperty("imageMessage", out var img))
                 return (IntakeKind.Image, StringProp(img, "caption"), StringProp(img, "mimetype"));
+            if (body.TryGetProperty("audioMessage", out _))
+                return (IntakeKind.Audio, null, null);
             if (body.TryGetProperty("documentMessage", out var docMsg))
             {
                 var mime = StringProp(docMsg, "mimetype");

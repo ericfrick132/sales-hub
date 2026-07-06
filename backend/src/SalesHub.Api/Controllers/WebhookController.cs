@@ -62,9 +62,11 @@ public class WebhookController : ControllerBase
                 // Relay de transcripción: si es una nota de voz de un número de la allowlist,
                 // la transcribimos y respondemos el texto — sin pasarla al flujo de leads.
                 // Incluye los self-messages (fromMe): mandarte un audio a vos mismo es válido.
-                if (await _relay.TryHandleAsync(incoming, ct)) { handled++; continue; }
-                // Intake de inspiraciones: imágenes/ideas del número maestro → módulo Posteos.
+                // Intake maestro (inspiraciones / PDF ruteado): corre ANTES que el relay de
+                // transcripción para que el batch no se robe las imágenes del número maestro.
+                // Los audios sueltos del maestro los deja pasar (siguen a transcripción).
                 if (await _inspiration.TryHandleAsync(incoming, ct)) { handled++; continue; }
+                if (await _relay.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 // El flujo normal de leads IGNORA los fromMe (nuestros propios envíos salientes);
                 // sólo los relays los usan.
                 if (incoming.FromMe) continue;
