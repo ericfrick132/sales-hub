@@ -86,7 +86,20 @@ export default function Sellers() {
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-2 flex-wrap">
               <div>
-                <h2 className="text-xl font-bold">{selected.displayName}</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold">{selected.displayName}</h2>
+                  <button
+                    className="text-xs text-slate-400 hover:text-brand-600"
+                    title="Editar nombre (aparece como {seller} en los mensajes)"
+                    onClick={async () => {
+                      const name = prompt('Nuevo nombre del vendedor (aparece como {seller} en los mensajes):', selected.displayName)?.trim();
+                      if (!name || name === selected.displayName) return;
+                      await save({ displayName: name });
+                      setSelected({ ...selected, displayName: name });
+                    }}>
+                    ✏️ editar
+                  </button>
+                </div>
                 <p className="text-sm text-slate-500 break-all">{selected.email}</p>
               </div>
               <div className="flex gap-2 flex-wrap items-center">
