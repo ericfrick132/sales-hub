@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using SalesHub.Infrastructure.Services;
+using SalesHub.Infrastructure.Services.Social;
 
 namespace SalesHub.Api.Controllers;
 
@@ -14,11 +15,12 @@ public class WebhookController : ControllerBase
 {
     private readonly ConversationService _conv;
     private readonly AudioTranscriptionRelay _relay;
+    private readonly InspirationIntakeRelay _inspiration;
     private readonly ILogger<WebhookController> _log;
 
-    public WebhookController(ConversationService conv, AudioTranscriptionRelay relay, ILogger<WebhookController> log)
+    public WebhookController(ConversationService conv, AudioTranscriptionRelay relay, InspirationIntakeRelay inspiration, ILogger<WebhookController> log)
     {
-        _conv = conv; _relay = relay; _log = log;
+        _conv = conv; _relay = relay; _inspiration = inspiration; _log = log;
     }
 
     [HttpPost("evolution")]
@@ -61,8 +63,10 @@ public class WebhookController : ControllerBase
                 // la transcribimos y respondemos el texto — sin pasarla al flujo de leads.
                 // Incluye los self-messages (fromMe): mandarte un audio a vos mismo es válido.
                 if (await _relay.TryHandleAsync(incoming, ct)) { handled++; continue; }
+                // Intake de inspiraciones: imágenes/ideas del número maestro → módulo Posteos.
+                if (await _inspiration.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 // El flujo normal de leads IGNORA los fromMe (nuestros propios envíos salientes);
-                // sólo el relay los usa.
+                // sólo los relays los usan.
                 if (incoming.FromMe) continue;
                 if (await _conv.HandleIncomingAsync(incoming, ct)) handled++;
             }

@@ -47,6 +47,8 @@ public class InstagramFollowCampaignsController : ControllerBase
                 SourceHandle = c.SourceHandle,
                 SourceMode = c.SourceMode.ToString(),
                 DailyRate = c.DailyRate,
+                ActiveHourStart = c.ActiveHourStart,
+                ActiveHourEnd = c.ActiveHourEnd,
                 MaxTotalFollows = c.MaxTotalFollows,
                 IsActive = c.IsActive,
                 TotalEnqueued = c.TotalEnqueued,
@@ -104,6 +106,8 @@ public class InstagramFollowCampaignsController : ControllerBase
             SourceHandle = campaign.SourceHandle,
             SourceMode = campaign.SourceMode.ToString(),
             DailyRate = campaign.DailyRate,
+            ActiveHourStart = campaign.ActiveHourStart,
+            ActiveHourEnd = campaign.ActiveHourEnd,
             MaxTotalFollows = campaign.MaxTotalFollows,
             ScrapeBatchSize = campaign.ScrapeBatchSize,
             MinQueuedThreshold = campaign.MinQueuedThreshold,
@@ -136,10 +140,7 @@ public class InstagramFollowCampaignsController : ControllerBase
         if (account is null) return BadRequest(new { error = "InstagramAccount no existe" });
 
         // Normalizar a handle limpio: tolera URL completa (instagram.com/x/), @, barras.
-        var handle = req.SourceHandle.Trim();
-        var urlIdx = handle.IndexOf("instagram.com/", StringComparison.OrdinalIgnoreCase);
-        if (urlIdx >= 0) handle = handle[(urlIdx + "instagram.com/".Length)..];
-        handle = handle.TrimStart('@').Trim().Trim('/').Split('/', '?')[0].Trim();
+        var handle = CleanHandle(req.SourceHandle);
         if (string.IsNullOrEmpty(handle))
             return BadRequest(new { error = "SourceHandle inválido (poné solo el usuario, ej: accesogym)" });
 
@@ -154,6 +155,8 @@ public class InstagramFollowCampaignsController : ControllerBase
             SourceHandle = handle,
             SourceMode = sourceMode,
             DailyRate = req.DailyRate > 0 ? req.DailyRate : 30,
+            ActiveHourStart = ClampHour(req.ActiveHourStart),
+            ActiveHourEnd = ClampHour(req.ActiveHourEnd),
             MaxTotalFollows = req.MaxTotalFollows,
             ScrapeBatchSize = req.ScrapeBatchSize > 0 ? req.ScrapeBatchSize : 100,
             MinQueuedThreshold = req.MinQueuedThreshold > 0 ? req.MinQueuedThreshold : 20,
@@ -179,6 +182,18 @@ public class InstagramFollowCampaignsController : ControllerBase
         if (campaign is null) return NotFound();
 
         if (req.IsActive.HasValue) campaign.IsActive = req.IsActive.Value;
+        if (!string.IsNullOrWhiteSpace(req.SourceHandle))
+        {
+            var handle = CleanHandle(req.SourceHandle);
+            if (string.IsNullOrEmpty(handle))
+                return BadRequest(new { error = "SourceHandle inválido (poné solo el usuario, ej: accesogym)" });
+            campaign.SourceHandle = handle;
+        }
+        if (req.SetActiveHours)
+        {
+            campaign.ActiveHourStart = ClampHour(req.ActiveHourStart);
+            campaign.ActiveHourEnd = ClampHour(req.ActiveHourEnd);
+        }
         if (!string.IsNullOrWhiteSpace(req.SourceMode)
             && Enum.TryParse<InstagramFollowSourceMode>(req.SourceMode, ignoreCase: true, out var mode))
             campaign.SourceMode = mode;
@@ -233,6 +248,17 @@ public class InstagramFollowCampaignsController : ControllerBase
         return Accepted(new { ok = true, message = "Run disparado. Mirá las stats en unos segundos." });
     }
 
+    /// <summary>Handle limpio: tolera URL completa (instagram.com/x/), @, barras, query.</summary>
+    private static string CleanHandle(string raw)
+    {
+        var handle = raw.Trim();
+        var urlIdx = handle.IndexOf("instagram.com/", StringComparison.OrdinalIgnoreCase);
+        if (urlIdx >= 0) handle = handle[(urlIdx + "instagram.com/".Length)..];
+        return handle.TrimStart('@').Trim().Trim('/').Split('/', '?')[0].Trim();
+    }
+
+    private static int? ClampHour(int? h) => h is null ? null : Math.Clamp(h.Value, 0, 23);
+
     // DTOs
 
     public record CampaignDto
@@ -243,6 +269,8 @@ public class InstagramFollowCampaignsController : ControllerBase
         public string SourceHandle { get; init; } = string.Empty;
         public string SourceMode { get; init; } = nameof(InstagramFollowSourceMode.Followers);
         public int DailyRate { get; init; }
+        public int? ActiveHourStart { get; init; }
+        public int? ActiveHourEnd { get; init; }
         public int MaxTotalFollows { get; init; }
         public bool IsActive { get; init; }
         public int TotalEnqueued { get; init; }
@@ -281,6 +309,9 @@ public class InstagramFollowCampaignsController : ControllerBase
         /// <summary>"Followers" (default) o "Following".</summary>
         public string? SourceMode { get; init; }
         public int DailyRate { get; init; } = 30;
+        /// <summary>Ventana horaria local AR (null = default 10-22 del entity).</summary>
+        public int? ActiveHourStart { get; init; } = 10;
+        public int? ActiveHourEnd { get; init; } = 22;
         public int MaxTotalFollows { get; init; }
         public int ScrapeBatchSize { get; init; } = 100;
         public int MinQueuedThreshold { get; init; } = 20;
@@ -289,8 +320,13 @@ public class InstagramFollowCampaignsController : ControllerBase
     public record UpdateCampaignRequest
     {
         public bool? IsActive { get; init; }
+        public string? SourceHandle { get; init; }
         public string? SourceMode { get; init; }
         public int? DailyRate { get; init; }
+        /// <summary>true para aplicar ActiveHourStart/End (permite setear null = 24h).</summary>
+        public bool SetActiveHours { get; init; }
+        public int? ActiveHourStart { get; init; }
+        public int? ActiveHourEnd { get; init; }
         public int? MaxTotalFollows { get; init; }
         public int? ScrapeBatchSize { get; init; }
         public int? MinQueuedThreshold { get; init; }

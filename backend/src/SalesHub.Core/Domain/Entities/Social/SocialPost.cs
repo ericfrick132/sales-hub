@@ -84,6 +84,9 @@ public class SocialPost
     /// <summary>CompetitorPost que inspiró este posteo (si se generó por replicación).</summary>
     public Guid? InspirationPostId { get; set; }
 
+    /// <summary>InspirationItem propio que inspiró este posteo (si se generó desde "Mis ideas").</summary>
+    public Guid? InspirationItemId { get; set; }
+
     // ── Contenido generado ────────────────────────────────────────────────
     public string ContentPillar { get; set; } = string.Empty;
     /// <summary>Concepto/idea del posteo (lo que comunica).</summary>

@@ -160,28 +160,19 @@ public class SocialContentGenerator
     public async Task<GeneratedPost?> GenerateFromInspirationAsync(
         PostingProfile p, PostingChannel? ch,
         string inspirationCaption, IReadOnlyList<string> inspirationHashtags, string inspirationSource,
+        IReadOnlyList<ClaudeImage>? inspirationImages,
         IReadOnlyList<string> recentConcepts, CancellationToken ct = default)
     {
         if (!_claude.IsConfigured) { _log.LogWarning("Claude no configurado — no se genera inspiración"); return null; }
 
         var platform = ch?.Platform.ToString() ?? "Instagram/TikTok";
         var sys = new StringBuilder();
-        sys.AppendLine($"Sos el generador de contenido social del producto '{p.ProductKey}' para la red {platform}.");
-        sys.AppendLine($"Audiencia: {p.TargetAudience}.");
-        sys.AppendLine($"Tono/voz de marca: {p.BrandVoice}");
-        sys.AppendLine($"Guía de marca: {p.BrandGuidelines}");
-        sys.AppendLine($"Paleta (no la cambies): {p.BrandColorsJson}. Fuentes: {p.BrandFonts}.");
-        if (p.ContentPillars.Count > 0)
-            sys.AppendLine($"Pilares de contenido: {string.Join(" | ", p.ContentPillars)}.");
-        if (ch != null && !string.IsNullOrWhiteSpace(ch.PromptTemplate))
-        {
-            sys.AppendLine();
-            sys.AppendLine("INSTRUCCIONES ESPECÍFICAS DE ESTA RED:");
-            sys.AppendLine(ch.PromptTemplate);
-        }
+        AppendBrandBase(sys, p, platform, ch);
         sys.AppendLine();
         sys.AppendLine("Te paso un posteo de la COMPETENCIA que funcionó bien. Tu tarea: crear una adaptación ORIGINAL para NUESTRA marca.");
         sys.AppendLine("Tomá el hook, el ángulo y la estructura que lo hacen bueno, pero reescribilo 100% para nuestro producto y audiencia.");
+        if (inspirationImages is { Count: > 0 })
+            sys.AppendLine("MIRÁ la imagen de referencia: analizá qué la hace atractiva (composición, colores, tipografía, mood) y reflejá ese ESTILO VISUAL en el 'prompt' — adaptado a nuestra paleta de marca, sin copiarla.");
         sys.AppendLine("NO lo copies textual. NO menciones ni nombres al competidor. Caption en español rioplatense (voseo).");
         sys.AppendLine("El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
         if (ch != null)
@@ -195,17 +186,89 @@ public class SocialContentGenerator
         user.AppendLine($"Caption: {Truncate(inspirationCaption, 1200)}");
         if (inspirationHashtags.Count > 0)
             user.AppendLine($"Hashtags: {string.Join(" ", inspirationHashtags.Take(20).Select(t => "#" + t.TrimStart('#')))}");
+        if (inspirationImages is { Count: > 0 })
+            user.AppendLine("(la imagen del posteo va adjunta)");
         user.AppendLine("=== FIN REFERENCIA ===");
         user.AppendLine();
         user.AppendLine("Generá 1 adaptación original para nuestra marca basada en lo que hace bueno a ese posteo.");
-        if (recentConcepts.Count > 0)
-        {
-            user.AppendLine("Evitá repetir estos conceptos recientes nuestros:");
-            foreach (var c in recentConcepts.Take(15)) user.AppendLine($"- {c}");
-        }
+        AppendRecent(user, recentConcepts);
         user.AppendLine("Recordá: SOLO el JSON.");
 
-        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), "social", ct);
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), inspirationImages, "social", ct);
+        return Parse(raw, ch, "inspiración");
+    }
+
+    /// <summary>
+    /// Genera desde las inspiraciones PROPIAS del usuario (imágenes/notas que mandó
+    /// por WhatsApp o subió a la web, agrupadas por tema). Las referencias inspiran
+    /// DOS cosas: el tema/ángulo del caption y el estilo visual del prompt.
+    /// </summary>
+    public async Task<GeneratedPost?> GenerateFromOwnInspirationAsync(
+        PostingProfile p, PostingChannel? ch,
+        string topic, IReadOnlyList<string> notes,
+        IReadOnlyList<ClaudeImage> images,
+        IReadOnlyList<string> recentConcepts, CancellationToken ct = default)
+    {
+        if (!_claude.IsConfigured) { _log.LogWarning("Claude no configurado — no se genera inspiración propia"); return null; }
+
+        var platform = ch?.Platform.ToString() ?? "Instagram/TikTok";
+        var sys = new StringBuilder();
+        AppendBrandBase(sys, p, platform, ch);
+        sys.AppendLine();
+        sys.AppendLine("Te paso INSPIRACIONES que el dueño de la marca guardó porque le gustaron (imágenes y/o notas, agrupadas por tema).");
+        sys.AppendLine("Usalas en DOS frentes:");
+        sys.AppendLine("1) TEMA: sacá el ángulo/idea de qué hablar en el caption a partir del tema y las referencias.");
+        sys.AppendLine("2) VISUAL: si hay imágenes, MIRALAS y analizá qué las hace atractivas (composición, colores, tipografía, mood, estética) y llevá ese estilo al 'prompt' — adaptado a nuestra paleta de marca, NO una copia.");
+        sys.AppendLine("El resultado tiene que ser contenido 100% original de nuestra marca. Caption en español rioplatense (voseo).");
+        sys.AppendLine("El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico.");
+        if (ch != null)
+            sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies).");
+        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine(VideoPromptRecipe);
+
+        var user = new StringBuilder();
+        user.AppendLine($"=== INSPIRACIONES DEL USUARIO — tema: \"{topic}\" ===");
+        if (images.Count > 0) user.AppendLine($"(adjunto {images.Count} imagen(es) de referencia)");
+        foreach (var n in notes.Where(n => !string.IsNullOrWhiteSpace(n)).Take(10))
+            user.AppendLine($"- Nota: {Truncate(n, 500)}");
+        user.AppendLine("=== FIN INSPIRACIONES ===");
+        user.AppendLine();
+        user.AppendLine("Generá 1 idea de posteo original de nuestra marca inspirada en esas referencias (tema + estilo visual).");
+        AppendRecent(user, recentConcepts);
+        user.AppendLine("Recordá: SOLO el JSON.");
+
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), images, "social", ct);
+        return Parse(raw, ch, $"inspiración propia '{topic}'");
+    }
+
+    /// <summary>Base de marca compartida por los prompts de inspiración.</summary>
+    private static void AppendBrandBase(StringBuilder sys, PostingProfile p, string platform, PostingChannel? ch)
+    {
+        sys.AppendLine($"Sos el generador de contenido social del producto '{p.ProductKey}' para la red {platform}.");
+        sys.AppendLine($"Audiencia: {p.TargetAudience}.");
+        sys.AppendLine($"Tono/voz de marca: {p.BrandVoice}");
+        sys.AppendLine($"Guía de marca: {p.BrandGuidelines}");
+        sys.AppendLine($"Paleta (no la cambies): {p.BrandColorsJson}. Fuentes: {p.BrandFonts}.");
+        if (p.ContentPillars.Count > 0)
+            sys.AppendLine($"Pilares de contenido: {string.Join(" | ", p.ContentPillars)}.");
+        if (ch != null && !string.IsNullOrWhiteSpace(ch.PromptTemplate))
+        {
+            sys.AppendLine();
+            sys.AppendLine("INSTRUCCIONES ESPECÍFICAS DE ESTA RED:");
+            sys.AppendLine(ch.PromptTemplate);
+        }
+    }
+
+    private static void AppendRecent(StringBuilder user, IReadOnlyList<string> recentConcepts)
+    {
+        if (recentConcepts.Count == 0) return;
+        user.AppendLine("Evitá repetir estos conceptos recientes nuestros:");
+        foreach (var c in recentConcepts.Take(15)) user.AppendLine($"- {c}");
+    }
+
+    /// <summary>Parsea la respuesta JSON de Claude a un GeneratedPost (canal manda formato/asset).</summary>
+    private GeneratedPost? Parse(string? raw, PostingChannel? ch, string context)
+    {
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var json = ExtractJson(raw);
         try
@@ -228,7 +291,7 @@ public class SocialContentGenerator
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "No pude parsear JSON de Claude (inspiración)");
+            _log.LogWarning(ex, "No pude parsear JSON de Claude ({Context})", context);
             return null;
         }
     }

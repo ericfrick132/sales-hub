@@ -88,3 +88,34 @@ public class SocialPostAssetConfiguration : IEntityTypeConfiguration<SocialPostA
         b.HasIndex(x => x.SocialPostId);
     }
 }
+
+public class InspirationItemConfiguration : IEntityTypeConfiguration<InspirationItem>
+{
+    public void Configure(EntityTypeBuilder<InspirationItem> b)
+    {
+        b.ToTable("inspiration_items");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.ProductKey).HasMaxLength(64);
+        b.Property(x => x.Topic).HasMaxLength(128).IsRequired();
+        b.Property(x => x.Note).HasColumnType("text");
+        b.Property(x => x.SourceUrl).HasMaxLength(1024);
+        b.Property(x => x.MimeType).HasMaxLength(128);
+        b.Property(x => x.ImageContent).HasColumnType("bytea");
+        b.HasIndex(x => x.Topic);
+        b.HasIndex(x => x.ProductKey);
+        b.HasIndex(x => x.CreatedAt);
+        b.HasIndex(x => x.PendingTopic);
+    }
+}
+
+public class InspirationSettingsConfiguration : IEntityTypeConfiguration<InspirationSettings>
+{
+    public void Configure(EntityTypeBuilder<InspirationSettings> b)
+    {
+        b.ToTable("inspiration_settings");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Id).ValueGeneratedNever();
+        b.Property(x => x.InstanceName).HasMaxLength(128);
+        b.Property(x => x.MasterPhone).HasMaxLength(32);
+    }
+}

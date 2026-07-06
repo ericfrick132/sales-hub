@@ -86,6 +86,14 @@ public class InstagramFollowService
             return;
         }
 
+        // Ventana horaria: la cuenta actúa en horario humano (hora local AR).
+        if (!IsWithinActiveWindow(campaign))
+        {
+            _log.LogDebug("Campaña {Id}: fuera de la ventana horaria ({Start}-{End}h)",
+                campaign.Id, campaign.ActiveHourStart, campaign.ActiveHourEnd);
+            return;
+        }
+
         // ¿Hit del MaxTotal?
         if (campaign.MaxTotalFollows > 0 && campaign.TotalFollowed >= campaign.MaxTotalFollows)
         {
@@ -157,9 +165,10 @@ public class InstagramFollowService
 
             // Según el modo: seguir a los SEGUIDORES del source, o a las cuentas
             // que el source SIGUE (su lista "following").
+            var sourceHandle = CleanHandle(campaign.SourceHandle);
             var profiles = campaign.SourceMode == InstagramFollowSourceMode.Following
-                ? await client.ScrapeFollowingAsync(campaign.SourceHandle, campaign.ScrapeBatchSize, ct)
-                : await client.ScrapeFollowersAsync(campaign.SourceHandle, campaign.ScrapeBatchSize, ct);
+                ? await client.ScrapeFollowingAsync(sourceHandle, campaign.ScrapeBatchSize, ct)
+                : await client.ScrapeFollowersAsync(sourceHandle, campaign.ScrapeBatchSize, ct);
 
             if (profiles.Count == 0)
             {
@@ -311,6 +320,37 @@ public class InstagramFollowService
             }
             await _db.SaveChangesAsync(ct);
         }
+    }
+
+    /// <summary>true si la hora local AR está dentro de la ventana de la campaña (soporta ventanas que cruzan medianoche).</summary>
+    private static bool IsWithinActiveWindow(InstagramFollowCampaign campaign)
+    {
+        if (campaign.ActiveHourStart is null || campaign.ActiveHourEnd is null) return true;
+        var start = campaign.ActiveHourStart.Value;
+        var end = campaign.ActiveHourEnd.Value;
+        if (start == end) return true; // ventana degenerada = sin restricción
+
+        var hour = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, ArgentinaTz).Hour;
+        return start < end ? hour >= start && hour < end : hour >= start || hour < end;
+    }
+
+    private static readonly TimeZoneInfo ArgentinaTz = ResolveArgentinaTz();
+    private static TimeZoneInfo ResolveArgentinaTz()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("America/Argentina/Buenos_Aires"); }
+        catch { return TimeZoneInfo.CreateCustomTimeZone("AR", TimeSpan.FromHours(-3), "AR", "AR"); }
+    }
+
+    /// <summary>
+    /// Handle limpio aunque en la DB haya quedado una URL completa (campañas viejas):
+    /// "https://instagram.com/accesogym/" → "accesogym".
+    /// </summary>
+    private static string CleanHandle(string raw)
+    {
+        var handle = raw.Trim();
+        var urlIdx = handle.IndexOf("instagram.com/", StringComparison.OrdinalIgnoreCase);
+        if (urlIdx >= 0) handle = handle[(urlIdx + "instagram.com/".Length)..];
+        return handle.TrimStart('@').Trim().Trim('/').Split('/', '?')[0].Trim();
     }
 
     private async Task<int> CountFollowsTodayAsync(Guid campaignId, CancellationToken ct)

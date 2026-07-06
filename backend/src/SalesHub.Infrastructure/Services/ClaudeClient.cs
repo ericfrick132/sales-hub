@@ -16,6 +16,9 @@ namespace SalesHub.Infrastructure.Services;
 /// (tokens + costo USD) en ai_usage_logs, etiquetado por <c>feature</c>, para
 /// el widget de gasto del dashboard.
 /// </summary>
+/// <summary>Imagen para un turno con visión (JPEG/PNG/WebP/GIF).</summary>
+public record ClaudeImage(string MimeType, byte[] Data);
+
 public class ClaudeClient
 {
     private readonly HttpClient _http;
@@ -63,7 +66,20 @@ public class ClaudeClient
         => CompleteAsync(systemPrompt, userMessage, maxTokens, model, "unknown", ct);
 
     /// <summary>Sobrecarga completa: maxTokens + model + feature (etiqueta de gasto).</summary>
-    public async Task<string?> CompleteAsync(string systemPrompt, string userMessage, int maxTokens, string? model, string feature, CancellationToken ct = default)
+    public Task<string?> CompleteAsync(string systemPrompt, string userMessage, int maxTokens, string? model, string feature, CancellationToken ct = default)
+        => CompleteAsync(systemPrompt, userMessage, null, maxTokens, model, feature, ct);
+
+    /// <summary>Con visión y maxTokens/model default.</summary>
+    public Task<string?> CompleteAsync(string systemPrompt, string userMessage, IReadOnlyList<ClaudeImage>? images, string feature, CancellationToken ct = default)
+        => CompleteAsync(systemPrompt, userMessage, images, _opts.MaxTokens, null, feature, ct);
+
+    /// <summary>
+    /// Igual, pero con VISIÓN: las <paramref name="images"/> van como bloques
+    /// base64 antes del texto del turno de usuario. Usado por el loop de
+    /// inspiración de Posteos para que Claude MIRE la referencia (estilo visual)
+    /// además de leerla.
+    /// </summary>
+    public async Task<string?> CompleteAsync(string systemPrompt, string userMessage, IReadOnlyList<ClaudeImage>? images, int maxTokens, string? model, string feature, CancellationToken ct = default)
     {
         if (!IsConfigured)
         {
@@ -72,6 +88,19 @@ public class ClaudeClient
         }
 
         var usedModel = string.IsNullOrWhiteSpace(model) ? _opts.Model : model;
+
+        // Sin imágenes el content es string plano (formato histórico); con
+        // imágenes es un array de bloques image+text.
+        object userContent = images is { Count: > 0 }
+            ? images.Select(i => (object)new
+                {
+                    type = "image",
+                    source = new { type = "base64", media_type = i.MimeType, data = Convert.ToBase64String(i.Data) }
+                })
+                .Append(new { type = "text", text = userMessage })
+                .ToArray()
+            : userMessage;
+
         var body = new
         {
             model = usedModel,
@@ -87,7 +116,7 @@ public class ClaudeClient
             },
             messages = new[]
             {
-                new { role = "user", content = userMessage }
+                new { role = "user", content = userContent }
             }
         };
 

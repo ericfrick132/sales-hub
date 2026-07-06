@@ -29,6 +29,12 @@ public class InstagramFollowCampaign
     /// <summary>Follows máximos por día. Recomendado &lt; 50 para evitar bloqueos.</summary>
     public int DailyRate { get; set; } = 30;
 
+    // ── Ventana horaria (hora local AR) — que la cuenta actúe en horario humano ──
+    /// <summary>Hora local (0-23) desde la que la campaña puede actuar. null = sin restricción.</summary>
+    public int? ActiveHourStart { get; set; } = 10;
+    /// <summary>Hora local (0-23) hasta la que actúa (exclusiva). null = sin restricción.</summary>
+    public int? ActiveHourEnd { get; set; } = 22;
+
     /// <summary>
     /// Tope total de follows para esta campaña. 0 = sin tope (sigue mientras
     /// haya followers nuevos en el origen).

@@ -105,6 +105,8 @@ public static class DependencyInjection
         services.AddScoped<ConversationService>();
         // Relay de transcripción de audios (notas de voz → texto, sólo números de la allowlist).
         services.AddScoped<AudioTranscriptionRelay>();
+        // Intake de inspiraciones por WhatsApp (imágenes/ideas del número maestro → Posteos).
+        services.AddScoped<Services.Social.InspirationIntakeRelay>();
         // Acumulador del modo batch: junta imágenes/texto/audio y responde un PDF (debounce).
         // Singleton: vive entre webhooks (cada uno es un request) y al cerrar el batch abre su scope.
         services.AddSingleton<TranscriptionBatchAccumulator>();

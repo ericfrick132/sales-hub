@@ -27,6 +27,8 @@ interface Campaign {
   sourceHandle: string;
   sourceMode: string;
   dailyRate: number;
+  activeHourStart?: number | null;
+  activeHourEnd?: number | null;
   maxTotalFollows: number;
   isActive: boolean;
   totalEnqueued: number;
@@ -70,6 +72,8 @@ export default function InstagramFollow() {
   const [sourceMode, setSourceMode] = useState<'Followers' | 'Following'>('Followers');
   const [dailyRate, setDailyRate] = useState(30);
   const [maxTotal, setMaxTotal] = useState(0);
+  const [hourStart, setHourStart] = useState(10);
+  const [hourEnd, setHourEnd] = useState(22);
 
   const accountsQ = useQuery({
     queryKey: ['ig-accounts'],
@@ -98,6 +102,8 @@ export default function InstagramFollow() {
           sourceHandle: sourceHandle.trim().replace(/^@/, ''),
           sourceMode,
           dailyRate,
+          activeHourStart: hourStart,
+          activeHourEnd: hourEnd,
           maxTotalFollows: maxTotal
         })
       ).data,
@@ -127,6 +133,29 @@ export default function InstagramFollow() {
       qc.invalidateQueries({ queryKey: ['ig-follow-campaigns'] });
       qc.invalidateQueries({ queryKey: ['ig-follow-campaign'] });
     }
+  });
+
+  const hoursMut = useMutation({
+    mutationFn: async ({ id, start, end }: { id: string; start: number; end: number }) =>
+      (await api.patch(`/instagram-follow-campaigns/${id}`, {
+        setActiveHours: true, activeHourStart: start, activeHourEnd: end
+      })).data,
+    onSuccess: () => {
+      toast.success('Horario actualizado');
+      qc.invalidateQueries({ queryKey: ['ig-follow-campaigns'] });
+      qc.invalidateQueries({ queryKey: ['ig-follow-campaign'] });
+    }
+  });
+
+  const sourceMut = useMutation({
+    mutationFn: async ({ id, sourceHandle }: { id: string; sourceHandle: string }) =>
+      (await api.patch(`/instagram-follow-campaigns/${id}`, { sourceHandle })).data,
+    onSuccess: () => {
+      toast.success('Source actualizado');
+      qc.invalidateQueries({ queryKey: ['ig-follow-campaigns'] });
+      qc.invalidateQueries({ queryKey: ['ig-follow-campaign'] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Falló')
   });
 
   const deleteMut = useMutation({
@@ -230,6 +259,30 @@ export default function InstagramFollow() {
             />
           </div>
 
+          <div>
+            <label className="text-xs text-slate-500">Horario (hora AR, desde)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              max={23}
+              value={hourStart}
+              onChange={(e) => setHourStart(Number(e.target.value))}
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-slate-500">Horario (hasta, exclusive)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              max={23}
+              value={hourEnd}
+              onChange={(e) => setHourEnd(Number(e.target.value))}
+            />
+          </div>
+
           <div className="sm:col-span-2 flex items-end">
             <button
               className="btn-primary"
@@ -267,6 +320,9 @@ export default function InstagramFollow() {
               <div className="text-xs text-slate-500 mt-0.5">
                 desde @{c.instagramAccountUsername} · {c.dailyRate}/día ·{' '}
                 {c.sourceMode === 'Following' ? 'sus seguidos' : 'sus seguidores'}
+                {c.activeHourStart != null && c.activeHourEnd != null
+                  ? ` · ${c.activeHourStart}-${c.activeHourEnd}h`
+                  : ' · 24h'}
               </div>
               <div className="text-xs text-slate-600 mt-1">
                 hoy: <b>{c.followedToday}</b>/{c.dailyRate} · seguidos:{' '}
@@ -329,7 +385,7 @@ export default function InstagramFollow() {
                 <Stat label="Skipped / Failed" value={`${detailQ.data.totalSkipped} / ${detailQ.data.totalFailed}`} />
               </div>
 
-              <div className="flex items-end gap-2">
+              <div className="flex items-end gap-2 flex-wrap">
                 <div>
                   <label className="text-xs text-slate-500">Rate (follows/día)</label>
                   <input
@@ -342,6 +398,46 @@ export default function InstagramFollow() {
                       const v = Number(e.target.value);
                       if (v > 0 && v !== detailQ.data!.dailyRate)
                         rateMut.mutate({ id: detailQ.data!.id, dailyRate: v });
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500">Horario (desde-hasta, AR)</label>
+                  <div className="flex gap-1">
+                    <input
+                      className="input w-16"
+                      type="number" min={0} max={23}
+                      key={`hs-${detailQ.data.id}-${detailQ.data.activeHourStart}`}
+                      defaultValue={detailQ.data.activeHourStart ?? 10}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (v !== detailQ.data!.activeHourStart)
+                          hoursMut.mutate({ id: detailQ.data!.id, start: v, end: detailQ.data!.activeHourEnd ?? 22 });
+                      }}
+                    />
+                    <input
+                      className="input w-16"
+                      type="number" min={0} max={23}
+                      key={`he-${detailQ.data.id}-${detailQ.data.activeHourEnd}`}
+                      defaultValue={detailQ.data.activeHourEnd ?? 22}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (v !== detailQ.data!.activeHourEnd)
+                          hoursMut.mutate({ id: detailQ.data!.id, start: detailQ.data!.activeHourStart ?? 10, end: v });
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500">Perfil source (corregir)</label>
+                  <input
+                    className="input w-44"
+                    key={`sh-${detailQ.data.id}`}
+                    defaultValue={cleanHandle(detailQ.data.sourceHandle)}
+                    onBlur={(e) => {
+                      const v = cleanHandle(e.target.value);
+                      if (v && v !== cleanHandle(detailQ.data!.sourceHandle))
+                        sourceMut.mutate({ id: detailQ.data!.id, sourceHandle: v });
                     }}
                   />
                 </div>
