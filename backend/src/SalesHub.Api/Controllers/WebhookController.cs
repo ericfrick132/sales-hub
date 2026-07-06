@@ -154,7 +154,7 @@ public class WebhookController : ControllerBase
         var timestamp = ts > 0 ? DateTimeOffset.FromUnixTimeSeconds(ts) : DateTimeOffset.UtcNow;
 
         return new ConversationService.IncomingMessage(
-            instance, remoteJid, phoneOverride, messageId, text!, timestamp, msg.GetRawText(), fromMe);
+            instance, remoteJid, phoneOverride, messageId, text!, timestamp, msg.GetRawText(), fromMe, topSender);
     }
 
     private static string? TryGetString(JsonElement el, string prop) =>

@@ -36,7 +36,10 @@ public class ConversationService
         string RawJson,
         // Saliente/propio (self-chat o envío nuestro). El flujo de leads lo ignora; el relay de
         // transcripción SÍ lo usa (mandarte un audio a vos mismo es un caso válido).
-        bool FromMe = false);
+        bool FromMe = false,
+        // JID del dueño de la línea (payload.sender del webhook). Sirve para distinguir
+        // self-chat real (owner == remoteJid) de un envío saliente a un chat ajeno.
+        string? SenderJid = null);
 
     /// <summary>Called by the Evolution webhook on every inbound message.</summary>
     public async Task<bool> HandleIncomingAsync(IncomingMessage incoming, CancellationToken ct)

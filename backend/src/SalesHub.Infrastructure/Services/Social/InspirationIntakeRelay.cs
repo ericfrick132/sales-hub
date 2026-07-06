@@ -109,6 +109,16 @@ public class InspirationIntakeRelay
         if (phone is null || phone.Length < 6) return false;
         if (Suffix(phone) != cfg.MasterSuffix) return false;
 
+        // fromMe (saliente de la línea) SOLO vale en self-chat real (el maestro ES la línea:
+        // owner == remoteJid == maestro). Cualquier otro fromMe hacia el chat del maestro es
+        // tráfico de apps/bots (notificaciones TurnosPro, respuestas nuestras, etc.) → NO es
+        // input del usuario y lo dejamos pasar al flujo normal (que ya lo ignora).
+        if (incoming.FromMe)
+        {
+            var owner = NormalizeDigits(ExtractPhone(incoming.SenderJid));
+            if (owner is null || Suffix(owner) != cfg.MasterSuffix) return false;
+        }
+
         var (kind, caption, mime) = Classify(incoming.RawJson);
         if (kind is null) return false; // sticker/video/etc: no es nuestro
 
