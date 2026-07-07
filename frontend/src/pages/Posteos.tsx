@@ -222,10 +222,10 @@ export default function Posteos() {
             </div>
 
             {/* Landing: fuente real de features/precios */}
-            <LandingEditor profile={profile} />
+            <LandingEditor key={`landing-${profile.productKey}`} profile={profile} />
 
             {/* Frecuencia / horarios */}
-            <CadenceEditor profile={profile} onSave={(b) => saveProfile(profile.productKey, b)} />
+            <CadenceEditor key={`cadence-${profile.productKey}`} profile={profile} onSave={(b) => saveProfile(profile.productKey, b)} />
 
             {/* Redes */}
             <div className="card p-4">
@@ -304,7 +304,7 @@ export default function Posteos() {
 }
 
 // ── "Publicar YA": elegí cuentas + tipo/tema → genera y sube al toque ────────
-type AllChannel = { id: string; productKey: string; platform: string; enabled: boolean; assetKind: string; distribution: string; hasBuffer: boolean };
+type AllChannel = { id: string; productKey: string; platform: string; format: string; enabled: boolean; assetKind: string; distribution: string; hasBuffer: boolean };
 type ContentTypeOpt = { key: string; label: string; weight: number };
 
 function PublishNowPanel() {
@@ -381,7 +381,7 @@ function PublishNowPanel() {
                   {chs.map((c) => (
                     <label key={c.id} className={`flex items-center gap-2 text-xs cursor-pointer ${!c.enabled ? 'opacity-50' : ''}`}>
                       <input type="checkbox" checked={sel.has(c.id)} onChange={() => toggle(c.id)} />
-                      <span>{c.platform} · {c.assetKind === 'Video' ? '🎬 video' : '🖼️ imagen'}{!c.enabled ? ' (canal off)' : ''}</span>
+                      <span>{c.platform} · {c.format === 'Story' ? '📱 story' : c.format} · {c.assetKind === 'Video' ? '🎬 video' : '🖼️ imagen'}{!c.enabled ? ' (canal off)' : ''}</span>
                     </label>
                   ))}
                 </div>
