@@ -70,6 +70,7 @@ export default function Layout() {
           { to: '/transcripcion', label: 'Transcripción' },
           { to: '/seguimientos', label: 'Seguimientos' },
         ] },
+        { title: 'Ayuda', items: [{ to: '/manual', label: 'Manual' }] },
       ]
     : [
         { items: [{ to: '/dashboard', label: 'Hoy' }] },
@@ -79,6 +80,7 @@ export default function Layout() {
         ] },
         { title: 'Captación', items: [{ to: '/leads/search', label: 'Capturar de Maps' }] },
         { title: 'Canales', items: [{ to: '/connect', label: 'WhatsApp' }] },
+        { title: 'Ayuda', items: [{ to: '/manual', label: 'Manual' }] },
       ];
 
   const sidebar = (

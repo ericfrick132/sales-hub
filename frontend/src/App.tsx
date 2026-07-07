@@ -32,6 +32,7 @@ import ReglasIa from './pages/ReglasIa';
 import OnboardingApps from './pages/OnboardingApps';
 import Transcripcion from './pages/Transcripcion';
 import Seguimientos from './pages/Seguimientos';
+import Manual from './pages/Manual';
 
 function SellerZonesRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/connect" element={<Connect />} />
         <Route path="/conversations" element={<Conversations />} />
         <Route path="/map" element={<MapPage />} />
+        <Route path="/manual" element={<Manual />} />
         {isAdmin(user) && (
           <>
             <Route path="/admin" element={<AdminDashboard />} />
