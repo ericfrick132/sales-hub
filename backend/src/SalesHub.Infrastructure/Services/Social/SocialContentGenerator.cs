@@ -55,6 +55,17 @@ public class SocialContentGenerator
         "Tono de la marca, cálido y natural como un amigo que te cuenta algo, NO como publicidad gritada. Cerrá con una idea que deje pensando (no un CTA explícito tipo 'comprá ya'). " +
         "Sin emojis, sin hashtags, sin URLs — es para leer en voz alta. Si el assetKind es 'image', devolvé narration = \"\".";
 
+    /// <summary>
+    /// Regla para STORIES: son verticales, efímeras (24h) y más íntimas/casuales que el
+    /// feed. Menos producidas, más "momento". El overlay es clave (la story vive del texto
+    /// grande arriba de la imagen), y va bárbaro para una pregunta o un guiño rápido.
+    /// </summary>
+    private const string StoryRule =
+        "ES UNA STORY (vertical 9:16, efímera 24h): tono más casual e íntimo que el feed, como un mensaje al toque. " +
+        "El 'overlay' es PROTAGONISTA (la story se lee de ese texto grande) — que sea un gancho, pregunta o guiño corto. " +
+        "El caption es breve. El visual es simple, con aire arriba y abajo para el texto, no una placa recargada. " +
+        "Ideal para preguntas, un tip rápido o un momento del día — no un anuncio formal.";
+
     private const string VideoPromptRecipe =
         "REGLA DEL PROMPT DE VIDEO — si el assetKind es 'video', el campo 'prompt' (en INGLÉS) es dirección de cine para UNA sola toma continua, vertical 9:16, ~5 segundos. Escribilo así:\n" +
         "1) HISTORIA: un micro-arco (situación → giro → remate) ambientado en el MUNDO REAL del cliente de esta app. Pensá cuál es su dolor de fondo, pero NO lo muestres literal ni lo nombres: contalo de costado — un detalle, una consecuencia, el momento de calma u orgullo que el producto hace posible. La historia insinúa; nunca 'vende'.\n" +
@@ -162,6 +173,7 @@ public class SocialContentGenerator
         sys.AppendLine(type.Directive);
         sys.AppendLine();
         sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies). Caption en español rioplatense (voseo). El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
+        if (ch.Format == SocialPostFormat.Story) sys.AppendLine(StoryRule);
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
         sys.AppendLine(OverlayRule);
         if (ch.AssetKind == SocialAssetKind.Video) { sys.AppendLine(NarrationRule); sys.AppendLine(VideoPromptRecipe); }

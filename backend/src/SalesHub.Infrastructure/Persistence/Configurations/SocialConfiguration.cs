@@ -41,8 +41,9 @@ public class PostingChannelConfiguration : IEntityTypeConfiguration<PostingChann
         b.Property(x => x.WarmrAccount).HasMaxLength(128);
         b.Property(x => x.BufferChannelId).HasMaxLength(64);
         b.Property(x => x.PromptTemplate).HasColumnType("text");
-        b.HasIndex(x => new { x.ProductKey, x.Platform }).IsUnique()
-            .HasDatabaseName("IX_PostingChannel_Product_Platform");
+        // Único por (app, red, FORMATO) → una app puede tener IG-feed Y IG-story a la vez.
+        b.HasIndex(x => new { x.ProductKey, x.Platform, x.Format }).IsUnique()
+            .HasDatabaseName("IX_PostingChannel_Product_Platform_Format");
     }
 }
 

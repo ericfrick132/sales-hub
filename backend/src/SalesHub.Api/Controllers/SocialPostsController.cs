@@ -227,13 +227,14 @@ public class SocialPostsController : ControllerBase
     {
         if (!Enum.TryParse<SocialPlatform>(req.Platform, true, out var platform))
             return BadRequest(new { error = "Platform inválida." });
-        if (await _db.PostingChannels.AnyAsync(c => c.ProductKey == req.ProductKey && c.Platform == platform, ct))
-            return Conflict(new { error = "Ya existe ese canal para esa app." });
+        var fmt = Enum.TryParse<SocialPostFormat>(req.Format, true, out var f) ? f : SocialPostFormat.Post;
+        if (await _db.PostingChannels.AnyAsync(c => c.ProductKey == req.ProductKey && c.Platform == platform && c.Format == fmt, ct))
+            return Conflict(new { error = "Ya existe ese canal (app×red×formato)." });
         var ch = new PostingChannel
         {
             Id = Guid.NewGuid(), ProductKey = req.ProductKey, Platform = platform,
             Enabled = true,
-            Format = Enum.TryParse<SocialPostFormat>(req.Format, true, out var f) ? f : SocialPostFormat.Post,
+            Format = fmt,
             AssetKind = Enum.TryParse<SocialAssetKind>(req.AssetKind, true, out var ak) ? ak : SocialAssetKind.Image,
             Distribution = Enum.TryParse<SocialDistribution>(req.Distribution, true, out var dist) ? dist : SocialDistribution.Buffer,
             WarmrAccount = req.WarmrAccount ?? string.Empty,
