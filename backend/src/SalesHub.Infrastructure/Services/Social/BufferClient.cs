@@ -106,10 +106,20 @@ public class BufferClient : ISocialPublisher
             return new PublishResult { Success = false, Error = "Falta imageUrl o videoUrl." };
         }
 
+        // Twitter/X: 280 chars duros — recortamos en un borde de palabra para no
+        // rebotar el post entero ("Twitter / X posts cannot exceed...").
+        var text = req.Caption ?? "";
+        if (string.Equals(req.Service, "twitter", StringComparison.OrdinalIgnoreCase) && text.Length > 270)
+        {
+            var cut = text[..270];
+            var lastSpace = cut.LastIndexOf(' ');
+            text = (lastSpace > 200 ? cut[..lastSpace] : cut).TrimEnd() + "…";
+        }
+
         var input = new Dictionary<string, object?>
         {
             ["channelId"] = req.ChannelId,
-            ["text"] = req.Caption ?? "",
+            ["text"] = text,
             ["assets"] = new[] { asset },
             ["schedulingType"] = req.Automatic ? "automatic" : "notification",
             ["mode"] = req.ScheduledAt.HasValue ? "customScheduled" : "shareNow",
@@ -126,6 +136,17 @@ public class BufferClient : ISocialPublisher
                 {
                     ["type"] = string.IsNullOrWhiteSpace(req.InstagramType) ? "post" : req.InstagramType,
                     ["shouldShareToFeed"] = req.ShareToFeed,
+                }
+            };
+        }
+        // Facebook exige el tipo de post ("Facebook posts require a type").
+        else if (string.Equals(req.Service, "facebook", StringComparison.OrdinalIgnoreCase))
+        {
+            input["metadata"] = new Dictionary<string, object?>
+            {
+                ["facebook"] = new Dictionary<string, object?>
+                {
+                    ["type"] = string.IsNullOrWhiteSpace(req.VideoUrl) ? "post" : "reel",
                 }
             };
         }

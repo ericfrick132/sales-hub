@@ -62,9 +62,18 @@ public class SocialContentWorker : BackgroundService
                 .Where(c => c.ProductKey == profile.ProductKey && c.Enabled)
                 .ToListAsync(ct);
             var n = Math.Max(1, profile.PostsPerDay);
+            // Guard de reinicio: _ranThisHour vive en memoria y cada deploy lo borra —
+            // sin este check en DB, un redeploy dentro del slot duplica el posteo
+            // (pasó: gymhero x3 el 7/7 por los deploys de la mañana).
+            var now = DateTimeOffset.Now;
+            var slotStart = new DateTimeOffset(now.Year, now.Month, now.Day, hour, 0, 0, now.Offset);
             foreach (var channel in channels)
             {
-                for (var i = 0; i < n; i++)
+                var already = await db.SocialPosts.CountAsync(s =>
+                    s.ProductKey == profile.ProductKey
+                    && s.Platform == channel.Platform
+                    && s.CreatedAt >= slotStart, ct);
+                for (var i = already; i < n; i++)
                 {
                     try { await GenerateOneAsync(scope, db, profile, channel, ct); }
                     catch (Exception ex) { _log.LogError(ex, "Posteo gen falló para {Product}/{Net}", profile.ProductKey, channel.Platform); }
