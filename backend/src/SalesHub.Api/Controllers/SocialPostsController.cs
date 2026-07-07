@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities.Social;
 using SalesHub.Infrastructure.Persistence;
@@ -24,11 +25,12 @@ public class SocialPostsController : ControllerBase
     private readonly ISocialPublisher _publisher;
     private readonly IWarmrDistributor _warmr;
     private readonly IHttpClientFactory _httpFactory;
+    private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<SocialPostsController> _log;
 
-    public SocialPostsController(ApplicationDbContext db, SocialContentGenerator generator, IEnumerable<ISocialAssetGenerator> assetGenerators, ISocialPublisher publisher, IWarmrDistributor warmr, IHttpClientFactory httpFactory, ILogger<SocialPostsController> log)
+    public SocialPostsController(ApplicationDbContext db, SocialContentGenerator generator, IEnumerable<ISocialAssetGenerator> assetGenerators, ISocialPublisher publisher, IWarmrDistributor warmr, IHttpClientFactory httpFactory, IServiceScopeFactory scopes, ILogger<SocialPostsController> log)
     {
-        _db = db; _generator = generator; _assetGenerators = assetGenerators; _publisher = publisher; _warmr = warmr; _httpFactory = httpFactory; _log = log;
+        _db = db; _generator = generator; _assetGenerators = assetGenerators; _publisher = publisher; _warmr = warmr; _httpFactory = httpFactory; _scopes = scopes; _log = log;
     }
 
     private ISocialAssetGenerator? GeneratorFor(SocialAssetKind kind) =>
@@ -82,6 +84,7 @@ public class SocialPostsController : ControllerBase
         if (req.BrandVoice != null) p.BrandVoice = req.BrandVoice;
         if (req.BrandGuidelines != null) p.BrandGuidelines = req.BrandGuidelines;
         if (req.BrandFonts != null) p.BrandFonts = req.BrandFonts;
+        if (req.LandingUrl != null) p.LandingUrl = req.LandingUrl.Trim();
         p.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(p);
@@ -255,13 +258,14 @@ public class SocialPostsController : ControllerBase
         var recent = await _db.SocialPosts.Where(s => s.ProductKey == ch.ProductKey && s.Platform == ch.Platform)
             .OrderByDescending(s => s.CreatedAt).Select(s => s.Concept).Take(15).ToListAsync(ct);
 
-        var gen = await _generator.GenerateForChannelAsync(profile, ch, recent, ct);
+        var gen = await _generator.GenerateForChannelAsync(profile, ch, recent, null, null, ct);
         if (gen == null) return StatusCode(502, new { error = "El generador no devolvió contenido." });
 
         var post = new SocialPost
         {
             Id = Guid.NewGuid(), ProductKey = ch.ProductKey, Platform = ch.Platform,
             BufferChannelId = ch.BufferChannelId, Format = ch.Format, AssetKind = ch.AssetKind,
+            PostType = gen.Type,
             ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay, NarrationText = gen.Narration,
             Caption = gen.Caption, Hashtags = gen.Hashtags, GenerationModel = "claude",
             RawJson = gen.RawJson, Status = SocialPostStatus.DraftReady,
@@ -269,6 +273,170 @@ public class SocialPostsController : ControllerBase
         _db.SocialPosts.Add(post);
         await _db.SaveChangesAsync(ct);
         return Ok(post);
+    }
+
+    /// <summary>Catálogo de tipos de posteo (para el selector de la UI).</summary>
+    [HttpGet("content-types")]
+    public IActionResult ContentTypesList() =>
+        Ok(ContentTypes.All.Select(t => new { key = t.Key, label = t.Label, weight = t.Weight }));
+
+    /// <summary>
+    /// Re-destila la landing de una app (baja la URL, Claude extrae features/precios reales)
+    /// y cachea la ficha. Se llama al guardar la URL o con el botón "actualizar".
+    /// </summary>
+    [HttpPost("profiles/{productKey}/refresh-landing")]
+    public async Task<IActionResult> RefreshLanding(string productKey, [FromServices] LandingKnowledgeService landing, CancellationToken ct)
+    {
+        var p = await _db.PostingProfiles.FirstOrDefaultAsync(x => x.ProductKey == productKey, ct);
+        if (p == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(p.LandingUrl)) return BadRequest(new { error = "El perfil no tiene LandingUrl." });
+        var knowledge = await landing.EnsureFreshAsync(p, force: true, ct);
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { p.LandingUrl, p.LandingKnowledgeAt, landingKnowledge = knowledge });
+    }
+
+    /// <summary>
+    /// "Publicar YA": por cada canal seleccionado genera contenido + asset y lo publica
+    /// INMEDIATAMENTE (shareNow, no agendado). Crea las filas al toque en estado
+    /// GeneratingAsset y termina el trabajo pesado (Claude → imagen/video → Buffer) en
+    /// background; la UI las ve avanzar por su estado.
+    /// </summary>
+    [HttpPost("publish-now")]
+    public async Task<IActionResult> PublishNow([FromBody] PublishNowRequest req, CancellationToken ct)
+    {
+        if (req.ChannelIds is not { Count: > 0 }) return BadRequest(new { error = "Elegí al menos un canal." });
+        var channels = await _db.PostingChannels.Where(c => req.ChannelIds.Contains(c.Id)).ToListAsync(ct);
+        if (channels.Count == 0) return NotFound(new { error = "No se encontraron esos canales." });
+
+        var created = new List<object>();
+        foreach (var ch in channels)
+        {
+            // Fila placeholder inmediata → la UI la muestra ya "Generando…".
+            var post = new SocialPost
+            {
+                Id = Guid.NewGuid(), ProductKey = ch.ProductKey, Platform = ch.Platform,
+                BufferChannelId = ch.BufferChannelId, Format = ch.Format, AssetKind = ch.AssetKind,
+                Target = ch.Distribution, WarmrAccount = ch.WarmrAccount,
+                Concept = "Generando…", GenerationModel = "claude",
+                Status = SocialPostStatus.GeneratingAsset,
+            };
+            _db.SocialPosts.Add(post);
+            created.Add(new { postId = post.Id, ch.ProductKey, platform = ch.Platform.ToString() });
+            var channelId = ch.Id; var postId = post.Id; var hint = req.Topic; var typeKey = req.PostType;
+            _ = Task.Run(() => RunPublishNowAsync(channelId, postId, hint, typeKey));
+        }
+        await _db.SaveChangesAsync(ct);
+        return Accepted(new { started = created.Count, posts = created });
+    }
+
+    /// <summary>Trabajo pesado de "Publicar YA" para un canal: genera contenido + asset y publica ya.</summary>
+    private async Task RunPublishNowAsync(Guid channelId, Guid postId, string? hint, string? typeKey)
+    {
+        using var scope = _scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var generator = scope.ServiceProvider.GetRequiredService<SocialContentGenerator>();
+        var landing = scope.ServiceProvider.GetRequiredService<LandingKnowledgeService>();
+        var assetGens = scope.ServiceProvider.GetServices<ISocialAssetGenerator>();
+        var publisher = scope.ServiceProvider.GetRequiredService<ISocialPublisher>();
+        var warmr = scope.ServiceProvider.GetRequiredService<IWarmrDistributor>();
+        var log = scope.ServiceProvider.GetRequiredService<ILogger<SocialPostsController>>();
+        var ct = CancellationToken.None;
+
+        var post = await db.SocialPosts.FirstOrDefaultAsync(s => s.Id == postId, ct);
+        if (post is null) return;
+        try
+        {
+            var ch = await db.PostingChannels.FirstOrDefaultAsync(c => c.Id == channelId, ct);
+            var profile = ch is null ? null : await db.PostingProfiles.FirstOrDefaultAsync(p => p.ProductKey == ch.ProductKey, ct);
+            if (ch is null || profile is null) { post.Status = SocialPostStatus.Error; post.Error = "Falta canal o perfil."; await db.SaveChangesAsync(ct); return; }
+
+            try { await landing.EnsureFreshAsync(profile, force: false, ct); await db.SaveChangesAsync(ct); }
+            catch (Exception ex) { log.LogWarning(ex, "Publicar YA: no pude refrescar la landing de {Product}", profile.ProductKey); }
+
+            var recentPosts = await db.SocialPosts.Where(s => s.ProductKey == ch.ProductKey && s.Platform == ch.Platform && s.Id != postId)
+                .OrderByDescending(s => s.CreatedAt).Select(s => new { s.Concept, s.PostType }).Take(15).ToListAsync(ct);
+            var recent = recentPosts.Select(x => x.Concept).ToList();
+
+            // Tipo: si el usuario lo forzó, ese; si no, elegimos evitando el último.
+            var resolvedType = typeKey;
+            if (string.IsNullOrWhiteSpace(resolvedType))
+            {
+                var hasPrices = !string.IsNullOrWhiteSpace(profile.LandingKnowledge)
+                    && profile.LandingKnowledge.IndexOf("sin precios", StringComparison.OrdinalIgnoreCase) < 0;
+                resolvedType = ContentTypes.Pick(recentPosts.FirstOrDefault()?.PostType, hasPrices, Random.Shared).Key;
+            }
+
+            var gen = await generator.GenerateForChannelAsync(profile, ch, recent, hint, resolvedType, ct);
+            if (gen is null) { post.Status = SocialPostStatus.Error; post.Error = "El generador no devolvió contenido."; await db.SaveChangesAsync(ct); return; }
+
+            post.PostType = gen.Type;
+            post.ContentPillar = gen.Pillar; post.Concept = gen.Concept; post.Prompt = gen.Prompt;
+            post.OverlayText = gen.Overlay; post.NarrationText = gen.Narration;
+            post.Caption = gen.Caption; post.Hashtags = gen.Hashtags; post.RawJson = gen.RawJson;
+            post.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+
+            // Asset (imagen o video). Sin generador o sin key → sigue sin asset (fallará el push si Buffer lo exige).
+            var assetGen = assetGens.FirstOrDefault(g => g.CanHandle(gen.AssetKind));
+            if (assetGen is not null && assetGen.IsConfigured)
+            {
+                var asset = await assetGen.GenerateForPostAsync(profile, post, ct);
+                if (asset is not null) { post.AssetUrl = asset.Url; post.ThumbnailUrl = asset.ThumbnailUrl; }
+            }
+            post.Status = SocialPostStatus.DraftReady;
+            await db.SaveChangesAsync(ct);
+
+            // Distribución INMEDIATA.
+            if (ch.Distribution == SocialDistribution.Warmr)
+            {
+                await warmr.DispatchAsync(post, ct);
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(post.AssetUrl))
+            {
+                post.Status = SocialPostStatus.Error;
+                post.Error = "No se generó el asset (revisá las API keys de imagen/video).";
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+
+            var caption = post.Hashtags.Count > 0
+                ? $"{post.Caption}\n\n{string.Join(" ", post.Hashtags.Select(h => h.StartsWith('#') ? h : "#" + h))}"
+                : post.Caption;
+            var res = await publisher.CreatePostAsync(new PublishRequest
+            {
+                ChannelId = post.BufferChannelId,
+                Service = post.Platform.ToString().ToLowerInvariant(),
+                Caption = caption,
+                ImageUrl = post.AssetKind == SocialAssetKind.Image ? post.AssetUrl : null,
+                VideoUrl = post.AssetKind == SocialAssetKind.Video ? post.AssetUrl : null,
+                ThumbnailUrl = post.ThumbnailUrl,
+                InstagramType = post.Format.ToString().ToLowerInvariant(),
+                ScheduledAt = null,          // shareNow
+                SaveAsDraft = false,
+                Automatic = !ch.NotifyPublish,
+            }, ct);
+
+            if (res.Success)
+            {
+                post.Status = SocialPostStatus.Posted;
+                post.BufferPostId = res.ExternalPostId;
+                post.PostedAt = DateTimeOffset.UtcNow;
+                post.Error = null;
+            }
+            else { post.Status = SocialPostStatus.Error; post.Error = res.Error; }
+            post.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            log.LogInformation("Publicar YA {Product}/{Net}: {Status}", post.ProductKey, post.Platform, post.Status);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Publicar YA falló (post {Id})", postId);
+            try { post.Status = SocialPostStatus.Error; post.Error = ex.Message.Length > 500 ? ex.Message[..500] : ex.Message; await db.SaveChangesAsync(ct); }
+            catch { /* no-op */ }
+        }
     }
 
     /// <summary>
@@ -731,6 +899,15 @@ public class SocialPostsController : ControllerBase
     }
 
     public class GenerateRequest { public string ProductKey { get; set; } = string.Empty; }
+    public class PublishNowRequest
+    {
+        /// <summary>Canales (app×red) a los que publicar YA.</summary>
+        public List<Guid> ChannelIds { get; set; } = new();
+        /// <summary>Tema/indicación opcional para el contenido (ej. "promo de verano").</summary>
+        public string? Topic { get; set; }
+        /// <summary>Tipo de posteo forzado (emocional, educativo, venta, precio…). Vacío = elige el sistema.</summary>
+        public string? PostType { get; set; }
+    }
     public class InspirationRequest
     {
         public string ProductKey { get; set; } = string.Empty;
@@ -823,6 +1000,8 @@ public class SocialPostsController : ControllerBase
         public string? BrandGuidelines { get; set; }
         /// <summary>Tipografía de marca que la imagen debe respetar (ej. "Bricolage Grotesque, bold condensed").</summary>
         public string? BrandFonts { get; set; }
+        /// <summary>URL de la landing (de acá se destilan features/precios reales).</summary>
+        public string? LandingUrl { get; set; }
     }
     public class CreateProfileRequest
     {

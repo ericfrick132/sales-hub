@@ -86,14 +86,30 @@ public class SocialContentWorker : BackgroundService
     {
         var generator = scope.ServiceProvider.GetRequiredService<SocialContentGenerator>();
 
-        var recent = await db.SocialPosts
+        // Ficha de la landing (features/precios reales) — se re-fetchea sola si está vieja.
+        try
+        {
+            var landing = scope.ServiceProvider.GetRequiredService<LandingKnowledgeService>();
+            await landing.EnsureFreshAsync(profile, force: false, ct);
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "No pude refrescar la landing de {Product}", profile.ProductKey); }
+
+        var recentPosts = await db.SocialPosts
             .Where(s => s.ProductKey == profile.ProductKey && s.Platform == channel.Platform)
             .OrderByDescending(s => s.CreatedAt)
-            .Select(s => s.Concept)
+            .Select(s => new { s.Concept, s.PostType })
             .Take(15)
             .ToListAsync(ct);
+        var recent = recentPosts.Select(x => x.Concept).ToList();
 
-        var gen = await generator.GenerateForChannelAsync(profile, channel, recent, ct);
+        // Tipo de posteo: evitamos repetir el último para variar el mix (orgánico ≠ siempre venta).
+        var lastType = recentPosts.FirstOrDefault()?.PostType;
+        var hasPrices = !string.IsNullOrWhiteSpace(profile.LandingKnowledge)
+            && profile.LandingKnowledge.IndexOf("sin precios", StringComparison.OrdinalIgnoreCase) < 0;
+        var type = ContentTypes.Pick(lastType, hasPrices, Random.Shared);
+
+        var gen = await generator.GenerateForChannelAsync(profile, channel, recent, null, type.Key, ct);
         if (gen == null) { _log.LogWarning("Generador null para {Product}/{Net}", profile.ProductKey, channel.Platform); return; }
 
         var post = new SocialPost
@@ -106,6 +122,7 @@ public class SocialContentWorker : BackgroundService
             AssetKind = channel.AssetKind,
             Target = channel.Distribution,
             WarmrAccount = channel.WarmrAccount,
+            PostType = gen.Type,
             ContentPillar = gen.Pillar,
             Concept = gen.Concept,
             Prompt = gen.Prompt,

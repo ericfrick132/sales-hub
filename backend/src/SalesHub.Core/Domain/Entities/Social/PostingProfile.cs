@@ -30,6 +30,14 @@ public class PostingProfile
     /// <summary>Pilares de contenido (ej. ahorro de tiempo, cobros, retención…).</summary>
     public List<string> ContentPillars { get; set; } = new();
 
+    // ── Conocimiento de la landing (fuente real de features/precios) ────────
+    /// <summary>URL de la landing del producto. De acá se destilan los datos reales.</summary>
+    public string LandingUrl { get; set; } = string.Empty;
+    /// <summary>Ficha destilada por Claude a partir de la landing (qué hace, features, precios, pruebas). Se cachea.</summary>
+    public string LandingKnowledge { get; set; } = string.Empty;
+    /// <summary>Cuándo se refrescó la ficha (para re-fetchear cuando está vieja).</summary>
+    public DateTimeOffset? LandingKnowledgeAt { get; set; }
+
     // ── Canales ───────────────────────────────────────────────────────────
     /// <summary>Mapa plataforma→bufferChannelId, ej {"instagram":"68ed..","tiktok":"686f.."}.</summary>
     public string BufferChannelsJson { get; set; } = "{}";

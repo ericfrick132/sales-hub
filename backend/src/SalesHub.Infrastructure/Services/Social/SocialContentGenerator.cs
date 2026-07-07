@@ -132,9 +132,13 @@ public class SocialContentGenerator
     /// Genera para una red específica usando el prompt propio de ese canal (red×app)
     /// + la base de marca del perfil. El formato/asset los fija el canal (no Claude).
     /// </summary>
-    public async Task<GeneratedPost?> GenerateForChannelAsync(PostingProfile p, PostingChannel ch, IReadOnlyList<string> recentConcepts, CancellationToken ct = default)
+    public async Task<GeneratedPost?> GenerateForChannelAsync(PostingProfile p, PostingChannel ch, IReadOnlyList<string> recentConcepts, string? hint = null, string? contentTypeKey = null, CancellationToken ct = default)
     {
         if (!_claude.IsConfigured) { _log.LogWarning("Claude no configurado"); return null; }
+
+        // Tipo de posteo: el caller puede forzar uno; si no, elegimos con sesgo orgánico.
+        var hasPrices = HasLandingPrices(p);
+        var type = ContentTypes.ByKey(contentTypeKey) ?? ContentTypes.Pick(null, hasPrices, Random.Shared);
 
         var sys = new StringBuilder();
         sys.AppendLine($"Sos el generador de contenido social del producto '{p.ProductKey}' para la red {ch.Platform}.");
@@ -144,9 +148,18 @@ public class SocialContentGenerator
         sys.AppendLine($"Paleta (no la cambies): {p.BrandColorsJson}. Fuentes: {p.BrandFonts}.");
         if (p.ContentPillars.Count > 0)
             sys.AppendLine($"Pilares de contenido: {string.Join(" | ", p.ContentPillars)}.");
+        if (!string.IsNullOrWhiteSpace(p.LandingKnowledge))
+        {
+            sys.AppendLine();
+            sys.AppendLine("FICHA REAL DEL PRODUCTO (datos de la landing — usá SOLO esto para features/precios, no inventes):");
+            sys.AppendLine(p.LandingKnowledge);
+        }
         sys.AppendLine();
         sys.AppendLine("INSTRUCCIONES ESPECÍFICAS DE ESTA RED:");
         sys.AppendLine(string.IsNullOrWhiteSpace(ch.PromptTemplate) ? "(sin instrucciones extra)" : ch.PromptTemplate);
+        sys.AppendLine();
+        sys.AppendLine("TIPO DE POSTEO DE ESTA VEZ (respetalo, marca el ángulo):");
+        sys.AppendLine(type.Directive);
         sys.AppendLine();
         sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies). Caption en español rioplatense (voseo). El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
@@ -154,7 +167,9 @@ public class SocialContentGenerator
         if (ch.AssetKind == SocialAssetKind.Video) { sys.AppendLine(NarrationRule); sys.AppendLine(VideoPromptRecipe); }
 
         var user = new StringBuilder();
-        user.AppendLine($"Generá 1 idea nueva para {ch.Platform} ({ch.Format}).");
+        user.AppendLine($"Generá 1 idea nueva para {ch.Platform} ({ch.Format}), tipo {type.Label}.");
+        if (!string.IsNullOrWhiteSpace(hint))
+            user.AppendLine($"TEMA / INDICACIÓN para este posteo: {hint.Trim()}");
         if (recentConcepts.Count > 0)
         {
             user.AppendLine("Evitá repetir estos conceptos recientes:");
@@ -182,7 +197,8 @@ public class SocialContentGenerator
                 Narration: Str(r, "narration"),
                 Caption: Str(r, "caption"),
                 Hashtags: hashtags,
-                RawJson: json);
+                RawJson: json,
+                Type: type.Key);
         }
         catch (Exception ex)
         {
@@ -190,6 +206,11 @@ public class SocialContentGenerator
             return null;
         }
     }
+
+    /// <summary>true si la ficha de landing tiene precios reales (para habilitar el tipo "precio").</summary>
+    private static bool HasLandingPrices(PostingProfile p) =>
+        !string.IsNullOrWhiteSpace(p.LandingKnowledge)
+        && p.LandingKnowledge.IndexOf("sin precios", StringComparison.OrdinalIgnoreCase) < 0;
 
     /// <summary>
     /// Genera una adaptación ORIGINAL inspirada en un post de la competencia que el
@@ -374,4 +395,5 @@ public record GeneratedPost(
     string Narration,
     string Caption,
     List<string> Hashtags,
-    string RawJson);
+    string RawJson,
+    string Type = "");

@@ -54,6 +54,7 @@ public static class DependencyInjection
         services.AddHttpClient<BufferClient>();
         services.AddScoped<ISocialPublisher>(sp => sp.GetRequiredService<BufferClient>());
         services.AddScoped<SocialContentGenerator>();
+        services.AddScoped<Services.Social.LandingKnowledgeService>();
         services.AddHttpClient<AiImageGenerator>();
         services.AddScoped<ISocialAssetGenerator>(sp => sp.GetRequiredService<AiImageGenerator>());
         // Narración de video (TTS ElevenLabs). El FalVideoGenerator la muxea al mp3.

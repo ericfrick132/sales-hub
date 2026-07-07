@@ -88,6 +88,8 @@ public class SocialPost
     public Guid? InspirationItemId { get; set; }
 
     // ── Contenido generado ────────────────────────────────────────────────
+    /// <summary>Tipo/modo del posteo (emocional, educativo, venta, precio, …) — para variar el mix.</summary>
+    public string PostType { get; set; } = string.Empty;
     public string ContentPillar { get; set; } = string.Empty;
     /// <summary>Concepto/idea del posteo (lo que comunica).</summary>
     public string Concept { get; set; } = string.Empty;

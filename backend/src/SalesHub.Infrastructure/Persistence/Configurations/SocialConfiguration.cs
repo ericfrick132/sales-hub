@@ -22,6 +22,8 @@ public class PostingProfileConfiguration : IEntityTypeConfiguration<PostingProfi
         b.Property(x => x.ContentPillars).HasColumnType("text[]");
         b.Property(x => x.PostHours).HasColumnType("integer[]");
         b.Property(x => x.PostDays).HasColumnType("integer[]");
+        b.Property(x => x.LandingUrl).HasMaxLength(1024);
+        b.Property(x => x.LandingKnowledge).HasColumnType("text");
     }
 }
 
@@ -60,6 +62,7 @@ public class SocialPostConfiguration : IEntityTypeConfiguration<SocialPost>
         b.Property(x => x.WarmrAccount).HasMaxLength(128);
         b.Property(x => x.BufferChannelId).HasMaxLength(64);
         b.Property(x => x.ContentPillar).HasMaxLength(128);
+        b.Property(x => x.PostType).HasMaxLength(32);
         b.Property(x => x.Concept).HasColumnType("text");
         b.Property(x => x.Prompt).HasColumnType("text");
         b.Property(x => x.Caption).HasColumnType("text");
