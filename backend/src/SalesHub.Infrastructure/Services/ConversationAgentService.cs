@@ -397,23 +397,29 @@ public class ConversationAgentService
                 await Task.Delay(TimeSpan.FromSeconds(pause), ct);
             }
             firstPart = false;
-            var ok = await _evo.SendTextAsync(instance!.InstanceName, lead.WhatsappPhone!, p, ct);
-            _db.ConversationMessages.Add(new ConversationMessage
+            // Persistir ANTES de mandar (ver AutoSendAsync): si el eco fromMe llega antes
+            // del commit, el takeover lo confunde con mensaje manual y mutea el bot.
+            var msg = new ConversationMessage
             {
                 Id = Guid.NewGuid(),
                 LeadId = lead.Id,
                 SellerId = lead.SellerId,
                 Direction = MessageDirection.Outbound,
-                Status = ok ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Failed,
+                Status = MessageDeliveryStatus.Sent,
                 Text = p,
-                EvolutionInstance = instance.InstanceName,
+                EvolutionInstance = instance!.InstanceName,
                 Timestamp = DateTimeOffset.UtcNow,
                 IsRead = true,
-            });
+            };
+            _db.ConversationMessages.Add(msg);
+            await _db.SaveChangesAsync(ct);
+            var ok = await _evo.SendTextAsync(instance!.InstanceName, lead.WhatsappPhone!, p, ct);
+            if (!ok) msg.Status = MessageDeliveryStatus.Failed;
         }
         lead.AiSuggestedReply = null;
         lead.AiSuggestedReplyAt = null;
         lead.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
     }
 
     /// <summary>
@@ -685,22 +691,33 @@ public class ConversationAgentService
         if (instance is null || instance.Status != InstanceStatus.Connected) return false;
         if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return false;
 
-        var ok = await _evo.SendTextAsync(instance.InstanceName, lead.WhatsappPhone, text, ct);
-        _db.ConversationMessages.Add(new ConversationMessage
+        // El outbound se persiste ANTES de mandar: el eco fromMe del webhook llega en ~1s
+        // y HandleOwnMessageAsync lo matchea contra estos registros — si todavía no está
+        // commiteado, lo toma como mensaje manual del humano y mutea el bot solo.
+        var msg = new ConversationMessage
         {
             Id = Guid.NewGuid(),
             LeadId = lead.Id,
             SellerId = lead.SellerId,
             Direction = MessageDirection.Outbound,
-            Status = ok ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Failed,
+            Status = MessageDeliveryStatus.Sent,
             Text = text,
             EvolutionInstance = instance.InstanceName,
             Timestamp = DateTimeOffset.UtcNow,
             IsRead = true
-        });
+        };
+        _db.ConversationMessages.Add(msg);
         lead.AiSuggestedReply = null;
         lead.AiSuggestedReplyAt = null;
         lead.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        var ok = await _evo.SendTextAsync(instance.InstanceName, lead.WhatsappPhone, text, ct);
+        if (!ok)
+        {
+            msg.Status = MessageDeliveryStatus.Failed;
+            await _db.SaveChangesAsync(ct);
+        }
         return ok;
     }
 

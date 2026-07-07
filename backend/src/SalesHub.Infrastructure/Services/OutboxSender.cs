@@ -171,6 +171,7 @@ public class OutboxSender
             // ambiguo (pudo haber entregado igual). Reintentar duplicaría → si
             // sendAttempted, vamos a Failed sin reintento.
             var sendAttempted = false;
+            ConversationMessage? convMsg = null;
             try
             {
                 // ─── Re-render at send time ──────────────────────────────────
@@ -255,6 +256,24 @@ public class OutboxSender
                     isAudio = asset.MimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);
                 }
 
+                // Registrar el outbound ANTES de mandar: el eco fromMe del webhook llega
+                // en ~1s y HandleOwnMessageAsync lo matchea contra estos registros — sin
+                // commit previo lo toma como mensaje manual y mutea el bot para ese lead.
+                convMsg = new ConversationMessage
+                {
+                    Id = Guid.NewGuid(),
+                    LeadId = next.LeadId,
+                    SellerId = next.SellerId,
+                    Direction = MessageDirection.Outbound,
+                    Status = MessageDeliveryStatus.Sent,
+                    Text = next.Message,
+                    EvolutionInstance = next.EvolutionInstance,
+                    Timestamp = DateTimeOffset.UtcNow,
+                    IsRead = true
+                };
+                _db.ConversationMessages.Add(convMsg);
+                await _db.SaveChangesAsync(ct);
+
                 // Para texto/imagen/PDF: pre-typing humanizado como "escribiendo…".
                 // Para audio: skip — el "grabando audio…" lo mostramos justo
                 // antes de enviar, con la duración exacta del audio.
@@ -324,21 +343,6 @@ public class OutboxSender
                     lead.SentAt = DateTimeOffset.UtcNow;
                 }
 
-                // Record the outbound message in the conversation thread so the seller
-                // sees their initial message in /conversations.
-                _db.ConversationMessages.Add(new ConversationMessage
-                {
-                    Id = Guid.NewGuid(),
-                    LeadId = next.LeadId,
-                    SellerId = next.SellerId,
-                    Direction = MessageDirection.Outbound,
-                    Status = MessageDeliveryStatus.Sent,
-                    Text = next.Message,
-                    EvolutionInstance = next.EvolutionInstance,
-                    Timestamp = DateTimeOffset.UtcNow,
-                    IsRead = true
-                });
-
                 var statsKey = new { SellerId = seller.Id, Date = today };
                 var stats = await _db.DailyStats.FindAsync(new object[] { statsKey.SellerId, statsKey.Date }, ct);
                 if (stats is null)
@@ -357,6 +361,9 @@ public class OutboxSender
                 _log.LogWarning(ex, "Send failed for outbox {Id}", next.Id);
                 next.Error = ex.Message;
                 next.LockedAt = null;
+                // El registro pre-insertado queda como Failed (si se reintenta, el
+                // reintento crea el suyo propio).
+                if (convMsg is not null) convMsg.Status = MessageDeliveryStatus.Failed;
                 if (sendAttempted)
                 {
                     // Ya invocamos el envío real contra Evolution: no sabemos si

@@ -552,9 +552,13 @@ public class LeadsController : ControllerBase
             var msg = !string.IsNullOrWhiteSpace(lead.RenderedMessage)
                 ? lead.RenderedMessage!
                 : _renderer.Render(lead, lead.Product, seller);
+            var rec = await PersistSentAsync(lead, seller, instance, msg, mediaAssetId: null, ct);
             var ok = await _evo.SendTextAsync(instance, lead.WhatsappPhone!, msg, ct);
-            if (!ok) return StatusCode(502, new { error = "Falló el envío" });
-            PersistSent(lead, seller, instance, msg, mediaAssetId: null);
+            if (!ok)
+            {
+                await MarkSendFailedAsync(rec, "Falló el envío", ct);
+                return StatusCode(502, new { error = "Falló el envío" });
+            }
             sent = 1;
         }
         else
@@ -588,9 +592,13 @@ public class LeadsController : ControllerBase
                     {
                         if (!string.IsNullOrWhiteSpace(rendered))
                         {
+                            var rec = await PersistSentAsync(lead, seller, instance, rendered, null, ct);
                             var ok = await _evo.SendTextAsync(instance, lead.WhatsappPhone!, rendered, ct);
-                            if (!ok) return StatusCode(502, new { error = $"Falló el step {i + 1} (texto)" });
-                            PersistSent(lead, seller, instance, rendered, null);
+                            if (!ok)
+                            {
+                                await MarkSendFailedAsync(rec, $"Falló el step {i + 1} (texto)", ct);
+                                return StatusCode(502, new { error = $"Falló el step {i + 1} (texto)" });
+                            }
                             sent++;
                         }
                     }
@@ -603,9 +611,13 @@ public class LeadsController : ControllerBase
                         {
                             if (!string.IsNullOrWhiteSpace(rendered))
                             {
+                                var recPre = await PersistSentAsync(lead, seller, instance, rendered, null, ct);
                                 var pre = await _evo.SendTextAsync(instance, lead.WhatsappPhone!, rendered, ct);
-                                if (!pre) return StatusCode(502, new { error = $"Falló el step {i + 1} (texto previo al audio)" });
-                                PersistSent(lead, seller, instance, rendered, null);
+                                if (!pre)
+                                {
+                                    await MarkSendFailedAsync(recPre, $"Falló el step {i + 1} (texto previo al audio)", ct);
+                                    return StatusCode(502, new { error = $"Falló el step {i + 1} (texto previo al audio)" });
+                                }
                                 sent++;
                                 await Task.Delay(IntraStepDelayMs, ct);
                             }
@@ -618,17 +630,25 @@ public class LeadsController : ControllerBase
                             var presence = Math.Min(Math.Max(1, prep.DurationSeconds), MaxRecordingSeconds);
                             await _evo.SetPresenceRecordingAsync(instance, jid, presence, ct);
                             await Task.Delay(presence * 1000, ct);
+                            var recAudio = await PersistSentAsync(lead, seller, instance, $"[audio: {asset.FileName}]", asset.Id, ct);
                             var okv = await _evo.SendPreparedVoiceNoteAsync(instance, lead.WhatsappPhone!, prep.OggBytes, ct);
-                            if (!okv) return StatusCode(502, new { error = $"Falló el step {i + 1} (audio)" });
-                            PersistSent(lead, seller, instance, $"[audio: {asset.FileName}]", asset.Id);
+                            if (!okv)
+                            {
+                                await MarkSendFailedAsync(recAudio, $"Falló el step {i + 1} (audio)", ct);
+                                return StatusCode(502, new { error = $"Falló el step {i + 1} (audio)" });
+                            }
                             sent++;
                         }
                         else
                         {
                             var caption = string.IsNullOrWhiteSpace(rendered) ? null : rendered;
+                            var recMedia = await PersistSentAsync(lead, seller, instance, caption ?? $"[{asset.MimeType}: {asset.FileName}]", asset.Id, ct);
                             var okm = await _evo.SendMediaAsync(instance, lead.WhatsappPhone!, asset.Content, asset.MimeType, asset.FileName, caption, ct);
-                            if (!okm) return StatusCode(502, new { error = $"Falló el step {i + 1} (adjunto)" });
-                            PersistSent(lead, seller, instance, caption ?? $"[{asset.MimeType}: {asset.FileName}]", asset.Id);
+                            if (!okm)
+                            {
+                                await MarkSendFailedAsync(recMedia, $"Falló el step {i + 1} (adjunto)", ct);
+                                return StatusCode(502, new { error = $"Falló el step {i + 1} (adjunto)" });
+                            }
                             sent++;
                         }
                     }
@@ -650,10 +670,17 @@ public class LeadsController : ControllerBase
         return Ok(new { ok = true, sent });
     }
 
-    private void PersistSent(Lead lead, Seller seller, string instance, string text, Guid? mediaAssetId)
+    /// <summary>
+    /// Registra el envío (outbox + conversación) y COMMITEA antes de mandar por Evolution.
+    /// El eco fromMe del webhook llega en ~1s y el takeover lo matchea contra estos
+    /// registros — sin commit previo lo toma como mensaje manual y mutea el bot.
+    /// Si el send después falla, marcar con <see cref="MarkSendFailedAsync"/>.
+    /// </summary>
+    private async Task<(MessageOutbox Outbox, ConversationMessage Message)> PersistSentAsync(
+        Lead lead, Seller seller, string instance, string text, Guid? mediaAssetId, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        _db.Outbox.Add(new MessageOutbox
+        var ob = new MessageOutbox
         {
             Id = Guid.NewGuid(),
             LeadId = lead.Id,
@@ -666,8 +693,9 @@ public class LeadsController : ControllerBase
             SentAt = now,
             Status = OutboxStatus.Sent,
             Attempts = 1
-        });
-        _db.ConversationMessages.Add(new ConversationMessage
+        };
+        _db.Outbox.Add(ob);
+        var cm = new ConversationMessage
         {
             Id = Guid.NewGuid(),
             LeadId = lead.Id,
@@ -678,7 +706,18 @@ public class LeadsController : ControllerBase
             EvolutionInstance = instance,
             Timestamp = now,
             IsRead = true
-        });
+        };
+        _db.ConversationMessages.Add(cm);
+        await _db.SaveChangesAsync(ct);
+        return (ob, cm);
+    }
+
+    private async Task MarkSendFailedAsync((MessageOutbox Outbox, ConversationMessage Message) rec, string error, CancellationToken ct)
+    {
+        rec.Outbox.Status = OutboxStatus.Failed;
+        rec.Outbox.Error = error;
+        rec.Message.Status = MessageDeliveryStatus.Failed;
+        await _db.SaveChangesAsync(ct);
     }
 
     [HttpPost("{id:guid}/queue")]
