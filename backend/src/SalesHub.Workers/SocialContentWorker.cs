@@ -100,6 +100,7 @@ public class SocialContentWorker : BackgroundService
             ContentPillar = gen.Pillar,
             Concept = gen.Concept,
             Prompt = gen.Prompt,
+            OverlayText = gen.Overlay,
             Caption = gen.Caption,
             Hashtags = gen.Hashtags,
             GenerationModel = "claude",

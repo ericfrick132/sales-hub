@@ -83,20 +83,15 @@ public class AiImageGenerator : ISocialAssetGenerator
             sb.Append($" Use this brand color palette (exact hex): {profile.BrandColorsJson}.");
         if (!string.IsNullOrWhiteSpace(profile.BrandFonts))
             sb.Append($" Typography style: {profile.BrandFonts}.");
-        var headline = Headline(post.Concept);
-        if (!string.IsNullOrWhiteSpace(headline))
-            sb.Append($" Render the headline text \"{headline}\" prominently, perfectly spelled, legible and well integrated into the layout.");
+        // Texto en la imagen: SOLO el overlay corto que Claude escribió como copy.
+        // Nunca el concepto (descripción interna larga → el modelo lo trunca y lo rompe).
+        var overlay = post.OverlayText?.Trim() ?? string.Empty;
+        if (overlay.Length > 0)
+            sb.Append($" Render ONLY this exact short headline text, nothing else written: \"{overlay}\" — bold, perfectly spelled, legible, well integrated into the layout.");
+        else
+            sb.Append(" Absolutely NO text, no words, no letters, no captions anywhere in the image.");
         sb.Append(" Professional marketing quality, on-brand, no watermark, no logos of other companies.");
         return sb.ToString();
-    }
-
-    /// <summary>Titular corto, 1 línea, para overlay en la imagen.</summary>
-    private static string Headline(string concept)
-    {
-        if (string.IsNullOrWhiteSpace(concept)) return string.Empty;
-        var line = concept.Replace("\r", " ").Replace("\n", " ").Trim();
-        const int max = 70;
-        return line.Length <= max ? line : line[..max].TrimEnd() + "…";
     }
 
     // ── Llamada al proveedor ───────────────────────────────────────────────

@@ -33,6 +33,16 @@ public class SocialContentGenerator
     /// </summary>
     private const int SocialMaxTokens = 1200;
 
+    /// <summary>
+    /// Los modelos de imagen rompen el texto largo: el ÚNICO texto que va en la imagen
+    /// es el campo 'overlay' — un gancho corto de copy, no el concepto interno.
+    /// </summary>
+    private const string OverlayRule =
+        "REGLA DEL TEXTO EN LA IMAGEN: 'overlay' es el ÚNICO texto que puede aparecer estampado en la imagen. " +
+        "Máximo 8 palabras, en español rioplatense, escrito como copy publicitario (gancho), ortografía PERFECTA. " +
+        "Si la imagen es más fuerte sin texto, devolvé overlay = \"\" (string vacío). " +
+        "El 'prompt' visual NO debe pedir ningún otro texto escrito, ni pantallas/planillas/carteles con texto legible.";
+
     private const string VideoPromptRecipe =
         "IMPORTANTE — si el assetKind es 'video', el campo 'prompt' (en INGLÉS) tiene que ser un prompt de video bien armado con esta estructura: " +
         "[sujeto + escena] + [acción/movimiento concreto] + [movimiento de cámara: dolly in/pan/handheld/orbit/static] + " +
@@ -56,7 +66,8 @@ public class SocialContentGenerator
         sys.AppendLine("Generás ideas de posteo para redes (Instagram/TikTok). Respondés SIEMPRE en español rioplatense (voseo) para el caption.");
         sys.AppendLine("El campo 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta y estética de la marca.");
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un objeto JSON válido, sin texto extra ni markdown, con estas claves:");
-        sys.AppendLine("{\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine("{\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine(OverlayRule);
         sys.AppendLine(VideoPromptRecipe);
 
         var user = new StringBuilder();
@@ -86,6 +97,7 @@ public class SocialContentGenerator
                 Format: Str(r, "format", "post").ToLowerInvariant(),
                 Concept: Str(r, "concept"),
                 Prompt: Str(r, "prompt"),
+                Overlay: Str(r, "overlay"),
                 Caption: Str(r, "caption"),
                 Hashtags: hashtags,
                 RawJson: json);
@@ -118,7 +130,8 @@ public class SocialContentGenerator
         sys.AppendLine(string.IsNullOrWhiteSpace(ch.PromptTemplate) ? "(sin instrucciones extra)" : ch.PromptTemplate);
         sys.AppendLine();
         sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies). Caption en español rioplatense (voseo). El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
-        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"overlay\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine(OverlayRule);
         if (ch.AssetKind == SocialAssetKind.Video) sys.AppendLine(VideoPromptRecipe);
 
         var user = new StringBuilder();
@@ -146,6 +159,7 @@ public class SocialContentGenerator
                 Format: ch.Format.ToString().ToLowerInvariant(),
                 Concept: Str(r, "concept"),
                 Prompt: Str(r, "prompt"),
+                Overlay: Str(r, "overlay"),
                 Caption: Str(r, "caption"),
                 Hashtags: hashtags,
                 RawJson: json);
@@ -183,7 +197,8 @@ public class SocialContentGenerator
         sys.AppendLine("El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
         if (ch != null)
             sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies).");
-        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine(OverlayRule);
         sys.AppendLine(VideoPromptRecipe);
 
         var user = new StringBuilder();
@@ -229,7 +244,8 @@ public class SocialContentGenerator
         sys.AppendLine("El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico.");
         if (ch != null)
             sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies).");
-        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine(OverlayRule);
         sys.AppendLine(VideoPromptRecipe);
 
         var user = new StringBuilder();
@@ -291,6 +307,7 @@ public class SocialContentGenerator
                 Format: ch != null ? ch.Format.ToString().ToLowerInvariant() : Str(r, "format", "post").ToLowerInvariant(),
                 Concept: Str(r, "concept"),
                 Prompt: Str(r, "prompt"),
+                Overlay: Str(r, "overlay"),
                 Caption: Str(r, "caption"),
                 Hashtags: hashtags,
                 RawJson: json);
@@ -330,6 +347,7 @@ public record GeneratedPost(
     string Format,
     string Concept,
     string Prompt,
+    string Overlay,
     string Caption,
     List<string> Hashtags,
     string RawJson);
