@@ -75,6 +75,7 @@ export default function Products() {
                 <div className="font-medium truncate">{p.displayName}</div>
                 <div className="text-xs text-slate-500 truncate">{p.productKey} — {p.active ? 'activo' : 'pausado'}</div>
               </button>
+              <WhatsappLineBadge productKey={p.productKey} />
               <div className="flex items-center gap-3 shrink-0">
                 <div className="flex flex-col items-center gap-0.5">
                   <Switch on={p.autoPilot} onClick={() => toggleAutomation(p, { autoPilot: !p.autoPilot })}
@@ -885,5 +886,73 @@ function DelayInput({ seconds, onChange }: { seconds: number; onChange: (s: numb
       />
       <span>seg</span>
     </div>
+  );
+}
+
+// ── Línea WhatsApp propia por app: estado + conexión por QR ─────────────────
+type AppLine = { productKey: string; instanceName: string; connectedPhoneNumber?: string | null; status: string };
+
+function WhatsappLineBadge({ productKey }: { productKey: string }) {
+  const qc = useQueryClient();
+  const [showQr, setShowQr] = useState(false);
+  const linesQ = useQuery({
+    queryKey: ['app-wa-lines'],
+    queryFn: async () => (await api.get<AppLine[]>('/products/whatsapp-lines')).data,
+    refetchInterval: 20000,
+  });
+  const line = (linesQ.data ?? []).find((l) => l.productKey === productKey);
+  const connected = line?.status === 'Connected';
+
+  const qrQ = useQuery({
+    queryKey: ['app-wa-qr', productKey],
+    enabled: showQr,
+    refetchInterval: showQr ? 15000 : false, // el QR de WhatsApp expira ~20s
+    queryFn: async () => (await api.get<{ qrBase64?: string; status: string }>(`/products/${productKey}/whatsapp/qr`)).data,
+  });
+
+  useEffect(() => {
+    if (showQr && (qrQ.data?.status === 'open' || qrQ.data?.status === 'connected')) {
+      toast.success(`WhatsApp de ${productKey} conectado ✅`);
+      setShowQr(false);
+      qc.invalidateQueries({ queryKey: ['app-wa-lines'] });
+    }
+  }, [qrQ.data?.status, showQr]);
+
+  return (
+    <>
+      <button
+        className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${connected
+          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+          : 'border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+        title={connected
+          ? `Línea propia conectada: ${line?.connectedPhoneNumber ?? ''} (${line?.instanceName})`
+          : 'Conectar un número de WhatsApp propio para esta app (escaneás un QR)'}
+        onClick={(e) => { e.stopPropagation(); setShowQr(true); }}>
+        {connected ? `📱 ${line?.connectedPhoneNumber ?? 'conectado'}` : '📱 conectar'}
+      </button>
+
+      {showQr && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowQr(false)}>
+          <div className="bg-white rounded-xl p-5 max-w-sm w-full text-center space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold">WhatsApp de {productKey}</h3>
+            <p className="text-xs text-slate-500">
+              En el celular con el número para esta app: WhatsApp → Dispositivos vinculados → Vincular dispositivo → escaneá.
+            </p>
+            {qrQ.isLoading ? (
+              <div className="py-10 text-slate-400 text-sm">Generando QR…</div>
+            ) : qrQ.data?.qrBase64 ? (
+              <img src={qrQ.data.qrBase64.startsWith('data:') ? qrQ.data.qrBase64 : `data:image/png;base64,${qrQ.data.qrBase64}`}
+                alt="QR" className="mx-auto w-56 h-56" />
+            ) : (
+              <div className="py-10 text-slate-400 text-sm">
+                {qrQ.data?.status === 'open' ? 'Ya está conectada ✅' : 'Sin QR (probá de nuevo en unos segundos)'}
+              </div>
+            )}
+            <div className="text-[11px] text-slate-400">Estado: {qrQ.data?.status ?? '…'} — el QR se renueva solo cada 15s</div>
+            <button className="btn-secondary text-sm w-full" onClick={() => setShowQr(false)}>Cerrar</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

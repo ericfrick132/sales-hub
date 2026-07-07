@@ -13,6 +13,8 @@ public class EvolutionInstanceConfiguration : IEntityTypeConfiguration<Evolution
         b.Property(x => x.InstanceName).HasMaxLength(128).IsRequired();
         b.HasIndex(x => x.InstanceName).IsUnique();
         b.HasIndex(x => x.SellerId).IsUnique();
+        b.Property(x => x.ProductKey).HasMaxLength(64);
+        b.HasIndex(x => x.ProductKey).IsUnique();
         b.Property(x => x.ConnectedPhoneNumber).HasMaxLength(32);
         b.Property(x => x.Status).HasConversion<int>();
         b.Property(x => x.LastQrCodeBase64).HasColumnType("text");

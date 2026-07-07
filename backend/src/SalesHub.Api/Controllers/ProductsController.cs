@@ -17,9 +17,76 @@ public class ProductsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IMessageRenderer _renderer;
-    public ProductsController(ApplicationDbContext db, IMessageRenderer renderer)
+    private readonly IEvolutionClient _evo;
+    public ProductsController(ApplicationDbContext db, IMessageRenderer renderer, IEvolutionClient evo)
     {
-        _db = db; _renderer = renderer;
+        _db = db; _renderer = renderer; _evo = evo;
+    }
+
+    // ── Línea WhatsApp propia por APP (QR por producto) ─────────────────────
+
+    /// <summary>Estado de la línea WhatsApp de cada app (para la grilla de /products).</summary>
+    [HttpGet("whatsapp-lines")]
+    public async Task<IActionResult> WhatsappLines(CancellationToken ct)
+    {
+        var lines = await _db.EvolutionInstances.AsNoTracking()
+            .Where(i => i.ProductKey != null)
+            .Select(i => new { i.ProductKey, i.InstanceName, i.ConnectedPhoneNumber, Status = i.Status.ToString(), i.ConnectedAt })
+            .ToListAsync(ct);
+        return Ok(lines);
+    }
+
+    /// <summary>
+    /// QR para conectar el número de WhatsApp propio de una app. Crea la instancia
+    /// `app_&lt;productKey&gt;` en Evolution si no existe (mismo flujo que las líneas de
+    /// vendedor, pero atada al producto en vez de a un seller).
+    /// </summary>
+    [HttpGet("{productKey}/whatsapp/qr")]
+    public async Task<ActionResult<QrCodeResponse>> WhatsappQr(string productKey, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var key = productKey.Trim().ToLowerInvariant();
+        if (!await _db.Products.AnyAsync(p => p.ProductKey == key, ct)
+            && !await _db.PostingProfiles.AnyAsync(p => p.ProductKey == key, ct))
+            return NotFound(new { error = "No existe esa app." });
+
+        var instance = await _db.EvolutionInstances.FirstOrDefaultAsync(i => i.ProductKey == key, ct);
+        if (instance is null)
+        {
+            instance = new EvolutionInstance
+            {
+                Id = Guid.NewGuid(),
+                ProductKey = key,
+                InstanceName = $"app_{key}",
+            };
+            _db.EvolutionInstances.Add(instance);
+            await _db.SaveChangesAsync(ct);
+        }
+
+        await _evo.EnsureInstanceAsync(instance.InstanceName, ct);
+        var qr = await _evo.GetQrCodeAsync(instance.InstanceName, ct);
+        var info = await _evo.GetInstanceStatusAsync(instance.InstanceName, ct);
+
+        var now = DateTimeOffset.UtcNow;
+        instance.LastQrCodeBase64 = qr;
+        instance.QrCodeGeneratedAt = now;
+        instance.LastStatusCheckAt = now;
+        instance.UpdatedAt = now;
+        instance.Status = info.Status switch
+        {
+            "open" or "connected" => InstanceStatus.Connected,
+            "connecting" or "qr" => InstanceStatus.Connecting,
+            "close" or "disconnected" or "not_found" => InstanceStatus.Disconnected,
+            _ => InstanceStatus.Unknown
+        };
+        if (instance.Status == InstanceStatus.Connected)
+        {
+            instance.ConnectedAt ??= now;
+            instance.ConnectedPhoneNumber ??= info.PhoneNumber;
+        }
+        await _db.SaveChangesAsync(ct);
+
+        return new QrCodeResponse(qr, info.Status);
     }
 
     [HttpGet]

@@ -6,8 +6,13 @@ public class EvolutionInstance
 {
     public Guid Id { get; set; }
 
-    public Guid SellerId { get; set; }
+    /// <summary>Dueño humano de la línea (vendedor). null si es una línea de APP.</summary>
+    public Guid? SellerId { get; set; }
     public Seller? Seller { get; set; }
+
+    /// <summary>Línea de una APP (ej. "gymhero"): un número de WhatsApp propio por producto,
+    /// conectable por QR desde /products. null si es una línea de vendedor.</summary>
+    public string? ProductKey { get; set; }
 
     public string InstanceName { get; set; } = string.Empty;
     public string? ConnectedPhoneNumber { get; set; }
