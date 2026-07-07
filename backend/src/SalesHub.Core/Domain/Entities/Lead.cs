@@ -71,6 +71,13 @@ public class Lead
     public int NudgeCount { get; set; }
     public DateTimeOffset? LastNudgeAt { get; set; }
 
+    /// <summary>
+    /// Takeover humano: si tiene valor, el bot NO responde ni re-engancha en esta
+    /// conversación. Se setea mandando "-" desde el celu (o automáticamente al
+    /// detectar un mensaje manual), se limpia con "+" o desde la UI.
+    /// </summary>
+    public DateTimeOffset? BotMutedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

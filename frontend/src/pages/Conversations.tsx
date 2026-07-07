@@ -40,6 +40,7 @@ type Thread = {
   sellerId?: string;
   sellerName?: string;
   aiSuggestedReply?: string;
+  botMutedAt?: string | null;
   messages: Message[];
 };
 
@@ -251,6 +252,20 @@ export default function Conversations() {
                   {admin && thread.data.sellerName && <> · <span className="font-medium">{thread.data.sellerName}</span></>}
                 </div>
               </div>
+              <button
+                type="button"
+                title={thread.data.botMutedAt
+                  ? 'Bot pausado (takeover humano). Click para reactivar — o mandá "+" desde el celu.'
+                  : 'Bot respondiendo. Click para tomar control — o mandá "-" desde el celu.'}
+                onClick={async () => {
+                  await api.post(`/conversations/${thread.data!.leadId}/bot`, { enabled: !!thread.data!.botMutedAt });
+                  qc.invalidateQueries({ queryKey: ['conv-thread', selected] });
+                }}
+                className={`text-[11px] px-2 py-1 rounded border shrink-0 ${thread.data.botMutedAt
+                  ? 'border-amber-300 bg-amber-50 text-amber-700'
+                  : 'border-emerald-300 bg-emerald-50 text-emerald-700'}`}>
+                {thread.data.botMutedAt ? '🤖 pausado' : '🤖 activo'}
+              </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2 bg-slate-50">
               {thread.data.renderedInitialMessage && thread.data.messages.length === 0 && (

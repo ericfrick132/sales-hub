@@ -141,6 +141,92 @@ public class ConversationService
     }
 
     /// <summary>
+    /// Mensaje PROPIO (fromMe) en el chat de un lead: takeover humano.
+    /// - "-" → mutea el bot para ese lead (deja de responder y re-enganchar).
+    /// - "+" → lo reactiva.
+    /// - Cualquier otro texto que NO sea eco de un envío nuestro (el bot registra
+    ///   todo lo que manda como Outbound) = el humano escribió desde el celu →
+    ///   mutea automáticamente y registra el mensaje en la conversación.
+    /// </summary>
+    public async Task<bool> HandleOwnMessageAsync(IncomingMessage incoming, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(incoming.Text)) return false;
+        var phone = incoming.FromPhone ?? ExtractPhone(incoming.FromJid);
+        if (phone is null) return false;
+        phone = NonDigit.Replace(phone, "");
+        if (phone.Length < 6) return false;
+
+        var instance = await _db.EvolutionInstances
+            .Include(i => i.Seller)
+            .FirstOrDefaultAsync(i => i.InstanceName == incoming.InstanceName, ct);
+        if (instance?.Seller is null) return false;
+
+        var suffix = phone.Length >= 8 ? phone[^8..] : phone;
+        var lead = await MatchLeadByPhoneAsync(instance.SellerId, suffix, ct)
+                ?? await MatchLeadByPhoneAsync(null, suffix, ct);
+        if (lead is null) return false; // chat que no es de un lead: no nos interesa
+
+        var text = incoming.Text.Trim();
+
+        if (text == "-")
+        {
+            lead.BotMutedAt = DateTimeOffset.UtcNow;
+            lead.AiSuggestedReply = null;
+            lead.AiSuggestedReplyAt = null;
+            lead.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("Takeover: bot MUTEADO para lead {Lead} (comando '-')", lead.Id);
+            return true;
+        }
+        if (text == "+")
+        {
+            lead.BotMutedAt = null;
+            lead.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("Takeover: bot REACTIVADO para lead {Lead} (comando '+')", lead.Id);
+            return true;
+        }
+
+        // ¿Es el eco de un mensaje que mandó el propio sistema? Todo envío nuestro
+        // queda registrado como Outbound — si el texto matchea uno reciente, lo ignoramos.
+        var since = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var isOwnEcho = await _db.ConversationMessages.AnyAsync(m =>
+            m.LeadId == lead.Id
+            && m.Direction == MessageDirection.Outbound
+            && m.Timestamp >= since
+            && m.Text == incoming.Text, ct);
+        if (isOwnEcho) return false;
+
+        // Dedup por message id (reentregas del webhook).
+        if (!string.IsNullOrWhiteSpace(incoming.MessageId)
+            && await _db.ConversationMessages.AnyAsync(m => m.WhatsappMessageId == incoming.MessageId, ct))
+            return true;
+
+        // Mensaje manual del humano desde el celu: registrar + mutear.
+        _db.ConversationMessages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = lead.SellerId,
+            Direction = MessageDirection.Outbound,
+            Status = MessageDeliveryStatus.Sent,
+            Text = incoming.Text,
+            WhatsappMessageId = incoming.MessageId,
+            EvolutionInstance = incoming.InstanceName,
+            Timestamp = incoming.Timestamp,
+            IsRead = true,
+            RawJson = incoming.RawJson
+        });
+        lead.BotMutedAt ??= DateTimeOffset.UtcNow;
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Takeover: mensaje manual detectado en lead {Lead} → bot muteado", lead.Id);
+        return true;
+    }
+
+    /// <summary>
     /// Ingesta un DM entrante de Instagram (leído del inbox por el poller). Matchea el
     /// lead por InstagramHandle y aplica las mismas transiciones que el inbound de WhatsApp:
     /// marca Replied, corta el drip y limpia la sugerencia de IA vieja. Dedup por el

@@ -53,6 +53,7 @@ public class ConversationsController : ControllerBase
         string ProductKey, string Status,
         Guid? SellerId, string? SellerName,
         string? AiSuggestedReply,
+        DateTimeOffset? BotMutedAt,
         IReadOnlyList<ConversationMessageDto> Messages);
 
     public record SendReplyRequest(string Text);
@@ -145,8 +146,29 @@ public class ConversationsController : ControllerBase
             lead.ProductKey, lead.Status.ToString(),
             lead.SellerId, lead.Seller?.DisplayName,
             lead.AiSuggestedReply,
+            lead.BotMutedAt,
             messages);
     }
+
+    /// <summary>Takeover humano desde la UI: bot ON/OFF para esta conversación
+    /// (equivale a mandar "-"/"+" desde el celu).</summary>
+    [HttpPost("{leadId:guid}/bot")]
+    public async Task<IActionResult> ToggleBot(Guid leadId, [FromBody] ToggleBotRequest req, CancellationToken ct)
+    {
+        var sellerId = CurrentUser.Id(User);
+        var isAdmin = CurrentUser.IsAdmin(User);
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        if (lead is null) return NotFound();
+        if (!isAdmin && lead.SellerId != sellerId) return Forbid();
+
+        lead.BotMutedAt = req.Enabled ? null : DateTimeOffset.UtcNow;
+        if (!req.Enabled) { lead.AiSuggestedReply = null; lead.AiSuggestedReplyAt = null; }
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { leadId, botEnabled = req.Enabled });
+    }
+
+    public record ToggleBotRequest(bool Enabled);
 
     [HttpPost("{leadId:guid}/reply")]
     public async Task<IActionResult> Reply(Guid leadId, [FromBody] SendReplyRequest req, CancellationToken ct)

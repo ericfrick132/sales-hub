@@ -67,9 +67,10 @@ public class WebhookController : ControllerBase
                 // Los audios sueltos del maestro los deja pasar (siguen a transcripción).
                 if (await _inspiration.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _relay.TryHandleAsync(incoming, ct)) { handled++; continue; }
-                // El flujo normal de leads IGNORA los fromMe (nuestros propios envíos salientes);
-                // sólo los relays los usan.
-                if (incoming.FromMe) continue;
+                // fromMe = mensaje saliente por la línea. Takeover humano: "-" mutea el bot
+                // para ese lead, "+" lo reactiva, y un mensaje manual (no-eco) mutea solo.
+                // Los ecos de envíos del propio bot se descartan adentro.
+                if (incoming.FromMe) { await _conv.HandleOwnMessageAsync(incoming, ct); continue; }
                 if (await _conv.HandleIncomingAsync(incoming, ct)) handled++;
             }
             return Ok(new { handled });

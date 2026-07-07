@@ -117,6 +117,7 @@ public class ConversationAgentService
         var candidates = await (
             from l in _db.Leads
             where l.AiSuggestedReply == null && l.SellerId != null
+                && l.BotMutedAt == null // takeover humano: el bot no toca esta conversación
                 && l.Status != LeadStatus.Lost
                 && (l.Status != LeadStatus.Closed
                     || _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
@@ -556,6 +557,7 @@ public class ConversationAgentService
         var candidates = await (
             from l in _db.Leads
             where l.SellerId != null
+                && l.BotMutedAt == null // takeover humano: tampoco re-enganchar
                 && l.FirstReplyAt != null
                 && (l.Status == LeadStatus.Replied || l.Status == LeadStatus.Interested)
                 && l.AiSuggestedReply == null
