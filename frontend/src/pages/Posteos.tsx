@@ -9,6 +9,7 @@ interface PostingProfile {
   brandColorsJson: string; brandFonts: string; brandVoice: string;
   brandGuidelines: string; targetAudience: string; contentPillars: string[];
   postHours: number[]; postDays: number[]; postsPerDay: number;
+  landingUrl?: string; landingKnowledge?: string; landingKnowledgeAt?: string;
 }
 interface PostingChannel {
   id: string; productKey: string; platform: string; enabled: boolean;
@@ -172,6 +173,8 @@ export default function Posteos() {
   const posts = postsQ.data ?? [];
 
   return (
+    <div className="space-y-4">
+    <PublishNowPanel />
     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
       {/* Apps */}
       <div className="md:col-span-3">
@@ -217,6 +220,9 @@ export default function Posteos() {
                 <div className="text-[11px] text-amber-600 mt-2">⚠️ No pude leer tus canales de Buffer (revisá el token). Podés pegar el channelId a mano abajo.</div>
               )}
             </div>
+
+            {/* Landing: fuente real de features/precios */}
+            <LandingEditor profile={profile} />
 
             {/* Frecuencia / horarios */}
             <CadenceEditor profile={profile} onSave={(b) => saveProfile(profile.productKey, b)} />
@@ -291,6 +297,151 @@ export default function Posteos() {
           onDistribute={() => distribute(preview)}
           onRegenerate={() => generateAndPreview(preview)}
         />
+      )}
+    </div>
+    </div>
+  );
+}
+
+// ── "Publicar YA": elegí cuentas + tipo/tema → genera y sube al toque ────────
+type AllChannel = { id: string; productKey: string; platform: string; enabled: boolean; assetKind: string; distribution: string; hasBuffer: boolean };
+type ContentTypeOpt = { key: string; label: string; weight: number };
+
+function PublishNowPanel() {
+  const qc = useQueryClient();
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [topic, setTopic] = useState('');
+  const [postType, setPostType] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const channelsQ = useQuery({
+    queryKey: ['all-channels'],
+    queryFn: async () => (await api.get<AllChannel[]>('/posteos/all-channels')).data,
+  });
+  const typesQ = useQuery({
+    queryKey: ['content-types'],
+    queryFn: async () => (await api.get<ContentTypeOpt[]>('/posteos/content-types')).data,
+  });
+
+  const channels = (channelsQ.data ?? []).filter((c) => c.hasBuffer || c.distribution === 'Warmr');
+  const byApp = channels.reduce<Record<string, AllChannel[]>>((a, c) => { (a[c.productKey] ??= []).push(c); return a; }, {});
+
+  function toggle(id: string) { setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
+  function selectAll() { setSel(new Set(channels.map((c) => c.id))); }
+  function clear() { setSel(new Set()); }
+
+  async function publishNow() {
+    if (sel.size === 0) { toast.error('Elegí al menos una cuenta'); return; }
+    setBusy(true);
+    const t = toast.loading(`Generando y publicando en ${sel.size} cuenta(s)…`);
+    try {
+      await api.post('/posteos/publish-now', { channelIds: [...sel], topic: topic || null, postType: postType || null });
+      toast.success('¡En marcha! Se generan y suben solos (los ves en Posteos/Calendario)', { id: t });
+      setSel(new Set()); setTopic('');
+      qc.invalidateQueries({ queryKey: ['posteos-posts'] });
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló', { id: t }); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card p-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <button className="btn-primary" onClick={() => setOpen((o) => !o)}>⚡ Publicar YA</button>
+        <span className="text-xs text-slate-500">Generá y subí un posteo/video AHORA a las cuentas que elijas.</span>
+        {open && <span className="text-xs font-medium text-brand-600">{sel.size} seleccionada(s)</span>}
+      </div>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-52">
+              <div className="text-[11px] text-slate-500 mb-0.5">Tema / indicación (opcional)</div>
+              <input className="input w-full" placeholder='ej: "promo de verano" o dejalo vacío para que elija' value={topic} onChange={(e) => setTopic(e.target.value)} />
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-500 mb-0.5">Tipo (opcional)</div>
+              <select className="input" value={postType} onChange={(e) => setPostType(e.target.value)}>
+                <option value="">Auto (mix orgánico)</option>
+                {(typesQ.data ?? []).map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+            </div>
+            <button className="btn-secondary text-xs" onClick={selectAll}>Todas</button>
+            <button className="btn-secondary text-xs" onClick={clear}>Ninguna</button>
+            <button className="btn-primary disabled:opacity-40" disabled={busy || sel.size === 0} onClick={publishNow}>
+              {busy ? 'Publicando…' : `Publicar YA (${sel.size})`}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {Object.entries(byApp).map(([app, chs]) => (
+              <div key={app} className="border border-slate-200 rounded p-2">
+                <div className="font-medium text-sm capitalize mb-1">{app}</div>
+                <div className="space-y-1">
+                  {chs.map((c) => (
+                    <label key={c.id} className={`flex items-center gap-2 text-xs cursor-pointer ${!c.enabled ? 'opacity-50' : ''}`}>
+                      <input type="checkbox" checked={sel.has(c.id)} onChange={() => toggle(c.id)} />
+                      <span>{c.platform} · {c.assetKind === 'Video' ? '🎬 video' : '🖼️ imagen'}{!c.enabled ? ' (canal off)' : ''}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {channels.length === 0 && <div className="text-sm text-slate-500 col-span-full">No hay canales con cuenta conectada todavía.</div>}
+          </div>
+          <p className="text-[11px] text-slate-400">Genera contenido nuevo con IA + imagen/video y lo sube inmediato (shareNow) a cada cuenta. Los videos tardan 1-2 min.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Landing: URL + ficha destilada (features/precios reales) ─────────────────
+function LandingEditor({ profile }: { profile: PostingProfile }) {
+  const qc = useQueryClient();
+  const [url, setUrl] = useState(profile.landingUrl ?? '');
+  const [busy, setBusy] = useState(false);
+  const [show, setShow] = useState(false);
+
+  async function saveUrl() {
+    try {
+      await api.put(`/posteos/profiles/${profile.productKey}`, { landingUrl: url });
+      toast.success('Landing guardada');
+      qc.invalidateQueries({ queryKey: ['posteos-profiles'] });
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló'); }
+  }
+  async function refresh() {
+    if (!url) { toast.error('Poné la URL primero'); return; }
+    setBusy(true);
+    const t = toast.loading('Leyendo la landing con IA…');
+    try {
+      await api.put(`/posteos/profiles/${profile.productKey}`, { landingUrl: url });
+      await api.post(`/posteos/profiles/${profile.productKey}/refresh-landing`);
+      toast.success('Ficha actualizada desde la landing', { id: t });
+      qc.invalidateQueries({ queryKey: ['posteos-profiles'] });
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló', { id: t }); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="font-semibold">Landing (datos reales)</h3>
+        {profile.landingKnowledgeAt && (
+          <span className="text-[11px] text-slate-400">ficha del {new Date(profile.landingKnowledgeAt).toLocaleDateString()}</span>
+        )}
+      </div>
+      <p className="text-xs text-slate-500 mb-2">De acá se sacan features y precios reales — así la IA no inventa. Se relee sola cada 14 días o con el botón.</p>
+      <div className="flex gap-2 flex-wrap">
+        <input className="input flex-1 min-w-52" placeholder="https://tuproducto.com" value={url} onChange={(e) => setUrl(e.target.value)} />
+        <button className="btn-secondary" onClick={saveUrl}>Guardar</button>
+        <button className="btn-primary disabled:opacity-40" disabled={busy} onClick={refresh}>{busy ? 'Leyendo…' : 'Actualizar ficha'}</button>
+      </div>
+      {profile.landingKnowledge && (
+        <div className="mt-2">
+          <button className="text-[11px] text-brand-600" onClick={() => setShow((s) => !s)}>{show ? 'Ocultar' : 'Ver'} ficha destilada</button>
+          {show && <pre className="text-[11px] whitespace-pre-wrap bg-slate-50 border rounded p-2 mt-1 max-h-60 overflow-y-auto">{profile.landingKnowledge}</pre>}
+        </div>
       )}
     </div>
   );

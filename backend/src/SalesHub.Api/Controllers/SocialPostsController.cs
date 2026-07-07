@@ -275,6 +275,26 @@ public class SocialPostsController : ControllerBase
         return Ok(post);
     }
 
+    /// <summary>Todos los canales de todas las apps (para el multi-select de "Publicar YA").</summary>
+    [HttpGet("all-channels")]
+    public async Task<IActionResult> AllChannels(CancellationToken ct)
+    {
+        var channels = await _db.PostingChannels.AsNoTracking()
+            .OrderBy(c => c.ProductKey).ThenBy(c => c.Platform)
+            .Select(c => new
+            {
+                c.Id, c.ProductKey,
+                Platform = c.Platform.ToString(),
+                c.Enabled,
+                AssetKind = c.AssetKind.ToString(),
+                Format = c.Format.ToString(),
+                Distribution = c.Distribution.ToString(),
+                HasBuffer = c.BufferChannelId != "",
+            })
+            .ToListAsync(ct);
+        return Ok(channels);
+    }
+
     /// <summary>Catálogo de tipos de posteo (para el selector de la UI).</summary>
     [HttpGet("content-types")]
     public IActionResult ContentTypesList() =>
