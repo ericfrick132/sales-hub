@@ -81,15 +81,21 @@ public class AiImageGenerator : ISocialAssetGenerator
         sb.Append($". Social media {post.Format.ToString().ToLowerInvariant()} for {post.Platform}, {aspect}, clean and modern.");
         if (!string.IsNullOrWhiteSpace(profile.BrandColorsJson) && profile.BrandColorsJson.Trim() != "{}")
             sb.Append($" Use this brand color palette (exact hex): {profile.BrandColorsJson}.");
-        if (!string.IsNullOrWhiteSpace(profile.BrandFonts))
-            sb.Append($" Typography style: {profile.BrandFonts}.");
         // Texto en la imagen: SOLO el overlay corto que Claude escribió como copy.
         // Nunca el concepto (descripción interna larga → el modelo lo trunca y lo rompe).
         var overlay = post.OverlayText?.Trim() ?? string.Empty;
         if (overlay.Length > 0)
+        {
             sb.Append($" Render ONLY this exact short headline text, nothing else written: \"{overlay}\" — bold, perfectly spelled, legible, well integrated into the layout.");
+            // La tipografía SOLO importa si hay texto — y tiene que ser la de la marca,
+            // no el lettering genérico "de IA" que meten los modelos por default.
+            if (!string.IsNullOrWhiteSpace(profile.BrandFonts))
+                sb.Append($" The headline typography MUST match this exact typeface style: {profile.BrandFonts}. Reproduce that font's look faithfully (letterforms, weight, spacing) — do NOT use generic AI lettering, decorative fonts, or any other typeface.");
+        }
         else
+        {
             sb.Append(" Absolutely NO text, no words, no letters, no captions anywhere in the image.");
+        }
         sb.Append(" Professional marketing quality, on-brand, no watermark, no logos of other companies.");
         return sb.ToString();
     }

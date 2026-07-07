@@ -81,6 +81,7 @@ public class SocialPostsController : ControllerBase
         if (req.ContentPillars != null) p.ContentPillars = req.ContentPillars;
         if (req.BrandVoice != null) p.BrandVoice = req.BrandVoice;
         if (req.BrandGuidelines != null) p.BrandGuidelines = req.BrandGuidelines;
+        if (req.BrandFonts != null) p.BrandFonts = req.BrandFonts;
         p.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(p);
@@ -818,6 +819,8 @@ public class SocialPostsController : ControllerBase
         public List<string>? ContentPillars { get; set; }
         public string? BrandVoice { get; set; }
         public string? BrandGuidelines { get; set; }
+        /// <summary>Tipografía de marca que la imagen debe respetar (ej. "Bricolage Grotesque, bold condensed").</summary>
+        public string? BrandFonts { get; set; }
     }
     public class CreateProfileRequest
     {
