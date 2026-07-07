@@ -78,6 +78,13 @@ public class Lead
     /// </summary>
     public DateTimeOffset? BotMutedAt { get; set; }
 
+    /// <summary>
+    /// Cuándo avisamos al vendedor de que este lead está CALIENTE (señal de compra fuerte:
+    /// mandó audio + interés claro) para que tome la charla con un audio personal — el patrón
+    /// que cierra ventas. Dedup: no re-avisamos hasta que pase la ventana de cooldown.
+    /// </summary>
+    public DateTimeOffset? HotAlertedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

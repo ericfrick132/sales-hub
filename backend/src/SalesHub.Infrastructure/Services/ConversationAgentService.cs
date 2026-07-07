@@ -302,6 +302,10 @@ public class ConversationAgentService
             if (!_suggestions.IsConfigured) continue;
             var (intent, shouldReply, reply) = await _suggestions.SuggestReplyWithIntentAsync(lead, lead.Product!, thread, ct);
 
+            // Señal de compra FUERTE (audio + interés, o frase de avance) → avisamos al vendedor
+            // para que tome la charla con un audio personal: el patrón que cierra ventas.
+            await MaybeAlertHotLeadAsync(lead, thread, recentBurst, intent, ct);
+
             // Si quedó resuelto (no interesado / ya compró) no respondemos.
             if (ApplyIntentToStatus(lead, intent))
             {
@@ -486,6 +490,54 @@ public class ConversationAgentService
     /// nunca pisa una venta ya cerrada (Closed). Devuelve true si la conversación quedó
     /// "resuelta" (no interesado o ganado) → no hay que seguir vendiendo ni re-enganchar.
     /// </summary>
+    /// <summary>Cooldown para no re-avisar el mismo lead caliente.</summary>
+    private static readonly TimeSpan HotAlertCooldown = TimeSpan.FromHours(6);
+
+    /// <summary>Frases de avance/compra fuerte (el momento de saltar con un audio).</summary>
+    private static readonly System.Text.RegularExpressions.Regex HotBuyRx = new(
+        @"\b(lo necesito|necesito (esto|esta app|el sistema|eso)|quiero (avanzar|arrancar|empezar|contratar|el plan|comprarlo|el sistema)|me sirve|dale vamos|c[oó]mo (contrato|pago|arranco|empiezo|lo compro)|d[oó]nde pago|me interesa (mucho|un mont[oó]n)|cu[aá]ndo (arranco|empiezo|lo tengo))\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Si el lead da una señal de compra fuerte (mandó un audio + interés, o una frase de
+    /// avance), le avisa al vendedor por WhatsApp con un link directo al chat para que lo tome
+    /// con un audio personal. Best-effort: si no hay teléfono de aviso configurado, no hace nada.
+    /// </summary>
+    private async Task MaybeAlertHotLeadAsync(Lead lead, List<ConversationMessage> thread, string recentBurst, LeadIntent intent, CancellationToken ct)
+    {
+        if (lead.HotAlertedAt is { } last && DateTimeOffset.UtcNow - last < HotAlertCooldown) return;
+
+        // Audio del lead en la ráfaga actual (transcripto = "🎤 …", o "[audio]" todavía sin transcribir).
+        var lastOutboundAt = thread.LastOrDefault(m => m.Direction == MessageDirection.Outbound)?.Timestamp;
+        var burstHasAudio = thread.Any(m => m.Direction == MessageDirection.Inbound
+            && (lastOutboundAt == null || m.Timestamp > lastOutboundAt)
+            && (m.Text.StartsWith("🎤", StringComparison.Ordinal) || m.Text.Contains("[audio", StringComparison.OrdinalIgnoreCase)));
+
+        var hot = HotBuyRx.IsMatch(recentBurst)
+               || (burstHasAudio && intent is LeadIntent.Interested or LeadIntent.Scheduled);
+        if (!hot) return;
+
+        // Teléfono de aviso: el número maestro (el que también recibe inspiraciones).
+        var alertPhone = await _db.Set<Core.Domain.Entities.Social.InspirationSettings>()
+            .AsNoTracking().Select(s => s.MasterPhone).FirstOrDefaultAsync(ct);
+        var instanceName = lead.Seller?.EvolutionInstance?.InstanceName;
+        if (string.IsNullOrWhiteSpace(alertPhone) || string.IsNullOrWhiteSpace(instanceName)) return;
+
+        var digits = string.IsNullOrWhiteSpace(lead.WhatsappPhone) ? "" : System.Text.RegularExpressions.Regex.Replace(lead.WhatsappPhone, @"\D", "");
+        var wa = digits.Length == 0 ? "" : $"https://wa.me/{digits}";
+        var name = string.IsNullOrWhiteSpace(lead.Name) ? "un prospecto" : lead.Name;
+        var msg = $"🔥 Lead CALIENTE: {name} — {lead.ProductKey}. Dio señal de compra (audio/quiere avanzar). " +
+                  $"Tomalo VOS con un audio ahora 🎙️ {wa}\n(En su chat: \"-\" frena el bot, \"+\" lo reactiva.)";
+        try
+        {
+            await _evo.SendTextAsync(instanceName!, alertPhone!, msg, ct);
+            lead.HotAlertedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("Lead caliente {Lead} → aviso enviado al vendedor", lead.Id);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "No pude avisar el lead caliente {Lead}", lead.Id); }
+    }
+
     private bool ApplyIntentToStatus(Lead lead, LeadIntent intent)
     {
         if (lead.Status == LeadStatus.Closed) return true; // venta cerrada, no tocar
