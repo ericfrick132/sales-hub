@@ -43,6 +43,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<SocialPostAsset> SocialPostAssets => Set<SocialPostAsset>();
     public DbSet<InspirationItem> InspirationItems => Set<InspirationItem>();
     public DbSet<InspirationSettings> InspirationSettings => Set<InspirationSettings>();
+    public DbSet<DailyTheme> DailyThemes => Set<DailyTheme>();
 
     // Flags on/off de runners, toggleables desde la UI (override de Workers:*AutoStart).
     public DbSet<RuntimeFlag> RuntimeFlags => Set<RuntimeFlag>();

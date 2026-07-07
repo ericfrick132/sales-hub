@@ -130,7 +130,15 @@ public class SocialContentWorker : BackgroundService
             && profile.LandingKnowledge.IndexOf("sin precios", StringComparison.OrdinalIgnoreCase) < 0;
         var type = ContentTypes.Pick(lastType, hasPrices, Random.Shared);
 
-        var gen = await generator.GenerateForChannelAsync(profile, channel, recent, null, type.Key, ct);
+        // Tema del día (llega por WhatsApp): tiñe los posteos de hoy mientras esté vigente.
+        var theme = await db.DailyThemes.AsNoTracking()
+            .Where(t => t.Text != "" && (t.ValidUntil == null || t.ValidUntil > DateTimeOffset.UtcNow)
+                     && (t.ProductKey == null || t.ProductKey == profile.ProductKey))
+            .Select(t => t.Text).FirstOrDefaultAsync(ct);
+        var hint = string.IsNullOrWhiteSpace(theme) ? null
+            : $"Enganchá el posteo con el tema/actualidad del día (con naturalidad, sin forzar): {theme}";
+
+        var gen = await generator.GenerateForChannelAsync(profile, channel, recent, hint, type.Key, ct);
         if (gen == null) { _log.LogWarning("Generador null para {Product}/{Net}", profile.ProductKey, channel.Platform); return; }
 
         var post = new SocialPost

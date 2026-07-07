@@ -16,12 +16,13 @@ interface PostingChannel {
   id: string; productKey: string; platform: string; enabled: boolean;
   bufferChannelId: string; format: string; assetKind: string;
   distribution: string; warmrAccount: string; promptTemplate: string;
-  notifyPublish: boolean;
+  notifyPublish: boolean; slideCount: number;
 }
+interface PostSlide { order: number; role: string; overlay: string; prompt: string; assetUrl?: string }
 interface SocialPost {
   id: string; productKey: string; platform: string; format: string; assetKind: string;
   status: string; contentPillar: string; concept: string; caption: string;
-  hashtags: string[]; assetUrl?: string; thumbnailUrl?: string; target?: string;
+  hashtags: string[]; assetUrl?: string; thumbnailUrl?: string; target?: string; slidesJson?: string;
   bufferChannelId: string; error?: string;
 }
 
@@ -37,6 +38,11 @@ type BufferChannel = { id: string; name: string; service: string };
 
 function colorOf(json: string, key: string, def: string) {
   try { return JSON.parse(json)[key] ?? def; } catch { return def; }
+}
+
+function slidesOf(p: { slidesJson?: string }): PostSlide[] {
+  if (!p.slidesJson) return [];
+  try { return JSON.parse(p.slidesJson) as PostSlide[]; } catch { return []; }
 }
 
 const isVideoAsset = (p: { assetKind: string; assetUrl?: string }) =>
@@ -90,7 +96,7 @@ export default function Posteos() {
         enabled: c.enabled, bufferChannelId: c.bufferChannelId,
         format: c.format, assetKind: c.assetKind, promptTemplate: c.promptTemplate,
         distribution: c.distribution, warmrAccount: c.warmrAccount,
-        notifyPublish: c.notifyPublish,
+        notifyPublish: c.notifyPublish, slideCount: c.slideCount,
       });
       toast.success('Canal guardado');
       qc.invalidateQueries({ queryKey: ['posteos-channels', productKey] });
@@ -264,7 +270,18 @@ export default function Posteos() {
                     <div className="text-slate-600 whitespace-pre-wrap mt-1">{p.caption}</div>
                     {p.hashtags?.length > 0 && <div className="text-[11px] text-sky-600 mt-1">{p.hashtags.map((h) => (h.startsWith('#') ? h : '#' + h)).join(' ')}</div>}
                     {p.error && <div className="text-[11px] text-red-600 mt-1">{p.error}</div>}
-                    {p.assetUrl && (
+                    {slidesOf(p).length > 0 ? (
+                      <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+                        {slidesOf(p).map((s, i) => (
+                          <div key={i} className="shrink-0 relative">
+                            {s.assetUrl
+                              ? <img src={s.assetUrl} alt={`slide ${i + 1}`} className="w-24 h-24 object-cover rounded-lg border" />
+                              : <div className="w-24 h-24 rounded-lg border bg-slate-50 flex items-center justify-center text-[10px] text-slate-400 p-1 text-center">{s.overlay || s.role}</div>}
+                            <span className="absolute top-0.5 left-0.5 text-[9px] bg-black/60 text-white rounded px-1">{i + 1} · {s.role}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : p.assetUrl && (
                       isVideoAsset(p)
                         ? <video src={p.assetUrl} controls className="mt-2 w-40 rounded-lg border" />
                         : <button type="button" onClick={() => setPreview(p)} className="mt-2 block" title="Ver imagen">
@@ -610,6 +627,11 @@ function ChannelRow({ channel, bufferChannels, onSave, onGenerate }:
           <option value="Image">Imagen</option>
           <option value="Video">Video</option>
         </select>
+        <label className="flex items-center gap-1 text-[11px] text-slate-500" title="Slides: 1 = simple. Más de 1 = carrusel (feed) o combo de stories, que cuentan una historia.">
+          slides
+          <input type="number" min={1} max={10} className="input w-14" value={c.slideCount ?? 1}
+            onChange={(e) => set('slideCount', Math.max(1, Math.min(10, +e.target.value)))} />
+        </label>
         <select className="input w-36" value={c.distribution} onChange={(e) => set('distribution', e.target.value)} title="Por dónde se distribuye">
           <option value="Buffer">→ Buffer (API)</option>
           <option value="Warmr">→ Warmr (device)</option>

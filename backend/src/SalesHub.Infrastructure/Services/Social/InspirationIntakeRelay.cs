@@ -185,6 +185,18 @@ public class InspirationIntakeRelay
         if (text.Length == 0) return true;
         var lower = text.ToLowerInvariant();
 
+        // "tema ..." / "tema del día ..." → fija el tema del día (tiñe los posteos de hoy).
+        // "tema off" / "tema clear" lo borra.
+        if (lower is "tema" or "tema del día" or "tema del dia"
+            || lower.StartsWith("tema ", StringComparison.Ordinal)
+            || lower.StartsWith("tema:", StringComparison.Ordinal)
+            || lower.StartsWith("tema del día ", StringComparison.Ordinal)
+            || lower.StartsWith("tema del dia ", StringComparison.Ordinal))
+        {
+            await HandleDailyThemeAsync(incoming, text, ct);
+            return true;
+        }
+
         // Dentro de una sesión, el texto es contenido (salvo "listo" que la cierra).
         if (session is not null)
         {
@@ -251,6 +263,46 @@ public class InspirationIntakeRelay
         AddUnrouted(new UnroutedItem(IntakeKind.Text, null, null, text, incoming.RawJson, DateTimeOffset.UtcNow));
         await AskRouteIfDueAsync(incoming, ct);
         return true;
+    }
+
+    // ── Tema del día (WhatsApp) ──────────────────────────────────────────────
+    private async Task HandleDailyThemeAsync(ConversationService.IncomingMessage incoming, string text, CancellationToken ct)
+    {
+        // Saco el prefijo "tema"/"tema del día"/"tema:".
+        var body = text;
+        foreach (var pre in new[] { "tema del día", "tema del dia", "tema:", "tema" })
+            if (body.StartsWith(pre, StringComparison.OrdinalIgnoreCase)) { body = body[pre.Length..].TrimStart(':', ' ').Trim(); break; }
+
+        var row = await _db.DailyThemes.FirstOrDefaultAsync(t => t.Id == 1, ct);
+        if (row is null) { row = new DailyTheme { Id = 1 }; _db.DailyThemes.Add(row); }
+
+        if (body.Length == 0 || body.Equals("off", StringComparison.OrdinalIgnoreCase) || body.Equals("clear", StringComparison.OrdinalIgnoreCase))
+        {
+            row.Text = string.Empty; row.ValidUntil = null; row.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            await ReplyAsync(incoming, "saqué el tema del día. Los próximos posteos vuelven al mix normal.", ct);
+            return;
+        }
+
+        // Vigente hasta fin del día en hora AR.
+        var nowAr = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, ArTz);
+        var endAr = new DateTimeOffset(nowAr.Year, nowAr.Month, nowAr.Day, 23, 59, 59, nowAr.Offset);
+        row.Text = Truncate(body, 500);
+        row.ProductKey = null; // global (todas las apps)
+        row.ValidUntil = endAr.ToUniversalTime();
+        row.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        await ReplyAsync(incoming,
+            $"listo, tema del día: \"{row.Text}\" ✅. Va a teñir los posteos de hoy de todas las apps (hasta las 23:59). " +
+            "Mandá \"tema off\" para sacarlo.", ct);
+    }
+
+    private static readonly TimeZoneInfo ArTz = ResolveArTz();
+    private static TimeZoneInfo ResolveArTz()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("America/Argentina/Buenos_Aires"); }
+        catch { return TimeZoneInfo.CreateCustomTimeZone("AR", TimeSpan.FromHours(-3), "AR", "AR"); }
     }
 
     // ── Respuesta al "¿qué hago con esto?" (1/2) ─────────────────────────────

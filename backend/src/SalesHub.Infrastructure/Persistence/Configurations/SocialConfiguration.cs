@@ -125,3 +125,15 @@ public class InspirationSettingsConfiguration : IEntityTypeConfiguration<Inspira
         b.Property(x => x.MasterPhone).HasMaxLength(32);
     }
 }
+
+public class DailyThemeConfiguration : IEntityTypeConfiguration<DailyTheme>
+{
+    public void Configure(EntityTypeBuilder<DailyTheme> b)
+    {
+        b.ToTable("daily_themes");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Id).ValueGeneratedNever();
+        b.Property(x => x.Text).HasColumnType("text");
+        b.Property(x => x.ProductKey).HasMaxLength(64);
+    }
+}
