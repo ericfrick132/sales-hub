@@ -25,6 +25,7 @@ public class FalVideoGenerator : ISocialAssetGenerator
     private readonly HttpClient _http;
     private readonly FalOptions _opts;
     private readonly ApplicationDbContext _db;
+    private readonly ElevenLabsClient _tts;
     private readonly ILogger<FalVideoGenerator> _log;
 
     private static readonly JsonSerializerOptions Json = new()
@@ -33,11 +34,12 @@ public class FalVideoGenerator : ISocialAssetGenerator
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public FalVideoGenerator(HttpClient http, IOptions<FalOptions> opts, ApplicationDbContext db, ILogger<FalVideoGenerator> log)
+    public FalVideoGenerator(HttpClient http, IOptions<FalOptions> opts, ApplicationDbContext db, ElevenLabsClient tts, ILogger<FalVideoGenerator> log)
     {
         _http = http;
         _opts = opts.Value;
         _db = db;
+        _tts = tts;
         _log = log;
         _http.Timeout = TimeSpan.FromSeconds(Math.Max(60, _opts.TimeoutSeconds));
         if (!string.IsNullOrWhiteSpace(_opts.ApiKey))
@@ -53,7 +55,7 @@ public class FalVideoGenerator : ISocialAssetGenerator
     {
         if (!CanHandle(assetKind)) return null;
         var url = await GenerateVideoUrlAsync(prompt, "9:16", ct);
-        return url == null ? null : await PersistAsync(url, null, ct);
+        return url == null ? null : await PersistAsync(url, null, null, ct);
     }
 
     public async Task<AssetResult?> GenerateForPostAsync(PostingProfile profile, SocialPost post, CancellationToken ct = default)
@@ -67,7 +69,8 @@ public class FalVideoGenerator : ISocialAssetGenerator
             _ => "16:9",
         };
         var url = await GenerateVideoUrlAsync(prompt, aspect, ct);
-        return url == null ? null : await PersistAsync(url, post.Id, ct);
+        if (url == null) return null;
+        return await PersistAsync(url, post.Id, post.NarrationText, ct);
     }
 
     private static string BuildBrandPrompt(PostingProfile profile, SocialPost post)
@@ -214,12 +217,25 @@ public class FalVideoGenerator : ISocialAssetGenerator
 
     private static string Trunc(string s, int n) => string.IsNullOrEmpty(s) || s.Length <= n ? s : s[..n];
 
-    private async Task<AssetResult?> PersistAsync(string videoUrl, Guid? postId, CancellationToken ct)
+    private async Task<AssetResult?> PersistAsync(string videoUrl, Guid? postId, string? narration, CancellationToken ct)
     {
         byte[] bytes;
         try { bytes = await _http.GetByteArrayAsync(videoUrl, ct); }
         catch (Exception ex) { _log.LogError(ex, "fal.ai: no se pudo descargar {Url}", videoUrl); return null; }
         if (bytes is not { Length: > 0 }) return null;
+
+        // Narración (voz en off): generamos el mp3 con ElevenLabs y lo muxeamos al video.
+        // Si algo falla, el video sale mudo (best-effort, nunca rompe el asset).
+        if (!string.IsNullOrWhiteSpace(narration) && _tts.IsConfigured)
+        {
+            var audio = await _tts.SynthesizeAsync(narration, ct: ct);
+            if (audio is { Length: > 0 })
+            {
+                var muxed = await MuxAudioAsync(bytes, audio, ct);
+                if (muxed is { Length: > 0 }) bytes = muxed;
+                else _log.LogWarning("Mux de narración falló — el video sale mudo");
+            }
+        }
 
         var asset = new SocialPostAsset
         {
@@ -233,5 +249,58 @@ public class FalVideoGenerator : ISocialAssetGenerator
         await _db.SaveChangesAsync(ct);
         var publicUrl = $"{_opts.PublicBaseUrl.TrimEnd('/')}/api/posteos/assets/{asset.Id}.mp4";
         return new AssetResult(publicUrl, null);
+    }
+
+    /// <summary>
+    /// Pega la narración (mp3) sobre el video (mp4) con ffmpeg. El video corta al
+    /// terminar el más corto de los dos (-shortest) y el audio se re-encodea a AAC.
+    /// Usa archivos temporales porque ffmpeg no muxea bien dos streams por stdin.
+    /// </summary>
+    private async Task<byte[]?> MuxAudioAsync(byte[] video, byte[] audio, CancellationToken ct)
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), $"vid_{Guid.NewGuid():N}");
+        var vin = tmp + ".mp4";
+        var ain = tmp + ".mp3";
+        var vout = tmp + "_out.mp4";
+        try
+        {
+            await File.WriteAllBytesAsync(vin, video, ct);
+            await File.WriteAllBytesAsync(ain, audio, ct);
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            foreach (var arg in new[]
+            {
+                "-y", "-i", vin, "-i", ain,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+                "-shortest", vout,
+            }) psi.ArgumentList.Add(arg);
+
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc is null) return null;
+            var stderr = await proc.StandardError.ReadToEndAsync(ct);
+            await proc.WaitForExitAsync(ct);
+            if (proc.ExitCode != 0)
+            {
+                _log.LogWarning("ffmpeg mux exit {Code}: {Err}", proc.ExitCode, Trunc(stderr, 400));
+                return null;
+            }
+            return await File.ReadAllBytesAsync(vout, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "ffmpeg mux excepción");
+            return null;
+        }
+        finally
+        {
+            foreach (var f in new[] { vin, ain, vout })
+                try { if (File.Exists(f)) File.Delete(f); } catch { /* no-op */ }
+        }
     }
 }

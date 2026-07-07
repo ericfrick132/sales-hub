@@ -148,6 +148,7 @@ public class SocialPostsController : ControllerBase
 
         if (req.Concept != null) post.Concept = req.Concept;
         if (req.OverlayText != null) post.OverlayText = req.OverlayText;
+        if (req.NarrationText != null) post.NarrationText = req.NarrationText;
         if (req.Caption != null) post.Caption = req.Caption;
         if (req.Hashtags != null) post.Hashtags = req.Hashtags;
         if (req.ContentPillar != null) post.ContentPillar = req.ContentPillar;
@@ -180,7 +181,7 @@ public class SocialPostsController : ControllerBase
             Platform = SocialPlatform.Instagram,
             Format = Enum.TryParse<SocialPostFormat>(gen.Format, true, out var f) ? f : SocialPostFormat.Post,
             AssetKind = gen.AssetKind == "video" ? SocialAssetKind.Video : SocialAssetKind.Image,
-            ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay,
+            ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay, NarrationText = gen.Narration,
             Caption = gen.Caption, Hashtags = gen.Hashtags, GenerationModel = "claude",
             RawJson = gen.RawJson, Status = SocialPostStatus.DraftReady,
         };
@@ -261,7 +262,7 @@ public class SocialPostsController : ControllerBase
         {
             Id = Guid.NewGuid(), ProductKey = ch.ProductKey, Platform = ch.Platform,
             BufferChannelId = ch.BufferChannelId, Format = ch.Format, AssetKind = ch.AssetKind,
-            ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay,
+            ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay, NarrationText = gen.Narration,
             Caption = gen.Caption, Hashtags = gen.Hashtags, GenerationModel = "claude",
             RawJson = gen.RawJson, Status = SocialPostStatus.DraftReady,
         };
@@ -312,7 +313,7 @@ public class SocialPostsController : ControllerBase
             BufferChannelId = ch?.BufferChannelId ?? string.Empty,
             Format = Enum.TryParse<SocialPostFormat>(gen.Format, true, out var f) ? f : (ch?.Format ?? SocialPostFormat.Post),
             AssetKind = gen.AssetKind == "video" ? SocialAssetKind.Video : SocialAssetKind.Image,
-            ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay,
+            ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay, NarrationText = gen.Narration,
             Caption = gen.Caption, Hashtags = gen.Hashtags, GenerationModel = "claude",
             RawJson = gen.RawJson, Status = SocialPostStatus.DraftReady,
             InspirationPostId = insp.Id,
@@ -661,7 +662,7 @@ public class SocialPostsController : ControllerBase
             BufferChannelId = ch?.BufferChannelId ?? string.Empty,
             Format = Enum.TryParse<SocialPostFormat>(gen.Format, true, out var f) ? f : (ch?.Format ?? SocialPostFormat.Post),
             AssetKind = gen.AssetKind == "video" ? SocialAssetKind.Video : SocialAssetKind.Image,
-            ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay,
+            ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay, NarrationText = gen.Narration,
             Caption = gen.Caption, Hashtags = gen.Hashtags, GenerationModel = "claude",
             RawJson = gen.RawJson, Status = SocialPostStatus.DraftReady,
             InspirationItemId = items[0].Id,
@@ -773,6 +774,7 @@ public class SocialPostsController : ControllerBase
     {
         public string? Concept { get; set; }
         public string? OverlayText { get; set; }
+        public string? NarrationText { get; set; }
         public string? Caption { get; set; }
         public List<string>? Hashtags { get; set; }
         public string? ContentPillar { get; set; }

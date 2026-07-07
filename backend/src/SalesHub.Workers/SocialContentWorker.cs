@@ -110,6 +110,7 @@ public class SocialContentWorker : BackgroundService
             Concept = gen.Concept,
             Prompt = gen.Prompt,
             OverlayText = gen.Overlay,
+            NarrationText = gen.Narration,
             Caption = gen.Caption,
             Hashtags = gen.Hashtags,
             GenerationModel = "claude",

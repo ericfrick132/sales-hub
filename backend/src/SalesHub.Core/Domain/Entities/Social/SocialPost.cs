@@ -95,6 +95,8 @@ public class SocialPost
     public string Prompt { get; set; } = string.Empty;
     /// <summary>Gancho CORTO (máx ~8 palabras) para estampar en la imagen. Vacío = imagen sin texto.</summary>
     public string OverlayText { get; set; } = string.Empty;
+    /// <summary>Guion de narración (voz en off) para VIDEO. ~25 palabras rioplatense. Vacío = video mudo.</summary>
+    public string NarrationText { get; set; } = string.Empty;
     public string Caption { get; set; } = string.Empty;
     public List<string> Hashtags { get; set; } = new();
 

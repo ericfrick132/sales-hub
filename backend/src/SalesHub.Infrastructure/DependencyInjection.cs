@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.Configure<BufferOptions>(config.GetSection("Buffer"));
         services.Configure<FalOptions>(config.GetSection("Fal"));
         services.Configure<ImageGenOptions>(config.GetSection("ImageGen"));
+        services.Configure<ElevenLabsOptions>(config.GetSection("ElevenLabs"));
         services.Configure<WarmrOptions>(config.GetSection("Warmr"));
 
         // Módulo SEO/GEO
@@ -55,6 +56,8 @@ public static class DependencyInjection
         services.AddScoped<SocialContentGenerator>();
         services.AddHttpClient<AiImageGenerator>();
         services.AddScoped<ISocialAssetGenerator>(sp => sp.GetRequiredService<AiImageGenerator>());
+        // Narración de video (TTS ElevenLabs). El FalVideoGenerator la muxea al mp3.
+        services.AddHttpClient<Services.Social.ElevenLabsClient>();
         // 2° generador de asset: video por fal.ai (API key, headless). Se resuelve por CanHandle("video").
         services.AddHttpClient<FalVideoGenerator>();
         services.AddScoped<ISocialAssetGenerator>(sp => sp.GetRequiredService<FalVideoGenerator>());
