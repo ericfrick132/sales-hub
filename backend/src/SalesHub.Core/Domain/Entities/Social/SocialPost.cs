@@ -102,6 +102,12 @@ public class SocialPost
     public string Caption { get; set; } = string.Empty;
     public List<string> Hashtags { get; set; } = new();
 
+    /// <summary>
+    /// Slides de un posteo multi-slide (carrusel de feed / combo de stories), serializadas
+    /// como JSON de <see cref="PostSlide"/>[]. Vacío = posteo de una sola imagen/video.
+    /// </summary>
+    public string SlidesJson { get; set; } = string.Empty;
+
     // ── Asset + publicación ───────────────────────────────────────────────
     /// <summary>URL pública del asset (lo que Buffer consume).</summary>
     public string? AssetUrl { get; set; }

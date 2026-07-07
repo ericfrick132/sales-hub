@@ -174,12 +174,31 @@ public class SocialContentGenerator
         sys.AppendLine();
         sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies). Caption en español rioplatense (voseo). El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
         if (ch.Format == SocialPostFormat.Story) sys.AppendLine(StoryRule);
-        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
-        sys.AppendLine(OverlayRule);
-        if (ch.AssetKind == SocialAssetKind.Video) { sys.AppendLine(NarrationRule); sys.AppendLine(VideoPromptRecipe); }
+
+        var slideCount = Math.Max(1, ch.SlideCount);
+        if (slideCount > 1)
+        {
+            // Multi-slide: carrusel de feed (Carousel) o combo de stories (Story).
+            var isStoryCombo = ch.Format == SocialPostFormat.Story;
+            sys.AppendLine();
+            sys.AppendLine($"Este posteo es MULTI-SLIDE: {slideCount} {(isStoryCombo ? "stories seguidas" : "imágenes de un carrusel")} que juntas CUENTAN UNA HISTORIA con arco (gancho → desarrollo → cierre).");
+            sys.AppendLine("Cada slide tiene un ROL propio y avanza la narrativa; no las repitas. Roles posibles: hook, encuesta (pregunta con 2 opciones DIBUJADAS, no votable), dato, info, antes/después, cierre, link ('link en bio' como texto — NO un link real).");
+            if (isStoryCombo)
+                sys.AppendLine("Son STORIES: verticales, casuales, texto grande (overlay) protagonista. Ej. secuencia: 1) pregunta/gancho, 2) el dato o la info, 3) el cierre con 'link en bio'.");
+            sys.AppendLine("Cada slide: su propio 'overlay' (texto estampado corto) y su propio 'prompt' visual (INGLÉS). El 'caption' del posteo es UNO SOLO para todo el conjunto.");
+            sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"caption\":string, \"hashtags\":string[], \"slides\":[{\"role\":string, \"overlay\":string, \"prompt\":string}]}");
+            sys.AppendLine($"El array 'slides' tiene EXACTAMENTE {slideCount} elementos, en orden narrativo.");
+            sys.AppendLine(OverlayRule);
+        }
+        else
+        {
+            sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
+            sys.AppendLine(OverlayRule);
+            if (ch.AssetKind == SocialAssetKind.Video) { sys.AppendLine(NarrationRule); sys.AppendLine(VideoPromptRecipe); }
+        }
 
         var user = new StringBuilder();
-        user.AppendLine($"Generá 1 idea nueva para {ch.Platform} ({ch.Format}), tipo {type.Label}.");
+        user.AppendLine($"Generá 1 idea nueva para {ch.Platform} ({ch.Format}), tipo {type.Label}{(slideCount > 1 ? $", de {slideCount} slides" : "")}.");
         if (!string.IsNullOrWhiteSpace(hint))
             user.AppendLine($"TEMA / INDICACIÓN para este posteo: {hint.Trim()}");
         if (recentConcepts.Count > 0)
@@ -189,7 +208,8 @@ public class SocialContentGenerator
         }
         user.AppendLine("Recordá: SOLO el JSON.");
 
-        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), SocialMaxTokens, null, "social", ct);
+        var maxTokens = slideCount > 1 ? SocialMaxTokens + slideCount * 400 : SocialMaxTokens;
+        var raw = await _claude.CompleteAsync(sys.ToString(), user.ToString(), maxTokens, null, "social", ct);
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var json = ExtractJson(raw);
         try
@@ -199,18 +219,32 @@ public class SocialContentGenerator
             var hashtags = new List<string>();
             if (r.TryGetProperty("hashtags", out var h) && h.ValueKind == JsonValueKind.Array)
                 hashtags.AddRange(h.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0));
+
+            var slides = new List<GeneratedSlide>();
+            if (slideCount > 1 && r.TryGetProperty("slides", out var sl) && sl.ValueKind == JsonValueKind.Array)
+            {
+                var order = 0;
+                foreach (var el in sl.EnumerateArray())
+                    slides.Add(new GeneratedSlide(order++, Str(el, "role"), Str(el, "overlay"), Str(el, "prompt")));
+            }
+
+            // Para multi-slide, el prompt/overlay "principal" es el de la 1ª slide (preview).
+            var mainPrompt = slides.Count > 0 ? slides[0].Prompt : Str(r, "prompt");
+            var mainOverlay = slides.Count > 0 ? slides[0].Overlay : Str(r, "overlay");
+
             return new GeneratedPost(
                 Pillar: Str(r, "pillar"),
                 AssetKind: ch.AssetKind == SocialAssetKind.Video ? "video" : "image",
                 Format: ch.Format.ToString().ToLowerInvariant(),
                 Concept: Str(r, "concept"),
-                Prompt: Str(r, "prompt"),
-                Overlay: Str(r, "overlay"),
+                Prompt: mainPrompt,
+                Overlay: mainOverlay,
                 Narration: Str(r, "narration"),
                 Caption: Str(r, "caption"),
                 Hashtags: hashtags,
                 RawJson: json,
-                Type: type.Key);
+                Type: type.Key,
+                Slides: slides);
         }
         catch (Exception ex)
         {
@@ -408,4 +442,8 @@ public record GeneratedPost(
     string Caption,
     List<string> Hashtags,
     string RawJson,
-    string Type = "");
+    string Type = "",
+    List<GeneratedSlide>? Slides = null);
+
+/// <summary>Una slide generada por Claude para un posteo multi-slide (aún sin imagen).</summary>
+public record GeneratedSlide(int Order, string Role, string Overlay, string Prompt);

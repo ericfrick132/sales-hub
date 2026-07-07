@@ -41,6 +41,7 @@ public class PostingChannelConfiguration : IEntityTypeConfiguration<PostingChann
         b.Property(x => x.WarmrAccount).HasMaxLength(128);
         b.Property(x => x.BufferChannelId).HasMaxLength(64);
         b.Property(x => x.PromptTemplate).HasColumnType("text");
+        b.Property(x => x.SlideCount).HasDefaultValue(1);
         // Único por (app, red, FORMATO) → una app puede tener IG-feed Y IG-story a la vez.
         b.HasIndex(x => new { x.ProductKey, x.Platform, x.Format }).IsUnique()
             .HasDatabaseName("IX_PostingChannel_Product_Platform_Format");
@@ -65,6 +66,7 @@ public class SocialPostConfiguration : IEntityTypeConfiguration<SocialPost>
         b.Property(x => x.ContentPillar).HasMaxLength(128);
         b.Property(x => x.PostType).HasMaxLength(32);
         b.Property(x => x.Concept).HasColumnType("text");
+        b.Property(x => x.SlidesJson).HasColumnType("jsonb");
         b.Property(x => x.Prompt).HasColumnType("text");
         b.Property(x => x.Caption).HasColumnType("text");
         b.Property(x => x.Hashtags).HasColumnType("text[]");

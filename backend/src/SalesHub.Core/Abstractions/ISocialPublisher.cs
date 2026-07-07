@@ -21,6 +21,8 @@ public class PublishRequest
     public string Service { get; init; } = string.Empty;
     public string? Caption { get; init; }
     public string? ImageUrl { get; init; }
+    /// <summary>Multi-slide: varias imágenes (carrusel de feed / combo de stories). Tiene prioridad sobre ImageUrl.</summary>
+    public IReadOnlyList<string>? ImageUrls { get; init; }
     public string? VideoUrl { get; init; }
     public string? ThumbnailUrl { get; init; }
     /// <summary>Solo IG: post | story | reel | carousel.</summary>

@@ -149,6 +149,7 @@ public class SocialContentWorker : BackgroundService
             Prompt = gen.Prompt,
             OverlayText = gen.Overlay,
             NarrationText = gen.Narration,
+            SlidesJson = gen.Slides is { Count: > 0 } ? SocialPostSlides.FromGenerated(gen.Slides) : string.Empty,
             Caption = gen.Caption,
             Hashtags = gen.Hashtags,
             GenerationModel = "claude",
@@ -162,15 +163,25 @@ public class SocialContentWorker : BackgroundService
         db.SocialPosts.Add(post);
         await db.SaveChangesAsync(ct);
 
-        // Asset (si hay un generador que lo maneje)
-        var assetGen = scope.ServiceProvider.GetServices<ISocialAssetGenerator>()
-            .FirstOrDefault(g => g.CanHandle(gen.AssetKind));
-        if (assetGen != null)
+        // Asset: multi-slide (carrusel/combo) → N imágenes; si no, el generador único.
+        post.Status = SocialPostStatus.GeneratingAsset;
+        await db.SaveChangesAsync(ct);
+        if (SocialPostSlides.HasSlides(post.SlidesJson))
         {
-            post.Status = SocialPostStatus.GeneratingAsset;
-            await db.SaveChangesAsync(ct);
-            var asset = await assetGen.GenerateForPostAsync(profile, post, ct);
-            if (asset != null) { post.AssetUrl = asset.Url; post.ThumbnailUrl = asset.ThumbnailUrl; }
+            var img = scope.ServiceProvider.GetRequiredService<AiImageGenerator>();
+            var slides = await img.GenerateSlidesForPostAsync(profile, post, SocialPostSlides.Parse(post.SlidesJson), ct);
+            post.SlidesJson = SocialPostSlides.Serialize(slides);
+            post.AssetUrl = slides.FirstOrDefault(s => s.AssetUrl != null)?.AssetUrl;
+        }
+        else
+        {
+            var assetGen = scope.ServiceProvider.GetServices<ISocialAssetGenerator>()
+                .FirstOrDefault(g => g.CanHandle(gen.AssetKind));
+            if (assetGen != null)
+            {
+                var asset = await assetGen.GenerateForPostAsync(profile, post, ct);
+                if (asset != null) { post.AssetUrl = asset.Url; post.ThumbnailUrl = asset.ThumbnailUrl; }
+            }
         }
 
         post.Status = SocialPostStatus.DraftReady;
@@ -202,12 +213,14 @@ public class SocialContentWorker : BackgroundService
             if (!string.IsNullOrWhiteSpace(post.AssetUrl) && !string.IsNullOrWhiteSpace(post.BufferChannelId))
             {
                 var publisher = scope.ServiceProvider.GetRequiredService<ISocialPublisher>();
+                var slideUrls = SocialPostSlides.AssetUrls(post.SlidesJson);
                 var res = await publisher.CreatePostAsync(new PublishRequest
                 {
                     ChannelId = post.BufferChannelId,
                     Service = channel.Platform.ToString().ToLowerInvariant(),
                     Caption = BuildCaption(post),
-                    ImageUrl = post.AssetKind == SocialAssetKind.Image ? post.AssetUrl : null,
+                    ImageUrl = post.AssetKind == SocialAssetKind.Image && slideUrls.Count == 0 ? post.AssetUrl : null,
+                    ImageUrls = slideUrls.Count > 0 ? slideUrls : null,
                     VideoUrl = post.AssetKind == SocialAssetKind.Video ? post.AssetUrl : null,
                     ThumbnailUrl = post.ThumbnailUrl,
                     InstagramType = post.Format.ToString().ToLowerInvariant(),

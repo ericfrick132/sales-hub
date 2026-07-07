@@ -40,6 +40,12 @@ public class PostingChannel
     /// <summary>Prompt/instrucciones específicas de ESTA red para ESTA app.</summary>
     public string PromptTemplate { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Cantidad de slides. 1 = posteo simple. &gt;1 = multi-slide: carrusel (Format=Carousel)
+    /// o combo de stories (Format=Story). El generador arma una narrativa de N pasos.
+    /// </summary>
+    public int SlideCount { get; set; } = 1;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

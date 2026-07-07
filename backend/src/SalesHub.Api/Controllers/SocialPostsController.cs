@@ -273,6 +273,7 @@ public class SocialPostsController : ControllerBase
         if (req.NotifyPublish.HasValue) ch.NotifyPublish = req.NotifyPublish.Value;
         if (req.BufferChannelId != null) ch.BufferChannelId = req.BufferChannelId;
         if (req.PromptTemplate != null) ch.PromptTemplate = req.PromptTemplate;
+        if (req.SlideCount.HasValue) ch.SlideCount = Math.Clamp(req.SlideCount.Value, 1, 10);
         if (req.WarmrAccount != null) ch.WarmrAccount = req.WarmrAccount;
         if (!string.IsNullOrWhiteSpace(req.Format) && Enum.TryParse<SocialPostFormat>(req.Format, true, out var f)) ch.Format = f;
         if (!string.IsNullOrWhiteSpace(req.AssetKind) && Enum.TryParse<SocialAssetKind>(req.AssetKind, true, out var ak)) ch.AssetKind = ak;
@@ -329,6 +330,7 @@ public class SocialPostsController : ControllerBase
             BufferChannelId = ch.BufferChannelId, Format = ch.Format, AssetKind = ch.AssetKind,
             PostType = gen.Type,
             ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay, NarrationText = gen.Narration,
+            SlidesJson = gen.Slides is { Count: > 0 } ? SocialPostSlides.FromGenerated(gen.Slides) : string.Empty,
             Caption = gen.Caption, Hashtags = gen.Hashtags, GenerationModel = "claude",
             RawJson = gen.RawJson, Status = SocialPostStatus.DraftReady,
         };
@@ -454,16 +456,27 @@ public class SocialPostsController : ControllerBase
             post.PostType = gen.Type;
             post.ContentPillar = gen.Pillar; post.Concept = gen.Concept; post.Prompt = gen.Prompt;
             post.OverlayText = gen.Overlay; post.NarrationText = gen.Narration;
+            post.SlidesJson = gen.Slides is { Count: > 0 } ? SocialPostSlides.FromGenerated(gen.Slides) : string.Empty;
             post.Caption = gen.Caption; post.Hashtags = gen.Hashtags; post.RawJson = gen.RawJson;
             post.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
 
-            // Asset (imagen o video). Sin generador o sin key → sigue sin asset (fallará el push si Buffer lo exige).
-            var assetGen = assetGens.FirstOrDefault(g => g.CanHandle(gen.AssetKind));
-            if (assetGen is not null && assetGen.IsConfigured)
+            // Asset: multi-slide (carrusel/combo) → N imágenes; si no, el generador único.
+            if (SocialPostSlides.HasSlides(post.SlidesJson))
             {
-                var asset = await assetGen.GenerateForPostAsync(profile, post, ct);
-                if (asset is not null) { post.AssetUrl = asset.Url; post.ThumbnailUrl = asset.ThumbnailUrl; }
+                var img = scope.ServiceProvider.GetRequiredService<AiImageGenerator>();
+                var slides = await img.GenerateSlidesForPostAsync(profile, post, SocialPostSlides.Parse(post.SlidesJson), ct);
+                post.SlidesJson = SocialPostSlides.Serialize(slides);
+                post.AssetUrl = slides.FirstOrDefault(s => s.AssetUrl != null)?.AssetUrl;
+            }
+            else
+            {
+                var assetGen = assetGens.FirstOrDefault(g => g.CanHandle(gen.AssetKind));
+                if (assetGen is not null && assetGen.IsConfigured)
+                {
+                    var asset = await assetGen.GenerateForPostAsync(profile, post, ct);
+                    if (asset is not null) { post.AssetUrl = asset.Url; post.ThumbnailUrl = asset.ThumbnailUrl; }
+                }
             }
             post.Status = SocialPostStatus.DraftReady;
             await db.SaveChangesAsync(ct);
@@ -487,12 +500,14 @@ public class SocialPostsController : ControllerBase
             var caption = post.Hashtags.Count > 0
                 ? $"{post.Caption}\n\n{string.Join(" ", post.Hashtags.Select(h => h.StartsWith('#') ? h : "#" + h))}"
                 : post.Caption;
+            var slideUrls = SocialPostSlides.AssetUrls(post.SlidesJson);
             var res = await publisher.CreatePostAsync(new PublishRequest
             {
                 ChannelId = post.BufferChannelId,
                 Service = post.Platform.ToString().ToLowerInvariant(),
                 Caption = caption,
-                ImageUrl = post.AssetKind == SocialAssetKind.Image ? post.AssetUrl : null,
+                ImageUrl = post.AssetKind == SocialAssetKind.Image && slideUrls.Count == 0 ? post.AssetUrl : null,
+                ImageUrls = slideUrls.Count > 0 ? slideUrls : null,
                 VideoUrl = post.AssetKind == SocialAssetKind.Video ? post.AssetUrl : null,
                 ThumbnailUrl = post.ThumbnailUrl,
                 InstagramType = post.Format.ToString().ToLowerInvariant(),
@@ -585,6 +600,26 @@ public class SocialPostsController : ControllerBase
     {
         var post = await _db.SocialPosts.FirstOrDefaultAsync(s => s.Id == id, ct);
         if (post == null) return NotFound();
+        var profile = await _db.PostingProfiles.FirstOrDefaultAsync(p => p.ProductKey == post.ProductKey, ct);
+        if (profile == null) return NotFound(new { error = "Falta el PostingProfile de la app." });
+
+        post.Status = SocialPostStatus.GeneratingAsset;
+        post.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        // Multi-slide (carrusel/combo) → N imágenes; si no, el generador único.
+        if (SocialPostSlides.HasSlides(post.SlidesJson))
+        {
+            var img = HttpContext.RequestServices.GetRequiredService<AiImageGenerator>();
+            var slides = await img.GenerateSlidesForPostAsync(profile, post, SocialPostSlides.Parse(post.SlidesJson), ct);
+            post.SlidesJson = SocialPostSlides.Serialize(slides);
+            post.AssetUrl = slides.FirstOrDefault(s => s.AssetUrl != null)?.AssetUrl;
+            if (post.AssetUrl == null) { post.Status = SocialPostStatus.Error; post.Error = "No se generaron las imágenes de las slides."; await _db.SaveChangesAsync(ct); return StatusCode(502, new { error = post.Error }); }
+            post.Status = SocialPostStatus.DraftReady; post.Error = null; post.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return Ok(post);
+        }
+
         var gen = GeneratorFor(post.AssetKind);
         if (gen == null)
             return BadRequest(new { error = $"No hay generador para asset '{post.AssetKind}'." });
@@ -592,12 +627,6 @@ public class SocialPostsController : ControllerBase
             return BadRequest(new { error = post.AssetKind == SocialAssetKind.Video
                 ? "El generador de video (fal.ai) no está configurado (falta Fal:ApiKey / FAL_KEY)."
                 : "El generador de imagen no está configurado (falta ImageGen:ApiKey)." });
-        var profile = await _db.PostingProfiles.FirstOrDefaultAsync(p => p.ProductKey == post.ProductKey, ct);
-        if (profile == null) return NotFound(new { error = "Falta el PostingProfile de la app." });
-
-        post.Status = SocialPostStatus.GeneratingAsset;
-        post.UpdatedAt = DateTimeOffset.UtcNow;
-        await _db.SaveChangesAsync(ct);
 
         var asset = await gen.GenerateForPostAsync(profile, post, ct);
         if (asset == null)
@@ -672,12 +701,14 @@ public class SocialPostsController : ControllerBase
             post.BufferPostId = null;
         }
 
+        var slideUrls = SocialPostSlides.AssetUrls(post.SlidesJson);
         var res = await _publisher.CreatePostAsync(new PublishRequest
         {
             ChannelId = channelId,
             Service = post.Platform.ToString().ToLowerInvariant(),
             Caption = post.Hashtags.Count > 0 ? $"{post.Caption}\n\n{string.Join(" ", post.Hashtags.Select(h => h.StartsWith('#') ? h : "#" + h))}" : post.Caption,
-            ImageUrl = post.AssetKind == SocialAssetKind.Image ? assetUrl : null,
+            ImageUrl = post.AssetKind == SocialAssetKind.Image && slideUrls.Count == 0 ? assetUrl : null,
+            ImageUrls = slideUrls.Count > 0 ? slideUrls : null,
             VideoUrl = post.AssetKind == SocialAssetKind.Video ? assetUrl : null,
             ThumbnailUrl = post.ThumbnailUrl,
             InstagramType = post.Format.ToString().ToLowerInvariant(),
@@ -1007,6 +1038,8 @@ public class SocialPostsController : ControllerBase
         public string? WarmrAccount { get; set; }
         public string? PromptTemplate { get; set; }
         public bool? NotifyPublish { get; set; }
+        /// <summary>Slides del posteo (1 = simple; >1 = carrusel/combo).</summary>
+        public int? SlideCount { get; set; }
     }
     public class CreateChannelRequest
     {

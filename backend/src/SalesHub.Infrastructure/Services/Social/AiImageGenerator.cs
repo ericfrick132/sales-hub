@@ -72,8 +72,32 @@ public class AiImageGenerator : ISocialAssetGenerator
         return await PersistAsync(bytes, post.Id, ct);
     }
 
+    /// <summary>
+    /// Genera la imagen de CADA slide (carrusel/combo) con su propio prompt+overlay, aplica
+    /// logos, persiste cada una como asset y devuelve las slides con AssetUrl completo.
+    /// </summary>
+    public async Task<List<PostSlide>> GenerateSlidesForPostAsync(PostingProfile profile, SocialPost post, IReadOnlyList<PostSlide> slides, CancellationToken ct = default)
+    {
+        var done = new List<PostSlide>();
+        foreach (var slide in slides.OrderBy(s => s.Order))
+        {
+            var prompt = BuildBrandPrompt(profile, post.Format, post.Platform, slide.Prompt, slide.Concept, slide.Overlay);
+            var bytes = await GenerateBytesAsync(prompt, post.Format, ct);
+            if (bytes is null) { _log.LogWarning("Slide {Order} de {Post} sin imagen", slide.Order, post.Id); done.Add(slide); continue; }
+            // logos: marca siempre; feature según el texto de ESTA slide + el caption del posteo.
+            bytes = await ApplyLogosForTextAsync(profile, $"{slide.Overlay} {post.Caption}", bytes, ct);
+            var asset = await PersistAsync(bytes, post.Id, ct);
+            slide.AssetUrl = asset.Url;
+            done.Add(slide);
+        }
+        return done;
+    }
+
     /// <summary>Compone el logo de marca + logos de feature (contextuales) sobre la imagen.</summary>
-    private async Task<byte[]> ApplyLogosAsync(PostingProfile profile, SocialPost post, byte[] bytes, CancellationToken ct)
+    private Task<byte[]> ApplyLogosAsync(PostingProfile profile, SocialPost post, byte[] bytes, CancellationToken ct)
+        => ApplyLogosForTextAsync(profile, $"{post.Caption} {post.Concept} {post.OverlayText}", bytes, ct);
+
+    private async Task<byte[]> ApplyLogosForTextAsync(PostingProfile profile, string contextText, byte[] bytes, CancellationToken ct)
     {
         try
         {
@@ -82,7 +106,7 @@ public class AiImageGenerator : ISocialAssetGenerator
                 brand = await _db.SocialPostAssets.AsNoTracking()
                     .Where(a => a.Id == logoId).Select(a => a.Content).FirstOrDefaultAsync(ct);
 
-            var text = $"{post.Caption} {post.Concept} {post.OverlayText}".ToLowerInvariant();
+            var text = (contextText ?? "").ToLowerInvariant();
             var featureIds = new List<Guid>();
             if (text.Contains("mercadopago") || text.Contains("mercado pago")) AddFeature(featureIds, "mercadopago");
             if (text.Contains("whatsapp") || text.Contains("bot")) AddFeature(featureIds, "whatsapp");
@@ -114,24 +138,28 @@ public class AiImageGenerator : ISocialAssetGenerator
 
     // ── Prompt de marca ────────────────────────────────────────────────────
     private static string BuildBrandPrompt(PostingProfile profile, SocialPost post)
+        => BuildBrandPrompt(profile, post.Format, post.Platform, post.Prompt, post.Concept, post.OverlayText);
+
+    /// <summary>Arma el prompt de marca a partir de un visual+overlay explícitos (sirve para el post o para una slide).</summary>
+    private static string BuildBrandPrompt(PostingProfile profile, SocialPostFormat format, SocialPlatform platform, string visualPrompt, string concept, string overlayText)
     {
         var sb = new StringBuilder();
         // Base visual: el prompt cinematográfico en inglés que ya generó Claude.
-        sb.Append(string.IsNullOrWhiteSpace(post.Prompt) ? post.Concept : post.Prompt);
-        var aspect = post.Format switch
+        sb.Append(string.IsNullOrWhiteSpace(visualPrompt) ? concept : visualPrompt);
+        var aspect = format switch
         {
             SocialPostFormat.Story or SocialPostFormat.Reel => "vertical 9:16 full-bleed composition",
             SocialPostFormat.Carousel => "vertical 4:5 composition",
             _ => "square 1:1 composition",
         };
-        sb.Append($". Social media {post.Format.ToString().ToLowerInvariant()} for {post.Platform}, {aspect}, clean and modern.");
+        sb.Append($". Social media {format.ToString().ToLowerInvariant()} for {platform}, {aspect}, clean and modern.");
         // Ancla cultural: si aparece gente/lugares, que se lean latinoamericanos, no asiáticos ni stock USA.
         sb.Append(" If people or places appear, they must read as Latin American / Argentine (latino features, Spanish-language signage), never Asian or generic US stock imagery.");
         if (!string.IsNullOrWhiteSpace(profile.BrandColorsJson) && profile.BrandColorsJson.Trim() != "{}")
             sb.Append($" Use this brand color palette (exact hex): {profile.BrandColorsJson}.");
         // Texto en la imagen: SOLO el overlay corto que Claude escribió como copy.
         // Nunca el concepto (descripción interna larga → el modelo lo trunca y lo rompe).
-        var overlay = post.OverlayText?.Trim() ?? string.Empty;
+        var overlay = overlayText?.Trim() ?? string.Empty;
         if (overlay.Length > 0)
         {
             sb.Append($" Render ONLY this exact short headline text, nothing else written: \"{overlay}\" — bold, perfectly spelled, legible, well integrated into the layout.");

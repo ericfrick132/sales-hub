@@ -89,22 +89,30 @@ public class BufferClient : ISocialPublisher
         if (!IsConfigured) return new PublishResult { Success = false, Error = "Buffer no configurado (falta token)." };
         if (string.IsNullOrWhiteSpace(req.ChannelId)) return new PublishResult { Success = false, Error = "channelId requerido." };
 
-        // assets: imagen o video por URL pública.
-        object asset;
+        // assets: video, multi-imagen (carrusel/combo) o una sola imagen, por URL pública.
+        object[] assets;
         if (!string.IsNullOrWhiteSpace(req.VideoUrl))
         {
             var video = new Dictionary<string, object?> { ["url"] = req.VideoUrl };
             if (!string.IsNullOrWhiteSpace(req.ThumbnailUrl)) video["thumbnailUrl"] = req.ThumbnailUrl;
-            asset = new Dictionary<string, object?> { ["video"] = video };
+            assets = new object[] { new Dictionary<string, object?> { ["video"] = video } };
+        }
+        else if (req.ImageUrls is { Count: > 0 })
+        {
+            assets = req.ImageUrls
+                .Where(u => !string.IsNullOrWhiteSpace(u))
+                .Select(u => (object)new Dictionary<string, object?> { ["image"] = new Dictionary<string, object?> { ["url"] = u } })
+                .ToArray();
         }
         else if (!string.IsNullOrWhiteSpace(req.ImageUrl))
         {
-            asset = new Dictionary<string, object?> { ["image"] = new Dictionary<string, object?> { ["url"] = req.ImageUrl } };
+            assets = new object[] { new Dictionary<string, object?> { ["image"] = new Dictionary<string, object?> { ["url"] = req.ImageUrl } } };
         }
         else
         {
-            return new PublishResult { Success = false, Error = "Falta imageUrl o videoUrl." };
+            return new PublishResult { Success = false, Error = "Falta imageUrl(s) o videoUrl." };
         }
+        if (assets.Length == 0) return new PublishResult { Success = false, Error = "Sin assets válidos." };
 
         // Twitter/X: 280 chars duros — recortamos en un borde de palabra para no
         // rebotar el post entero ("Twitter / X posts cannot exceed...").
@@ -120,7 +128,7 @@ public class BufferClient : ISocialPublisher
         {
             ["channelId"] = req.ChannelId,
             ["text"] = text,
-            ["assets"] = new[] { asset },
+            ["assets"] = assets,
             ["schedulingType"] = req.Automatic ? "automatic" : "notification",
             ["mode"] = req.ScheduledAt.HasValue ? "customScheduled" : "shareNow",
         };
