@@ -43,11 +43,21 @@ public class SocialContentGenerator
         "Si la imagen es más fuerte sin texto, devolvé overlay = \"\" (string vacío). " +
         "El 'prompt' visual NO debe pedir ningún otro texto escrito, ni pantallas/planillas/carteles con texto legible.";
 
+    /// <summary>
+    /// Receta "majestic" de video: en vez de una fórmula genérica (que produce el
+    /// look IA), le pedimos a Claude DIRECCIÓN DE CINE — una micro-historia real
+    /// alrededor del mundo del cliente, con el dolor contado de costado.
+    /// </summary>
     private const string VideoPromptRecipe =
-        "IMPORTANTE — si el assetKind es 'video', el campo 'prompt' (en INGLÉS) tiene que ser un prompt de video bien armado con esta estructura: " +
-        "[sujeto + escena] + [acción/movimiento concreto] + [movimiento de cámara: dolly in/pan/handheld/orbit/static] + " +
-        "[tipo de plano: wide/medium/close-up] + [luz y mood] + [estilo visual] + [ritmo]. " +
-        "Es para un clip VERTICAL corto (~5s) con un hook visual fuerte en el primer segundo. No pidas texto en pantalla largo.";
+        "REGLA DEL PROMPT DE VIDEO — si el assetKind es 'video', el campo 'prompt' (en INGLÉS) es dirección de cine para UNA sola toma continua, vertical 9:16, ~5 segundos. Escribilo así:\n" +
+        "1) HISTORIA: un micro-arco (situación → giro → remate) ambientado en el MUNDO REAL del cliente de esta app. Pensá cuál es su dolor de fondo, pero NO lo muestres literal ni lo nombres: contalo de costado — un detalle, una consecuencia, el momento de calma u orgullo que el producto hace posible. La historia insinúa; nunca 'vende'.\n" +
+        "2) SUJETO ÚNICO con textura de persona real: edad aproximada, ropa creíble, un gesto específico. UNA sola acción física clara que evoluciona durante los 5 segundos (las acciones múltiples o los saltos de escena delatan IA).\n" +
+        "3) CÁMARA: un único movimiento motivado por la acción (slow dolly-in, sutil handheld, orbit lento o static con vida interna). Lente y encuadre concretos: ej. '35mm lens, shallow depth of field, medium close-up at chest height'.\n" +
+        "4) LUZ PRÁCTICA y hora del día: la fuente tiene que existir en la escena (golden hour entrando por una persiana, tubos fluorescentes de gimnasio a las 6am, neón de vidriera de noche, pantalla que ilumina una cara). Pedí sombras reales y volumen.\n" +
+        "5) LOOK ANTI-IA — incluí literalmente: 'shot on digital cinema camera, subtle film grain, natural skin texture, slight handheld imperfection, muted realistic color grade, documentary feel'.\n" +
+        "6) PROHIBIDO en el prompt: texto/letreros/logos, manos en primer plano haciendo cosas finas, multitudes, morphing, transiciones o cortes, cámara lenta genérica, look de render 3D/comercial pulido, colores saturados de stock.\n" +
+        "7) RITMO explícito: qué se ve en el segundo 1 (hook visual), qué cambia en el 3 (giro) y con qué imagen cierra el 5 (remate emocional).\n" +
+        "Largo final del prompt: 80-140 palabras, denso y visual. El producto NO aparece explicado — la historia lo hace inevitable.";
 
     public async Task<GeneratedPost?> GenerateAsync(PostingProfile p, IReadOnlyList<string> recentConcepts, CancellationToken ct = default)
     {
