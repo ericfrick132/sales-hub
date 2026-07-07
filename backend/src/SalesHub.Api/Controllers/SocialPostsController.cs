@@ -90,6 +90,67 @@ public class SocialPostsController : ControllerBase
         return Ok(p);
     }
 
+    // ── Logo de marca (se compone sobre cada imagen; la IA no dibuja logos) ─
+    /// <summary>Sube el logo de la app (multipart) — se pega en cada imagen generada.</summary>
+    [HttpPost("profiles/{productKey}/logo")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    public async Task<IActionResult> UploadLogo(string productKey, [FromForm] IFormFile file, CancellationToken ct)
+    {
+        var p = await _db.PostingProfiles.FirstOrDefaultAsync(x => x.ProductKey == productKey, ct);
+        if (p == null) return NotFound();
+        if (file is not { Length: > 0 } || !(file.ContentType ?? "").StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "Subí una imagen (PNG con transparencia idealmente)." });
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        var id = await SaveLogoAssetAsync(ms.ToArray(), file.ContentType!, ct);
+        p.BrandLogoAssetId = id; p.BrandLogoUrl = $"/api/posteos/assets/{id}.png"; p.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { p.BrandLogoAssetId, p.BrandLogoUrl });
+    }
+
+    /// <summary>Intenta traer el logo de la landing (best-effort: apple-touch-icon/favicon/og:image).</summary>
+    [HttpPost("profiles/{productKey}/logo/fetch")]
+    public async Task<IActionResult> FetchLogo(string productKey, [FromServices] BrandLogoService logos, CancellationToken ct)
+    {
+        var p = await _db.PostingProfiles.FirstOrDefaultAsync(x => x.ProductKey == productKey, ct);
+        if (p == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(p.LandingUrl)) return BadRequest(new { error = "El perfil no tiene LandingUrl." });
+        var logo = await logos.FetchFromLandingAsync(p.LandingUrl, ct);
+        if (logo is null) return StatusCode(502, new { error = "No encontré un logo en la landing. Subilo a mano." });
+        var id = await SaveLogoAssetAsync(logo.Value.Bytes, logo.Value.Mime, ct);
+        p.BrandLogoAssetId = id; p.BrandLogoUrl = $"/api/posteos/assets/{id}.png"; p.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { p.BrandLogoAssetId, p.BrandLogoUrl });
+    }
+
+    /// <summary>Sube un logo de FEATURE global (key = mercadopago | whatsapp) — id fijo, se pega cuando el posteo lo menciona.</summary>
+    [HttpPost("feature-logos/{key}")]
+    [RequestSizeLimit(4 * 1024 * 1024)]
+    public async Task<IActionResult> UploadFeatureLogo(string key, [FromForm] IFormFile file, CancellationToken ct)
+    {
+        var fixedId = AiImageGenerator.FeatureLogoId(key.Trim().ToLowerInvariant());
+        if (fixedId == Guid.Empty) return BadRequest(new { error = "key debe ser 'mercadopago' o 'whatsapp'." });
+        if (file is not { Length: > 0 } || !(file.ContentType ?? "").StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "Subí una imagen PNG." });
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        var bytes = ms.ToArray();
+        var existing = await _db.SocialPostAssets.FirstOrDefaultAsync(a => a.Id == fixedId, ct);
+        if (existing is null)
+            _db.SocialPostAssets.Add(new SocialPostAsset { Id = fixedId, MimeType = file.ContentType!, Content = bytes, SizeBytes = bytes.Length });
+        else { existing.Content = bytes; existing.MimeType = file.ContentType!; existing.SizeBytes = bytes.Length; }
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { key, id = fixedId });
+    }
+
+    private async Task<Guid> SaveLogoAssetAsync(byte[] bytes, string mime, CancellationToken ct)
+    {
+        var asset = new SocialPostAsset { Id = Guid.NewGuid(), MimeType = mime, Content = bytes, SizeBytes = bytes.Length };
+        _db.SocialPostAssets.Add(asset);
+        await _db.SaveChangesAsync(ct);
+        return asset.Id;
+    }
+
     // ── Canales de Buffer ──────────────────────────────────────────────────
     [HttpGet("channels")]
     public async Task<IActionResult> Channels(CancellationToken ct)

@@ -20,7 +20,10 @@ public class PostingProfile
     /// <summary>JSON con la paleta: {"primary":"#DDFD42","bg":"#0A0A0A",...}.</summary>
     public string BrandColorsJson { get; set; } = "{}";
     public string BrandFonts { get; set; } = string.Empty;
+    /// <summary>URL pública del logo (para mostrar en la UI).</summary>
     public string BrandLogoUrl { get; set; } = string.Empty;
+    /// <summary>SocialPostAsset con los bytes del logo — se compone sobre cada imagen generada.</summary>
+    public Guid? BrandLogoAssetId { get; set; }
     /// <summary>Tono/voz de marca (ej. "directo, sin vueltas, rioplatense").</summary>
     public string BrandVoice { get; set; } = string.Empty;
     /// <summary>Guía libre: qué decir / qué NO decir, claims, formato visual.</summary>

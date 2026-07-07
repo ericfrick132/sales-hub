@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SalesHub.Core.Abstractions;
@@ -22,13 +23,15 @@ public class AiImageGenerator : ISocialAssetGenerator
     private readonly HttpClient _http;
     private readonly ImageGenOptions _opts;
     private readonly ApplicationDbContext _db;
+    private readonly BrandLogoService _logos;
     private readonly ILogger<AiImageGenerator> _log;
 
-    public AiImageGenerator(HttpClient http, IOptions<ImageGenOptions> opts, ApplicationDbContext db, ILogger<AiImageGenerator> log)
+    public AiImageGenerator(HttpClient http, IOptions<ImageGenOptions> opts, ApplicationDbContext db, BrandLogoService logos, ILogger<AiImageGenerator> log)
     {
         _http = http;
         _opts = opts.Value;
         _db = db;
+        _logos = logos;
         _log = log;
         _http.BaseAddress = new Uri(_opts.ResolveBaseUrl().TrimEnd('/') + "/");
         _http.Timeout = TimeSpan.FromSeconds(_opts.TimeoutSeconds);
@@ -63,8 +66,51 @@ public class AiImageGenerator : ISocialAssetGenerator
         var prompt = BuildBrandPrompt(profile, post);
         var bytes = await GenerateBytesAsync(prompt, post.Format, ct);
         if (bytes == null) return null;
+        // Pegamos los logos REALES (la IA no los dibuja): el de marca siempre, y los de
+        // feature (MercadoPago/WhatsApp) solo si el posteo los menciona de verdad.
+        bytes = await ApplyLogosAsync(profile, post, bytes, ct);
         return await PersistAsync(bytes, post.Id, ct);
     }
+
+    /// <summary>Compone el logo de marca + logos de feature (contextuales) sobre la imagen.</summary>
+    private async Task<byte[]> ApplyLogosAsync(PostingProfile profile, SocialPost post, byte[] bytes, CancellationToken ct)
+    {
+        try
+        {
+            byte[]? brand = null;
+            if (profile.BrandLogoAssetId is { } logoId)
+                brand = await _db.SocialPostAssets.AsNoTracking()
+                    .Where(a => a.Id == logoId).Select(a => a.Content).FirstOrDefaultAsync(ct);
+
+            var text = $"{post.Caption} {post.Concept} {post.OverlayText}".ToLowerInvariant();
+            var featureIds = new List<Guid>();
+            if (text.Contains("mercadopago") || text.Contains("mercado pago")) AddFeature(featureIds, "mercadopago");
+            if (text.Contains("whatsapp") || text.Contains("bot")) AddFeature(featureIds, "whatsapp");
+
+            var featureLogos = new List<byte[]>();
+            foreach (var fid in featureIds)
+            {
+                var b = await _db.SocialPostAssets.AsNoTracking().Where(a => a.Id == fid).Select(a => a.Content).FirstOrDefaultAsync(ct);
+                if (b is { Length: > 0 }) featureLogos.Add(b);
+            }
+
+            if (brand is null && featureLogos.Count == 0) return bytes;
+            return await _logos.CompositeAsync(bytes, brand, featureLogos, ct);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "No pude aplicar logos"); return bytes; }
+    }
+
+    // Los logos de feature (globales) se guardan como SocialPostAssets con un id fijo por clave.
+    private static readonly Dictionary<string, Guid> FeatureLogoIds = new()
+    {
+        ["mercadopago"] = Guid.Parse("00000000-0000-0000-0000-0000000000a1"),
+        ["whatsapp"] = Guid.Parse("00000000-0000-0000-0000-0000000000a2"),
+    };
+    private static void AddFeature(List<Guid> ids, string key)
+    {
+        if (FeatureLogoIds.TryGetValue(key, out var id)) ids.Add(id);
+    }
+    public static Guid FeatureLogoId(string key) => FeatureLogoIds.TryGetValue(key, out var id) ? id : Guid.Empty;
 
     // ── Prompt de marca ────────────────────────────────────────────────────
     private static string BuildBrandPrompt(PostingProfile profile, SocialPost post)
