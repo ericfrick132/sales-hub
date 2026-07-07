@@ -10,6 +10,7 @@ interface PostingProfile {
   brandGuidelines: string; targetAudience: string; contentPillars: string[];
   postHours: number[]; postDays: number[]; postsPerDay: number;
   landingUrl?: string; landingKnowledge?: string; landingKnowledgeAt?: string;
+  brandLogoAssetId?: string | null;
 }
 interface PostingChannel {
   id: string; productKey: string; platform: string; enabled: boolean;
@@ -219,6 +220,7 @@ export default function Posteos() {
               {bufferQ.isError && (
                 <div className="text-[11px] text-amber-600 mt-2">⚠️ No pude leer tus canales de Buffer (revisá el token). Podés pegar el channelId a mano abajo.</div>
               )}
+              <LogoEditor key={`logo-${profile.productKey}`} profile={profile} />
             </div>
 
             {/* Landing: fuente real de features/precios */}
@@ -392,6 +394,46 @@ function PublishNowPanel() {
           <p className="text-[11px] text-slate-400">Genera contenido nuevo con IA + imagen/video y lo sube inmediato (shareNow) a cada cuenta. Los videos tardan 1-2 min.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Logo de marca: se compone sobre cada imagen (la IA no lo dibuja) ─────────
+const assetUrl = (id: string) => `${(import.meta as any).env?.VITE_API_URL ?? '/api'}/posteos/assets/${id}.png`;
+
+function LogoEditor({ profile }: { profile: PostingProfile }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  async function upload(file: File) {
+    setBusy(true);
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      await api.post(`/posteos/profiles/${profile.productKey}/logo`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success('Logo subido');
+      qc.invalidateQueries({ queryKey: ['posteos-profiles'] });
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló'); } finally { setBusy(false); }
+  }
+  async function autoFetch() {
+    setBusy(true);
+    try {
+      await api.post(`/posteos/profiles/${profile.productKey}/logo/fetch`);
+      toast.success('Logo traído de la landing');
+      qc.invalidateQueries({ queryKey: ['posteos-profiles'] });
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'No encontré logo, subilo a mano'); } finally { setBusy(false); }
+  }
+  return (
+    <div className="mt-3 flex items-center gap-3 border-t border-slate-100 pt-3">
+      <div className="w-12 h-12 rounded border bg-slate-50 flex items-center justify-center overflow-hidden shrink-0">
+        {profile.brandLogoAssetId
+          ? <img src={assetUrl(profile.brandLogoAssetId)} alt="logo" className="max-w-full max-h-full object-contain" />
+          : <span className="text-[10px] text-slate-400">sin logo</span>}
+      </div>
+      <div className="text-xs text-slate-500 flex-1">Logo de marca — se pega en cada imagen generada.</div>
+      <label className="btn-secondary text-[11px] cursor-pointer">
+        {busy ? '…' : 'Subir'}
+        <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+      </label>
+      <button className="btn-secondary text-[11px]" disabled={busy} onClick={autoFetch}>Auto</button>
     </div>
   );
 }
