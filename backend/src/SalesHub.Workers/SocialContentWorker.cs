@@ -48,6 +48,27 @@ public class SocialContentWorker : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         if (!await db.IsFlagOnAsync("posteos", _config.GetValue<bool>("Workers:PosteosAutoStart", true), ct))
             return;
+
+        // Reaper: los "Publicar YA" corren en un Task.Run del API; si el contenedor se
+        // reinicia (deploy) o la DB tiene un timeout a mitad, el posteo queda colgado en
+        // GeneratingAsset para siempre. Marcamos Error los que llevan >15 min ahí, así el
+        // usuario ve que falló y puede reintentar (en vez de un spinner eterno).
+        try
+        {
+            var stuckCutoff = DateTimeOffset.UtcNow.AddMinutes(-15);
+            var stuck = await db.SocialPosts
+                .Where(s => s.Status == SocialPostStatus.GeneratingAsset && s.UpdatedAt < stuckCutoff)
+                .ToListAsync(ct);
+            foreach (var s in stuck)
+            {
+                s.Status = SocialPostStatus.Error;
+                s.Error = "La generación se interrumpió (reinicio o timeout). Reintentá con Publicar YA.";
+                s.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            if (stuck.Count > 0) { await db.SaveChangesAsync(ct); _log.LogWarning("Reaper: {N} posteos colgados en GeneratingAsset → Error", stuck.Count); }
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Reaper de posteos colgados falló"); }
+
         var profiles = await db.PostingProfiles.Where(p => p.Enabled).ToListAsync(ct);
 
         foreach (var profile in profiles)
