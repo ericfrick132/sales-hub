@@ -40,7 +40,7 @@ public class OnboardingService
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private const string NL = "[NUEVO_MENSAJE]";
 
-    public async Task<OnboardingResult> ProcessAsync(Lead lead, string lastMessage, OnboardingConfig cfg, CancellationToken ct)
+    public async Task<OnboardingResult> ProcessAsync(Lead lead, string lastMessage, OnboardingConfig cfg, CancellationToken ct, string? recentBurst = null)
     {
         var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
         if (ob is null)
@@ -51,6 +51,9 @@ public class OnboardingService
 
         var msg = (lastMessage ?? string.Empty).Trim();
         var lower = msg.ToLowerInvariant();
+        // El mail puede venir en un mensaje y el lead seguir escribiendo (ráfaga). Buscamos el
+        // mail en TODA la ráfaga desde nuestra última respuesta, no solo en el último mensaje.
+        var burst = string.IsNullOrWhiteSpace(recentBurst) ? msg : recentBurst;
 
         // ── Apps multi-perfil: antes de las preguntas, elegir la persona ───────────────
         var hasPersonas = !string.IsNullOrWhiteSpace(cfg.PersonaQuestion);
@@ -111,8 +114,10 @@ public class OnboardingService
         //    "info@migym.com") → lo dejamos provisionar.
         var atEmailStep = ob.Step == n + 1;
         var inCollect = ob.Step >= 1 && ob.Step <= maxCollect;
+        // En el paso del mail: si el mail está EN LA RÁFAGA (aunque no en el último mensaje),
+        // NO es duda → provisionamos. Solo es duda si NO hay mail en toda la ráfaga y pregunta.
         var isDoubt = atEmailStep
-            ? (!EmailRx.IsMatch(msg) && (KeywordRx.IsMatch(lower) || DoubtRx.IsMatch(msg)))
+            ? (!EmailRx.IsMatch(burst) && (KeywordRx.IsMatch(lower) || DoubtRx.IsMatch(msg)))
             : KeywordRx.IsMatch(lower);
         if (inCollect && isDoubt)
             return new OnboardingResult(null, OffScript: true, Provisioned: false,
@@ -162,7 +167,8 @@ public class OnboardingService
         }
         else if (ob.Step == n + 1)
         {
-            var email = EmailRx.Match(msg);
+            // El mail puede estar en cualquier mensaje de la ráfaga, no solo el último.
+            var email = EmailRx.Match(burst);
             if (!email.Success)
             {
                 // Las dudas ya se resolvieron arriba (off-script). Acá el lead no mandó mail ni

@@ -28,6 +28,13 @@ public class ConversationAgentService
     // Anti-ban: máximo de nudges proactivos auto-enviados por tick (evita ráfagas).
     private const int MaxNudgesPerTickGlobal = 2;
 
+    /// <summary>
+    /// Ventana de "settle": no respondemos hasta que el lead estuvo callado este tiempo desde
+    /// su último mensaje. Evita responder a mitad de una ráfaga (el clásico: manda el mail y
+    /// sigue escribiendo — sin esto contestábamos al 1er mensaje y perdíamos el resto).
+    /// </summary>
+    private const int BurstSettleSeconds = 12;
+
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
     private readonly GroqWhisperClient _whisper;
@@ -141,6 +148,10 @@ public class ConversationAgentService
         var done = 0;
         foreach (var c in candidates)
         {
+            // Settle: si el lead escribió hace menos de BurstSettleSeconds, esperamos al
+            // próximo tick — así juntamos toda la ráfaga (mail + lo que siga) antes de responder.
+            if (DateTimeOffset.UtcNow < c.LastAt.AddSeconds(BurstSettleSeconds)) continue;
+
             var lead = await _db.Leads
                 .Include(l => l.Product)
                 .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
@@ -155,6 +166,14 @@ public class ConversationAgentService
                 .ToListAsync(ct);
 
             var last = c.LastText;
+
+            // Ráfaga = todo lo que el lead escribió desde nuestra última respuesta (o desde el
+            // arranque si nunca respondimos). El onboarding busca el mail en TODA la ráfaga.
+            var lastOutboundAt = thread.LastOrDefault(m => m.Direction == MessageDirection.Outbound)?.Timestamp;
+            var recentBurst = string.Join("\n", thread
+                .Where(m => m.Direction == MessageDirection.Inbound
+                         && (lastOutboundAt == null || m.Timestamp > lastOutboundAt))
+                .Select(m => m.Text));
 
             // ── Heurísticos SIN IA: resuelven gratis el ruido (auto-responders de los
             // propios gimnasios, rechazos, números equivocados, pedidos de no contacto).
@@ -227,7 +246,7 @@ public class ConversationAgentService
 
             if (runOnboarding)
             {
-                var ob = await _onboarding.ProcessAsync(lead, last, onbCfg!, ct);
+                var ob = await _onboarding.ProcessAsync(lead, last, onbCfg!, ct, recentBurst);
                 if (!ob.OffScript)
                 {
                     // Audio del pitch (nota de voz, variante al azar). En autoservicio el audio precede al
