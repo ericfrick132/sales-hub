@@ -79,6 +79,8 @@ public class AiImageGenerator : ISocialAssetGenerator
             _ => "square 1:1 composition",
         };
         sb.Append($". Social media {post.Format.ToString().ToLowerInvariant()} for {post.Platform}, {aspect}, clean and modern.");
+        // Ancla cultural: si aparece gente/lugares, que se lean latinoamericanos, no asiáticos ni stock USA.
+        sb.Append(" If people or places appear, they must read as Latin American / Argentine (latino features, Spanish-language signage), never Asian or generic US stock imagery.");
         if (!string.IsNullOrWhiteSpace(profile.BrandColorsJson) && profile.BrandColorsJson.Trim() != "{}")
             sb.Append($" Use this brand color palette (exact hex): {profile.BrandColorsJson}.");
         // Texto en la imagen: SOLO el overlay corto que Claude escribió como copy.
