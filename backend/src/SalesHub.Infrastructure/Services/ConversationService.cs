@@ -21,6 +21,13 @@ public class ConversationService
     private readonly ILogger<ConversationService> _log;
     private static readonly Regex NonDigit = new(@"\D", RegexOptions.Compiled);
 
+    // Mensajes automáticos que las apps mandan por la MISMA línea de WhatsApp (OTP de
+    // login "*GymHero* — tu código para entrar es…", reportes "📊 *SESIÓN - TurnosPro*",
+    // recordatorios "te dejo un nuevo codigo…"). No son takeover humano.
+    private static readonly Regex AppSystemMsgRx = new(
+        @"(tu c[oó]digo para entrar|c[oó]digo para que ingreses|^📊 \*?SESI[OÓ]N|^\*(GymHero|TurnosPro|ArchiCloud|PlayCrew|UniStock|GestorZap)\*\s*—)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILogger<ConversationService> log)
     {
         _db = db; _evo = evo; _log = log;
@@ -202,6 +209,11 @@ public class ConversationService
             && await _db.ConversationMessages.AnyAsync(m => m.WhatsappMessageId == incoming.MessageId, ct))
             return true;
 
+        // Mensajes de SISTEMA de las apps que comparten la línea (OTP de login, reportes
+        // de sesión, etc.): no son un takeover humano — se registran en el hilo pero NO
+        // mutean el bot. Sin esto, cada OTP que la app manda al lead apaga el bot.
+        var isAppSystemMsg = AppSystemMsgRx.IsMatch(text);
+
         // Mensaje manual del humano desde el celu: registrar + mutear.
         _db.ConversationMessages.Add(new ConversationMessage
         {
@@ -217,12 +229,18 @@ public class ConversationService
             IsRead = true,
             RawJson = incoming.RawJson
         });
-        lead.BotMutedAt ??= DateTimeOffset.UtcNow;
-        lead.AiSuggestedReply = null;
-        lead.AiSuggestedReplyAt = null;
+        if (!isAppSystemMsg)
+        {
+            lead.BotMutedAt ??= DateTimeOffset.UtcNow;
+            lead.AiSuggestedReply = null;
+            lead.AiSuggestedReplyAt = null;
+        }
         lead.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        _log.LogInformation("Takeover: mensaje manual detectado en lead {Lead} → bot muteado", lead.Id);
+        _log.LogInformation(
+            isAppSystemMsg
+                ? "Mensaje de sistema de app registrado en lead {Lead} (sin mutear)"
+                : "Takeover: mensaje manual detectado en lead {Lead} → bot muteado", lead.Id);
         return true;
     }
 
