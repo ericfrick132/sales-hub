@@ -16,11 +16,13 @@ public class WebhookController : ControllerBase
     private readonly ConversationService _conv;
     private readonly AudioTranscriptionRelay _relay;
     private readonly InspirationIntakeRelay _inspiration;
+    private readonly VoiceCalibrationRelay _calibration;
     private readonly ILogger<WebhookController> _log;
 
-    public WebhookController(ConversationService conv, AudioTranscriptionRelay relay, InspirationIntakeRelay inspiration, ILogger<WebhookController> log)
+    public WebhookController(ConversationService conv, AudioTranscriptionRelay relay, InspirationIntakeRelay inspiration,
+        VoiceCalibrationRelay calibration, ILogger<WebhookController> log)
     {
-        _conv = conv; _relay = relay; _inspiration = inspiration; _log = log;
+        _conv = conv; _relay = relay; _inspiration = inspiration; _calibration = calibration; _log = log;
     }
 
     [HttpPost("evolution")]
@@ -65,6 +67,9 @@ public class WebhookController : ControllerBase
                 // Intake maestro (inspiraciones / PDF ruteado): corre ANTES que el relay de
                 // transcripción para que el batch no se robe las imágenes del número maestro.
                 // Los audios sueltos del maestro los deja pasar (siguen a transcripción).
+                // Calibración de voz (self-chat, comando "calibrar"): corre PRIMERO — solo toma
+                // mensajes del propio dueño en su self-chat durante una sesión activa.
+                if (await _calibration.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _inspiration.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _relay.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 // fromMe = mensaje saliente por la línea. Takeover humano: "-" mutea el bot

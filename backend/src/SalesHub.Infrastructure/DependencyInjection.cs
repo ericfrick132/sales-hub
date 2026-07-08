@@ -126,6 +126,7 @@ public static class DependencyInjection
         services.AddScoped<OnboardingService>();
         services.AddScoped<ConversationAgentService>();
         services.AddScoped<VoiceNoteService>();
+        services.AddScoped<VoiceCalibrationRelay>();
         services.AddScoped<SeoContentService>();
         services.AddScoped<BlogPublisher>();
 

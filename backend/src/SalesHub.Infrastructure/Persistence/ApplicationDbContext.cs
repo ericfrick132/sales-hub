@@ -65,6 +65,7 @@ public class ApplicationDbContext : DbContext
 
     // Reglas duras genéricas de la IA de ventas (CRUD admin; se inyectan al system prompt).
     public DbSet<AiRule> AiRules => Set<AiRule>();
+    public DbSet<VoiceCalibrationTake> VoiceCalibrationTakes => Set<VoiceCalibrationTake>();
 
     // Onboarding de ads multi-app: estado por lead + config por producto.
     public DbSet<LeadOnboarding> LeadOnboardings => Set<LeadOnboarding>();
