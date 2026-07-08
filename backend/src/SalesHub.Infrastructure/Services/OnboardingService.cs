@@ -211,6 +211,35 @@ public class OnboardingService
         return new OnboardingResult(reply, OffScript: false, Provisioned: provisioned, WithPitchAudio: withAudio);
     }
 
+    /// <summary>
+    /// SOPORTE REAL: regenera el acceso del lead contra la app (bot-register es idempotente:
+    /// para cuentas existentes devuelve un link fresco de auto-login). Actualiza AccessUrl.
+    /// Devuelve null si no hay config/email o si la app falló — el caller decide el fallback.
+    /// Caso real que motiva esto: lead con cuenta creada pero link roto/viejo al que el bot
+    /// le "inventaba" instrucciones en vez de darle un acceso que funcione.
+    /// </summary>
+    public async Task<string?> RegenerateAccessAsync(Lead lead, LeadOnboarding ob, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(ob.Email)) return null;
+        var cfg = await _db.OnboardingConfigs.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.ProductKey == lead.ProductKey, ct);
+        if (cfg is null) return null;
+        OnboardingPersona? persona = null;
+        if (!string.IsNullOrWhiteSpace(ob.PersonaKey))
+            persona = await _db.Set<OnboardingPersona>().AsNoTracking()
+                .FirstOrDefaultAsync(p => p.ProductKey == lead.ProductKey && p.Key == ob.PersonaKey, ct);
+        var provisionUrl = persona is null ? cfg.ProvisionUrl : persona.ProvisionUrl;
+        var nameField = persona is null ? cfg.ProvisionNameField : persona.ProvisionNameField;
+        var url = await _provision.RegisterAsync(provisionUrl, nameField,
+            ob.GymName ?? lead.Name, ob.Email!, ob.ContactName, cfg.ProductKey, ct, persona?.ProvisionExtra);
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        ob.AccessUrl = url;
+        ob.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Soporte: acceso regenerado para lead {Lead} ({Product})", lead.Id, cfg.ProductKey);
+        return url;
+    }
+
     private static string Join(string a, string b) =>
         string.IsNullOrWhiteSpace(a) ? b : (string.IsNullOrWhiteSpace(b) ? a : a + NL + b);
 

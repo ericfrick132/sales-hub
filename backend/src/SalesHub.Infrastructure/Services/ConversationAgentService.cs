@@ -210,17 +210,24 @@ public class ConversationAgentService
             }
 
             // ── Post-alta: si ya le creamos la cuenta (onboarding provisionado), el alta terminó.
-            // Le damos SOPORTE en vez de dejarlo mudo: si pide el link se lo reenviamos al toque
-            // (ya lo tenemos); el resto de dudas las contesta el aside del onboarding más abajo.
+            // SOPORTE REAL en vez de improvisar: si pide el link / no puede entrar / no tiene
+            // contraseña, REGENERAMOS el acceso contra la app (bot-register idempotente devuelve
+            // un link fresco de auto-login) y le mandamos ese. Fallback: el guardado. Nunca se
+            // le "explica" un acceso inventado.
             var onb = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
-            if (onb?.ProvisionedAt != null && !string.IsNullOrWhiteSpace(onb.AccessUrl)
-                && AsksForAccessLink(last))
+            if (onb?.ProvisionedAt != null && AsksForAccessLink(last)
+                && (!string.IsNullOrWhiteSpace(onb.Email) || !string.IsNullOrWhiteSpace(onb.AccessUrl)))
             {
-                await OnboardingSendAsync(lead,
-                    $"tu link de acceso, entrás directo (sin formularios):[NUEVO_MENSAJE]{onb.AccessUrl}", ct);
-                await _db.SaveChangesAsync(ct);
-                done++;
-                continue;
+                var fresh = await _onboarding.RegenerateAccessAsync(lead, onb, ct);
+                var url = fresh ?? onb.AccessUrl;
+                if (!string.IsNullOrWhiteSpace(url))
+                {
+                    await OnboardingSendAsync(lead,
+                        $"entrá con este link, es acceso directo (sin usuario ni contraseña):[NUEVO_MENSAJE]{url}[NUEVO_MENSAJE]avisame si te abre bien, ¿dale?", ct);
+                    await _db.SaveChangesAsync(ct);
+                    done++;
+                    continue;
+                }
             }
 
             // ── Onboarding de ads MULTI-APP. Gated por flag 'onboarding' + config Enabled de la app.
@@ -370,7 +377,7 @@ public class ConversationAgentService
     }
 
     private static readonly Regex AccessLinkRx = new(
-        @"(link|enlace|url|ingres|entrar|acced|acceso|logue|log ?in|inici[aá]r? sesi[oó]n|no me lleg|no puedo entrar|c[oó]mo entro|d[oó]nde entro|clave|contrase|password)",
+        @"(link|enlace|url|ingres|entrar|acced|acceso|logue|log ?in|inici[aá]r? sesi[oó]n|no me lleg|no puedo entrar|no pude entrar|c[oó]mo entro|d[oó]nde entro|clave|contrase|password|regist|c[oó]digo|no (me )?(anda|funciona|carga|abre)|error|pantalla (en )?blanc)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>El lead ya provisionado pide el acceso/link/credenciales → se lo reenviamos.</summary>
