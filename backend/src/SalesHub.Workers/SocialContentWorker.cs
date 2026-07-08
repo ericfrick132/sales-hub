@@ -74,7 +74,12 @@ public class SocialContentWorker : BackgroundService
         foreach (var profile in profiles)
         {
             if (_ranThisHour.Contains(profile.ProductKey)) continue;
-            if (!(profile.PostHours?.Contains(hour) ?? false)) continue;
+            // CATCH-UP: el cupo del día es acumulativo (slots que ya pasaron, incluida la hora
+            // actual). Si un deploy/outage se comió un slot (pasó 2026-07-08: el bug de
+            // slides_json tiró TODOS los inserts del día), el próximo tick recupera el
+            // faltante en vez de perder el día. Con el cupo completo, el count corta en 0.
+            var slotsPassed = (profile.PostHours ?? new List<int>()).Count(h => h <= hour);
+            if (slotsPassed == 0) continue;
             // Días de la semana: vacío = todos. (0=Domingo … 6=Sábado)
             if (profile.PostDays is { Count: > 0 } && !profile.PostDays.Contains((int)DateTime.Now.DayOfWeek)) continue;
             _ranThisHour.Add(profile.ProductKey);
@@ -83,18 +88,21 @@ public class SocialContentWorker : BackgroundService
                 .Where(c => c.ProductKey == profile.ProductKey && c.Enabled)
                 .ToListAsync(ct);
             var n = Math.Max(1, profile.PostsPerDay);
+            var target = n * slotsPassed; // cupo del día hasta esta hora, POR CANAL
             // Guard de reinicio: _ranThisHour vive en memoria y cada deploy lo borra —
-            // sin este check en DB, un redeploy dentro del slot duplica el posteo
-            // (pasó: gymhero x3 el 7/7 por los deploys de la mañana).
+            // el conteo en DB evita duplicar (pasó: gymhero x3 el 7/7 por los deploys).
             var now = DateTimeOffset.Now;
-            var slotStart = new DateTimeOffset(now.Year, now.Month, now.Day, hour, 0, 0, now.Offset);
+            var dayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, now.Offset);
             foreach (var channel in channels)
             {
-                var already = await db.SocialPosts.CountAsync(s =>
+                // Por canal REAL (plataforma + formato): antes se contaba por plataforma sola
+                // y el canal de Stories competía por el cupo con el de feed (se starveaba).
+                var created = await db.SocialPosts.CountAsync(s =>
                     s.ProductKey == profile.ProductKey
                     && s.Platform == channel.Platform
-                    && s.CreatedAt >= slotStart, ct);
-                for (var i = already; i < n; i++)
+                    && s.Format == channel.Format
+                    && s.CreatedAt >= dayStart, ct);
+                for (var i = created; i < target; i++)
                 {
                     try { await GenerateOneAsync(scope, db, profile, channel, ct); }
                     catch (Exception ex) { _log.LogError(ex, "Posteo gen falló para {Product}/{Net}", profile.ProductKey, channel.Platform); }
