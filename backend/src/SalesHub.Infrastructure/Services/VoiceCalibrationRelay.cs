@@ -37,8 +37,25 @@ public class VoiceCalibrationRelay
         public DateTimeOffset LastActivity = DateTimeOffset.UtcNow;
     }
 
-    // Estado en memoria por instancia (el relay es scoped; la sesión sobrevive al request).
+    // Estado en memoria (el relay es scoped; la sesión sobrevive al request). La sesión se
+    // keyea por NÚMERO (no por instancia): la misma línea de WhatsApp puede estar conectada
+    // como varias instancias de Evolution y todas entregan los mismos mensajes.
     private static readonly ConcurrentDictionary<string, Session> Sessions = new();
+
+    // Dedup de message-ids: Evolution re-entrega eventos y las instancias duplicadas mandan
+    // el MISMO mensaje (mismo id) una vez cada una — sin esto, cada entrega re-dispara el
+    // guion y se arma una tormenta de mensajes (pasó en el primer test real).
+    private static readonly ConcurrentDictionary<string, DateTimeOffset> Recent = new();
+
+    /// <summary>True si es la primera vez que vemos este message-id (y lo marca visto).</summary>
+    private static bool MarkProcessed(string? messageId)
+    {
+        if (string.IsNullOrWhiteSpace(messageId)) return true;
+        var now = DateTimeOffset.UtcNow;
+        foreach (var kv in Recent)
+            if (now - kv.Value > TimeSpan.FromMinutes(10)) Recent.TryRemove(kv.Key, out _);
+        return Recent.TryAdd(messageId!, now);
+    }
 
     /// <summary>
     /// Banco de guiones. Se va AMPLIANDO en cada iteración de fine-tuning — la sesión
@@ -79,7 +96,7 @@ public class VoiceCalibrationRelay
         if (incoming.FromMe && !selfChat) return false;
         var phone = Digits(incoming.FromPhone ?? incoming.FromJid);
         if (phone.Length < 8) return false;
-        var sessionKey = $"{incoming.InstanceName}:{phone[^8..]}";
+        var sessionKey = phone[^8..];
 
         var lower = text.ToLowerInvariant();
         var isAudio = IsAudioMessage(incoming.RawJson);
@@ -97,6 +114,7 @@ public class VoiceCalibrationRelay
         if (!isAudio && (lower == "calibrar" || lower == "calibrar voz"))
         {
             if (!selfChat && !await IsAllowedAsync(phone, ct)) return false;
+            if (!MarkProcessed(incoming.MessageId)) return true; // entrega duplicada del webhook
             var startIndex = await FirstPendingIndexAsync(ct);
             session = new Session { Index = startIndex };
             Sessions[sessionKey] = session;
@@ -111,6 +129,7 @@ public class VoiceCalibrationRelay
         if (session is null) return false;
 
         session.LastActivity = DateTimeOffset.UtcNow;
+        if (!MarkProcessed(incoming.MessageId)) return true; // entrega duplicada del webhook
 
         if (isAudio)
         {
