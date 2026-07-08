@@ -293,6 +293,70 @@ public class ProductsController : ControllerBase
         .ToList();
     }
 
+    public record OpenerStatRow(
+        string Prefix,
+        string SampleMessage,
+        int SentLeads,
+        int Replied,
+        double ReplyRate,
+        int Interested,
+        int DemoScheduled,
+        int Closed);
+
+    /// <summary>
+    /// Performance por TEXTO enviado (agrupa los outbox Sent por prefijo normalizado del
+    /// mensaje). Es el símil de audio-stats para las variantes de texto: como el spin-text
+    /// deja el render exacto en Outbox.Message, esto permite comparar estilos de opener
+    /// (ej: "me pasaron tu numero..." vs "sorry que te joda, soy...") con datos reales,
+    /// incluso retroactivos. Un lead cuenta una sola vez por grupo (por más steps que tenga).
+    /// </summary>
+    [HttpGet("{productKey}/opener-stats")]
+    public async Task<ActionResult<IEnumerable<OpenerStatRow>>> OpenerStats(
+        string productKey, [FromQuery] int prefixLen = 25, [FromQuery] int top = 12, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        prefixLen = Math.Clamp(prefixLen, 10, 120);
+
+        var rows = await _db.Outbox.AsNoTracking()
+            .Where(o => o.Status == OutboxStatus.Sent
+                     && o.Channel == MessageChannel.WhatsApp
+                     && o.Message != null && o.Message != "")
+            .Join(_db.Leads.AsNoTracking().Where(l => l.ProductKey == productKey),
+                o => o.LeadId, l => l.Id, (o, l) => new
+                {
+                    o.LeadId,
+                    o.Message,
+                    LeadStatus = l.Status,
+                    Replied = l.FirstReplyAt != null
+                })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r =>
+            {
+                var norm = string.Join(' ', r.Message!.Trim().ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+                return norm.Length <= prefixLen ? norm : norm[..prefixLen];
+            })
+            .Select(g =>
+            {
+                // Un lead una sola vez por grupo (una cadencia puede repetir textos).
+                var leads = g.GroupBy(r => r.LeadId).Select(x => x.First()).ToList();
+                var replied = leads.Count(r => r.Replied);
+                return new OpenerStatRow(
+                    Prefix: g.Key,
+                    SampleMessage: g.First().Message!.Length > 160 ? g.First().Message![..160] : g.First().Message!,
+                    SentLeads: leads.Count,
+                    Replied: replied,
+                    ReplyRate: leads.Count > 0 ? Math.Round((double)replied / leads.Count, 4) : 0,
+                    Interested: leads.Count(r => r.LeadStatus is LeadStatus.Interested or LeadStatus.DemoScheduled or LeadStatus.Closed),
+                    DemoScheduled: leads.Count(r => r.LeadStatus is LeadStatus.DemoScheduled or LeadStatus.Closed),
+                    Closed: leads.Count(r => r.LeadStatus == LeadStatus.Closed));
+            })
+            .OrderByDescending(r => r.SentLeads)
+            .Take(Math.Clamp(top, 1, 50))
+            .ToList();
+    }
+
     private static Product Map(Product p, CreateOrUpdateProductRequest r)
     {
         p.ProductKey = r.ProductKey;
