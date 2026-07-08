@@ -47,7 +47,7 @@ public class TestSendController : ControllerBase
 
     public record CadenceRequest(Guid ProductId, Guid SellerId, string Phone, string? Category);
 
-    public record VoiceNoteRequest(string InstanceName, string Phone, string ChatText, bool Farewell = false);
+    public record VoiceNoteRequest(string InstanceName, string Phone, string ChatText, bool Farewell = false, string? ProductKey = null);
 
     /// <summary>
     /// Prueba end-to-end de la nota de voz IA: reescribe el texto como guion (receta de
@@ -63,7 +63,7 @@ public class TestSendController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.ChatText)) return BadRequest(new { error = "chatText requerido" });
         if (string.IsNullOrWhiteSpace(req.InstanceName)) return BadRequest(new { error = "instanceName requerido" });
 
-        var (ok, script, error) = await _voiceNotes.SendTestAsync(req.InstanceName, phone, req.ChatText, req.Farewell, ct);
+        var (ok, script, error) = await _voiceNotes.SendTestAsync(req.InstanceName, phone, req.ChatText, req.Farewell, req.ProductKey, ct);
         if (!ok) return StatusCode(502, new { error = error ?? "falló el envío", script });
         _log.LogInformation("VoiceNote de prueba enviada a {Phone} por {Instance}", phone, req.InstanceName);
         return Ok(new { ok = true, script });

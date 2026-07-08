@@ -97,7 +97,10 @@ public class VoiceNoteService
         };
         if (Random.Shared.NextDouble() > prob) return false;
 
-        var script = await BuildScriptAsync(reply, trigger, ct);
+        // Datos reales del producto: única fuente de verdad para precios/planes/features
+        // en el guion (el modelo tiene PROHIBIDO inventar números).
+        var facts = BuildProductFacts(lead.Product!);
+        var script = await BuildScriptAsync(reply, trigger, facts, ct);
         if (string.IsNullOrWhiteSpace(script)) return false;
 
         var mp3 = await _tts.SynthesizeAsync(script!, _opts.VoiceId,
@@ -168,14 +171,17 @@ public class VoiceNoteService
         return Trigger.None;
     }
 
-    /// <summary>
-    /// Reescribe la respuesta de chat como guion de nota de voz con la receta aprobada.
-    /// Público para poder probarlo end-to-end desde el panel de test.
-    /// </summary>
-    public async Task<string?> BuildScriptAsync(string chatReply, CancellationToken ct)
-        => await BuildScriptAsync(chatReply, Trigger.Decisive, ct);
+    /// <summary>Contexto real del producto para el guion (precios/planes/features verdaderos).</summary>
+    private static string? BuildProductFacts(Product product)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(product.DisplayName)) parts.Add($"App: {product.DisplayName}");
+        if (!string.IsNullOrWhiteSpace(product.PriceDisplay)) parts.Add($"Precio: {product.PriceDisplay}");
+        if (!string.IsNullOrWhiteSpace(product.AiSalesPlaybook)) parts.Add($"Playbook (planes/features reales):\n{product.AiSalesPlaybook}");
+        return parts.Count == 0 ? null : string.Join("\n", parts);
+    }
 
-    private async Task<string?> BuildScriptAsync(string chatReply, Trigger trigger, CancellationToken ct)
+    private async Task<string?> BuildScriptAsync(string chatReply, Trigger trigger, string? productFacts, CancellationToken ct)
     {
         var farewell = trigger == Trigger.Farewell
             ? " Es una DESPEDIDA: cerrá el guion con \"un abrazo\" (literal, al final)."
@@ -193,24 +199,35 @@ public class VoiceNoteService
             "- Micro-pausas con puntos suspensivos (\"...\") en las dudas naturales. Sin emojis, sin markdown.\n" +
             "- Evitá cadenas de plurales con S seguidas (\"alumnos ni de clases\" → reformulá) y la frase \"lo vemos\" al final.\n" +
             "- Las preguntas van al MEDIO del guion, nunca al final." + farewell + "\n" +
-            $"- Máximo {_opts.MaxScriptWords} palabras (es un audio corto de WhatsApp).\n" +
+            "- Si el tema es PRECIO o PLANES: decí los números CONCRETOS y pasá por TODOS los planes con lo que " +
+            "incluye cada uno (features), como un vendedor que se lo sabe de memoria — nada de \"tenemos varios planes\" " +
+            "a secas. Usá EXCLUSIVAMENTE los datos reales del producto que van abajo; si un número no está ahí, no lo digas. " +
+            $"En ese caso podés estirarte hasta {_opts.MaxScriptWords * 2} palabras.\n" +
+            $"- Si NO es de precio: máximo {_opts.MaxScriptWords} palabras (audio corto de WhatsApp).\n" +
             "Devolvé SOLO el guion, sin comillas ni explicación.";
-        var user = $"Mensaje de chat a convertir en guion de audio:\n«{chatReply}»";
+        var user = $"Mensaje de chat a convertir en guion de audio:\n«{chatReply}»" +
+                   (string.IsNullOrWhiteSpace(productFacts) ? "" : $"\n\nDATOS REALES DEL PRODUCTO:\n{productFacts}");
         var script = await _claude.CompleteAsync(system, user, "voicenote", ct);
         if (string.IsNullOrWhiteSpace(script)) return null;
         script = script!.Trim().Trim('"', '«', '»');
         // Guarda dura: si el modelo se fue de largo, no mandamos un audio eterno.
         var words = script.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length > _opts.MaxScriptWords * 2) return null;
+        if (words.Length > _opts.MaxScriptWords * 3) return null;
         return script;
     }
 
     /// <summary>Envío de PRUEBA end-to-end a un número arbitrario (panel de test, no toca leads).</summary>
     public async Task<(bool ok, string? script, string? error)> SendTestAsync(
-        string instanceName, string phone, string chatReply, bool farewell, CancellationToken ct)
+        string instanceName, string phone, string chatReply, bool farewell, string? productKey, CancellationToken ct)
     {
         if (!_tts.IsConfigured) return (false, null, "ElevenLabs sin API key");
-        var script = await BuildScriptAsync(chatReply, farewell ? Trigger.Farewell : Trigger.Decisive, ct);
+        string? facts = null;
+        if (!string.IsNullOrWhiteSpace(productKey))
+        {
+            var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.ProductKey == productKey, ct);
+            if (product is not null) facts = BuildProductFacts(product);
+        }
+        var script = await BuildScriptAsync(chatReply, farewell ? Trigger.Farewell : Trigger.Decisive, facts, ct);
         if (string.IsNullOrWhiteSpace(script)) return (false, null, "No se pudo generar el guion");
         var mp3 = await _tts.SynthesizeAsync(script!, _opts.VoiceId,
             new ElevenLabsClient.TtsVoiceSettings(_opts.Stability, _opts.SimilarityBoost, _opts.Style, _opts.Speed), ct);
