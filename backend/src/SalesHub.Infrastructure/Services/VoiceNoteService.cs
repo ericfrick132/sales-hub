@@ -195,8 +195,7 @@ public class VoiceNoteService
             "- Voseo SIEMPRE con tilde final: mirá, escuchá, decime, pasame, fijate, entrá, probá, avisame.\n" +
             "- Escribí \"llama/llamar\" como \"shama/shamar\" (yeísmo argentino; SOLO en esas palabras, el resto normal).\n" +
             "- Montos en plata: \"treinta lucas\" en vez de \"30.000 pesos\" (número en palabras + lucas).\n" +
-            "- Usá 1 o 2 conectores de Eric donde suenen naturales: \"nada,\", \"obviamente\", \"así que nada\", \"tranqui\", " +
-            "\"justamente\", \"viste\", \"la verdad\", \"o sea\", \"che\".\n" +
+            EricVoiceStyle.Guide + "\n" +
             "- Micro-pausas con puntos suspensivos (\"...\") en las dudas naturales. Sin emojis, sin markdown.\n" +
             "- Evitá cadenas de plurales con S seguidas (\"alumnos ni de clases\" → reformulá) y la frase \"lo vemos\" al final.\n" +
             "- Las preguntas van al MEDIO del guion, nunca al final." + farewell + "\n" +
@@ -234,6 +233,9 @@ public class VoiceNoteService
             "- Escribí \"llama/llamar\" como \"shama/shamar\" (grafía del yeísmo; solo esas palabras).\n" +
             "- Cifras en letras (\"30.000\" → \"treinta mil\") — sin cambiar la palabra que las acompaña.\n" +
             "- Podés marcar micro-pausas con \"...\" donde el texto ya respira; nada más.\n" +
+            "Como REFERENCIA de entonación (NO para agregar palabras): las muletillas de Eric llevan su ritmo — " +
+            "\"nada,\" y \"bueno,\" van seguidas de coma; \"igual\" suele llevar \"...\"; la coletilla \"dale\" " +
+            "al final SIEMPRE es pregunta (\", ¿dale?\").\n" +
             "Devolvé SOLO el texto adaptado, sin comillas ni explicación.";
         var script = await _claude.CompleteAsync(system, text, "voicenote", ct);
         return string.IsNullOrWhiteSpace(script) ? null : script!.Trim().Trim('"', '«', '»');
