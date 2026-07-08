@@ -137,6 +137,11 @@ public class VoiceCalibrationRelay
         if (isAudio)
         {
             var (key, script) = Scripts[session.Index];
+            // Bajar los bytes YA: los medios de WhatsApp expiran a ~3 semanas y las tomas
+            // valen oro (van al pozo del Professional Voice Clone). Si falla, queda el id.
+            byte[]? audio = null;
+            try { audio = await _evo.GetMediaBase64Async(incoming.InstanceName, incoming.RawJson!, ct); }
+            catch { /* la descarga es best-effort; el message-id queda como respaldo */ }
             _db.Set<VoiceCalibrationTake>().Add(new VoiceCalibrationTake
             {
                 Id = Guid.NewGuid(),
@@ -144,6 +149,7 @@ public class VoiceCalibrationRelay
                 ScriptKey = key,
                 ScriptText = script,
                 WhatsappMessageId = incoming.MessageId,
+                AudioBytes = audio,
             });
             await _db.SaveChangesAsync(ct);
             _log.LogInformation("Calibración: toma guardada {Key} (msg {Msg})", key, incoming.MessageId);

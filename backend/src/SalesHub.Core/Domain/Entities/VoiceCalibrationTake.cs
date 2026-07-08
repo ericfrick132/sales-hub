@@ -16,5 +16,7 @@ public class VoiceCalibrationTake
     public string ScriptText { get; set; } = string.Empty;
     /// <summary>Id del mensaje de audio en WhatsApp/Evolution (para descargar la toma).</summary>
     public string? WhatsappMessageId { get; set; }
+    /// <summary>Bytes del OGG capturados al momento (los medios de WhatsApp expiran a ~3 semanas).</summary>
+    public byte[]? AudioBytes { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
