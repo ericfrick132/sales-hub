@@ -27,6 +27,7 @@ public class FlagsController : ControllerBase
         ("instagram", "Workers:InstagramAutoStart", "Instagram (DMs + follow + scraping)"),
         ("posteos", "Workers:PosteosAutoStart", "Posteos automáticos"),
         ("captacion", "Workers:PipelineAutoStart", "Captación de leads"),
+        ("rebalance", "Workers:RebalanceAutoStart", "Auto-reparto de leads (pool + reconexiones de WhatsApp)"),
         ("seo", "Seo:AutoStart", "Artículos SEO"),
         ("reengage", "LeadImport:AutoStart", "Importar leads B2B (TurnosPro/GymHero)"),
         ("voicenote", "Workers:VoiceNoteAutoStart", "Notas de voz IA (respuestas en audio en momentos decisivos)"),

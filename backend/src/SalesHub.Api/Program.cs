@@ -27,6 +27,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<InstanceMonitorService>();
     builder.Services.AddHostedService<HumanizedSenderService>();
     builder.Services.AddHostedService<PipelineSchedulerService>();
+    builder.Services.AddHostedService<LeadRebalanceWorker>();              // auto-reparto: pool retry + rescate de congelados + drenaje a líneas dedicadas (flag 'rebalance')
     builder.Services.AddHostedService<GooglePlacesSchedulerService>();
     builder.Services.AddHostedService<CompetitorIngestWorker>();
     builder.Services.AddHostedService<TrendsIngestWorker>();

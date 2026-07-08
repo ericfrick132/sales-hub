@@ -108,6 +108,7 @@ public static class DependencyInjection
         services.AddScoped<PipelineService>();
         services.AddScoped<OutboxSender>();
         services.AddScoped<InstanceMonitor>();
+        services.AddScoped<LeadRebalancer>();
         services.AddScoped<ConversationService>();
         // Relay de transcripción de audios (notas de voz → texto, sólo números de la allowlist).
         services.AddScoped<AudioTranscriptionRelay>();
