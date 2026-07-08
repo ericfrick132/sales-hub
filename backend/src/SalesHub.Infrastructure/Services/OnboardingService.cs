@@ -116,9 +116,13 @@ public class OnboardingService
         var inCollect = ob.Step >= 1 && ob.Step <= maxCollect;
         // En el paso del mail: si el mail está EN LA RÁFAGA (aunque no en el último mensaje),
         // NO es duda → provisionamos. Solo es duda si NO hay mail en toda la ráfaga y pregunta.
+        // OJO: la duda se busca en TODA la ráfaga, no solo el último mensaje — el lead suele
+        // preguntar en 2-3 mensajes y cerrar con un "es así" corto; mirando solo el último,
+        // las preguntas se ignoraban y el bot re-pedía el mail (caso real 2026-07-07).
+        var burstLower = burst.ToLowerInvariant();
         var isDoubt = atEmailStep
-            ? (!EmailRx.IsMatch(burst) && (KeywordRx.IsMatch(lower) || DoubtRx.IsMatch(msg)))
-            : KeywordRx.IsMatch(lower);
+            ? (!EmailRx.IsMatch(burst) && (KeywordRx.IsMatch(burstLower) || DoubtRx.IsMatch(burst)))
+            : KeywordRx.IsMatch(burstLower);
         if (inCollect && isDoubt)
             return new OnboardingResult(null, OffScript: true, Provisioned: false,
                 PendingQuestion: atEmailStep ? null : PendingQuestion(ob.Step, n, questions, emailPrompt));
