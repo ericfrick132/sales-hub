@@ -16,6 +16,6 @@ public class LeadOnboardingConfiguration : IEntityTypeConfiguration<LeadOnboardi
         b.Property(x => x.MemberCount).HasMaxLength(120);
         b.Property(x => x.PaymentMethod).HasMaxLength(200);
         b.Property(x => x.Email).HasMaxLength(160);
-        b.Property(x => x.AccessUrl).HasMaxLength(500);
+        b.Property(x => x.AccessUrl).HasMaxLength(2000); // los links de turnos-pro traen JWT de auto-login (~700+ chars)
     }
 }
