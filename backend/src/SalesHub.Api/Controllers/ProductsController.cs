@@ -214,6 +214,14 @@ public class ProductsController : ControllerBase
             if (lead.Seller is null) { noSeller++; continue; }
             if (lead.Seller.EvolutionInstance is null) { noInstance++; continue; }
 
+            // Re-render con la config ACTUAL del producto: sin esto el helper reusa el
+            // RenderedMessage viejo del lead y el resync deja el texto anterior en cola
+            // (que es justo lo que se quiere pisar al editar el template).
+            lead.RenderedMessage = _renderer.Render(lead, product, lead.Seller);
+            lead.WhatsappLink = string.IsNullOrWhiteSpace(lead.WhatsappPhone)
+                ? null
+                : $"https://wa.me/{lead.WhatsappPhone}?text={Uri.EscapeDataString(lead.RenderedMessage ?? "")}";
+
             var rows = OutboxEnqueueHelper.EnqueueLeadMessages(
                 _db, _renderer, lead, product, lead.Seller,
                 lead.WhatsappPhone!, lead.Seller.EvolutionInstance.InstanceName);
