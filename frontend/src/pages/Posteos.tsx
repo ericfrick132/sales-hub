@@ -465,6 +465,8 @@ function LogoEditor({ profile }: { profile: PostingProfile }) {
 function ImageStyleEditor({ profile }: { profile: PostingProfile }) {
   const qc = useQueryClient();
   const [style, setStyle] = useState(profile.imageStyle ?? '');
+  const [testing, setTesting] = useState<'image' | 'video' | null>(null);
+  const [test, setTest] = useState<{ assetUrl: string; prompt: string; kind: string } | null>(null);
   const dirty = style !== (profile.imageStyle ?? '');
 
   async function save() {
@@ -475,17 +477,44 @@ function ImageStyleEditor({ profile }: { profile: PostingProfile }) {
     } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló'); }
   }
 
+  // Prueba con el texto TAL CUAL está en el textarea (no hace falta guardar antes).
+  // Usa el visual del último posteo del producto → compara estilos sobre el mismo concepto.
+  async function probar(kind: 'image' | 'video') {
+    setTesting(kind);
+    const t = toast.loading(kind === 'video' ? 'Generando video de prueba (1-3 min)…' : 'Generando imagen de prueba…');
+    try {
+      const { data } = await api.post(
+        `/posteos/profiles/${profile.productKey}/test-asset`,
+        { imageStyle: style, kind },
+        { timeout: 8 * 60_000 },
+      );
+      setTest(data);
+      toast.success('Listo — mirá el resultado abajo', { id: t });
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló la prueba', { id: t }); }
+    finally { setTesting(null); }
+  }
+
   return (
     <div className="card p-4">
       <div className="flex items-center justify-between mb-1">
         <h3 className="font-semibold">Estilo de imagen (prompt)</h3>
-        <button className="btn-primary text-xs" onClick={save} disabled={!dirty}>Guardar</button>
+        <div className="flex gap-1">
+          <button className="btn-secondary text-xs" onClick={() => probar('image')} disabled={testing !== null}>
+            {testing === 'image' ? 'Generando…' : '▶ Probar imagen'}
+          </button>
+          <button className="btn-secondary text-xs" onClick={() => probar('video')} disabled={testing !== null}>
+            {testing === 'video' ? 'Generando…' : '▶ Probar video'}
+          </button>
+          <button className="btn-primary text-xs" onClick={save} disabled={!dirty}>Guardar</button>
+        </div>
       </div>
       <p className="text-[11px] text-slate-500 mb-2">
         Instrucciones de dirección de arte que van directo al modelo que genera las imágenes y videos
         de <b className="capitalize">{profile.productKey}</b>. Sirve para prohibir cosas
         (ej. "sin caras dramáticas, sin gente estresada") o fijar un estilo (ej. "ilustración flat
-        minimalista, fondo claro, mucho aire"). Vacío = estilo default.
+        minimalista, fondo claro, mucho aire"). Vacío = estilo default. "Probar" genera un asset de
+        muestra con el texto tal cual está acá (aunque no lo hayas guardado), sobre el concepto del
+        último posteo de la app — no publica nada.
       </p>
       <textarea
         className="input w-full text-xs font-mono"
@@ -494,6 +523,18 @@ function ImageStyleEditor({ profile }: { profile: PostingProfile }) {
         value={style}
         onChange={(e) => setStyle(e.target.value)}
       />
+      {test && (
+        <div className="mt-3 border rounded p-2 bg-slate-50">
+          <div className="text-[11px] text-slate-500 mb-1">Resultado de prueba ({test.kind}):</div>
+          {test.kind === 'video'
+            ? <video controls src={test.assetUrl} className="max-h-80 rounded" />
+            : <img src={test.assetUrl} alt="prueba de estilo" className="max-h-80 rounded" />}
+          <details className="mt-1">
+            <summary className="text-[11px] text-slate-400 cursor-pointer">Ver prompt final enviado al modelo</summary>
+            <pre className="text-[10px] whitespace-pre-wrap text-slate-500 mt-1">{test.prompt}</pre>
+          </details>
+        </div>
+      )}
     </div>
   );
 }

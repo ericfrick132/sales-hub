@@ -92,6 +92,51 @@ public class SocialPostsController : ControllerBase
         return Ok(p);
     }
 
+    /// <summary>
+    /// Prueba el estilo de imagen/video TAL CUAL está en el textarea (sin guardar): genera
+    /// un asset suelto (sin SocialPost) usando como base el visual del último posteo del
+    /// producto — así se comparan estilos sobre el mismo concepto. Devuelve la URL del
+    /// asset y el prompt final que se le mandó al modelo.
+    /// </summary>
+    [HttpPost("profiles/{productKey}/test-asset")]
+    public async Task<IActionResult> TestAsset(string productKey, [FromBody] TestAssetRequest req, CancellationToken ct)
+    {
+        var profile = await _db.PostingProfiles.AsNoTracking().FirstOrDefaultAsync(x => x.ProductKey == productKey, ct);
+        if (profile == null) return NotFound();
+
+        var last = await _db.SocialPosts.AsNoTracking()
+            .Where(p => p.ProductKey == productKey && p.Prompt != null && p.Prompt != "")
+            .OrderByDescending(p => p.CreatedAt)
+            .Select(p => new { p.Prompt, p.OverlayText })
+            .FirstOrDefaultAsync(ct);
+        var visual = last?.Prompt ?? $"Modern eye-catching marketing visual for a SaaS product ({productKey}), showing the core benefit of the app in a clear, simple scene";
+        var overlay = last?.OverlayText ?? string.Empty;
+
+        if (string.Equals(req.Kind, "video", StringComparison.OrdinalIgnoreCase))
+        {
+            var vid = _assetGenerators.OfType<FalVideoGenerator>().FirstOrDefault()
+                      ?? HttpContext.RequestServices.GetService<FalVideoGenerator>();
+            if (vid is null || !vid.IsConfigured) return StatusCode(503, new { error = "fal.ai no está configurado." });
+            var r = await vid.GenerateSampleAsync(profile, req.ImageStyle, visual, ct);
+            if (r is null) return StatusCode(502, new { error = "No se pudo generar el video de prueba." });
+            return Ok(new { assetUrl = r.Value.Asset.Url, prompt = r.Value.Prompt, kind = "video" });
+        }
+
+        var img = _assetGenerators.OfType<AiImageGenerator>().FirstOrDefault()
+                  ?? HttpContext.RequestServices.GetRequiredService<AiImageGenerator>();
+        var res = await img.GenerateSampleAsync(profile, req.ImageStyle, visual, overlay, SocialPostFormat.Post, SocialPlatform.Instagram, ct);
+        if (res is null) return StatusCode(502, new { error = "No se pudo generar la imagen de prueba." });
+        return Ok(new { assetUrl = res.Value.Asset.Url, prompt = res.Value.Prompt, kind = "image" });
+    }
+
+    public class TestAssetRequest
+    {
+        /// <summary>Estilo a probar (texto del textarea, puede diferir del guardado). Null = usar el guardado.</summary>
+        public string? ImageStyle { get; set; }
+        /// <summary>"image" (default) o "video".</summary>
+        public string Kind { get; set; } = "image";
+    }
+
     // ── Logo de marca (se compone sobre cada imagen; la IA no dibuja logos) ─
     /// <summary>Sube el logo de la app (multipart) — se pega en cada imagen generada.</summary>
     [HttpPost("profiles/{productKey}/logo")]

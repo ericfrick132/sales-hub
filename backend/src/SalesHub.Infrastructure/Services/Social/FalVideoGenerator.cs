@@ -73,6 +73,26 @@ public class FalVideoGenerator : ISocialAssetGenerator
         return await PersistAsync(url, post.Id, post.NarrationText, ct);
     }
 
+    /// <summary>
+    /// Video de PRUEBA para el editor de estilo (/posteos): mismo prompt de marca que un
+    /// post real pero con un ImageStyle dado (aunque no esté guardado) y sin crear SocialPost.
+    /// </summary>
+    public async Task<(AssetResult Asset, string Prompt)?> GenerateSampleAsync(
+        PostingProfile profile, string? styleOverride, string visualPrompt, CancellationToken ct = default)
+    {
+        var styled = new PostingProfile
+        {
+            BrandColorsJson = profile.BrandColorsJson,
+            BrandVoice = profile.BrandVoice,
+            ImageStyle = styleOverride ?? profile.ImageStyle,
+        };
+        var prompt = BuildBrandPrompt(styled, new SocialPost { Prompt = visualPrompt, Concept = visualPrompt });
+        var url = await GenerateVideoUrlAsync(prompt, "9:16", ct);
+        if (url == null) return null;
+        var asset = await PersistAsync(url, null, null, ct);
+        return (asset, prompt);
+    }
+
     private static string BuildBrandPrompt(PostingProfile profile, SocialPost post)
     {
         var sb = new StringBuilder();

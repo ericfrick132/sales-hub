@@ -93,6 +93,30 @@ public class AiImageGenerator : ISocialAssetGenerator
         return done;
     }
 
+    /// <summary>
+    /// Imagen de PRUEBA para el editor de estilo (/posteos): mismo prompt de marca que un
+    /// post real pero con un ImageStyle dado (aunque no esté guardado) y sin crear SocialPost.
+    /// Devuelve el asset y el prompt final para que el admin vea qué se mandó al modelo.
+    /// </summary>
+    public async Task<(AssetResult Asset, string Prompt)?> GenerateSampleAsync(
+        PostingProfile profile, string? styleOverride, string visualPrompt, string overlayText,
+        SocialPostFormat format, SocialPlatform platform, CancellationToken ct = default)
+    {
+        var styled = new PostingProfile
+        {
+            BrandColorsJson = profile.BrandColorsJson,
+            BrandFonts = profile.BrandFonts,
+            BrandLogoAssetId = profile.BrandLogoAssetId,
+            ImageStyle = styleOverride ?? profile.ImageStyle,
+        };
+        var prompt = BuildBrandPrompt(styled, format, platform, visualPrompt, visualPrompt, overlayText);
+        var bytes = await GenerateBytesAsync(prompt, format, ct);
+        if (bytes == null) return null;
+        bytes = await ApplyLogosForTextAsync(styled, overlayText, bytes, ct);
+        var asset = await PersistAsync(bytes, null, ct);
+        return (asset, prompt);
+    }
+
     /// <summary>Compone el logo de marca + logos de feature (contextuales) sobre la imagen.</summary>
     private Task<byte[]> ApplyLogosAsync(PostingProfile profile, SocialPost post, byte[] bytes, CancellationToken ct)
         => ApplyLogosForTextAsync(profile, $"{post.Caption} {post.Concept} {post.OverlayText}", bytes, ct);
