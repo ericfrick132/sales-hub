@@ -272,7 +272,15 @@ public class InspirationIntakeRelay
         var body = text;
         foreach (var pre in new[] { "tema del día", "tema del dia", "tema:", "tema" })
             if (body.StartsWith(pre, StringComparison.OrdinalIgnoreCase)) { body = body[pre.Length..].TrimStart(':', ' ').Trim(); break; }
+        await SetDailyThemeAsync(incoming, body, ct);
+    }
 
+    /// <summary>
+    /// Fija el tema del día global (o lo saca si <paramref name="body"/> viene vacío/"off"/"clear").
+    /// Reusado por el comando "tema:" y por la opción 3 del menú de ruteo.
+    /// </summary>
+    private async Task SetDailyThemeAsync(ConversationService.IncomingMessage incoming, string body, CancellationToken ct)
+    {
         var row = await _db.DailyThemes.FirstOrDefaultAsync(t => t.Id == 1, ct);
         if (row is null) { row = new DailyTheme { Id = 1 }; _db.DailyThemes.Add(row); }
 
@@ -356,6 +364,22 @@ public class InspirationIntakeRelay
             return;
         }
 
+        // 3 = tema del día: el/los texto(s) que mandaste se fijan como tema (global, todas las apps).
+        if (lower is "3" or "tema del día" or "tema del dia")
+        {
+            var items = TakeUnrouted();
+            var body = string.Join(" ", items
+                .Select(u => u.Kind == IntakeKind.Image ? u.Caption : u.Text)
+                .Where(s => !string.IsNullOrWhiteSpace(s))!).Trim();
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                await ReplyAsync(incoming, "para el tema del día mandame el texto (ej: \"Argentina ganó\"). Una imagen sola no me sirve de tema 🙂.", ct);
+                return;
+            }
+            await SetDailyThemeAsync(incoming, body, ct);
+            return;
+        }
+
         // Cualquier otro texto mientras espera el ruteo: lo tratamos como más contenido.
         AddUnrouted(new UnroutedItem(IntakeKind.Text, null, null, text, incoming.RawJson, DateTimeOffset.UtcNow));
         await AskRouteIfDueAsync(incoming, ct);
@@ -425,6 +449,7 @@ public class InspirationIntakeRelay
             "¿Qué hago con esto? Contestá:\n" +
             "1. 💡 Inspiración (posteos)\n" +
             "2. 📄 PDF de requerimientos\n" +
+            "3. 📅 Tema del día (tiñe los posteos de hoy de todas las apps)\n" +
             "Tip: mandá \"insp\" o \"pdf\" ANTES la próxima y no te pregunto. \"cancelar\" descarta.", ct);
     }
 
