@@ -330,7 +330,7 @@ public class SocialPostsController : ControllerBase
             BufferChannelId = ch.BufferChannelId, Format = ch.Format, AssetKind = ch.AssetKind,
             PostType = gen.Type,
             ContentPillar = gen.Pillar, Concept = gen.Concept, Prompt = gen.Prompt, OverlayText = gen.Overlay, NarrationText = gen.Narration,
-            SlidesJson = gen.Slides is { Count: > 0 } ? SocialPostSlides.FromGenerated(gen.Slides) : string.Empty,
+            SlidesJson = gen.Slides is { Count: > 0 } ? SocialPostSlides.FromGenerated(gen.Slides) : "[]",
             Caption = gen.Caption, Hashtags = gen.Hashtags, GenerationModel = "claude",
             RawJson = gen.RawJson, Status = SocialPostStatus.DraftReady,
         };
@@ -456,7 +456,7 @@ public class SocialPostsController : ControllerBase
             post.PostType = gen.Type;
             post.ContentPillar = gen.Pillar; post.Concept = gen.Concept; post.Prompt = gen.Prompt;
             post.OverlayText = gen.Overlay; post.NarrationText = gen.Narration;
-            post.SlidesJson = gen.Slides is { Count: > 0 } ? SocialPostSlides.FromGenerated(gen.Slides) : string.Empty;
+            post.SlidesJson = gen.Slides is { Count: > 0 } ? SocialPostSlides.FromGenerated(gen.Slides) : "[]";
             post.Caption = gen.Caption; post.Hashtags = gen.Hashtags; post.RawJson = gen.RawJson;
             post.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);

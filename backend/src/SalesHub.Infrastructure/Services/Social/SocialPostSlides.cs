@@ -32,5 +32,5 @@ public static class SocialPostSlides
     public static List<string> AssetUrls(string? slidesJson) =>
         Parse(slidesJson).Where(s => !string.IsNullOrWhiteSpace(s.AssetUrl)).Select(s => s.AssetUrl!).ToList();
 
-    public static bool HasSlides(string? slidesJson) => !string.IsNullOrWhiteSpace(slidesJson);
+    public static bool HasSlides(string? slidesJson) => Parse(slidesJson).Count > 0; // "[]" (vacío jsonb-válido) = sin slides
 }

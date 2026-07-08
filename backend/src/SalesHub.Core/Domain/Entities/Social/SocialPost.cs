@@ -106,7 +106,7 @@ public class SocialPost
     /// Slides de un posteo multi-slide (carrusel de feed / combo de stories), serializadas
     /// como JSON de <see cref="PostSlide"/>[]. Vacío = posteo de una sola imagen/video.
     /// </summary>
-    public string SlidesJson { get; set; } = string.Empty;
+    public string SlidesJson { get; set; } = "[]"; // columna jsonb: "" NO es JSON válido (22P02) — el vacío es "[]"
 
     // ── Asset + publicación ───────────────────────────────────────────────
     /// <summary>URL pública del asset (lo que Buffer consume).</summary>

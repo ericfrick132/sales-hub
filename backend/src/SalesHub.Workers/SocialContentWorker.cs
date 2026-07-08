@@ -157,7 +157,7 @@ public class SocialContentWorker : BackgroundService
             Prompt = gen.Prompt,
             OverlayText = gen.Overlay,
             NarrationText = gen.Narration,
-            SlidesJson = gen.Slides is { Count: > 0 } ? SocialPostSlides.FromGenerated(gen.Slides) : string.Empty,
+            SlidesJson = gen.Slides is { Count: > 0 } ? SocialPostSlides.FromGenerated(gen.Slides) : "[]",
             Caption = gen.Caption,
             Hashtags = gen.Hashtags,
             GenerationModel = "claude",
