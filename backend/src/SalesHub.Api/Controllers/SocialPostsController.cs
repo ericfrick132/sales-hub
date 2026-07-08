@@ -339,6 +339,53 @@ public class SocialPostsController : ControllerBase
         return Ok(post);
     }
 
+    /// <summary>
+    /// Gauge "Posteos hoy" del dashboard admin: por app, generado vs cupo del día
+    /// (acumulado por slots ya pasados — misma lógica que el catch-up del worker),
+    /// con errores y estados. Sin esto, un outage del pipeline es invisible
+    /// (pasó 2026-07-08: 0 posteos en todo el día y nadie se enteró hasta mirar a mano).
+    /// </summary>
+    [HttpGet("today-health")]
+    public async Task<IActionResult> TodayHealth(CancellationToken ct)
+    {
+        var hour = DateTime.Now.Hour;
+        var now = DateTimeOffset.Now;
+        var dayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, now.Offset);
+
+        var profiles = await _db.PostingProfiles.AsNoTracking().Where(p => p.Enabled).ToListAsync(ct);
+        var channels = await _db.PostingChannels.AsNoTracking().Where(c => c.Enabled).ToListAsync(ct);
+        var todays = await _db.SocialPosts.AsNoTracking()
+            .Where(s => s.CreatedAt >= dayStart)
+            .GroupBy(s => new { s.ProductKey, s.Status })
+            .Select(g => new { g.Key.ProductKey, g.Key.Status, N = g.Count() })
+            .ToListAsync(ct);
+
+        var result = profiles.OrderBy(p => p.ProductKey).Select(p =>
+        {
+            var chs = channels.Count(c => c.ProductKey == p.ProductKey);
+            var perSlot = Math.Max(1, p.PostsPerDay) * chs;
+            var slotsPassed = (p.PostHours ?? new List<int>()).Count(h => h <= hour);
+            var rows = todays.Where(t => t.ProductKey == p.ProductKey).ToList();
+            int C(params SocialPostStatus[] st) => rows.Where(r => st.Contains(r.Status)).Sum(r => r.N);
+            return new
+            {
+                productKey = p.ProductKey,
+                channels = chs,
+                postHours = p.PostHours,
+                quotaSoFar = perSlot * slotsPassed,
+                dayQuota = perSlot * (p.PostHours?.Count ?? 0),
+                createdToday = rows.Sum(r => r.N),
+                generating = C(SocialPostStatus.Idea, SocialPostStatus.GeneratingAsset),
+                drafts = C(SocialPostStatus.DraftReady),
+                scheduled = C(SocialPostStatus.PushedToBuffer, SocialPostStatus.Scheduled,
+                              SocialPostStatus.ReadyForWarmr, SocialPostStatus.WarmrUploaded),
+                posted = C(SocialPostStatus.Posted),
+                errors = C(SocialPostStatus.Error),
+            };
+        });
+        return Ok(result);
+    }
+
     /// <summary>Todos los canales de todas las apps (para el multi-select de "Publicar YA").</summary>
     [HttpGet("all-channels")]
     public async Task<IActionResult> AllChannels(CancellationToken ct)

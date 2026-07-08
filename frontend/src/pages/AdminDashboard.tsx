@@ -9,6 +9,7 @@ import SendingControl from '../components/SendingControl';
 import ControlCenter from '../components/ControlCenter';
 import MainCalendar from '../components/MainCalendar';
 import TodayChecklist from '../components/TodayChecklist';
+import PosteosHoy from '../components/PosteosHoy';
 import AdLeadsCard from '../components/AdLeadsCard';
 import Collapsible from '../components/Collapsible';
 
@@ -295,6 +296,7 @@ export default function AdminDashboard() {
       </Collapsible>
 
       <Collapsible title="Agenda automática" subtitle="tareas de hoy y calendario de posteos/runners">
+        <PosteosHoy />
         <TodayChecklist />
         <MainCalendar />
       </Collapsible>
