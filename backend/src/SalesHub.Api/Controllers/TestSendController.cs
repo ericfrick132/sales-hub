@@ -36,14 +36,38 @@ public class TestSendController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
     private readonly IMessageRenderer _renderer;
+    private readonly VoiceNoteService _voiceNotes;
     private readonly ILogger<TestSendController> _log;
 
-    public TestSendController(ApplicationDbContext db, IEvolutionClient evo, IMessageRenderer renderer, ILogger<TestSendController> log)
+    public TestSendController(ApplicationDbContext db, IEvolutionClient evo, IMessageRenderer renderer,
+        VoiceNoteService voiceNotes, ILogger<TestSendController> log)
     {
-        _db = db; _evo = evo; _renderer = renderer; _log = log;
+        _db = db; _evo = evo; _renderer = renderer; _voiceNotes = voiceNotes; _log = log;
     }
 
     public record CadenceRequest(Guid ProductId, Guid SellerId, string Phone, string? Category);
+
+    public record VoiceNoteRequest(string InstanceName, string Phone, string ChatText, bool Farewell = false);
+
+    /// <summary>
+    /// Prueba end-to-end de la nota de voz IA: reescribe el texto como guion (receta de
+    /// pronunciación), lo sintetiza con la voz clonada y lo manda como PTT al número dado.
+    /// No toca leads ni conversaciones.
+    /// </summary>
+    [HttpPost("voice-note")]
+    public async Task<IActionResult> SendVoiceNote([FromBody] VoiceNoteRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var phone = new string((req.Phone ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (string.IsNullOrEmpty(phone)) return BadRequest(new { error = "Número inválido (incluí prefijo de país)" });
+        if (string.IsNullOrWhiteSpace(req.ChatText)) return BadRequest(new { error = "chatText requerido" });
+        if (string.IsNullOrWhiteSpace(req.InstanceName)) return BadRequest(new { error = "instanceName requerido" });
+
+        var (ok, script, error) = await _voiceNotes.SendTestAsync(req.InstanceName, phone, req.ChatText, req.Farewell, ct);
+        if (!ok) return StatusCode(502, new { error = error ?? "falló el envío", script });
+        _log.LogInformation("VoiceNote de prueba enviada a {Phone} por {Instance}", phone, req.InstanceName);
+        return Ok(new { ok = true, script });
+    }
 
     [HttpPost("cadence")]
     public async Task<IActionResult> SendCadence([FromBody] CadenceRequest req, CancellationToken ct)

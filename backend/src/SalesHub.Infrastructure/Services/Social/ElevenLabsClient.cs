@@ -30,18 +30,32 @@ public class ElevenLabsClient
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_opts.ApiKey);
 
+    /// <summary>Settings de voz por llamada (si no se pasan, quedan los default de la narración).</summary>
+    public record TtsVoiceSettings(double Stability, double SimilarityBoost, double Style, double Speed);
+
     /// <summary>Genera el mp3 de la narración. <paramref name="voiceId"/> opcional (override del default).</summary>
-    public async Task<byte[]?> SynthesizeAsync(string text, string? voiceId = null, CancellationToken ct = default)
+    public async Task<byte[]?> SynthesizeAsync(
+        string text, string? voiceId = null, TtsVoiceSettings? settings = null, CancellationToken ct = default)
     {
         if (!IsConfigured) { _log.LogWarning("ElevenLabs sin API key — no se genera narración"); return null; }
         if (string.IsNullOrWhiteSpace(text)) return null;
 
         var voice = string.IsNullOrWhiteSpace(voiceId) ? _opts.VoiceId : voiceId;
+        object voiceSettings = settings is null
+            ? new { stability = 0.5, similarity_boost = 0.75, style = 0.0, use_speaker_boost = true }
+            : new
+            {
+                stability = settings.Stability,
+                similarity_boost = settings.SimilarityBoost,
+                style = settings.Style,
+                speed = settings.Speed,
+                use_speaker_boost = true,
+            };
         var body = new
         {
             text,
             model_id = _opts.ModelId,
-            voice_settings = new { stability = 0.5, similarity_boost = 0.75, style = 0.0, use_speaker_boost = true },
+            voice_settings = voiceSettings,
         };
 
         try

@@ -41,13 +41,16 @@ public class ConversationAgentService
     private readonly AiSuggestionService _suggestions;
     private readonly OnboardingService _onboarding;
     private readonly ISendScheduler _scheduler;
+    private readonly VoiceNoteService _voiceNotes;
     private readonly ILogger<ConversationAgentService> _log;
 
     public ConversationAgentService(
         ApplicationDbContext db, IEvolutionClient evo, GroqWhisperClient whisper,
-        AiSuggestionService suggestions, OnboardingService onboarding, ISendScheduler scheduler, ILogger<ConversationAgentService> log)
+        AiSuggestionService suggestions, OnboardingService onboarding, ISendScheduler scheduler,
+        VoiceNoteService voiceNotes, ILogger<ConversationAgentService> log)
     {
-        _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding; _scheduler = scheduler; _log = log;
+        _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding;
+        _scheduler = scheduler; _voiceNotes = voiceNotes; _log = log;
     }
 
     public async Task<int> TickAsync(CancellationToken ct)
@@ -140,6 +143,8 @@ public class ConversationAgentService
         ).Take(BatchSize).ToListAsync(ct);
 
         var onboardingOn = await _db.IsFlagOnAsync("onboarding", false, ct);
+        // Notas de voz IA en momentos decisivos (espejo de audio / precio / despedida).
+        var voiceNoteOn = await _db.IsFlagOnAsync("voicenote", false, ct);
         // Configs de onboarding habilitadas, por app (multi-app). Vacío si el flag está off.
         var onbConfigs = onboardingOn
             ? await _db.OnboardingConfigs.Where(c => c.Enabled).ToDictionaryAsync(c => c.ProductKey, ct)
@@ -318,6 +323,15 @@ public class ConversationAgentService
             }
 
             if (!shouldReply || string.IsNullOrWhiteSpace(reply)) continue;
+
+            // Momento decisivo (espejo de audio / precio / despedida): a veces la respuesta
+            // sale como NOTA DE VOZ con la voz clonada. Si el audio salió, ese fue el mensaje;
+            // si no (azar, cooldown, tope, fallo), sigue el texto normal.
+            if (voiceNoteOn && await _voiceNotes.TryReplyWithVoiceAsync(lead, thread, last, reply!, intent, ct))
+            {
+                done++;
+                continue;
+            }
 
             await DeliverAsync(lead, reply!, intent, "IA", ct);
             done++;

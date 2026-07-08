@@ -29,6 +29,7 @@ public class FlagsController : ControllerBase
         ("captacion", "Workers:PipelineAutoStart", "Captación de leads"),
         ("seo", "Seo:AutoStart", "Artículos SEO"),
         ("reengage", "LeadImport:AutoStart", "Importar leads B2B (TurnosPro/GymHero)"),
+        ("voicenote", "Workers:VoiceNoteAutoStart", "Notas de voz IA (respuestas en audio en momentos decisivos)"),
     };
 
     public record FlagDto(string Key, string Label, bool Enabled);

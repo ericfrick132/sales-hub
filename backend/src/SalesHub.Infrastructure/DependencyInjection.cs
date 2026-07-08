@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.Configure<ImageGenOptions>(config.GetSection("ImageGen"));
         services.Configure<ElevenLabsOptions>(config.GetSection("ElevenLabs"));
         services.Configure<WarmrOptions>(config.GetSection("Warmr"));
+        services.Configure<VoiceNoteOptions>(config.GetSection("VoiceNote"));
 
         // Módulo SEO/GEO
         services.Configure<SeoOptions>(config.GetSection("Seo"));
@@ -124,6 +125,7 @@ public static class DependencyInjection
         services.AddScoped<IOnboardingProvisionClient>(sp => sp.GetRequiredService<OnboardingProvisionClient>());
         services.AddScoped<OnboardingService>();
         services.AddScoped<ConversationAgentService>();
+        services.AddScoped<VoiceNoteService>();
         services.AddScoped<SeoContentService>();
         services.AddScoped<BlogPublisher>();
 
