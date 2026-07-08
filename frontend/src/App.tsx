@@ -33,6 +33,7 @@ import OnboardingApps from './pages/OnboardingApps';
 import Transcripcion from './pages/Transcripcion';
 import Seguimientos from './pages/Seguimientos';
 import Manual from './pages/Manual';
+import VoiceTest from './pages/VoiceTest';
 
 function SellerZonesRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -73,6 +74,7 @@ export default function App() {
             <Route path="/reglas-ia" element={<ReglasIa />} />
             <Route path="/onboarding-apps" element={<OnboardingApps />} />
             <Route path="/transcripcion" element={<Transcripcion />} />
+            <Route path="/voice-test" element={<VoiceTest />} />
             <Route path="/seguimientos" element={<Seguimientos />} />
             <Route path="/sellers/zones" element={<SellerZones />} />
             <Route path="/sellers/:id/zones" element={<SellerZonesRedirect />} />

@@ -69,6 +69,7 @@ export default function Layout() {
           { to: '/onboarding-apps', label: 'Onboarding apps' },
           { to: '/transcripcion', label: 'Transcripción' },
           { to: '/seguimientos', label: 'Seguimientos' },
+          { to: '/voice-test', label: 'Nota de voz (prueba)' },
         ] },
         { title: 'Ayuda', items: [{ to: '/manual', label: 'Manual' }] },
       ]

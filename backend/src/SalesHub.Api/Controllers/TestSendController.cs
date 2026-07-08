@@ -49,6 +49,21 @@ public class TestSendController : ControllerBase
 
     public record VoiceNoteRequest(string InstanceName, string Phone, string ChatText, bool Farewell = false, string? ProductKey = null);
 
+    public record InstanceDto(string InstanceName, string? PhoneNumber, string? Label, string Status);
+
+    /// <summary>Líneas de WhatsApp disponibles para el panel de prueba de nota de voz.</summary>
+    [HttpGet("instances")]
+    public async Task<ActionResult<List<InstanceDto>>> Instances(CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var instances = await _db.EvolutionInstances.AsNoTracking()
+            .Include(i => i.Seller)
+            .OrderBy(i => i.Seller!.DisplayName)
+            .Select(i => new InstanceDto(i.InstanceName, i.ConnectedPhoneNumber, i.Seller!.DisplayName, i.Status.ToString()))
+            .ToListAsync(ct);
+        return Ok(instances);
+    }
+
     /// <summary>
     /// Prueba end-to-end de la nota de voz IA: reescribe el texto como guion (receta de
     /// pronunciación), lo sintetiza con la voz clonada y lo manda como PTT al número dado.
