@@ -185,7 +185,8 @@ public class VoiceNoteService
     {
         var farewell = trigger == Trigger.Farewell
             ? " Es una DESPEDIDA: cerrá el guion con \"un abrazo\" (literal, al final)."
-            : " Cerrá con una afirmación corta que baja (ej: \"cualquier cosa me escribís por acá, dale.\") — NUNCA termines con una pregunta.";
+            : " Cerrá con una afirmación corta rematada con la coletilla \"¿dale?\" (ej: \"cualquier cosa me escribís por acá, ¿dale?\") " +
+              "— la coletilla SIEMPRE con sus dos signos ¿?. Nunca cierres con una pregunta completa ni con \"dale.\" plano.";
         var system =
             "Reescribís mensajes de chat de WhatsApp como GUIONES de nota de voz para un TTS con la voz clonada de Eric " +
             "(vendedor argentino, es-AR, voseo). El TTS arma la entonación desde la puntuación, así que el guion define cómo suena. " +
