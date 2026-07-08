@@ -22,12 +22,6 @@ export default function ControlCenter({ sellers }: { sellers: SellerLite[] }) {
   });
   const products = productsQ.data ?? [];
 
-  const connected = sellers.filter((s) => s.instanceStatus === 'Connected');
-  const sending = sellers.filter((s) => s.sendingEnabled);
-  const disconnected = sellers.filter((s) => s.instanceStatus !== 'Connected');
-  const piloto = products.filter((p) => p.autoPilot);
-  const selling = sending.length > 0 && piloto.length > 0;
-
   async function toggleSending(s: SellerLite) {
     if (!s.sendingEnabled && s.instanceStatus !== 'Connected') {
       toast.error('Conectá WhatsApp antes de activar el envío');
@@ -63,41 +57,14 @@ export default function ControlCenter({ sellers }: { sellers: SellerLite[] }) {
   }
 
   return (
-    <div className="card p-4 md:p-5 space-y-4 border-2 border-brand-100">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-lg font-semibold">Centro de control</h2>
-        <span className={`inline-flex items-center gap-1.5 text-sm font-medium rounded-full px-3 py-1 ${
-          selling ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-        }`}>
-          <span className={`w-2 h-2 rounded-full ${selling ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-          {selling ? 'Vendiendo' : 'No está vendiendo'}
-        </span>
-      </div>
-
-      {/* 3 chequeos guiados */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StepCard ok title="Motor de captación" desc="Encendido — capturando y procesando leads solo" />
-        <StepCard ok={disconnected.length === 0}
-          title="WhatsApp conectado"
-          desc={`${connected.length}/${sellers.length} vendedores conectados`} />
-        <StepCard ok={piloto.length > 0}
-          title="Piloto automático"
-          desc={`${piloto.length}/${products.length} apps responden solas`} />
-      </div>
-
-      {!selling && (
-        <div className="text-sm bg-amber-50 text-amber-800 rounded-lg px-3 py-2">
-          Para arrancar a vender: conectá el WhatsApp de los vendedores en gris y prendé su <b>envío</b>.
-          Las apps ya responden solas si el <b>piloto</b> está en verde.
-        </div>
-      )}
-
-      {/* Runners automáticos (workers) */}
+    <div className="space-y-5">
+      {/* Motores automáticos (workers) */}
       <div>
-        <h3 className="text-sm font-semibold mb-2">Runners automáticos</h3>
+        <h3 className="text-sm font-semibold">Motores automáticos</h3>
+        <p className="text-xs text-slate-400 mb-2">Procesos que corren solos en el servidor: generación de posteos, captación de leads, Instagram y artículos SEO.</p>
         <div className="grid gap-2 sm:grid-cols-3">
           {(flagsQ.data ?? []).map((f) => (
-            <div key={f.key} className="flex items-center gap-3 border rounded-lg p-2.5">
+            <div key={f.key} className="flex items-center gap-3 border rounded-lg p-2.5 bg-white">
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm truncate">{f.label}</div>
                 <div className="text-[11px] text-slate-400">{f.enabled ? 'corriendo' : 'apagado'}</div>
@@ -108,14 +75,15 @@ export default function ControlCenter({ sellers }: { sellers: SellerLite[] }) {
         </div>
       </div>
 
-      {/* Vendedores — envío */}
+      {/* Envío de WhatsApp por vendedor */}
       <div>
-        <h3 className="text-sm font-semibold mb-2">Vendedores — envío</h3>
+        <h3 className="text-sm font-semibold">Envío de WhatsApp por vendedor</h3>
+        <p className="text-xs text-slate-400 mb-2">Prende o pausa el envío automático de mensajes de cada vendedor. Necesita el WhatsApp conectado.</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {sellers.map((s) => {
             const conn = s.instanceStatus === 'Connected';
             return (
-              <div key={s.sellerId} className="flex items-center gap-3 border rounded-lg p-2.5">
+              <div key={s.sellerId} className="flex items-center gap-3 border rounded-lg p-2.5 bg-white">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm truncate">{s.displayName}</div>
                   <div className="text-[11px]">
@@ -134,10 +102,11 @@ export default function ControlCenter({ sellers }: { sellers: SellerLite[] }) {
 
       {/* Apps — piloto / re-enganche */}
       <div>
-        <h3 className="text-sm font-semibold mb-2">Aplicaciones — piloto automático</h3>
+        <h3 className="text-sm font-semibold">Respuesta automática por app (piloto)</h3>
+        <p className="text-xs text-slate-400 mb-2">Con el <b>piloto</b> en verde, el bot de esa app responde y vende solo. <b>Re-eng.</b> le vuelve a escribir a los leads que quedaron dormidos.</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {products.map((p) => (
-            <div key={p.id} className="flex items-center gap-3 border rounded-lg p-2.5">
+            <div key={p.id} className="flex items-center gap-3 border rounded-lg p-2.5 bg-white">
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm truncate">{p.displayName}</div>
                 <div className="text-[11px] text-slate-400">{p.active ? 'activa' : 'pausada'}</div>
@@ -159,20 +128,6 @@ export default function ControlCenter({ sellers }: { sellers: SellerLite[] }) {
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-function StepCard({ ok, title, desc }: { ok: boolean; title: string; desc: string }) {
-  return (
-    <div className={`rounded-lg p-3 border ${ok ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
-      <div className="flex items-center gap-2">
-        <span className={`grid place-items-center w-5 h-5 rounded-full text-white text-xs ${ok ? 'bg-emerald-500' : 'bg-amber-500'}`}>
-          {ok ? '✓' : '!'}
-        </span>
-        <span className="font-medium text-sm">{title}</span>
-      </div>
-      <div className="text-[11px] text-slate-500 mt-1">{desc}</div>
     </div>
   );
 }

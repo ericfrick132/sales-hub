@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import type { GlobalMetrics } from '../lib/types';
+import type { GlobalMetrics, AiCost, AdLeads, Product } from '../lib/types';
 import TeamCompliance from '../components/TeamCompliance';
 import AiCostCard from '../components/AiCostCard';
 import Effectiveness from '../components/Effectiveness';
@@ -10,6 +10,7 @@ import ControlCenter from '../components/ControlCenter';
 import MainCalendar from '../components/MainCalendar';
 import TodayChecklist from '../components/TodayChecklist';
 import AdLeadsCard from '../components/AdLeadsCard';
+import Collapsible from '../components/Collapsible';
 
 interface DailyActivity {
   date: string;
@@ -37,6 +38,10 @@ const fmtDay = (iso: string) => {
   return `${d}/${m}`;
 };
 
+const pct = (num: number, den: number) => (den > 0 ? `${Math.round((num / den) * 100)}%` : '—');
+const usd = (n: number) => (!n ? '$0' : n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
+const todayLabel = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+
 export default function AdminDashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-metrics'],
@@ -50,173 +55,278 @@ export default function AdminDashboard() {
     refetchInterval: 30000
   });
 
+  // Estas dos comparten queryKey con AiCostCard / AdLeadsCard → react-query dedupe, sin doble fetch.
+  const aiCost = useQuery({ queryKey: ['ai-cost'], queryFn: async () => (await api.get<AiCost>('/dashboard/ai-cost')).data, refetchInterval: 60000 });
+  const adLeads = useQuery({ queryKey: ['ad-leads'], queryFn: async () => (await api.get<AdLeads[]>('/dashboard/ad-leads')).data, refetchInterval: 30000 });
+  const products = useQuery({ queryKey: ['products-min'], queryFn: async () => (await api.get<Product[]>('/products')).data });
+
   if (isLoading || !data) return <div>Cargando…</div>;
 
   // Build the date column header from any seller's daily array (all share the same dates).
   const dateHeaders: string[] = activity.data?.[0]?.daily.slice(0, 14).map((d) => d.date) ?? [];
   const sellerActivityById = new Map((activity.data ?? []).map((a) => [a.sellerId, a]));
 
+  // ── Estado del sistema (¿está vendiendo?) ──
+  const connected = data.sellers.filter((s) => s.instanceStatus === 'Connected').length;
+  const sendingOn = data.sellers.filter((s) => s.sendingEnabled).length;
+  const totalSellers = data.sellers.length;
+  const piloto = (products.data ?? []).filter((p) => p.autoPilot).length;
+  const totalApps = (products.data ?? []).length;
+  const selling = sendingOn > 0 && piloto > 0;
+
+  // ── KPIs ──
+  const adTotal = (adLeads.data ?? []).reduce((s, r) => s + r.total, 0);
+  const adLast7d = (adLeads.data ?? []).reduce((s, r) => s + r.last7d, 0);
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl md:text-2xl font-bold">Hoy</h1>
+    <div className="space-y-5">
+      <div className="flex items-baseline justify-between flex-wrap gap-2">
+        <h1 className="text-xl md:text-2xl font-bold">Panel</h1>
+        <span className="text-sm text-slate-400 capitalize">{todayLabel}</span>
+      </div>
 
-      <ControlCenter sellers={data.sellers} />
+      {/* ══ Estado del sistema ══ */}
+      <div className={`card p-4 md:p-5 border-2 ${selling ? 'border-emerald-200' : 'border-amber-200'}`}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <span className={`w-3 h-3 rounded-full ${selling ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+            <div>
+              <div className="font-semibold text-lg">{selling ? 'La máquina está vendiendo' : 'La máquina no está vendiendo'}</div>
+              {!selling && (
+                <div className="text-xs text-amber-700">
+                  Falta {sendingOn === 0 && 'prender el envío de al menos un vendedor'}
+                  {sendingOn === 0 && piloto === 0 && ' y '}
+                  {piloto === 0 && 'poner una app en piloto'}. Abrí <b>Controles del sistema</b> abajo.
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-4 md:gap-6 text-sm">
+            <Fact label="WhatsApp conectado" value={`${connected}/${totalSellers}`} ok={connected > 0} />
+            <Fact label="Enviando" value={`${sendingOn}/${totalSellers}`} ok={sendingOn > 0} />
+            <Fact label="Apps en piloto" value={`${piloto}/${totalApps}`} ok={piloto > 0} />
+          </div>
+        </div>
+      </div>
 
-      <AdLeadsCard />
+      {/* ══ KPIs medibles ══ */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Kpi label="Leads hoy" value={data.leadsToday} sub={`${data.totalLeads.toLocaleString('es-AR')} en total`} to="/leads" />
+        <Kpi label="Enviados · 7d" value={data.leadsSent7d} sub="mensajes iniciales" />
+        <Kpi label="Respondieron · 7d" value={data.leadsReplied7d} sub={`${pct(data.leadsReplied7d, data.leadsSent7d)} de respuesta`} tone="sky" />
+        <Kpi label="Cerrados · 7d" value={data.leadsClosed7d} sub={`${pct(data.leadsClosed7d, data.leadsSent7d)} de cierre`} tone="emerald" />
+        <Kpi label="Leads de anuncios" value={adTotal} sub={adLast7d > 0 ? `+${adLast7d} en 7d` : 'Meta + WhatsApp'} to="/leads?source=MetaLeadAd&source=WhatsAppAd" tone="violet" />
+        <Kpi label="Gasto IA hoy" value={usd(aiCost.data?.todayUsd ?? 0)} sub={`${usd(aiCost.data?.last30dUsd ?? 0)} en 30d`} tone="slate" />
+      </div>
 
-      <TeamCompliance />
+      {/* ══ Secciones colapsables ══ */}
+      <Collapsible
+        title="Controles del sistema"
+        subtitle="motores, envío por vendedor y piloto de cada app"
+        summary={
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${selling ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${selling ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            {selling ? 'Vendiendo' : 'Detenido'}
+          </span>
+        }
+      >
+        <ControlCenter sellers={data.sellers} />
+      </Collapsible>
 
-      <AiCostCard />
+      <Collapsible title="Efectividad por aplicación" subtitle="embudo leads → cerrados y tasas de conversión" defaultOpen>
+        <Effectiveness />
+      </Collapsible>
 
-      <Effectiveness />
+      <Collapsible title="Leads de anuncios por app" subtitle="Meta Lead Ads + WhatsApp Ads" summary={<span className="tabular-nums font-medium">{adTotal}</span>}>
+        <AdLeadsCard />
+      </Collapsible>
 
-      <TodayChecklist />
+      <Collapsible title="Rendimiento por vendedor" subtitle="cumplimiento, estado de envíos y actividad de 14 días">
+        <TeamCompliance />
 
-      <MainCalendar />
-
-      <div>
-        <h2 className="text-lg font-semibold mb-2">Actividad por vendedor (14 días)</h2>
-        <p className="text-xs text-slate-500 mb-2">
-          Click en el nombre para ver el detalle. Cada celda es la cantidad de leads cargados/asignados ese día.
-          Hover para ver el desglose por aplicación.
-        </p>
-        <div className="card overflow-x-auto -mx-4 md:mx-0 rounded-none md:rounded-lg border-x-0 md:border-x">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-3 py-2 text-left sticky left-0 bg-slate-50">Vendedor</th>
-                <th className="px-3 py-2 text-right">Hoy</th>
-                <th className="px-3 py-2 text-right">Ayer</th>
-                <th className="px-3 py-2 text-right">7d</th>
-                <th className="px-3 py-2 text-left">Top apps</th>
-                {dateHeaders.map((d) => (
-                  <th key={d} className="px-2 py-2 text-right text-[10px] font-medium">{fmtDay(d)}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data.sellers.map((s) => {
-                const a = sellerActivityById.get(s.sellerId);
-                return (
-                  <tr key={s.sellerId} className="hover:bg-slate-50">
-                    <td className="px-3 py-2 sticky left-0 bg-white">
-                      <Link to={`/admin/sellers/${s.sellerId}`} className="font-medium text-brand-700 hover:underline">
+        <div>
+          <h3 className="text-sm font-semibold mb-2">Estado de envíos</h3>
+          <div className="card overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Nombre</th>
+                  <th className="px-3 py-2 text-left">Instance</th>
+                  <th className="px-3 py-2 text-left">Envío</th>
+                  <th className="px-3 py-2 text-right">Cap hoy</th>
+                  <th className="px-3 py-2 text-right">Enviados hoy</th>
+                  <th className="px-3 py-2 text-right">Asignados</th>
+                  <th className="px-3 py-2 text-right">Reply %</th>
+                  <th className="px-3 py-2 text-right">Close %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.sellers.map((s) => (
+                  <tr key={s.sellerId}>
+                    <td className="px-3 py-2 font-medium">
+                      <Link to={`/admin/sellers/${s.sellerId}`} className="text-brand-700 hover:underline">
                         {s.displayName}
                       </Link>
-                      <div className="text-[10px] text-slate-400 mt-0.5">
-                        {s.instanceStatus} · {s.sendingEnabled ? 'enviando' : 'pausado'}
-                      </div>
                     </td>
-                    <td className="px-3 py-2 text-right font-bold">{a?.todayCount ?? 0}</td>
-                    <td className="px-3 py-2 text-right text-slate-600">{a?.yesterdayCount ?? 0}</td>
-                    <td className="px-3 py-2 text-right text-slate-600">{a?.total7d ?? 0}</td>
-                    <td className="px-3 py-2 text-slate-600 text-xs">
-                      {a && Object.keys(a.topProducts).length > 0
-                        ? Object.entries(a.topProducts).map(([k, v]) => `${k} (${v})`).join(', ')
-                        : '—'}
+                    <td className="px-3 py-2">{s.instanceStatus}</td>
+                    <td className="px-3 py-2">
+                      <SendingControl
+                        sellerId={s.sellerId}
+                        sendingEnabled={s.sendingEnabled}
+                        instanceStatus={s.instanceStatus}
+                        compact
+                        invalidate={[['admin-metrics']]}
+                      />
                     </td>
-                    {dateHeaders.map((d) => {
-                      const day = a?.daily.find((x) => x.date === d);
-                      const tooltip = day && day.total > 0
-                        ? Object.entries(day.byProduct).map(([k, v]) => `${k}: ${v}`).join('\n')
-                        : '';
-                      const v = day?.total ?? 0;
-                      return (
-                        <td key={d} className="px-2 py-2 text-right" title={tooltip}>
-                          {v === 0 ? (
-                            <span className="text-slate-300">·</span>
-                          ) : (
-                            <span className={`inline-block px-1.5 rounded text-xs font-medium ${
-                              v >= 15 ? 'bg-emerald-100 text-emerald-700'
-                              : v >= 5 ? 'bg-sky-100 text-sky-700'
-                              : 'bg-slate-100 text-slate-600'
-                            }`}>{v}</span>
-                          )}
-                        </td>
-                      );
-                    })}
+                    <td className="px-3 py-2 text-right">{s.todayCap}</td>
+                    <td className="px-3 py-2 text-right">{s.todaySent}</td>
+                    <td className="px-3 py-2 text-right">{s.leadsAssigned}</td>
+                    <td className="px-3 py-2 text-right">{(s.replyRate * 100).toFixed(0)}%</td>
+                    <td className="px-3 py-2 text-right">{(s.closeRate * 100).toFixed(0)}%</td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-        <div className="card p-5">
-          <h3 className="font-semibold mb-3">Por aplicación</h3>
-          <table className="w-full text-sm">
-            <tbody>
-              {Object.entries(data.leadsByProduct).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
-                <tr key={k} className="border-b border-slate-100">
-                  <td className="py-1">{k}</td>
-                  <td className="py-1 text-right font-medium">{v}</td>
+        <div>
+          <h3 className="text-sm font-semibold mb-1">Actividad por vendedor (14 días)</h3>
+          <p className="text-xs text-slate-500 mb-2">
+            Cada celda es la cantidad de leads cargados/asignados ese día. Click en el nombre para el detalle; hover para el desglose por app.
+          </p>
+          <div className="card overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 text-left sticky left-0 bg-slate-50">Vendedor</th>
+                  <th className="px-3 py-2 text-right">Hoy</th>
+                  <th className="px-3 py-2 text-right">Ayer</th>
+                  <th className="px-3 py-2 text-right">7d</th>
+                  <th className="px-3 py-2 text-left">Top apps</th>
+                  {dateHeaders.map((d) => (
+                    <th key={d} className="px-2 py-2 text-right text-[10px] font-medium">{fmtDay(d)}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.sellers.map((s) => {
+                  const a = sellerActivityById.get(s.sellerId);
+                  return (
+                    <tr key={s.sellerId} className="hover:bg-slate-50">
+                      <td className="px-3 py-2 sticky left-0 bg-white">
+                        <Link to={`/admin/sellers/${s.sellerId}`} className="font-medium text-brand-700 hover:underline">
+                          {s.displayName}
+                        </Link>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          {s.instanceStatus} · {s.sendingEnabled ? 'enviando' : 'pausado'}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold">{a?.todayCount ?? 0}</td>
+                      <td className="px-3 py-2 text-right text-slate-600">{a?.yesterdayCount ?? 0}</td>
+                      <td className="px-3 py-2 text-right text-slate-600">{a?.total7d ?? 0}</td>
+                      <td className="px-3 py-2 text-slate-600 text-xs">
+                        {a && Object.keys(a.topProducts).length > 0
+                          ? Object.entries(a.topProducts).map(([k, v]) => `${k} (${v})`).join(', ')
+                          : '—'}
+                      </td>
+                      {dateHeaders.map((d) => {
+                        const day = a?.daily.find((x) => x.date === d);
+                        const tooltip = day && day.total > 0
+                          ? Object.entries(day.byProduct).map(([k, v]) => `${k}: ${v}`).join('\n')
+                          : '';
+                        const v = day?.total ?? 0;
+                        return (
+                          <td key={d} className="px-2 py-2 text-right" title={tooltip}>
+                            {v === 0 ? (
+                              <span className="text-slate-300">·</span>
+                            ) : (
+                              <span className={`inline-block px-1.5 rounded text-xs font-medium ${
+                                v >= 15 ? 'bg-emerald-100 text-emerald-700'
+                                : v >= 5 ? 'bg-sky-100 text-sky-700'
+                                : 'bg-slate-100 text-slate-600'
+                              }`}>{v}</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div className="card p-5">
-          <h3 className="font-semibold mb-3">Por origen</h3>
-          <table className="w-full text-sm">
-            <tbody>
-              {Object.entries(data.leadsBySource).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
-                <tr key={k} className="border-b border-slate-100">
-                  <td className="py-1">{k}</td>
-                  <td className="py-1 text-right font-medium">{v}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      </Collapsible>
 
-      <div>
-        <h2 className="text-lg font-semibold mb-2">Estado de envíos</h2>
-        <div className="card overflow-x-auto -mx-4 md:mx-0 rounded-none md:rounded-lg border-x-0 md:border-x">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-3 py-2 text-left">Nombre</th>
-                <th className="px-3 py-2 text-left">Instance</th>
-                <th className="px-3 py-2 text-left">Envío</th>
-                <th className="px-3 py-2 text-right">Cap hoy</th>
-                <th className="px-3 py-2 text-right">Enviados hoy</th>
-                <th className="px-3 py-2 text-right">Asignados</th>
-                <th className="px-3 py-2 text-right">Reply %</th>
-                <th className="px-3 py-2 text-right">Close %</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data.sellers.map((s) => (
-                <tr key={s.sellerId}>
-                  <td className="px-3 py-2 font-medium">
-                    <Link to={`/admin/sellers/${s.sellerId}`} className="text-brand-700 hover:underline">
-                      {s.displayName}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2">{s.instanceStatus}</td>
-                  <td className="px-3 py-2">
-                    <SendingControl
-                      sellerId={s.sellerId}
-                      sendingEnabled={s.sendingEnabled}
-                      instanceStatus={s.instanceStatus}
-                      compact
-                      invalidate={[['admin-metrics']]}
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-right">{s.todayCap}</td>
-                  <td className="px-3 py-2 text-right">{s.todaySent}</td>
-                  <td className="px-3 py-2 text-right">{s.leadsAssigned}</td>
-                  <td className="px-3 py-2 text-right">{(s.replyRate*100).toFixed(0)}%</td>
-                  <td className="px-3 py-2 text-right">{(s.closeRate*100).toFixed(0)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <Collapsible title="Leads por app y por origen" subtitle="de dónde vienen todos los leads">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="card p-5">
+            <h3 className="font-semibold mb-3">Por aplicación</h3>
+            <table className="w-full text-sm">
+              <tbody>
+                {Object.entries(data.leadsByProduct).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+                  <tr key={k} className="border-b border-slate-100">
+                    <td className="py-1">{k}</td>
+                    <td className="py-1 text-right font-medium">{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="card p-5">
+            <h3 className="font-semibold mb-3">Por origen</h3>
+            <table className="w-full text-sm">
+              <tbody>
+                {Object.entries(data.leadsBySource).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+                  <tr key={k} className="border-b border-slate-100">
+                    <td className="py-1">{k}</td>
+                    <td className="py-1 text-right font-medium">{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
+      </Collapsible>
+
+      <Collapsible title="Gasto de IA (Claude)" subtitle="costo real por tokens, desglosado por feature" summary={<span className="tabular-nums font-medium">{usd(aiCost.data?.todayUsd ?? 0)} hoy</span>}>
+        <AiCostCard />
+      </Collapsible>
+
+      <Collapsible title="Agenda automática" subtitle="tareas de hoy y calendario de posteos/runners">
+        <TodayChecklist />
+        <MainCalendar />
+      </Collapsible>
+    </div>
+  );
+}
+
+const KPI_TONE: Record<string, string> = {
+  slate: 'text-slate-900',
+  sky: 'text-sky-600',
+  emerald: 'text-emerald-600',
+  violet: 'text-violet-600',
+};
+
+function Kpi({ label, value, sub, to, tone = 'slate' }: { label: string; value: number | string; sub?: string; to?: string; tone?: string }) {
+  const inner = (
+    <div className="card p-4 h-full hover:border-slate-300 hover:shadow-sm transition">
+      <div className="text-[11px] uppercase tracking-wide text-slate-400 truncate">{label}</div>
+      <div className={`text-2xl md:text-3xl font-bold tabular-nums mt-1 ${KPI_TONE[tone] ?? KPI_TONE.slate}`}>
+        {typeof value === 'number' ? value.toLocaleString('es-AR') : value}
       </div>
+      {sub && <div className="text-[11px] text-slate-500 mt-0.5 truncate">{sub}</div>}
+    </div>
+  );
+  return to ? <Link to={to} className="block">{inner}</Link> : inner;
+}
+
+function Fact({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+  return (
+    <div className="text-right">
+      <div className={`font-semibold tabular-nums ${ok ? 'text-slate-800' : 'text-amber-600'}`}>{value}</div>
+      <div className="text-[11px] text-slate-400">{label}</div>
     </div>
   );
 }
