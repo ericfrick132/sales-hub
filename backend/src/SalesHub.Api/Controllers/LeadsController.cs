@@ -389,11 +389,68 @@ public class LeadsController : ControllerBase
         if (lead is null) return NotFound();
         if (lead.SellerId != sellerId && !CurrentUser.IsAdmin(User)) return Forbid();
 
+        // Cancelar la cadencia pendiente del seller saliente. Sin esto las rows quedan
+        // Scheduled a nombre del seller viejo: si reconecta las manda igual, y mientras
+        // tanto bloquean el re-encolado al asignar (chequeo de idempotencia de Assign).
+        await CancelPendingOutboxAsync(new[] { lead.Id }, ct);
+
         lead.SellerId = null;
         lead.AssignedAt = null;
         lead.Status = LeadStatus.New;
         await _db.SaveChangesAsync(ct);
         return ToDto(lead);
+    }
+
+    public record ReleaseFrozenRequest(List<Guid> SellerIds);
+    public record ReleaseFrozenResult(int LeadsReleased, int OutboxCancelled, Dictionary<string, int> BySeller);
+
+    /// <summary>
+    /// Rescate masivo: libera al pool los leads Assigned/Queued de los sellers indicados
+    /// (típicamente desconectados hace tiempo) y cancela su outbox pendiente, para que
+    /// reassign-orphans los reparta entre los sellers que sí pueden enviar.
+    /// </summary>
+    [HttpPost("release-frozen")]
+    public async Task<ActionResult<ReleaseFrozenResult>> ReleaseFrozen(
+        [FromBody] ReleaseFrozenRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        if (req.SellerIds is not { Count: > 0 }) return BadRequest(new { error = "SellerIds vacío" });
+
+        var leads = await _db.Leads
+            .Where(l => l.SellerId != null && req.SellerIds.Contains(l.SellerId.Value)
+                     && (l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued))
+            .ToListAsync(ct);
+
+        var cancelled = await CancelPendingOutboxAsync(leads.Select(l => l.Id).ToList(), ct);
+
+        var bySeller = new Dictionary<string, int>();
+        var sellerNames = await _db.Sellers
+            .Where(s => req.SellerIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.DisplayName, ct);
+        foreach (var lead in leads)
+        {
+            var name = sellerNames.GetValueOrDefault(lead.SellerId!.Value, lead.SellerId.Value.ToString());
+            bySeller[name] = bySeller.GetValueOrDefault(name) + 1;
+            lead.SellerId = null;
+            lead.AssignedAt = null;
+            lead.QueuedAt = null;
+            lead.Status = LeadStatus.New;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        _log.LogWarning("release-frozen: {Leads} leads liberados, {Rows} rows de outbox canceladas ({Sellers})",
+            leads.Count, cancelled, string.Join(", ", bySeller.Select(kv => $"{kv.Key}={kv.Value}")));
+        return new ReleaseFrozenResult(leads.Count, cancelled, bySeller);
+    }
+
+    private async Task<int> CancelPendingOutboxAsync(IReadOnlyCollection<Guid> leadIds, CancellationToken ct)
+    {
+        var pending = await _db.Outbox
+            .Where(o => leadIds.Contains(o.LeadId)
+                     && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending))
+            .ToListAsync(ct);
+        foreach (var row in pending) row.Status = OutboxStatus.Cancelled;
+        return pending.Count;
     }
 
     [HttpPatch("{id:guid}")]
