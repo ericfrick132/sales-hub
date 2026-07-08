@@ -153,8 +153,10 @@ public class SellersController : ControllerBase
             .Where(s => s.Id == id).Select(s => (string?)s.SellerKey).FirstOrDefaultAsync(ct);
         if (sellerKey is null) return NotFound();
 
-        var instanceName = await _db.EvolutionInstances.AsNoTracking()
-            .Where(x => x.SellerId == id).Select(x => x.InstanceName).FirstOrDefaultAsync(ct);
+        var line = await _db.EvolutionInstances.AsNoTracking()
+            .Where(x => x.SellerId == id).Select(x => new { x.InstanceName, x.ProxyUrl }).FirstOrDefaultAsync(ct);
+        var instanceName = line?.InstanceName;
+        var proxyUrl = line?.ProxyUrl;
         if (instanceName is null)
         {
             instanceName = $"seller_{sellerKey}";
@@ -167,7 +169,8 @@ public class SellersController : ControllerBase
             await _db.SaveChangesAsync(ct);
         }
 
-        await _evo.EnsureInstanceAsync(instanceName, ct);
+        // Aplica el proxy de salida de la línea (o el global) al asegurar la instancia.
+        await _evo.EnsureInstanceAsync(instanceName, ct, proxyUrl);
         var qr = await _evo.GetQrCodeAsync(instanceName, ct);
         var info = await _evo.GetInstanceStatusAsync(instanceName, ct);
 
@@ -211,6 +214,41 @@ public class SellersController : ControllerBase
         seller.SendingEnabled = false;
         await _db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    /// <summary>Proxy de salida de la línea de WhatsApp de este vendedor (1 IP por número).</summary>
+    [HttpGet("{id:guid}/instance/proxy")]
+    public async Task<IActionResult> GetProxy(Guid id, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User) && CurrentUser.Id(User) != id) return Forbid();
+        var proxy = await _db.EvolutionInstances.AsNoTracking()
+            .Where(x => x.SellerId == id).Select(x => x.ProxyUrl).FirstOrDefaultAsync(ct);
+        return Ok(new { proxyUrl = proxy });
+    }
+
+    /// <summary>Setea (o limpia, si viene vacío) el proxy de salida y lo aplica en Evolution al toque.</summary>
+    [HttpPut("{id:guid}/instance/proxy")]
+    public async Task<IActionResult> SetProxy(Guid id, [FromBody] SetProxyRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User) && CurrentUser.Id(User) != id) return Forbid();
+        var sellerKey = await _db.Sellers.AsNoTracking()
+            .Where(s => s.Id == id).Select(s => (string?)s.SellerKey).FirstOrDefaultAsync(ct);
+        if (sellerKey is null) return NotFound();
+        var proxy = string.IsNullOrWhiteSpace(req.ProxyUrl) ? null : req.ProxyUrl.Trim();
+
+        var instance = await _db.EvolutionInstances.FirstOrDefaultAsync(x => x.SellerId == id, ct);
+        if (instance is null)
+        {
+            instance = new EvolutionInstance { Id = Guid.NewGuid(), SellerId = id, InstanceName = $"seller_{sellerKey}" };
+            _db.EvolutionInstances.Add(instance);
+        }
+        instance.ProxyUrl = proxy;
+        instance.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        // Aplica el cambio en Evolution ahora (si la instancia ya existe); best-effort.
+        await _evo.EnsureInstanceAsync(instance.InstanceName, ct, proxy);
+        return Ok(new { proxyUrl = proxy });
     }
 
     private static void ApplyPreset(Seller s)

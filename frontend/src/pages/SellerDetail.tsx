@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import type { Lead, SellerDashboard } from '../lib/types';
 import LeadTable from '../components/LeadTable';
@@ -85,6 +87,7 @@ export default function SellerDetail() {
           Así conectás un número nuevo desde acá, sin que el vendedor tenga que loguearse. El QR se refresca solo.
         </p>
         {id && <QrPanel sellerId={id} currentStatus={m.instanceStatus} />}
+        {id && <ProxyEditor sellerId={id} />}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -147,6 +150,48 @@ export default function SellerDetail() {
         ) : (
           <LeadTable leads={recent.data ?? []} showSeller={false} />
         )}
+      </div>
+    </div>
+  );
+}
+
+function ProxyEditor({ sellerId }: { sellerId: string }) {
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const q = useQuery({
+    queryKey: ['seller-proxy', sellerId],
+    queryFn: async () => (await api.get<{ proxyUrl: string | null }>(`/sellers/${sellerId}/instance/proxy`)).data,
+  });
+  useEffect(() => { if (q.data) setValue(q.data.proxyUrl ?? ''); }, [q.data]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.put(`/sellers/${sellerId}/instance/proxy`, { proxyUrl: value.trim() || null });
+      toast.success(value.trim() ? 'Proxy guardado y aplicado' : 'Proxy quitado (sale por la IP del server)');
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo guardar el proxy');
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="card p-4 space-y-2">
+      <div className="text-sm font-medium">Proxy de salida (opcional)</div>
+      <p className="text-xs text-slate-500 max-w-2xl">
+        Una IP dedicada por número baja el riesgo de baneo en líneas de prospección (venta fría).
+        Formato: <code className="text-[11px]">host:port:user:pass</code> o <code className="text-[11px]">http://user:pass@host:port</code>.
+        Vacío = sale por la IP del servidor (lo actual). Ideal: residencial/móvil AR.
+      </p>
+      <div className="flex gap-2">
+        <input
+          className="input flex-1 font-mono text-xs"
+          placeholder="host:port:user:pass"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <button className="btn-primary shrink-0" onClick={save} disabled={saving}>
+          {saving ? '…' : 'Guardar'}
+        </button>
       </div>
     </div>
   );

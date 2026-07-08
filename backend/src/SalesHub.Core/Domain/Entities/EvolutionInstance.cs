@@ -17,6 +17,13 @@ public class EvolutionInstance
     public string InstanceName { get; set; } = string.Empty;
     public string? ConnectedPhoneNumber { get; set; }
 
+    /// <summary>
+    /// Proxy de salida de ESTA línea (1 IP por número). Formato: <c>scheme://user:pass@host:port</c>
+    /// o <c>host:port:user:pass</c>. null = usa el proxy global (Evolution:ProxyUrl) o ninguno.
+    /// Se aplica al crear/asegurar la instancia (Evolution POST /proxy/set).
+    /// </summary>
+    public string? ProxyUrl { get; set; }
+
     public InstanceStatus Status { get; set; } = InstanceStatus.Disconnected;
     public DateTimeOffset? LastStatusCheckAt { get; set; }
     public DateTimeOffset? ConnectedAt { get; set; }

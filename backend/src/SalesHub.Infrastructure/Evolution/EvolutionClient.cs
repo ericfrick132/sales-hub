@@ -39,7 +39,7 @@ public class EvolutionClient : IEvolutionClient
         return new InstanceConnectionInfo(state ?? "unknown", null, null);
     }
 
-    public async Task<InstanceConnectionInfo> EnsureInstanceAsync(string instanceName, CancellationToken ct = default)
+    public async Task<InstanceConnectionInfo> EnsureInstanceAsync(string instanceName, CancellationToken ct = default, string? proxyUrl = null)
     {
         var status = await GetInstanceStatusAsync(instanceName, ct);
         if (status.Status == "not_found")
@@ -64,7 +64,84 @@ public class EvolutionClient : IEvolutionClient
         // inbound de los leads nunca llegan al backend y la conversación se
         // ve "muda" en /conversations.
         await SetWebhookAsync(instanceName, ct);
+        // Proxy de salida de la línea (1 IP por número): el de la instancia o el global.
+        // Idempotente: si no hay ninguno, deshabilita el proxy (sale por la IP del server).
+        var proxy = !string.IsNullOrWhiteSpace(proxyUrl) ? proxyUrl : _opts.ProxyUrl;
+        await SetProxyAsync(instanceName, proxy, ct);
         return status;
+    }
+
+    /// <summary>
+    /// Setea (o deshabilita) el proxy de salida de la instancia vía Evolution POST /proxy/set.
+    /// Best-effort: si falla, la instancia igual funciona (sale por la IP del server). Acepta
+    /// <c>scheme://user:pass@host:port</c>, <c>host:port:user:pass</c> o <c>host:port</c>.
+    /// </summary>
+    private async Task SetProxyAsync(string instanceName, string? rawProxy, CancellationToken ct)
+    {
+        try
+        {
+            object body;
+            if (string.IsNullOrWhiteSpace(rawProxy))
+            {
+                body = new { enabled = false };
+            }
+            else
+            {
+                var p = ParseProxy(rawProxy);
+                if (p is null) { _log.LogWarning("Proxy inválido para {Instance}: no lo pude parsear", instanceName); return; }
+                body = new
+                {
+                    enabled = true,
+                    host = p.Value.Host,
+                    port = p.Value.Port,
+                    protocol = p.Value.Protocol,
+                    username = p.Value.Username ?? "",
+                    password = p.Value.Password ?? "",
+                };
+            }
+            var resp = await _http.PostAsJsonAsync($"proxy/set/{Uri.EscapeDataString(instanceName)}", body, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var text = await resp.Content.ReadAsStringAsync(ct);
+                _log.LogWarning("SetProxy {Instance} falló: {Status} {Body}", instanceName, resp.StatusCode, text[..Math.Min(text.Length, 200)]);
+            }
+            else if (!string.IsNullOrWhiteSpace(rawProxy))
+            {
+                _log.LogInformation("Instancia {Instance} sale por proxy configurado", instanceName);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "SetProxy {Instance} excepción (sigue sin proxy)", instanceName);
+        }
+    }
+
+    /// <summary>Parsea el proxy a (protocol, host, port, user, pass). Devuelve null si no se puede.</summary>
+    private static (string Protocol, string Host, string Port, string? Username, string? Password)? ParseProxy(string raw)
+    {
+        raw = raw.Trim();
+        // Forma URI: scheme://user:pass@host:port
+        if (raw.Contains("://"))
+        {
+            if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)) return null;
+            var host = uri.Host;
+            var port = uri.Port > 0 ? uri.Port.ToString() : "";
+            if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(port)) return null;
+            string? user = null, pass = null;
+            if (!string.IsNullOrEmpty(uri.UserInfo))
+            {
+                var bits = uri.UserInfo.Split(':', 2);
+                user = Uri.UnescapeDataString(bits[0]);
+                pass = bits.Length > 1 ? Uri.UnescapeDataString(bits[1]) : null;
+            }
+            var scheme = string.IsNullOrEmpty(uri.Scheme) ? "http" : uri.Scheme.ToLowerInvariant();
+            return (scheme, host, port, user, pass);
+        }
+        // Forma lista: host:port[:user:pass]
+        var parts = raw.Split(':');
+        if (parts.Length == 2) return ("http", parts[0], parts[1], null, null);
+        if (parts.Length >= 4) return ("http", parts[0], parts[1], parts[2], string.Join(':', parts[3..]));
+        return null;
     }
 
     private async Task SetWebhookAsync(string instanceName, CancellationToken ct)

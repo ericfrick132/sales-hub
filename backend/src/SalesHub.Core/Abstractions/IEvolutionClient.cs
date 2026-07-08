@@ -7,7 +7,9 @@ public record InstanceConnectionInfo(string Status, string? PhoneNumber, string?
 public interface IEvolutionClient
 {
     Task<InstanceConnectionInfo> GetInstanceStatusAsync(string instanceName, CancellationToken ct = default);
-    Task<InstanceConnectionInfo> EnsureInstanceAsync(string instanceName, CancellationToken ct = default);
+    /// <summary>Crea (si no existe) y asegura webhook + proxy de la instancia. <paramref name="proxyUrl"/>
+    /// opcional: el proxy de salida de esta línea; si es null cae al global (Evolution:ProxyUrl).</summary>
+    Task<InstanceConnectionInfo> EnsureInstanceAsync(string instanceName, CancellationToken ct = default, string? proxyUrl = null);
     Task<string?> GetQrCodeAsync(string instanceName, CancellationToken ct = default);
     Task LogoutInstanceAsync(string instanceName, CancellationToken ct = default);
 

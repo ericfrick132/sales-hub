@@ -14,3 +14,5 @@ public record TriggerPipelineRequest(
 public record TriggerPipelineResponse(int LeadsCreated);
 
 public record QrCodeResponse(string? QrBase64, string Status);
+
+public record SetProxyRequest(string? ProxyUrl);
