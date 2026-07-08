@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import type { Lead, SellerDashboard } from '../lib/types';
 import LeadTable from '../components/LeadTable';
 import ConversationsList from '../components/ConversationsList';
+import QrPanel from '../components/QrPanel';
 
 interface DailyActivity {
   date: string;
@@ -75,6 +76,15 @@ export default function SellerDetail() {
         }`}>
           Envío: {m.sendingEnabled ? 'on' : 'off'}
         </span>
+      </div>
+
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Conexión de WhatsApp</h2>
+        <p className="text-xs text-slate-500 max-w-2xl">
+          Escaneá el QR con el celular de <b>este número</b> (WhatsApp → Configuración → Dispositivos vinculados → Vincular dispositivo).
+          Así conectás un número nuevo desde acá, sin que el vendedor tenga que loguearse. El QR se refresca solo.
+        </p>
+        {id && <QrPanel sellerId={id} currentStatus={m.instanceStatus} />}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
