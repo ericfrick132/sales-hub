@@ -21,6 +21,12 @@ public class InstagramFollowService
     private readonly InstagramOptions _opts;
     private readonly ILogger<InstagramFollowService> _log;
 
+    // Gap aleatorio entre follows de una misma cuenta (jitter). Con ventana 10-22h (720 min)
+    // y ~30/día, un gap medio de ~20 min los reparte a lo largo del día sin ráfagas. Nunca
+    // dos follows pegados: el mínimo son 8 min. Es el corazón del "ir despacio entre follows".
+    private const int MinFollowGapSeconds = 8 * 60;
+    private const int MaxFollowGapSeconds = 30 * 60;
+
     public InstagramFollowService(
         ApplicationDbContext db,
         InstagramEncryptionService crypto,
@@ -111,6 +117,17 @@ public class InstagramFollowService
         {
             _log.LogDebug("Campaña {Id}: cap diario alcanzado ({Count}/{Rate})",
                 campaign.Id, todayCount, campaign.DailyRate);
+            return;
+        }
+
+        // Paceo a nivel CUENTA: espaciamos los follows con un gap aleatorio (jitter) para
+        // no dispararlos en ráfaga (el tick es 1/min, sin esto haría DailyRate follows
+        // seguidos al abrir la ventana → action-block). Es por cuenta, así dos campañas
+        // de la misma cuenta no se suman. El gap se fija tras cada intento (ver ExecuteFollowAsync).
+        if (account.NextFollowEligibleAt is { } eligibleAt && DateTimeOffset.UtcNow < eligibleAt)
+        {
+            _log.LogDebug("Campaña {Id}: cuenta {User} en cooldown de paceo hasta {At:HH:mm:ss}",
+                campaign.Id, account.Username, eligibleAt);
             return;
         }
 
@@ -301,6 +318,12 @@ public class InstagramFollowService
 
             account.LastUsedAt = DateTimeOffset.UtcNow;
             campaign.UpdatedAt = DateTimeOffset.UtcNow;
+
+            // Paceo: tras CUALQUIER intento (siguió, ya seguía, no encontrado o falló) tocamos IG,
+            // así que espaciamos el próximo con jitter. Si fue Blocked no importa (IsActionBlocked
+            // ya frena 24h). El gate a nivel cuenta en RunCampaignAsync respeta este horario.
+            account.NextFollowEligibleAt = DateTimeOffset.UtcNow
+                .AddSeconds(Random.Shared.Next(MinFollowGapSeconds, MaxFollowGapSeconds));
 
             await client.SaveSessionCookiesAsync(account, ct);
             await _db.SaveChangesAsync(ct);

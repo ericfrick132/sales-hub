@@ -38,6 +38,14 @@ public class InstagramAccount
     public DateTimeOffset? LastLoginAt { get; set; }
     public DateTimeOffset? LastUsedAt { get; set; }
 
+    /// <summary>
+    /// Paceo a nivel CUENTA: no se ejecuta otro follow hasta esta hora. Se setea después de
+    /// cada intento con un gap aleatorio (jitter) para espaciar los follows como un humano
+    /// y no dispararlos en ráfaga al abrir la ventana (eso gatilla action-block). Es por
+    /// cuenta (no por campaña) para que dos campañas de la misma cuenta no se sumen y bursteen.
+    /// </summary>
+    public DateTimeOffset? NextFollowEligibleAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
