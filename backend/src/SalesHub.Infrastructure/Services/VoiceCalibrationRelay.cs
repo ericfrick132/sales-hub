@@ -65,21 +65,24 @@ public class VoiceCalibrationRelay
     /// </summary>
     public static readonly (string Key, string Text)[] Scripts =
     {
-        ("cal-01", "¿Qué hacés? ¿Todo bien? Che, ¿hoy cómo lo estás manejando? ¿Excel, papel, algún sistema? Cualquier cosa me escribís por acá, ¿dale?"),
-        ("cal-02", "Sale treinta lucas por mes. El más completo está sesenta y cinco. Tenés siete días gratis, y son diez mil pesos de descuento si arrancás esta semana. Doscientos alumnos, quinientos, da igual."),
-        ("cal-03", "La app se llama GymHero. También tenemos TurnosPro, ArchiCloud, PlayCrew y UniStock. Entrá a gymhero punto fitness y fijate. Te mando el link por WhatsApp."),
-        ("cal-04", "¡Hola! ¿Qué hacés? Che, te escribo porque vi el gimnasio y me pareció buenísimo. La verdad, justo tengo algo que te puede servir un montón. Dale, escuchame dos minutos."),
-        ("cal-05", "Mirá, básicamente funciona así... vos cargás tus alumnos una vez, y después la app hace todo sola. Te avisa quién debe, le manda el recordatorio... y el alumno paga desde el link. O sea, te olvidás de perseguir gente."),
-        ("cal-06", "Dale, buenísimo entonces. Cualquier cosa que necesités me escribís por acá tranqui y lo vamos viendo, ¿dale? Un abrazo."),
-        ("cal-07", "Sí, te entiendo, obviamente. Igual mirá, no es lo mismo, ¿eh? Justamente la diferencia está en los cobros automáticos. Probalo una semana y después me contás."),
-        ("cal-08", "¿Y cuántos alumnos tenés, más o menos? ¿Cincuenta? ¿Cien? Te pregunto porque no cobramos por alumno... así que da igual la cantidad, es el mismo precio."),
-        ("cal-09", "Decime qué horario te queda bien y hacemos una llamada. ¿Mañana a la mañana podés? Tipo diez, once... Como prefieras, nosotros hasta las seis estamos."),
-        ("cal-10", "Listo, ya te creé la cuenta. Ahora te paso el link, entrás directo, sin formularios ni nada. Ahí adentro cargás tus servicios y tus horarios, y ya quedás andando."),
-        ("cal-11", "Uy, no, esperá... me parece que te pasé mal el link. Ahí te mando el bueno. Fijate que se abre solo, no te pide contraseña ni nada. Avisame si entrás bien."),
-        ("cal-12", "Nada, te decía que lo pienses tranquilo, no hay apuro. La cuenta te queda armada igual, y si la semana que viene querés arrancar, ya está todo listo."),
-        ("cal-13", "El mail sería ventas arroba gymhero punto fitness. Y el teléfono es once, seis nueve tres siete, cero cero cinco cero. Anotalo y cualquier cosa me llamás."),
-        ("cal-14", "¡No, ni hablar! Eso justamente es lo que la app te resuelve. ¿Sabés la cantidad de gente que perdía cuotas por eso? Un montón. Ahora no se les escapa ni una."),
-        ("cal-15", "Bueno, dale, tranqui. Escuchame otra cosa... nosotros somos una empresa que hace sistemas de todo tipo, ¿viste? Así que si más adelante necesitás otra cosa, también te podemos ayudar."),
+        // Banco v2: fragmentos CASI TEXTUALES de los audios reales de Eric (transcripciones
+        // Whisper limpiadas). Leer palabras propias evita el efecto "guion robótico" que
+        // contaminaba las tomas del banco v1 (feedback del user 2026-07-07).
+        ("cal-16", "Bueno, antes que nada felicidades, obviamente siempre es un emprendimiento importante. Así que nada, bienvenido al mundo del pádel. Tenés el sistema súper completo, después ahí podés vender turnos, viste, toda la parte de buffet también la soporta."),
+        ("cal-17", "Tiene distintos planes, si querés arrancás con uno tranqui, como básico, y después podés ir subiendo y le agregás estas mejoras que la verdad, te digo, suman mucho al club. El bot de WhatsApp que contesta automático, reserva automático... bueno, nada, un montón de cosas."),
+        ("cal-18", "Tenemos distintos planes, arrancan en treinta y cinco mil por mes, dependiendo obviamente de las funcionalidades. Y el más caro está sesenta y cinco, que te agrega algunas funcionalidades extras, como un detector de huella dactilar... los socios pueden entrar con huella, reconocimiento facial, etcétera."),
+        ("cal-19", "Dale, no hay problema, cualquier cosita nos escribís. Nosotros tenemos acceso con huella dactilar, con un lector que en Mercado Libre vale ciento veinte mil pesos. Nuestro sistema está adaptado a ese lector, o sea, lo conectás y ya sale andando."),
+        ("cal-20", "Decime qué horario te queda bien y hacemos una llamada. Si querés a la tarde... bueno, ahora justo está el partido a la una. Así que hoy, o si querés mañana, como prefieras. Nosotros hasta las seis estamos."),
+        ("cal-21", "Escuchame, ¿mañana a qué horario te puedo llamar? Necesito que estés con la compu... y si no, te muestro por el celu también, no hay drama. Pero bueno, si estás con la compu mejor, o la tablet, viste. Avisame, decime en qué horario podés mañana."),
+        ("cal-22", "Si querés pasame tu mail y ya te voy armando el club, por lo menos para ya tener eso básico configurado. Y después, nada, ahí te paso los planes y todo, así los ves. Si querés hacemos una demo rápida, te muestro más o menos cómo funciona el sistema."),
+        ("cal-23", "Sí, por supuesto, te entiendo. Mirá, son muchos los que nos contactan por estos temas, así que cualquier cosa, si querés revisar un poco el sistema, si tenés alguna duda puntual, avisanos."),
+        ("cal-24", "Y después tenés también la otra aplicación, para gimnasios propiamente dicho. Si querés se te puede armar un combo, que es lo que hacemos con varios que están en tu misma situación. Así que si querés armamos un combo de precio de las dos, no hay problema, yo eso lo he hecho."),
+        ("cal-25", "Y lo hicieron también a pulmón, viste... empezaron con cuatro canchas y un bar, y después metieron cancha de fútbol. Pero te estoy hablando casi tres años después, o sea, nada es de la noche a la mañana. Por suerte a todos los clientes nuestros les está yendo muy bien, así que nada, espectacular."),
+        ("cal-26", "¿Qué hacés? ¿Todo bien? No, ya no se paga más por mensaje, ahora es el plan. Si vas a mi suscripción, ahí ponés agregar el plan y ya está. Son diez mil pesos y son WhatsApp ilimitados."),
+        ("cal-27", "Al final nos pareció hacerlo así mucho mejor, porque para tu caso tenés un montón de socios, de alumnos, entonces estaría carísimo. Entonces lo tenemos ilimitado, mandás la cantidad que quieras. Así que nada, activate eso y ya tenés mensajes."),
+        ("cal-28", "Hola, ¿cómo estás? Todo bien. Fijate si no entrá de nuevo, seguro ahí te genera otro código, no hay problema. Si te crea una cuenta nueva, no hay ningún problema."),
+        ("cal-29", "Escuchame otra cosa, mirá, nosotros somos una empresa que nos dedicamos a hacer sistemas de todo tipo. Tenemos uno de pádel, que es justamente PlayCrew, que se dedica a la gestión de canchas, de clases... vos podés cargar tus entrenadores, o sea los profes que tenés, los alumnos reservan la clase, reservan la cancha... bueno, nada, todo eso."),
+        ("cal-30", "Nos metimos mucho con la huella digital, y la hicimos súper barata... creo que está cien lucas, ciento veinte por ahí. Y ahí tus socios entran con huella. Te paso nuestra página, y si querés pasame tu mail y te enviamos una cuenta demo con siete días gratis."),
     };
 
     /// <summary>True si el mensaje fue consumido por la calibración (no sigue el flujo normal).</summary>
