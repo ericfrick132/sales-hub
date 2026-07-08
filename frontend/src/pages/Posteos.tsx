@@ -11,6 +11,7 @@ interface PostingProfile {
   postHours: number[]; postDays: number[]; postsPerDay: number;
   landingUrl?: string; landingKnowledge?: string; landingKnowledgeAt?: string;
   brandLogoAssetId?: string | null;
+  imageStyle?: string;
 }
 interface PostingChannel {
   id: string; productKey: string; platform: string; enabled: boolean;
@@ -228,6 +229,9 @@ export default function Posteos() {
               )}
               <LogoEditor key={`logo-${profile.productKey}`} profile={profile} />
             </div>
+
+            {/* Dirección de arte del prompt de imagen/video (editable por app) */}
+            <ImageStyleEditor key={`imgstyle-${profile.productKey}`} profile={profile} />
 
             {/* Landing: fuente real de features/precios */}
             <LandingEditor key={`landing-${profile.productKey}`} profile={profile} />
@@ -456,6 +460,44 @@ function LogoEditor({ profile }: { profile: PostingProfile }) {
 }
 
 // ── Landing: URL + ficha destilada (features/precios reales) ─────────────────
+// Dirección de arte por app: va TAL CUAL al prompt final del modelo de imagen/video
+// (AiImageGenerator/FalVideoGenerator.BuildBrandPrompt), con prioridad sobre los defaults.
+function ImageStyleEditor({ profile }: { profile: PostingProfile }) {
+  const qc = useQueryClient();
+  const [style, setStyle] = useState(profile.imageStyle ?? '');
+  const dirty = style !== (profile.imageStyle ?? '');
+
+  async function save() {
+    try {
+      await api.put(`/posteos/profiles/${profile.productKey}`, { imageStyle: style });
+      toast.success('Estilo de imagen guardado');
+      qc.invalidateQueries({ queryKey: ['posteos-profiles'] });
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Falló'); }
+  }
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="font-semibold">Estilo de imagen (prompt)</h3>
+        <button className="btn-primary text-xs" onClick={save} disabled={!dirty}>Guardar</button>
+      </div>
+      <p className="text-[11px] text-slate-500 mb-2">
+        Instrucciones de dirección de arte que van directo al modelo que genera las imágenes y videos
+        de <b className="capitalize">{profile.productKey}</b>. Sirve para prohibir cosas
+        (ej. "sin caras dramáticas, sin gente estresada") o fijar un estilo (ej. "ilustración flat
+        minimalista, fondo claro, mucho aire"). Vacío = estilo default.
+      </p>
+      <textarea
+        className="input w-full text-xs font-mono"
+        rows={4}
+        placeholder='ej: "flat illustration minimalista, colores de marca, fondo claro, sin caras de estrés ni escenas dramáticas, composición simple con un solo elemento central"'
+        value={style}
+        onChange={(e) => setStyle(e.target.value)}
+      />
+    </div>
+  );
+}
+
 function LandingEditor({ profile }: { profile: PostingProfile }) {
   const qc = useQueryClient();
   const [url, setUrl] = useState(profile.landingUrl ?? '');

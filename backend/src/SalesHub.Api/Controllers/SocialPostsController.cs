@@ -84,6 +84,8 @@ public class SocialPostsController : ControllerBase
         if (req.BrandVoice != null) p.BrandVoice = req.BrandVoice;
         if (req.BrandGuidelines != null) p.BrandGuidelines = req.BrandGuidelines;
         if (req.BrandFonts != null) p.BrandFonts = req.BrandFonts;
+        if (req.BrandColorsJson != null) p.BrandColorsJson = req.BrandColorsJson;
+        if (req.ImageStyle != null) p.ImageStyle = req.ImageStyle;
         if (req.LandingUrl != null) p.LandingUrl = req.LandingUrl.Trim();
         p.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
@@ -1162,6 +1164,10 @@ public class SocialPostsController : ControllerBase
         public string? BrandGuidelines { get; set; }
         /// <summary>Tipografía de marca que la imagen debe respetar (ej. "Bricolage Grotesque, bold condensed").</summary>
         public string? BrandFonts { get; set; }
+        /// <summary>Paleta JSON {"primary":"#..."} — antes no era editable por API.</summary>
+        public string? BrandColorsJson { get; set; }
+        /// <summary>Dirección de arte del prompt de imagen/video de esta app (va tal cual al modelo).</summary>
+        public string? ImageStyle { get; set; }
         /// <summary>URL de la landing (de acá se destilan features/precios reales).</summary>
         public string? LandingUrl { get; set; }
     }

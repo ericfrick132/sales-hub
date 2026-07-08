@@ -78,6 +78,9 @@ public class FalVideoGenerator : ISocialAssetGenerator
         var sb = new StringBuilder();
         sb.Append(string.IsNullOrWhiteSpace(post.Prompt) ? post.Concept : post.Prompt);
         sb.Append(". Short-form social video, dynamic, modern, eye-catching motion.");
+        // Misma dirección de arte editable que usa AiImageGenerator (Posteos → marca).
+        if (!string.IsNullOrWhiteSpace(profile.ImageStyle))
+            sb.Append($" ART DIRECTION (must follow strictly): {profile.ImageStyle.Trim()}.");
         if (!string.IsNullOrWhiteSpace(profile.BrandColorsJson) && profile.BrandColorsJson.Trim() != "{}")
             sb.Append($" Brand color palette (exact hex): {profile.BrandColorsJson}.");
         if (!string.IsNullOrWhiteSpace(profile.BrandVoice))

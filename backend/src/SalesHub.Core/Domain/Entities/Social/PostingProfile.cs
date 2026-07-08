@@ -30,6 +30,10 @@ public class PostingProfile
     public string BrandGuidelines { get; set; } = string.Empty;
     /// <summary>A quién le habla (ej. "dueños de gimnasios — B2B").</summary>
     public string TargetAudience { get; set; } = string.Empty;
+    /// <summary>Dirección de arte del PROMPT DE IMAGEN/VIDEO de esta app, editable por el admin.
+    /// Se inyecta tal cual en el prompt final que va al modelo (ej. "flat illustration, sin caras
+    /// dramáticas, fondo claro, estilo minimalista"). Vacío = solo la envoltura default.</summary>
+    public string ImageStyle { get; set; } = string.Empty;
     /// <summary>Pilares de contenido (ej. ahorro de tiempo, cobros, retención…).</summary>
     public List<string> ContentPillars { get; set; } = new();
 

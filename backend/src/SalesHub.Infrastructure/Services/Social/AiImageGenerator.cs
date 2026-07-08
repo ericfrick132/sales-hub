@@ -153,6 +153,10 @@ public class AiImageGenerator : ISocialAssetGenerator
             _ => "square 1:1 composition",
         };
         sb.Append($". Social media {format.ToString().ToLowerInvariant()} for {platform}, {aspect}, clean and modern.");
+        // Dirección de arte editable por app (Posteos → marca). Va ANTES que el resto de la
+        // envoltura para que pese más que los defaults y pueda vetar estilos (ej. "sin caras").
+        if (!string.IsNullOrWhiteSpace(profile.ImageStyle))
+            sb.Append($" ART DIRECTION (must follow strictly, overrides any conflicting style above): {profile.ImageStyle.Trim()}.");
         // Ancla cultural: si aparece gente/lugares, que se lean latinoamericanos, no asiáticos ni stock USA.
         sb.Append(" If people or places appear, they must read as Latin American / Argentine (latino features, Spanish-language signage), never Asian or generic US stock imagery.");
         if (!string.IsNullOrWhiteSpace(profile.BrandColorsJson) && profile.BrandColorsJson.Trim() != "{}")
