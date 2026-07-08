@@ -217,18 +217,34 @@ public class VoiceNoteService
         return script;
     }
 
+    /// <summary>
+    /// Adaptación LITERAL para el panel de prueba: respeta el texto palabra por palabra —
+    /// solo ajusta la ESCRITURA para que el TTS suene al tono de Eric (tildes de voseo,
+    /// signos ¿? completos, mayúsculas/comas/puntos, "llama"→"shama", cifras en letras).
+    /// Prohibido agregar, sacar o cambiar palabras.
+    /// </summary>
+    private async Task<string?> BuildLiteralScriptAsync(string text, CancellationToken ct)
+    {
+        var system =
+            "Preparás textos para un TTS con la voz clonada de Eric (vendedor argentino, es-AR, voseo). " +
+            "REGLA MADRE: el texto se respeta PALABRA POR PALABRA — no agregues, saques ni cambies ninguna palabra, " +
+            "no reformules, no sumes conectores ni cierres. Lo ÚNICO que ajustás es la escritura para la entonación:\n" +
+            "- Puntuación completa: mayúsculas, comas, puntos, signos ¿? completos en las preguntas.\n" +
+            "- Tildes del voseo: mirá, escuchá, decime, pasame, fijate, entrá, probá, avisame.\n" +
+            "- Escribí \"llama/llamar\" como \"shama/shamar\" (grafía del yeísmo; solo esas palabras).\n" +
+            "- Cifras en letras (\"30.000\" → \"treinta mil\") — sin cambiar la palabra que las acompaña.\n" +
+            "- Podés marcar micro-pausas con \"...\" donde el texto ya respira; nada más.\n" +
+            "Devolvé SOLO el texto adaptado, sin comillas ni explicación.";
+        var script = await _claude.CompleteAsync(system, text, "voicenote", ct);
+        return string.IsNullOrWhiteSpace(script) ? null : script!.Trim().Trim('"', '«', '»');
+    }
+
     /// <summary>Envío de PRUEBA end-to-end a un número arbitrario (panel de test, no toca leads).</summary>
     public async Task<(bool ok, string? script, string? error)> SendTestAsync(
-        string instanceName, string phone, string chatReply, bool farewell, string? productKey, CancellationToken ct)
+        string instanceName, string phone, string text, CancellationToken ct)
     {
         if (!_tts.IsConfigured) return (false, null, "ElevenLabs sin API key");
-        string? facts = null;
-        if (!string.IsNullOrWhiteSpace(productKey))
-        {
-            var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.ProductKey == productKey, ct);
-            if (product is not null) facts = BuildProductFacts(product);
-        }
-        var script = await BuildScriptAsync(chatReply, farewell ? Trigger.Farewell : Trigger.Decisive, facts, ct);
+        var script = await BuildLiteralScriptAsync(text, ct);
         if (string.IsNullOrWhiteSpace(script)) return (false, null, "No se pudo generar el guion");
         var mp3 = await _tts.SynthesizeAsync(script!, _opts.VoiceId,
             new ElevenLabsClient.TtsVoiceSettings(_opts.Stability, _opts.SimilarityBoost, _opts.Style, _opts.Speed), ct);
