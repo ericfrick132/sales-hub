@@ -33,6 +33,8 @@ public class VoiceNoteOptions
     /// <summary>Tope global de audios por día (guarda de créditos ElevenLabs).</summary>
     public int MaxPerDay { get; set; } = 20;
 
-    /// <summary>Largo máximo del guion en palabras (~25 segundos de audio).</summary>
-    public int MaxScriptWords { get; set; } = 70;
+    /// <summary>Largo máximo del guion en palabras (~15 segundos de audio). Corto a propósito:
+    /// los audios breves suenan menos a IA (menos tiempo para que se note el patrón) y es
+    /// como manda audios Eric. Para precio/planes el prompt permite hasta el doble.</summary>
+    public int MaxScriptWords { get; set; } = 45;
 }

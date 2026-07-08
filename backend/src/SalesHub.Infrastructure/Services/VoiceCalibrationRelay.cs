@@ -68,27 +68,38 @@ public class VoiceCalibrationRelay
     /// <summary>True si el mensaje fue consumido por la calibración (no sigue el flujo normal).</summary>
     public async Task<bool> TryHandleAsync(ConversationService.IncomingMessage incoming, CancellationToken ct)
     {
-        // Solo self-chat: fromMe y el chat es el propio dueño de la línea.
-        if (!incoming.FromMe || !IsSelfChat(incoming)) return false;
-
         var text = (incoming.Text ?? string.Empty).Trim();
+
+        // Guarda global: los ecos de NUESTROS mensajes 🎙️ (fromMe) se consumen siempre —
+        // si cayeran al takeover, mutearían al bot para el lead que matchee ese número.
+        if (incoming.FromMe && text.StartsWith(Prefix.Trim(), StringComparison.Ordinal)) return true;
+
+        // Participante: en self-chat es el dueño de la línea (fromMe); si no, el remitente real.
+        var selfChat = incoming.FromMe && IsSelfChat(incoming);
+        if (incoming.FromMe && !selfChat) return false;
+        var phone = Digits(incoming.FromPhone ?? incoming.FromJid);
+        if (phone.Length < 8) return false;
+        var sessionKey = $"{incoming.InstanceName}:{phone[^8..]}";
+
         var lower = text.ToLowerInvariant();
         var isAudio = IsAudioMessage(incoming.RawJson);
-        Sessions.TryGetValue(incoming.InstanceName, out var session);
+        Sessions.TryGetValue(sessionKey, out var session);
 
         // Expiración perezosa de la sesión.
         if (session is not null && DateTimeOffset.UtcNow - session.LastActivity > SessionTtl)
         {
-            Sessions.TryRemove(incoming.InstanceName, out _);
+            Sessions.TryRemove(sessionKey, out _);
             session = null;
         }
 
-        // Arranque: "calibrar" (con o sin sesión previa).
+        // Arranque: "calibrar" desde el self-chat O desde un número de la allowlist de
+        // /transcripcion (números autorizados — ej. el celu personal de Eric).
         if (!isAudio && (lower == "calibrar" || lower == "calibrar voz"))
         {
+            if (!selfChat && !await IsAllowedAsync(phone, ct)) return false;
             var startIndex = await FirstPendingIndexAsync(ct);
             session = new Session { Index = startIndex };
-            Sessions[incoming.InstanceName] = session;
+            Sessions[sessionKey] = session;
             var total = Scripts.Length;
             await SendAsync(incoming,
                 $"Calibración de voz: te voy mandando guiones y vos grabás cada uno como nota de voz acá mismo, natural, sin producir. " +
@@ -97,16 +108,9 @@ public class VoiceCalibrationRelay
             return true;
         }
 
-        if (session is null)
-        {
-            // Sin sesión: solo ignoramos los ecos de nuestros propios mensajes 🎙️.
-            return !isAudio && text.StartsWith(Prefix.Trim(), StringComparison.Ordinal);
-        }
+        if (session is null) return false;
 
         session.LastActivity = DateTimeOffset.UtcNow;
-
-        // Ecos de nuestros propios guiones (fromMe con prefijo) → consumir sin procesar.
-        if (!isAudio && text.StartsWith(Prefix.Trim(), StringComparison.Ordinal)) return true;
 
         if (isAudio)
         {
@@ -125,7 +129,7 @@ public class VoiceCalibrationRelay
             session.Index++;
             if (session.Index >= Scripts.Length)
             {
-                Sessions.TryRemove(incoming.InstanceName, out _);
+                Sessions.TryRemove(sessionKey, out _);
                 var n = await _db.Set<VoiceCalibrationTake>().CountAsync(ct);
                 await SendAsync(incoming, $"✅ ¡Ese era el último! Quedaron {n} tomas guardadas en total. Cuando quieras sumar más, mandá \"calibrar\" de nuevo.", ct);
             }
@@ -139,7 +143,7 @@ public class VoiceCalibrationRelay
         switch (lower)
         {
             case "listo" or "cancelar" or "chau":
-                Sessions.TryRemove(incoming.InstanceName, out _);
+                Sessions.TryRemove(sessionKey, out _);
                 await SendAsync(incoming, "Listo, cerré la sesión de calibración. Las tomas quedaron guardadas. 💪", ct);
                 return true;
             case "repetir":
@@ -153,7 +157,7 @@ public class VoiceCalibrationRelay
                 session.Index++;
                 if (session.Index >= Scripts.Length)
                 {
-                    Sessions.TryRemove(incoming.InstanceName, out _);
+                    Sessions.TryRemove(sessionKey, out _);
                     await SendAsync(incoming, "✅ Listo, no quedan más guiones. Mandá \"calibrar\" cuando quieras otra pasada.", ct);
                 }
                 else
@@ -167,6 +171,18 @@ public class VoiceCalibrationRelay
                 await SendAsync(incoming, "Estoy esperando la nota de voz del guion 👆 (o \"repetir\" / \"saltar\" / \"listo\").", ct);
                 return true;
         }
+    }
+
+    /// <summary>El remitente está en la allowlist de números autorizados (/transcripcion).</summary>
+    private async Task<bool> IsAllowedAsync(string phone, CancellationToken ct)
+    {
+        var suffix = phone[^8..];
+        var phones = await _db.TranscriptionPhones.AsNoTracking().Select(p => p.Phone).ToListAsync(ct);
+        return phones.Any(p =>
+        {
+            var d = Digits(p);
+            return d.Length >= 8 && d[^8..] == suffix;
+        });
     }
 
     /// <summary>Primer guion sin tomas; si todos tienen, arranca de nuevo en el primero.</summary>
