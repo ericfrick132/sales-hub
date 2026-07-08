@@ -71,7 +71,7 @@ const SECTIONS: SectionDef[] = [
           { id: 'admin-control', label: <>Recorrí el Centro de control y dejaste el badge en "Vendiendo".</> },
           { id: 'admin-costo', label: <>El widget Costo IA muestra números (si da $0 constante, la key de Anthropic en prod está vencida).</> },
         ],
-        note: <><b>Los 7 runners (flags):</b> <Cmd>whatsapp</Cmd> envíos+respuestas IA · <Cmd>onboarding</Cmd> alta por ads · <Cmd>instagram</Cmd> DMs+follow+scraping (5 workers de una) · <Cmd>posteos</Cmd> · <Cmd>captacion</Cmd> · <Cmd>seo</Cmd> · <Cmd>reengage</Cmd> import de leads B2B (GymHero/TurnosPro). Se togglean sin reiniciar. Ojo: <Cmd>onboarding</Cmd> arranca apagado por defecto; los demás, prendidos salvo que los apagues.</>,
+        note: <><b>Los 7 runners (flags):</b> <Cmd>whatsapp</Cmd> envíos+respuestas IA · <Cmd>onboarding</Cmd> alta por ads · <Cmd>instagram</Cmd> DMs+follow+scraping (5 workers de una) · <Cmd>posteos</Cmd> · <Cmd>captacion</Cmd> · <Cmd>seo</Cmd> · <Cmd>reengage</Cmd> import de leads B2B (GymHero/TurnosPro) · <Cmd>voicenote</Cmd> notas de voz IA con la voz clonada. Se togglean sin reiniciar. Ojo: <Cmd>onboarding</Cmd> arranca apagado por defecto; los demás, prendidos salvo que los apagues.</>,
       },
     ],
   },
@@ -222,6 +222,23 @@ const SECTIONS: SectionDef[] = [
         checks: [{ id: 'ia-reglas', label: <>Reglas globales revisadas y activas (checkbox "Activa" por regla; se aplican a todas las apps).</> }],
       },
       {
+        title: 'Notas de voz IA (voz clonada)',
+        routes: ['/voice-test'],
+        admin: true,
+        desc: 'El bot responde con nota de voz (voz clonada de Eric, ElevenLabs) en momentos decisivos, con azar para no ser mecánico: espejo (el lead mandó audio, 80%), decisivo (precio/planes/cuenta/demo, 35%) y despedida (cierra con "un abrazo", 60%). El guion se reescribe con la guía de estilo de Eric (muletillas reales, voseo, "shama", lucas).',
+        actions: [
+          <>Flag <Cmd>voicenote</Cmd> en el Centro de control (runners) — prendido/apagado sin reiniciar.</>,
+          <>Límites: 1 audio por lead cada 24 h, tope global 20/día (créditos ElevenLabs). Si el audio falla, sale el texto normal.</>,
+          <>/voice-test: escribís un texto + número y sale como audio con la voz — LITERAL (respeta palabra por palabra, solo adapta puntuación y tono).</>,
+          <>Calibración por WhatsApp: mandá <Cmd>calibrar</Cmd> al chat de la línea (desde un número autorizado) y el bot te guía guion por guion para grabar tomas que mejoran el clon.</>,
+        ],
+        checks: [
+          { id: 'vn-flag', label: <>Flag <Cmd>voicenote</Cmd> ON y voz elegida (hoy: Eric Frick v4).</> },
+          { id: 'vn-test', label: <>Probaste cómo suena desde <Cmd>/voice-test</Cmd> a tu número.</> },
+          { id: 'vn-calibrar', label: <>Tomas de calibración grabadas (mandá "calibrar" — acumula para el Professional Voice Clone).</> },
+        ],
+      },
+      {
         title: 'Onboarding de apps',
         routes: ['/onboarding-apps'],
         admin: true,
@@ -361,18 +378,19 @@ const WA_MASTER: Array<{ cmd: string; desc: ReactNode }> = [
   { cmd: 'listo', desc: <>Cierra la sesión activa. <Cmd>cancelar</Cmd> descarta lo pendiente.</> },
   { cmd: 'imagen/idea suelta', desc: 'Sin sesión abierta, el bot pregunta: 1 = inspiración, 2 = PDF.' },
   { cmd: 'nota de voz', desc: 'Si el relay de transcripción está activo y tu número está en la allowlist: te devuelve el texto. Audio a vos mismo (self-chat) también se transcribe.' },
+  { cmd: 'calibrar', desc: 'Sesión de calibración de voz: el bot te tira guiones de a uno y grabás cada uno como nota de voz. "repetir" regraba, "saltar" saltea, "listo" corta. Acumulativo (arranca donde dejaste).' },
 ];
 
 // Estado "apagado / sin usar" (foto al 7 jul 2026)
 const OFF_TABLE: Array<{ f: ReactNode; estado: string; on?: boolean; falta: ReactNode }> = [
-  { f: <b>Onboarding por ads (bot de alta)</b>, estado: 'flag OFF por defecto', falta: <>Prender flag <Cmd>onboarding</Cmd> + card "Activo" por app.</> },
+  { f: <b>Onboarding por ads (bot de alta)</b>, estado: 'LIVE (flag ON)', on: true, falta: <>Ya opera con soporte real: si el lead no puede entrar, regenera el acceso contra la app.</> },
   { f: <b>Transcripción de audios (+ batch PDF)</b>, estado: 'deployado, OFF', falta: <>Switch en /transcripcion + línea + allowlist.</> },
-  { f: <b>Pipeline social completo (video fal.ai)</b>, estado: 'sin keys', falta: <>Key de fal.ai + flag <Cmd>posteos</Cmd> + canales Buffer por red.</> },
+  { f: <b>Pipeline social (posteos automáticos)</b>, estado: 'LIVE (flag ON)', on: true, falta: <>7 apps publican auto a Buffer; falta conectar los TikToks y logos de turnospro/archicloud.</> },
   { f: <b>Notify Me (Reels nativos vía Buffer)</b>, estado: 'a medias', falta: <>App móvil de Buffer + prender el checkbox en los canales de video.</> },
   { f: <b>Auto-follow IG</b>, estado: 'esperando proxies', falta: <>Comprar proxies fijos (iProxy/IPRoyal) y prender flag <Cmd>instagram</Cmd>.</> },
   { f: <b>Follow-up unificado (abandono por app)</b>, estado: 'construido, sin deployar', falta: <>Deploy + conectar gymhero (turnos-pro ya está).</> },
   { f: <b>Big-CRM Hub (leads B2B de las apps)</b>, estado: 'construido, sin configurar', falta: <>Config en los 3 repos + flag <Cmd>reengage</Cmd>.</> },
-  { f: <b>Audio-opener con tu voz (ElevenLabs)</b>, estado: 'voz clonada lista', falta: <>Falta construir el step TTS en la cadencia (key y voz ya configuradas).</> },
+  { f: <b>Notas de voz IA con tu voz (ElevenLabs)</b>, estado: 'LIVE (flag ON)', on: true, falta: <>El bot responde en audio en momentos decisivos; seguir calibrando con "calibrar".</> },
   { f: <b>Generador de imágenes (Pollinations)</b>, estado: 'página huérfana', falta: <>Existe el componente pero no está ruteado en el menú.</> },
   { f: <b>Landings WhatsApp+OTP (archicloud/playcrew)</b>, estado: 'LIVE', on: true, falta: <>Apuntar las campañas de Meta a las landings y despausarlas.</> },
   { f: <b>Meta Lead Ads (webhook forms)</b>, estado: 'verificado e2e', on: true, falta: <>Lanzar campañas objetivo Leads. Ojo: el PageAccessToken vence ~28 ago 2026.</> },
