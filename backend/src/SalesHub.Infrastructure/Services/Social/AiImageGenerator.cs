@@ -179,7 +179,7 @@ public class AiImageGenerator : ISocialAssetGenerator
         sb.Append($". Social media {format.ToString().ToLowerInvariant()} for {platform}, {aspect}, clean and modern.");
         // La imagen se recorta después al ratio exacto de IG (el modelo no genera 9:16 ni 4:5),
         // así que el contenido importante tiene que aguantar un crop centrado.
-        sb.Append(" Keep the main subject and ALL text well inside the central safe area, with generous margins — nothing important near the edges (the image will be cropped to the platform's aspect ratio).");
+        sb.Append(" CRITICAL SAFE AREA: the image will be cropped ~10% on each edge to fit the platform's aspect ratio — keep ALL text and key subjects fully inside the central 80% of the frame, leaving at least 12% of visibly empty background as margin on ALL four edges. No letter may touch or approach an edge.");
         // Dirección de arte editable por app (Posteos → marca). Va ANTES que el resto de la
         // envoltura para que pese más que los defaults y pueda vetar estilos (ej. "sin caras").
         if (!string.IsNullOrWhiteSpace(profile.ImageStyle))
