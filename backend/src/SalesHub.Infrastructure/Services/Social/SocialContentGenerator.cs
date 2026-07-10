@@ -44,6 +44,13 @@ public class SocialContentGenerator
         "El 'prompt' visual NO debe pedir ningún otro texto escrito, ni pantallas/planillas/carteles con texto legible.";
 
     /// <summary>
+    /// Términos vetados por el dueño de la marca: no se usan en NINGÚN texto generado.
+    /// </summary>
+    private const string BannedWordsRule =
+        "PALABRA PROHIBIDA: jamás uses 'no-show', 'no show' ni 'no-shows' en ningún campo (caption, overlay, concepto, narración, prompt, hashtags). " +
+        "Decilo en español: 'ausencias', 'turnos que quedan vacíos', 'clientes que no vienen', 'reservas sin usar'.";
+
+    /// <summary>
     /// Receta "majestic" de video: en vez de una fórmula genérica (que produce el
     /// look IA), le pedimos a Claude DIRECCIÓN DE CINE — una micro-historia real
     /// alrededor del mundo del cliente, con el dolor contado de costado.
@@ -96,6 +103,7 @@ public class SocialContentGenerator
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un objeto JSON válido, sin texto extra ni markdown, con estas claves:");
         sys.AppendLine("{\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
         sys.AppendLine(OverlayRule);
+        sys.AppendLine(BannedWordsRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
@@ -189,11 +197,13 @@ public class SocialContentGenerator
             sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"caption\":string, \"hashtags\":string[], \"slides\":[{\"role\":string, \"overlay\":string, \"prompt\":string}]}");
             sys.AppendLine($"El array 'slides' tiene EXACTAMENTE {slideCount} elementos, en orden narrativo.");
             sys.AppendLine(OverlayRule);
+        sys.AppendLine(BannedWordsRule);
         }
         else
         {
             sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
             sys.AppendLine(OverlayRule);
+        sys.AppendLine(BannedWordsRule);
             if (ch.AssetKind == SocialAssetKind.Video) { sys.AppendLine(NarrationRule); sys.AppendLine(VideoPromptRecipe); }
         }
 
@@ -286,6 +296,7 @@ public class SocialContentGenerator
             sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies).");
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
         sys.AppendLine(OverlayRule);
+        sys.AppendLine(BannedWordsRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
@@ -334,6 +345,7 @@ public class SocialContentGenerator
             sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies).");
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
         sys.AppendLine(OverlayRule);
+        sys.AppendLine(BannedWordsRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
