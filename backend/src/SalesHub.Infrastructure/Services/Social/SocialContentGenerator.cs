@@ -51,6 +51,18 @@ public class SocialContentGenerator
         "Decilo en español: 'ausencias', 'turnos que quedan vacíos', 'clientes que no vienen', 'reservas sin usar'.";
 
     /// <summary>
+    /// Arco narrativo obligatorio de TODO posteo: gancho que frena el scroll →
+    /// desarrollo con valor concreto → llamado a la acción. Aplica al caption
+    /// (single) y al reparto de roles de las slides (multi).
+    /// </summary>
+    private const string StructureRule =
+        "ESTRUCTURA OBLIGATORIA HOOK → DESARROLLO → CTA: el caption arranca con UNA línea de GANCHO que frene el scroll " +
+        "(pregunta que duele o dato concreto — Instagram corta ahí el 'ver más', esa línea tiene que obligar a abrir), " +
+        "sigue el DESARROLLO (2-4 líneas cortas con valor real: el dolor, el dato, el beneficio — sin humo), " +
+        "y cierra SIEMPRE con un CTA claro y corto ('Probalo gratis — link en bio', '¿Empezamos hoy? Escribinos', 'Link en bio'). " +
+        "Sin CTA no hay posteo.";
+
+    /// <summary>
     /// Receta "majestic" de video: en vez de una fórmula genérica (que produce el
     /// look IA), le pedimos a Claude DIRECCIÓN DE CINE — una micro-historia real
     /// alrededor del mundo del cliente, con el dolor contado de costado.
@@ -104,6 +116,7 @@ public class SocialContentGenerator
         sys.AppendLine("{\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
+        sys.AppendLine(StructureRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
@@ -190,7 +203,7 @@ public class SocialContentGenerator
             var isStoryCombo = ch.Format == SocialPostFormat.Story;
             sys.AppendLine();
             sys.AppendLine($"Este posteo es MULTI-SLIDE: {slideCount} {(isStoryCombo ? "stories seguidas" : "imágenes de un carrusel")} que juntas CUENTAN UNA HISTORIA con arco (gancho → desarrollo → cierre).");
-            sys.AppendLine("Cada slide tiene un ROL propio y avanza la narrativa; no las repitas. Roles posibles: hook, encuesta (pregunta con 2 opciones DIBUJADAS, no votable), dato, info, antes/después, cierre, link ('link en bio' como texto — NO un link real).");
+            sys.AppendLine("Cada slide tiene un ROL propio y avanza la narrativa; no las repitas. ESTRUCTURA OBLIGATORIA: la slide 1 es el HOOK (gancho grande que frena el scroll — pregunta que duele, dato fuerte o promesa tipo '3 tips para...'), las del medio son el DESARROLLO (una idea concreta por slide: dato, tip numerado, encuesta con 2 opciones DIBUJADAS no votable, antes/después), y la ÚLTIMA slide es SIEMPRE el CTA (cierre con llamado a la acción: '¿Te gustaría empezar hoy?', 'Probalo gratis', 'link en bio' como texto — NO un link real).");
             if (isStoryCombo)
                 sys.AppendLine("Son STORIES: verticales, casuales, texto grande (overlay) protagonista. Ej. secuencia: 1) pregunta/gancho, 2) el dato o la info, 3) el cierre con 'link en bio'.");
             sys.AppendLine("Cada slide: su propio 'overlay' (texto estampado corto) y su propio 'prompt' visual (INGLÉS). El 'caption' del posteo es UNO SOLO para todo el conjunto.");
@@ -198,12 +211,14 @@ public class SocialContentGenerator
             sys.AppendLine($"El array 'slides' tiene EXACTAMENTE {slideCount} elementos, en orden narrativo.");
             sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
+        sys.AppendLine(StructureRule);
         }
         else
         {
             sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
             sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
+        sys.AppendLine(StructureRule);
             if (ch.AssetKind == SocialAssetKind.Video) { sys.AppendLine(NarrationRule); sys.AppendLine(VideoPromptRecipe); }
         }
 
@@ -297,6 +312,7 @@ public class SocialContentGenerator
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
+        sys.AppendLine(StructureRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
@@ -346,6 +362,7 @@ public class SocialContentGenerator
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
+        sys.AppendLine(StructureRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
