@@ -177,6 +177,9 @@ public class AiImageGenerator : ISocialAssetGenerator
             _ => "square 1:1 composition",
         };
         sb.Append($". Social media {format.ToString().ToLowerInvariant()} for {platform}, {aspect}, clean and modern.");
+        // La imagen se recorta después al ratio exacto de IG (el modelo no genera 9:16 ni 4:5),
+        // así que el contenido importante tiene que aguantar un crop centrado.
+        sb.Append(" Keep the main subject and ALL text well inside the central safe area, with generous margins — nothing important near the edges (the image will be cropped to the platform's aspect ratio).");
         // Dirección de arte editable por app (Posteos → marca). Va ANTES que el resto de la
         // envoltura para que pese más que los defaults y pueda vetar estilos (ej. "sin caras").
         if (!string.IsNullOrWhiteSpace(profile.ImageStyle))
@@ -244,13 +247,22 @@ public class AiImageGenerator : ISocialAssetGenerator
                 return null;
             }
             var first = data[0];
+            byte[]? bytes = null;
             if (first.TryGetProperty("b64_json", out var b64) && b64.ValueKind == JsonValueKind.String)
-                return Convert.FromBase64String(b64.GetString()!);
-            if (first.TryGetProperty("url", out var url) && url.ValueKind == JsonValueKind.String)
-                return await _http.GetByteArrayAsync(url.GetString()!, ct);
+                bytes = Convert.FromBase64String(b64.GetString()!);
+            else if (first.TryGetProperty("url", out var url) && url.ValueKind == JsonValueKind.String)
+                bytes = await _http.GetByteArrayAsync(url.GetString()!, ct);
 
-            _log.LogWarning("ImageGen {Provider}: data[0] sin b64_json ni url", provider);
-            return null;
+            if (bytes is null)
+            {
+                _log.LogWarning("ImageGen {Provider}: data[0] sin b64_json ni url", provider);
+                return null;
+            }
+            // El modelo genera en 1:1 o 2:3 — ninguno es un ratio válido de Instagram para
+            // Story/Reel (9:16) ni Carousel (4:5). Recortamos nosotros al tamaño exacto del
+            // formato para que IG no recorte por su cuenta (y los logos queden dentro del frame).
+            var (w, h) = DimsFor(format);
+            return await _logos.NormalizeAsync(bytes, w, h, ct);
         }
         catch (Exception ex)
         {

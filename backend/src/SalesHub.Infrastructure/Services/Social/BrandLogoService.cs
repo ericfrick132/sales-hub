@@ -79,6 +79,57 @@ public class BrandLogoService
     }
 
     /// <summary>
+    /// Escala + recorta (cover, centrado) la imagen al tamaño EXACTO pedido con ffmpeg.
+    /// Los modelos texto→imagen no generan en los ratios de Instagram (GPT Image solo sabe
+    /// 1:1 y 2:3) — si no normalizamos acá, Instagram recorta él y corta texto/logos.
+    /// Best-effort: si falla, devuelve la imagen original.
+    /// </summary>
+    public async Task<byte[]> NormalizeAsync(byte[] image, int width, int height, CancellationToken ct = default)
+    {
+        if (image.Length == 0) return image;
+        var tmp = Path.Combine(Path.GetTempPath(), $"norm_{Guid.NewGuid():N}");
+        var inPath = tmp + "_in.png";
+        var outPath = tmp + "_out.png";
+        try
+        {
+            await File.WriteAllBytesAsync(inPath, image, ct);
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add("-y");
+            psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(inPath);
+            psi.ArgumentList.Add("-vf");
+            psi.ArgumentList.Add($"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}");
+            psi.ArgumentList.Add(outPath);
+
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc is null) return image;
+            var stderr = await proc.StandardError.ReadToEndAsync(ct);
+            await proc.WaitForExitAsync(ct);
+            if (proc.ExitCode != 0)
+            {
+                _log.LogWarning("ffmpeg normalize exit {Code}: {Err}", proc.ExitCode, stderr.Length > 300 ? stderr[..300] : stderr);
+                return image;
+            }
+            var outBytes = await File.ReadAllBytesAsync(outPath, ct);
+            return outBytes.Length > 0 ? outBytes : image;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Normalize de imagen falló");
+            return image;
+        }
+        finally
+        {
+            foreach (var f in new[] { inPath, outPath })
+                try { if (File.Exists(f)) File.Delete(f); } catch { /* no-op */ }
+        }
+    }
+
+    /// <summary>
     /// Pega uno o más logos (PNG con transparencia idealmente) sobre la imagen base con ffmpeg.
     /// El logo de MARCA va abajo-derecha, escalado al ~16% del ancho. Los logos de FEATURE
     /// (MercadoPago/WhatsApp) van en una fila abajo-izquierda, más chicos. Best-effort: si
