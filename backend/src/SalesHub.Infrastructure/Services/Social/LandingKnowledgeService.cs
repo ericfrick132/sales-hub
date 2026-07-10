@@ -82,7 +82,9 @@ public class LandingKnowledgeService
         if (!_claude.IsConfigured) return null;
         var sys = "Sos un analista de producto. A partir del texto de una landing, extraés SOLO datos reales " +
                   "(no inventes nada). Escribís una ficha compacta en español, en viñetas, que otro sistema usará " +
-                  "para generar contenido de redes fiel al producto.";
+                  "para generar contenido de redes fiel al producto. " +
+                  "PALABRA PROHIBIDA: jamás escribas 'no-show' / 'no show' / 'no-shows' — aunque la landing la use. " +
+                  "Traducila: 'ausencias', 'turnos que quedan vacíos', 'clientes que no se presentan'.";
         var user =
             $"Producto: {productKey}. Landing: {url}\n\n" +
             "Devolvé una ficha con estas secciones (omití la que no tenga datos en el texto):\n" +
