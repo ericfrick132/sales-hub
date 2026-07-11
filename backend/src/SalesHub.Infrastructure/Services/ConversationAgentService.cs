@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
@@ -42,15 +43,17 @@ public class ConversationAgentService
     private readonly OnboardingService _onboarding;
     private readonly ISendScheduler _scheduler;
     private readonly VoiceNoteService _voiceNotes;
+    private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
     private readonly ILogger<ConversationAgentService> _log;
 
     public ConversationAgentService(
         ApplicationDbContext db, IEvolutionClient evo, GroqWhisperClient whisper,
         AiSuggestionService suggestions, OnboardingService onboarding, ISendScheduler scheduler,
-        VoiceNoteService voiceNotes, ILogger<ConversationAgentService> log)
+        VoiceNoteService voiceNotes, Microsoft.Extensions.Configuration.IConfiguration config,
+        ILogger<ConversationAgentService> log)
     {
         _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding;
-        _scheduler = scheduler; _voiceNotes = voiceNotes; _log = log;
+        _scheduler = scheduler; _voiceNotes = voiceNotes; _config = config; _log = log;
     }
 
     public async Task<int> TickAsync(CancellationToken ct)
@@ -131,7 +134,9 @@ public class ConversationAgentService
                 && l.Status != LeadStatus.Lost
                 && (l.Status != LeadStatus.Closed
                     || _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
-                        && o.ProvisionedAt != null && o.ProvisionedAt > postSignupGraceStart))
+                        && o.ProvisionedAt != null && o.ProvisionedAt > postSignupGraceStart)
+                    // Soporte: un cliente YA convertido (Closed) con un case abierto sigue atendido.
+                    || _db.SupportCases.Any(sc => sc.LeadId == l.Id && sc.Status != SupportCaseStatus.Resolved))
             let last = _db.ConversationMessages
                 .Where(m => m.LeadId == l.Id)
                 .OrderByDescending(m => m.Timestamp)
@@ -310,9 +315,53 @@ public class ConversationAgentService
                 continue;
             }
 
+            // ── SOPORTE: si el lead tiene un case abierto, sus inbounds van al pipeline de
+            // soporte (FAQ → LLM+KB → escalación), no al de venta. El case "viejo" (sin
+            // actividad hace días) se auto-resuelve y el lead vuelve al pipeline normal.
+            var supportCase = await _db.SupportCases
+                .FirstOrDefaultAsync(sc => sc.LeadId == lead.Id && sc.Status != SupportCaseStatus.Resolved, ct);
+            if (supportCase is not null)
+            {
+                var staleAfterDays = _config.GetValue("Support:AutoResolveAfterDays", 5);
+                var lastActivity = supportCase.LastBotReplyAt ?? supportCase.OpenedAt;
+                if (DateTimeOffset.UtcNow - lastActivity > TimeSpan.FromDays(staleAfterDays))
+                {
+                    supportCase.Status = SupportCaseStatus.Resolved;
+                    supportCase.ResolvedAt = DateTimeOffset.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                    _log.LogInformation("SupportCase {Case} auto-resuelto por silencio; el lead vuelve al pipeline normal", supportCase.Id);
+                    // cae al flujo normal de venta con este mismo mensaje
+                }
+                else
+                {
+                    await HandleSupportAsync(lead, thread, last, supportCase, ct);
+                    done++;
+                    continue;
+                }
+            }
+
             // ── Charla real: UNA sola llamada que clasifica el estado Y genera la respuesta.
             if (!_suggestions.IsConfigured) continue;
             var (intent, shouldReply, reply) = await _suggestions.SuggestReplyWithIntentAsync(lead, lead.Product!, thread, ct);
+
+            // El clasificador detectó un problema de PRODUCTO (no de venta) → abre un case
+            // y lo toma el pipeline de soporte desde este mismo mensaje.
+            if (intent == LeadIntent.Support)
+            {
+                var opened = new SupportCase
+                {
+                    Id = Guid.NewGuid(),
+                    LeadId = lead.Id,
+                    ProductKey = lead.ProductKey,
+                    Summary = last.Length > 480 ? last[..480] : last,
+                };
+                _db.SupportCases.Add(opened);
+                await _db.SaveChangesAsync(ct);
+                _log.LogInformation("SupportCase {Case} abierto para lead {Lead} ({Pk})", opened.Id, lead.Id, lead.ProductKey);
+                await HandleSupportAsync(lead, thread, last, opened, ct);
+                done++;
+                continue;
+            }
 
             // Señal de compra FUERTE (audio + interés, o frase de avance) → avisamos al vendedor
             // para que tome la charla con un audio personal: el patrón que cierra ventas.
@@ -469,14 +518,17 @@ public class ConversationAgentService
     /// <summary>
     /// Entrega un texto al lead: auto-envía si el producto tiene AutoPilot, está en horario,
     /// bajo el cap diario y no es needs_human; si no, lo deja como sugerencia para el vendedor.
+    /// forceAuto bypassa el gate de AutoPilot (lo usa la FAQ canónica de soporte, que es
+    /// segura de auto-enviar aun con el producto en modo asistido).
     /// </summary>
-    private async Task DeliverAsync(Lead lead, string text, LeadIntent intentForGate, string src, CancellationToken ct)
+    private async Task DeliverAsync(Lead lead, string text, LeadIntent intentForGate, string src, CancellationToken ct, bool forceAuto = false)
     {
         text = StripBoludo(text);
+        var autoGate = (forceAuto || lead.Product!.AutoPilot) && intentForGate != LeadIntent.NeedsHuman;
         // Relay: si el producto delega el transporte a la app, encolamos la respuesta (la app la
         // manda por su Evolution). Respetamos AutoPilot + needs_human; el cap/pacing lo aplica el
         // endpoint /hub/outbound. No requiere instancia de sales-hub conectada.
-        if (lead.Product!.AutoPilot && intentForGate != LeadIntent.NeedsHuman && lead.Product.AppManagedTransport)
+        if (autoGate && lead.Product!.AppManagedTransport)
         {
             EnqueueRelay(lead, new[] { text });
             await _db.SaveChangesAsync(ct);
@@ -485,7 +537,7 @@ public class ConversationAgentService
         }
 
         var canAutoReply = false;
-        if (lead.Product!.AutoPilot && intentForGate != LeadIntent.NeedsHuman)
+        if (autoGate)
         {
             var st = await SellerSendStateAsync(lead.Seller!, ct);
             canAutoReply = st.active && st.sentToday < OutboxSender.MaxMessagesPerSellerPerDay;
@@ -864,6 +916,166 @@ public class ConversationAgentService
         lead.AiSuggestedReply = null;
         lead.AiSuggestedReplyAt = null;
         lead.UpdatedAt = now;
+    }
+
+    // ─────────────────────────── SOPORTE (capas) ───────────────────────────
+
+    // Confirmación de resolución ("gracias, ya anda") con guarda contra negaciones
+    // ("no anda", "sigue igual") — la negación gana siempre.
+    private static readonly Regex ResolvedThanksRx = new(
+        @"\b(mil )?gracias\b|ya (est[aá]|qued[oó]|sali[oó]|anda|funciona|pude|entr[eé])\b|\blisto\b|\bperfecto\b|\bgenial\b|solucionad|resuelto",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex StillBrokenRx = new(
+        @"no (anda|funciona|puedo|pude|me deja|carga|abre)|sigue (igual|sin|fallando)|todav[ií]a no|a[uú]n no|tampoco",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static bool ConfirmsResolution(string? t)
+        => !string.IsNullOrWhiteSpace(t) && ResolvedThanksRx.IsMatch(t!) && !StillBrokenRx.IsMatch(t!);
+
+    /// <summary>
+    /// Pipeline de soporte por capas para un inbound con case abierto:
+    ///   0. confirmación del cliente → case Resolved + cierre cordial.
+    ///   1. FAQ curada (sin IA): respuesta canónica; única capa que puede auto-enviarse
+    ///      en modo asistido (Support:FaqAutoSend).
+    ///   2. LLM + knowledge base con self-rating: sugiere (asistido) o envía si la
+    ///      confianza supera Support:AutoSendMinConfidence (default 999 = nunca).
+    ///   3. Escalación (derivar / confianza &lt; Support:EscalateBelowConfidence /
+    ///      Support:MaxBotTurns agotados) → aviso al humano + borrador sugerido.
+    /// </summary>
+    private async Task HandleSupportAsync(Lead lead, List<ConversationMessage> thread, string last,
+        SupportCase supportCase, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        // 0) El cliente confirma que quedó resuelto → cerrar con un toque humano.
+        if (supportCase.LastBotReplyAt != null && ConfirmsResolution(last))
+        {
+            supportCase.Status = SupportCaseStatus.Resolved;
+            supportCase.ResolvedAt = now;
+            await DeliverAsync(lead, "de una  cualquier cosa me escribís por acá 🙌", LeadIntent.Support, "soporte-cierre", ct,
+                forceAuto: _config.GetValue("Support:FaqAutoSend", false));
+            _log.LogInformation("SupportCase {Case} resuelto (confirmación del cliente)", supportCase.Id);
+            return;
+        }
+
+        // 1) FAQ curada — match por keywords, respuesta canónica tal cual (sin IA).
+        var faqs = await _db.ProductFaqs
+            .Where(f => f.ProductKey == lead.ProductKey && f.Enabled)
+            .OrderByDescending(f => f.TimesUsed)
+            .ToListAsync(ct);
+        var faq = MatchFaq(faqs, last);
+        if (faq is not null)
+        {
+            faq.TimesUsed++; faq.UpdatedAt = now;
+            supportCase.BotTurns++; supportCase.LastBotReplyAt = now;
+            await DeliverAsync(lead, faq.Answer, LeadIntent.Support, "soporte-faq", ct,
+                forceAuto: _config.GetValue("Support:FaqAutoSend", false));
+            _log.LogInformation("SupportCase {Case}: FAQ \"{Q}\" usada", supportCase.Id, faq.Question);
+            return;
+        }
+
+        // Turnos agotados → directo a escalación, sin quemar más al cliente.
+        var maxBotTurns = _config.GetValue("Support:MaxBotTurns", 4);
+        if (supportCase.BotTurns >= maxBotTurns)
+        {
+            await EscalateSupportCaseAsync(lead, supportCase, last, draft: null, ct);
+            return;
+        }
+
+        // 2) LLM + knowledge base del producto (generada del repo en deploy).
+        var kb = await _db.ProductKnowledge.AsNoTracking()
+            .Where(k => k.ProductKey == lead.ProductKey)
+            .Select(k => k.Content)
+            .FirstOrDefaultAsync(ct);
+        var (reply, confidence, outcome) = await _suggestions.SuggestSupportReplyAsync(
+            lead, lead.Product!, kb, faqs, thread, ct);
+
+        var escalate = outcome == AiSuggestionService.SupportOutcome.Handoff
+            || confidence < _config.GetValue("Support:EscalateBelowConfidence", 40)
+            || string.IsNullOrWhiteSpace(reply);
+        if (escalate)
+        {
+            await EscalateSupportCaseAsync(lead, supportCase, last, reply, ct);
+            return;
+        }
+
+        supportCase.BotTurns++;
+        supportCase.LastBotReplyAt = now;
+        if (confidence >= _config.GetValue("Support:AutoSendMinConfidence", 999))
+        {
+            await DeliverAsync(lead, reply!, LeadIntent.Support, "soporte-kb", ct);
+        }
+        else
+        {
+            // Asistido: queda como borrador para que el vendedor lo apruebe/edite.
+            lead.AiSuggestedReply = reply;
+            lead.AiSuggestedReplyAt = now;
+            lead.UpdatedAt = now;
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("SupportCase {Case}: sugerencia KB (confianza {C})", supportCase.Id, confidence);
+        }
+    }
+
+    /// <summary>Primera FAQ cuyo keyword aparece en el texto (case-insensitive).</summary>
+    private static ProductFaq? MatchFaq(IReadOnlyList<ProductFaq> faqs, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        foreach (var f in faqs)
+            foreach (var k in f.Keywords)
+                if (!string.IsNullOrWhiteSpace(k) && text.Contains(k, StringComparison.OrdinalIgnoreCase))
+                    return f;
+        return null;
+    }
+
+    /// <summary>
+    /// Capa 3: aviso al humano por WhatsApp (patrón hot-lead: MasterPhone, dedup por
+    /// EscalatedAt + cooldown) y el borrador del LLM queda como sugerencia. El case queda
+    /// Escalated hasta que un humano lo resuelva en la UI (o auto-resolve por silencio).
+    /// </summary>
+    private async Task EscalateSupportCaseAsync(Lead lead, SupportCase supportCase, string lastText,
+        string? draft, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        supportCase.Status = SupportCaseStatus.Escalated;
+        if (!string.IsNullOrWhiteSpace(draft))
+        {
+            lead.AiSuggestedReply = draft;
+            lead.AiSuggestedReplyAt = now;
+        }
+        lead.UpdatedAt = now;
+
+        if (supportCase.EscalatedAt is { } prev && now - prev < HotAlertCooldown)
+        {
+            await _db.SaveChangesAsync(ct);
+            return; // ya avisado hace poco
+        }
+
+        var alertPhone = await _db.Set<Core.Domain.Entities.Social.InspirationSettings>()
+            .AsNoTracking().Select(s => s.MasterPhone).FirstOrDefaultAsync(ct);
+        var instanceName = lead.Seller?.EvolutionInstance?.InstanceName;
+        if (!string.IsNullOrWhiteSpace(alertPhone) && !string.IsNullOrWhiteSpace(instanceName))
+        {
+            var digits = string.IsNullOrWhiteSpace(lead.WhatsappPhone) ? "" : Regex.Replace(lead.WhatsappPhone, @"\D", "");
+            var wa = digits.Length == 0 ? "" : $"https://wa.me/{digits}";
+            var name = string.IsNullOrWhiteSpace(lead.Name) ? "un cliente" : lead.Name;
+            var problem = supportCase.Summary ?? lastText;
+            if (problem.Length > 160) problem = problem[..160] + "…";
+            var msg = $"🛟 SOPORTE: {name} — {lead.ProductKey}. Problema: \"{problem}\". " +
+                      $"El bot no lo pudo resolver; hay borrador sugerido en el hub. {wa}";
+            try
+            {
+                await _evo.SendTextAsync(instanceName!, alertPhone!, msg, ct);
+                supportCase.EscalatedAt = now;
+                _log.LogInformation("SupportCase {Case} escalado → aviso al humano", supportCase.Id);
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "No pude avisar la escalación del case {Case}", supportCase.Id); }
+        }
+        else
+        {
+            // Sin canal de aviso: queda Escalated igual (visible en la UI de Soporte).
+            supportCase.EscalatedAt ??= now;
+        }
+        await _db.SaveChangesAsync(ct);
     }
 
     /// <summary>

@@ -15,12 +15,14 @@ public class AiSuggestionService
 {
     private readonly ClaudeClient _claude;
     private readonly AiRulesProvider _rules;
+    private readonly ToneProvider _tone;
     private readonly ILogger<AiSuggestionService> _log;
 
-    public AiSuggestionService(ClaudeClient claude, AiRulesProvider rules, ILogger<AiSuggestionService> log)
+    public AiSuggestionService(ClaudeClient claude, AiRulesProvider rules, ToneProvider tone, ILogger<AiSuggestionService> log)
     {
         _claude = claude;
         _rules = rules;
+        _tone = tone;
         _log = log;
     }
 
@@ -38,7 +40,8 @@ public class AiSuggestionService
     {
         if (thread.Count == 0) return null;
         var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
-        var system = BuildSystemPrompt(product, rulesBlock);
+        var tone = await _tone.GetToneAsync(product.ProductKey, ct);
+        var system = BuildSystemPrompt(product, rulesBlock, tone);
         var conversation = BuildConversation(lead, thread, instruction: null);
         return await CompleteWithPriceGuardrailAsync(system, conversation, product, ct);
     }
@@ -51,7 +54,8 @@ public class AiSuggestionService
     {
         if (thread.Count == 0) return null;
         var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
-        var system = BuildSystemPrompt(product, rulesBlock);
+        var tone = await _tone.GetToneAsync(product.ProductKey, ct);
+        var system = BuildSystemPrompt(product, rulesBlock, tone);
         var hrs = Math.Max(1, (int)Math.Round(silentFor.TotalHours));
         var instruction =
             $"El lead venía hablando y se quedó callado hace ~{hrs} horas. Escribí un mensaje CORTO y " +
@@ -72,7 +76,8 @@ public class AiSuggestionService
     {
         if (!_claude.IsConfigured || thread.Count == 0) return (null, 0);
         var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
-        var system = BuildSystemPrompt(product, rulesBlock);
+        var tone = await _tone.GetToneAsync(product.ProductKey, ct);
+        var system = BuildSystemPrompt(product, rulesBlock, tone);
         var hrs = Math.Max(1, (int)Math.Round(silentFor.TotalHours));
         var instruction =
             $"El lead venía hablando y se quedó callado hace ~{hrs} horas. DOS TAREAS:\n" +
@@ -171,7 +176,8 @@ public class AiSuggestionService
         if (!_claude.IsConfigured || thread.Count == 0) return (LeadIntent.Unknown, false, null);
 
         var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
-        var system = BuildSystemPrompt(product, rulesBlock) + MergedTaskInstruction;
+        var tone = await _tone.GetToneAsync(product.ProductKey, ct);
+        var system = BuildSystemPrompt(product, rulesBlock, tone) + MergedTaskInstruction;
         var conversation = BuildConversation(lead, thread, instruction: null);
 
         var raw = await _claude.CompleteAsync(system, conversation, "conversacion", ct);
@@ -203,7 +209,8 @@ public class AiSuggestionService
         if (!_claude.IsConfigured || thread.Count == 0) return null;
 
         var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
-        var system = BuildSystemPrompt(product, rulesBlock) + OnboardingAsideInstruction;
+        var tone = await _tone.GetToneAsync(product.ProductKey, ct);
+        var system = BuildSystemPrompt(product, rulesBlock, tone) + OnboardingAsideInstruction;
         var conversation = BuildConversation(lead, thread, instruction: null);
 
         var reply = await _claude.CompleteAsync(system, conversation, "onboarding", ct);
@@ -226,9 +233,11 @@ public class AiSuggestionService
 
     private const string MergedTaskInstruction =
         "\n\nTAREA DOBLE: además de responder, clasificá al prospecto. Tu salida tiene EXACTAMENTE este formato:\n" +
-        "primera línea: estado=<una de: interesado, no_interesado, agendo, compro, derivar, indefinido>\n" +
+        "primera línea: estado=<una de: interesado, no_interesado, agendo, compro, derivar, soporte, indefinido>\n" +
         "de la segunda línea en adelante: el mensaje para el lead, en el estilo de siempre (minúscula, sin puntuación).\n" +
         "si el prospecto ya cerró en contra (no_interesado) o ya compró (compro), NO escribas mensaje: poné solo `(sin respuesta)`.\n" +
+        "usá `soporte` cuando el que escribe YA USA el producto y reporta un problema, algo no le funciona, no puede entrar, " +
+        "o pregunta cómo hacer algo dentro de la app (no es una consulta de compra). con `soporte` NO escribas mensaje: poné `(sin respuesta)` — lo toma el pipeline de soporte.\n" +
         "ante la duda entre interesado y no_interesado, elegí interesado. una objeción tipo \"ya tengo un sistema\" NO es no_interesado: es interesado, hay que repreguntar.";
 
     private static (LeadIntent intent, bool shouldReply, string? reply) SplitIntentReply(string? raw)
@@ -255,6 +264,7 @@ public class AiSuggestionService
         "agendo" or "agendó" => LeadIntent.Scheduled,
         "compro" or "compró" => LeadIntent.Won,
         "derivar" => LeadIntent.NeedsHuman,
+        "soporte" => LeadIntent.Support,
         "interesado" => LeadIntent.Interested,
         _ => LeadIntent.Unknown,
     };
@@ -321,26 +331,18 @@ public class AiSuggestionService
         return reply;
     }
 
-    /// <summary>Parte estática (se cachea): instrucciones base + contexto del producto.</summary>
-    private static string BuildSystemPrompt(Product product, string extraRules)
+    /// <summary>
+    /// Parte estática (se cachea): rol + TONO editable (ToneProvider) + contexto del producto.
+    /// La "técnica de venta" del vertical ya NO va hardcodeada acá: vive en
+    /// Product.AiSalesPlaybook (editable por producto en la UI).
+    /// </summary>
+    private static string BuildSystemPrompt(Product product, string extraRules, string tone)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Sos un vendedor argentino real escribiendo por WhatsApp (NO un bot). Generás SOLO");
         sb.AppendLine("el texto de la próxima respuesta — sin comillas, sin prefijos tipo \"Vendedor:\", sin explicaciones.");
         sb.AppendLine();
-        sb.AppendLine("ESTILO OBLIGATORIO (clave para que no parezca IA):");
-        sb.AppendLine("- escribí TODO en minúscula, siempre. nunca mayúsculas, ni al empezar ni en nombres propios.");
-        sb.AppendLine("- NO uses signos de puntuación: nada de puntos, comas, dos puntos, ni de pregunta o exclamación.");
-        sb.AppendLine("  tampoco signos de apertura (¿ ¡). separá ideas con un salto de línea o un espacio, nunca con puntos.");
-        sb.AppendLine("- argentino relajado, de vos. NO uses muletillas marcadas tipo che, capo, viste, etc.");
-        sb.AppendLine("- PROHIBIDO usar la palabra \"boludo\" y sus variantes (boluda, boludos, boludas, bolu, boludez). es ofensiva. NUNCA la uses, ni en chiste ni aunque el lead la use primero.");
-        sb.AppendLine("- cortísimo, como un wpp real entre dos personas: 1 o 2 renglones, no más.");
-        sb.AppendLine("- NO termines siempre con una pregunta. muchas veces mejor tirá un dato y listo, o una afirmación corta.");
-        sb.AppendLine("- variá las aperturas y el largo. no suenes perfecto ni armadito. nada de listas ni viñetas.");
-        sb.AppendLine("- cero corporativo: nada de estimado, no dude en, quedo a disposición.");
-        sb.AppendLine("- emojis casi nunca, como mucho uno y solo si el lead viene usando emojis.");
-        sb.AppendLine("- espejá el tono del lead. no inventes datos, si no sabés algo no lo afirmes.");
-        sb.AppendLine("- ÚNICA excepción a lo de los símbolos: el precio y el link van TAL CUAL te los doy.");
+        sb.AppendLine(tone.Trim());
         sb.AppendLine();
         sb.AppendLine($"PRODUCTO: {product.DisplayName}");
         if (!string.IsNullOrWhiteSpace(product.PriceDisplay))
@@ -355,14 +357,6 @@ public class AiSuggestionService
         }
         if (!string.IsNullOrWhiteSpace(product.CheckoutUrl))
             sb.AppendLine($"LINK DE CHECKOUT (mandalo cuando tenga sentido cerrar): {product.CheckoutUrl}");
-        sb.AppendLine();
-        sb.AppendLine("TÉCNICA (lo que MEJOR convierte en este producto, seguilo):");
-        sb.AppendLine("- si el lead dice que YA TIENE un sistema, NO te rindas: repreguntá si ese sistema le cobra automático por mercado pago o si sigue persiguiendo pagos a mano, y si ve en recepción quién está al día. ahí se abre la venta. una objeción tipo \"ya tengo\" es una oportunidad, no un no.");
-        sb.AppendLine("- si dice que NO tiene morosos, encarálo como plata que se le escapa sin darse cuenta (cobra dos veces el mismo mes, se olvida de alguien), no como perseguir morosos.");
-        sb.AppendLine("- si dice que no es el dueño, pedile el contacto o mail del dueño para mandarle la info directa.");
-        sb.AppendLine("- ante un \"ya tengo otro\", ofrecé que le migrás los datos gratis y que se configura en 1 día.");
-        sb.AppendLine("- si el lead dice que NO de forma firme, respondé UNA vez corto y cordial y cerrá. NUNCA insistas ni mandes otro mensaje: insistir sobre un no quema la marca.");
-        sb.AppendLine("- nada de charla de cortesía interminable: si no hay avance comercial en 1 o 2 mensajes, cerrá amable.");
         if (!string.IsNullOrWhiteSpace(product.AiSalesPlaybook))
         {
             sb.AppendLine();
@@ -393,6 +387,104 @@ public class AiSuggestionService
         sb.AppendLine();
         sb.AppendLine(instruction ?? "Generá la próxima respuesta del vendedor:");
         return sb.ToString();
+    }
+
+    // ---- Soporte (capa 2: LLM + knowledge base) --------------------------------
+
+    public enum SupportOutcome { Open, Resolved, Handoff }
+
+    /// <summary>
+    /// Respuesta de SOPORTE con contexto del producto: knowledge base (generada del repo
+    /// en deploy) + FAQs como referencia. Devuelve (respuesta, confianza 0-100, estado).
+    /// confianza = qué tan seguro está el modelo de que la respuesta es CORRECTA y
+    /// suficiente con el conocimiento disponible; el caller decide con eso si envía,
+    /// sugiere o escala. Nunca inventa: si no está en el conocimiento, debe derivar.
+    /// </summary>
+    public async Task<(string? reply, int confidence, SupportOutcome outcome)> SuggestSupportReplyAsync(
+        Lead lead, Product product, string? knowledge, IReadOnlyList<ProductFaq> faqs,
+        IReadOnlyList<ConversationMessage> thread, CancellationToken ct)
+    {
+        if (!_claude.IsConfigured || thread.Count == 0) return (null, 0, SupportOutcome.Handoff);
+
+        var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
+        var tone = await _tone.GetToneAsync(product.ProductKey, ct);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Sos una persona real del equipo de soporte escribiendo por WhatsApp (NO un bot). Generás SOLO");
+        sb.AppendLine("el texto de la próxima respuesta — sin comillas, sin prefijos, sin explicaciones.");
+        sb.AppendLine();
+        sb.AppendLine(tone.Trim());
+        sb.AppendLine();
+        sb.AppendLine($"PRODUCTO: {product.DisplayName}");
+        if (!string.IsNullOrWhiteSpace(product.PriceDisplay))
+            sb.AppendLine($"PRECIO (si preguntan, EXACTAMENTE esto): {product.PriceDisplay}");
+        sb.AppendLine();
+        if (!string.IsNullOrWhiteSpace(knowledge))
+        {
+            sb.AppendLine($"CONOCIMIENTO DE {product.DisplayName} (tu ÚNICA fuente de verdad sobre el producto):");
+            sb.AppendLine(knowledge!.Trim());
+            sb.AppendLine();
+        }
+        if (faqs.Count > 0)
+        {
+            sb.AppendLine("PREGUNTAS FRECUENTES YA RESUELTAS (si la consulta coincide, respondé con esa respuesta):");
+            foreach (var f in faqs.Take(15))
+                sb.AppendLine($"- P: {f.Question}\n  R: {f.Answer.Replace("\n", " ")}");
+            sb.AppendLine();
+        }
+        sb.AppendLine("REGLAS DE SOPORTE:");
+        sb.AppendLine("- resolvé el problema CONCRETO del cliente, paso a paso si hace falta, pero en mensajes cortos.");
+        sb.AppendLine("- NUNCA inventes pantallas, botones ni features que no estén en el conocimiento. si no está, derivá.");
+        sb.AppendLine("- si el problema parece un bug o algo roto del producto, no lo minimices: derivá.");
+        sb.AppendLine("- si el cliente ya probó lo que le dijiste y sigue igual, derivá — no lo hagas dar vueltas.");
+        if (!string.IsNullOrWhiteSpace(rulesBlock)) sb.Append(rulesBlock);
+        sb.AppendLine();
+        sb.AppendLine("FORMATO EXACTO de tu salida:");
+        sb.AppendLine("línea 1: confianza=NN (0-100: qué tan seguro estás de que tu respuesta es correcta y suficiente con el conocimiento disponible)");
+        sb.AppendLine("línea 2: estado=<resuelto|abierto|derivar> (resuelto: la respuesta debería cerrar el tema; abierto: esperás repregunta; derivar: no sabés / necesita una persona)");
+        sb.AppendLine("línea 3 en adelante: el mensaje para el cliente. con estado=derivar escribí igual un mensaje breve avisando que lo estás viendo con el equipo (sin prometer plazos).");
+
+        var conversation = BuildConversation(lead, thread,
+            instruction: "Generá la próxima respuesta de soporte respetando el FORMATO EXACTO (confianza=, estado=, mensaje):");
+
+        var (reply, confidence, outcome) = SplitSupportReply(await _claude.CompleteAsync(sb.ToString(), conversation, "soporte", ct));
+        if (!string.IsNullOrWhiteSpace(reply) && MentionsWrongPrice(reply!, product.PriceDisplay))
+        {
+            var corrected = conversation +
+                $"\n\nIMPORTANTE: el precio EXACTO es \"{product.PriceDisplay}\". No menciones NINGÚN otro número de precio. " +
+                "Regenerá respetando el FORMATO EXACTO (confianza=, estado=, mensaje).";
+            (reply, confidence, outcome) = SplitSupportReply(await _claude.CompleteAsync(sb.ToString(), corrected, "soporte", ct));
+            if (!string.IsNullOrWhiteSpace(reply) && MentionsWrongPrice(reply!, product.PriceDisplay))
+                return (null, 0, SupportOutcome.Handoff);
+        }
+        return (reply, confidence, outcome);
+    }
+
+    private static (string? reply, int confidence, SupportOutcome outcome) SplitSupportReply(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return (null, 0, SupportOutcome.Handoff);
+        var lines = raw.Replace("\r\n", "\n").Split('\n');
+        var confidence = 0;
+        var outcome = SupportOutcome.Open;
+        var start = 0;
+        for (var i = 0; i < lines.Length && i < 3; i++)
+        {
+            var mc = Regex.Match(lines[i], @"confianza\s*[:=]\s*(\d{1,3})", RegexOptions.IgnoreCase);
+            if (mc.Success) { confidence = Math.Clamp(int.Parse(mc.Groups[1].Value), 0, 100); start = Math.Max(start, i + 1); continue; }
+            var me = Regex.Match(lines[i], @"estado\s*[:=]\s*([a-záéíóú_]+)", RegexOptions.IgnoreCase);
+            if (me.Success)
+            {
+                outcome = me.Groups[1].Value.ToLowerInvariant() switch
+                {
+                    "resuelto" => SupportOutcome.Resolved,
+                    "derivar" => SupportOutcome.Handoff,
+                    _ => SupportOutcome.Open,
+                };
+                start = Math.Max(start, i + 1);
+            }
+        }
+        var reply = string.Join("\n", lines.Skip(start)).Trim();
+        return (reply.Length == 0 ? null : reply, confidence, outcome);
     }
 
     // ---- Guardrail de precio --------------------------------------------------

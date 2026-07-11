@@ -57,6 +57,13 @@ public class ApplicationDbContext : DbContext
     public DbSet<FollowupSequence> FollowupSequences => Set<FollowupSequence>();
     public DbSet<FollowupEvent> FollowupEvents => Set<FollowupEvent>();
 
+    // Bot de SOPORTE por capas: tono editable, FAQ curada (capa 1), knowledge por app
+    // generada en deploy (capa 2) y casos "abiertos hasta resolver".
+    public DbSet<ToneProfile> ToneProfiles => Set<ToneProfile>();
+    public DbSet<ProductFaq> ProductFaqs => Set<ProductFaq>();
+    public DbSet<ProductKnowledge> ProductKnowledge => Set<ProductKnowledge>();
+    public DbSet<SupportCase> SupportCases => Set<SupportCase>();
+
     // Objetivos de vendedor (metas precargadas por superadmin; progreso calculado en runtime).
     public DbSet<SellerGoal> SellerGoals => Set<SellerGoal>();
 

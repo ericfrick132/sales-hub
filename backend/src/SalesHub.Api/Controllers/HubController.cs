@@ -333,6 +333,76 @@ public class HubController : ControllerBase
         return Ok(new { matched = true, leadId = lead.Id });
     }
 
+    /// <summary>
+    /// La app sube su KNOWLEDGE BASE de soporte (documento generado desde su repo en el
+    /// deploy). Upsert por productKey; el bot de soporte la usa como fuente de verdad.
+    /// </summary>
+    [HttpPost("knowledge")]
+    public async Task<IActionResult> UpsertKnowledge([FromBody] HubKnowledgeRequest req, CancellationToken ct)
+    {
+        if (!ValidApiKey()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(req.ProductKey) || string.IsNullOrWhiteSpace(req.Content))
+            return BadRequest(new { error = "productKey y content requeridos" });
+        if (!await _db.Products.AnyAsync(p => p.ProductKey == req.ProductKey, ct))
+            return BadRequest(new { error = $"producto desconocido: {req.ProductKey}" });
+
+        var k = await _db.ProductKnowledge.FirstOrDefaultAsync(x => x.ProductKey == req.ProductKey, ct);
+        if (k is null)
+        {
+            k = new ProductKnowledge { Id = Guid.NewGuid(), ProductKey = req.ProductKey };
+            _db.ProductKnowledge.Add(k);
+        }
+        k.Content = req.Content!;
+        k.SourceVersion = req.SourceVersion;
+        k.UploadedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Knowledge de {Pk} actualizada ({Len} chars, v {V})",
+            req.ProductKey, req.Content!.Length, req.SourceVersion ?? "-");
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>
+    /// La app ESPEJA un WhatsApp outbound que mandó por su cuenta (ping de onboarding,
+    /// aviso de trial): lo registramos en la conversación del lead para que el cerebro
+    /// tenga el contexto de qué le mandamos. Telemetría de conversación — no dispara nada.
+    /// </summary>
+    [HttpPost("outbound-log")]
+    public async Task<IActionResult> OutboundLog([FromBody] HubOutboundLogRequest req, CancellationToken ct)
+    {
+        if (!ValidApiKey()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(req.ProductKey) || string.IsNullOrWhiteSpace(req.Phone) || string.IsNullOrWhiteSpace(req.Text))
+            return BadRequest(new { error = "productKey, phone y text requeridos" });
+
+        var digits = new string(req.Phone!.Where(char.IsDigit).ToArray());
+        if (digits.Length < 8) return BadRequest(new { error = "teléfono inválido" });
+        var suffix = digits[^8..];
+
+        var lead = await _db.Leads
+            .Where(l => l.ProductKey == req.ProductKey && l.WhatsappPhone != null
+                && l.WhatsappPhone
+                    .Replace(" ", "").Replace("-", "").Replace("+", "")
+                    .Replace("(", "").Replace(")", "").Replace(".", "")
+                    .EndsWith(suffix))
+            .OrderByDescending(l => l.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (lead is null) return Ok(new { matched = false });
+
+        _db.ConversationMessages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = lead.SellerId,
+            Direction = MessageDirection.Outbound,
+            Status = MessageDeliveryStatus.Sent,
+            Text = req.Text!,
+            Timestamp = req.TimestampUnix is long u ? DateTimeOffset.FromUnixTimeSeconds(u) : DateTimeOffset.UtcNow,
+            IsRead = true,
+        });
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { matched = true, leadId = lead.Id });
+    }
+
     private static LeadSource MapSource(string? leadType) => (leadType ?? string.Empty).ToLowerInvariant() switch
     {
         "ad" or "ads" or "anuncio" => LeadSource.WhatsAppAd,
@@ -394,4 +464,15 @@ public record HubInboundRequest(
     string? Phone,
     string? Text,
     string? ProviderMessageId,
+    long? TimestampUnix);
+
+public record HubKnowledgeRequest(
+    string ProductKey,
+    string? Content,
+    string? SourceVersion);
+
+public record HubOutboundLogRequest(
+    string ProductKey,
+    string? Phone,
+    string? Text,
     long? TimestampUnix);

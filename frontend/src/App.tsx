@@ -32,6 +32,7 @@ import ReglasIa from './pages/ReglasIa';
 import OnboardingApps from './pages/OnboardingApps';
 import Transcripcion from './pages/Transcripcion';
 import Seguimientos from './pages/Seguimientos';
+import Soporte from './pages/Soporte';
 import Manual from './pages/Manual';
 import VoiceTest from './pages/VoiceTest';
 
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="/transcripcion" element={<Transcripcion />} />
             <Route path="/voice-test" element={<VoiceTest />} />
             <Route path="/seguimientos" element={<Seguimientos />} />
+            <Route path="/soporte" element={<Soporte />} />
             <Route path="/sellers/zones" element={<SellerZones />} />
             <Route path="/sellers/:id/zones" element={<SellerZonesRedirect />} />
             <Route path="/admin/sellers/:id" element={<SellerDetail />} />

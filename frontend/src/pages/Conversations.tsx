@@ -52,6 +52,8 @@ export default function Conversations() {
   const selected = params.get('lead');
   const [reply, setReply] = useState('');
   const [hideSuggestionFor, setHideSuggestionFor] = useState<string | null>(null);
+  // Prellenado del mini-form "Promover a FAQ" (pregunta = último inbound, respuesta = sugerencia IA).
+  const [promoteDraft, setPromoteDraft] = useState<{ productKey: string; question: string; answer: string } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   const [productFilter, setProductFilter] = useState('');
@@ -320,6 +322,23 @@ export default function Conversations() {
                               className="text-xs px-2 py-0.5 rounded border border-amber-300 text-amber-700 hover:bg-amber-100">
                               Descartar
                             </button>
+                            {admin && (
+                              <button
+                                type="button"
+                                title="Guardar pregunta + respuesta como FAQ canónica del producto: el bot de soporte la responde directo la próxima vez"
+                                onClick={() => {
+                                  const msgs = thread.data?.messages ?? [];
+                                  const lastInbound = [...msgs].reverse().find((m) => m.direction === 'Inbound');
+                                  setPromoteDraft({
+                                    productKey: thread.data!.productKey,
+                                    question: lastInbound?.text ?? '',
+                                    answer: suggestion
+                                  });
+                                }}
+                                className="text-xs px-2 py-0.5 rounded border border-amber-300 text-amber-700 hover:bg-amber-100">
+                                Promover a FAQ
+                              </button>
+                            )}
                           </div>
                         </div>
                         <div className="text-slate-700 whitespace-pre-wrap">{suggestion}</div>
@@ -357,6 +376,77 @@ export default function Conversations() {
             })()}
           </>
         ) : null}
+      </div>
+
+      {promoteDraft && (
+        <PromoteFaqModal draft={promoteDraft} onClose={() => setPromoteDraft(null)} />
+      )}
+    </div>
+  );
+}
+
+/// Mini-form para promover una respuesta aprobada a FAQ canónica del producto.
+/// POST /support/faqs/promote — después se administra desde /soporte (tab FAQs).
+function PromoteFaqModal({
+  draft,
+  onClose
+}: {
+  draft: { productKey: string; question: string; answer: string };
+  onClose: () => void;
+}) {
+  const [question, setQuestion] = useState(draft.question);
+  const [answer, setAnswer] = useState(draft.answer);
+  const [keywords, setKeywords] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function promote() {
+    setSaving(true);
+    try {
+      await api.post('/support/faqs/promote', {
+        productKey: draft.productKey,
+        question: question.trim(),
+        answer: answer.trim(),
+        keywords: keywords.split(',').map((k) => k.trim()).filter(Boolean)
+      });
+      toast.success('FAQ promovida — el bot de soporte ya la puede usar');
+      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? 'No se pudo promover');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4 overflow-y-auto">
+      <div className="card p-5 w-full max-w-lg space-y-3 my-8">
+        <h3 className="text-lg font-semibold">
+          Promover a FAQ <span className="text-slate-400 font-normal">· {draft.productKey}</span>
+        </h3>
+        <p className="text-xs text-slate-500">
+          La pregunta y la respuesta quedan como FAQ canónica del producto: la próxima vez que un cliente
+          pregunte algo parecido, el bot responde esto directo. Se edita después desde Soporte → FAQs.
+        </p>
+        <label className="text-sm block">
+          <div className="text-slate-500 mb-1">Pregunta (como la hizo el cliente)</div>
+          <textarea className="input min-h-[56px]" value={question} onChange={(e) => setQuestion(e.target.value)} />
+        </label>
+        <label className="text-sm block">
+          <div className="text-slate-500 mb-1">Respuesta</div>
+          <textarea className="input min-h-[96px]" value={answer} onChange={(e) => setAnswer(e.target.value)} />
+        </label>
+        <label className="text-sm block">
+          <div className="text-slate-500 mb-1">Keywords separadas por coma (opcional, ayudan al match)</div>
+          <input className="input" placeholder="ej. factura, pago, mercadopago"
+            value={keywords} onChange={(e) => setKeywords(e.target.value)} />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button className="btn-primary" onClick={promote}
+            disabled={saving || !question.trim() || !answer.trim()}>
+            {saving ? 'Guardando…' : 'Promover'}
+          </button>
+        </div>
       </div>
     </div>
   );

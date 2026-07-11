@@ -17,5 +17,8 @@ public enum LeadIntent
     /// <summary>Ya compró/cerró.</summary>
     Won = 4,
     /// <summary>Requiere intervención humana (reclamo, caso delicado).</summary>
-    NeedsHuman = 5
+    NeedsHuman = 5,
+    /// <summary>Reporta un problema usando el producto / no sabe cómo hacer algo →
+    /// entra al pipeline de SOPORTE (FAQ → KB → escalación), no al de venta.</summary>
+    Support = 6
 }
