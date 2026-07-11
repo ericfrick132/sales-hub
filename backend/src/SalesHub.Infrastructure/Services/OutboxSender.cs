@@ -95,7 +95,11 @@ public class OutboxSender
                 .Select(o => o.LeadId)
                 .Distinct()
                 .CountAsync(ct);
-            if (contactedToday >= cap) continue;
+            // Cap alcanzado = no abrir contactos NUEVOS. Pero los follow-ups a leads ya
+            // contactados siguen (no suman contactos): cortarlos dejaba leads con solo el
+            // primer mensaje hasta el día siguiente. El techo de MENSAJES de abajo sigue
+            // siendo el límite duro del día.
+            var capReached = contactedToday >= cap;
 
             // Tope absoluto de volumen: aunque queden contactos nuevos por hacer,
             // el total de mensajes del día (incluyendo follow-ups de la cadencia)
@@ -154,6 +158,9 @@ public class OutboxSender
                    && o.ScheduledAt <= now
                    && (!hasWhitelist
                        || (o.Lead != null && whitelist!.Contains(o.Lead.ProductKey)))
+                   // Con el cap de contactos nuevos agotado, sólo son elegibles los leads
+                   // que YA recibieron algo (follow-up, no contacto nuevo).
+                   && (!capReached || _db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent))
                    // Transporte gestionado por la app: estas filas las sirve GET /hub/outbound
                    // (las manda la app por su propia Evolution); sales-hub NO las manda por Evolution.
                    && !(o.Lead != null && _db.Products.Any(p => p.ProductKey == o.Lead.ProductKey && p.AppManagedTransport))
