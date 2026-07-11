@@ -68,6 +68,7 @@ export default function Layout() {
           { to: '/reglas-ia', label: 'Reglas IA' },
           { to: '/onboarding-apps', label: 'Onboarding apps' },
           { to: '/transcripcion', label: 'Transcripción' },
+          { to: '/digest', label: 'Resumen diario' },
           { to: '/seguimientos', label: 'Seguimientos' },
           { to: '/voice-test', label: 'Nota de voz (prueba)' },
         ] },
