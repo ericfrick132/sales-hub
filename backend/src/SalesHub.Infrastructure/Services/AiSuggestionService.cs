@@ -72,15 +72,25 @@ public class AiSuggestionService
     /// salen primero). Devuelve (mensaje, score); mensaje null si no hay nada para mandar.
     /// </summary>
     public async Task<(string? message, int score)> SuggestReengagementWithScoreAsync(
-        Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, TimeSpan silentFor, CancellationToken ct)
+        Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, TimeSpan silentFor, CancellationToken ct,
+        bool neverReplied = false)
     {
         if (!_claude.IsConfigured || thread.Count == 0) return (null, 0);
         var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
         var tone = await _tone.GetToneAsync(product.ProductKey, ct);
         var system = BuildSystemPrompt(product, rulesBlock, tone);
         var hrs = Math.Max(1, (int)Math.Round(silentFor.TotalHours));
-        var instruction =
-            $"El lead venía hablando y se quedó callado hace ~{hrs} horas. DOS TAREAS:\n" +
+        var instruction = neverReplied
+            ? $"Le escribimos hace ~{hrs} horas y NUNCA respondió. DOS TAREAS:\n" +
+              "1) Puntuá del 0 al 100 qué tan CALIENTE puede estar según de dónde vino y lo poco que hay (un lead " +
+              "de formulario/anuncio arranca más caliente que uno frío).\n" +
+              "2) Escribí UN toque corto y liviano para reflotar: sin reprochar, nada de \"viste mi mensaje\", " +
+              "aportá un gancho CONCRETO distinto al del primer mensaje (un beneficio puntual, una pregunta fácil " +
+              "de contestar). Si el hilo ya tiene varios intentos sin respuesta, cerrá simple tipo \"cualquier cosa " +
+              "me escribís por acá\".\n" +
+              "FORMATO EXACTO: primera línea `score=NN` (solo el número). De la segunda línea en adelante, el mensaje " +
+              "en el estilo de siempre. Si no hay nada para mandar, poné solo `(sin respuesta)` después del score."
+            : $"El lead venía hablando y se quedó callado hace ~{hrs} horas. DOS TAREAS:\n" +
             "1) Puntuá del 0 al 100 qué tan CALIENTE está (probabilidad de que compre): 100 = listo para cerrar, " +
             "0 = perdido/sin interés. Mirá lo que dijo, sus objeciones y el contexto.\n" +
             "2) Escribí un mensaje CORTO y natural para retomar, sin sonar desesperado ni repetir, variando el " +

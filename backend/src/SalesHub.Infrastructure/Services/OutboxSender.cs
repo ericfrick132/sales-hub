@@ -26,6 +26,7 @@ public class OutboxSender
     private readonly IEvolutionClient _evo;
     private readonly ISendScheduler _scheduler;
     private readonly IMessageRenderer _renderer;
+    private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
     private readonly ILogger<OutboxSender> _log;
 
     public OutboxSender(
@@ -33,9 +34,10 @@ public class OutboxSender
         IEvolutionClient evo,
         ISendScheduler scheduler,
         IMessageRenderer renderer,
+        Microsoft.Extensions.Configuration.IConfiguration config,
         ILogger<OutboxSender> log)
     {
-        _db = db; _evo = evo; _scheduler = scheduler; _renderer = renderer; _log = log;
+        _db = db; _evo = evo; _scheduler = scheduler; _renderer = renderer; _config = config; _log = log;
     }
 
     public async Task<int> TickAsync(CancellationToken ct)
@@ -110,6 +112,20 @@ public class OutboxSender
             // Enforce active hours window.
             var local = TimeZoneInfo.ConvertTime(now, SafeTz(seller.Timezone)).DateTime;
             if (local.Hour < seller.ActiveHoursStart || local.Hour >= seller.ActiveHoursEnd) continue;
+
+            // Gap mínimo por LÍNEA con jitter: el tick corre cada ~30s, y sin esto un backlog
+            // vencido se drena en ráfaga sostenida de 2/min (patrón de bot, riesgo de ban).
+            // Outbox:LineGapSeconds (default 90) ≈ techo de ~40 envíos/hora por línea; 0 = off.
+            var gapSeconds = Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue(_config, "Outbox:LineGapSeconds", 90);
+            if (gapSeconds > 0)
+            {
+                var jittered = TimeSpan.FromSeconds(Random.Shared.Next(gapSeconds * 2 / 3, gapSeconds * 4 / 3 + 1));
+                var lastLineSend = await _db.Outbox
+                    .Where(o => o.EvolutionInstance == seller.EvolutionInstance!.InstanceName
+                             && o.Status == OutboxStatus.Sent && o.SentAt != null)
+                    .MaxAsync(o => (DateTimeOffset?)o.SentAt, ct);
+                if (lastLineSend is not null && now - lastLineSend < jittered) continue;
+            }
 
             // Trae los próximos N candidatos y filtra por ventana de envío del PRODUCTO
             // del lead (además de la ventana del seller que ya chequeamos arriba). Si un

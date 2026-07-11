@@ -37,6 +37,11 @@ public static class OutboxEnqueueHelper
         // así que skipeamos steps sin texto y no adjuntamos assets.
         var textOnly = channel == MessageChannel.Instagram;
 
+        // Leads CALIENTES (app-fed / anuncios, source >= 400: ya nos conocen o dejaron sus
+        // datos) saltan la fila del outreach frío scrapeado. Sin esto, un lead de formulario
+        // espera DÍAS detrás de miles de fríos en la cola FIFO y se enfría — se pierde.
+        var priority = (int)lead.Source >= 400 ? 70 : 50;
+
         // Resolver qué cadencia usar para este lead (override por categoría
         // o default del producto).
         var (steps, cadenceCategory) = ResolveStepsForLead(lead, product);
@@ -91,6 +96,7 @@ public static class OutboxEnqueueHelper
                     MediaAssetId = mediaAssetId,
                     StepIndex = i,
                     CadenceCategory = cadenceCategory,
+                    Priority = priority,
                     ScheduledAt = when,
                     Status = OutboxStatus.Scheduled
                 });
@@ -119,6 +125,7 @@ public static class OutboxEnqueueHelper
                 EvolutionInstance = instanceName,
                 WhatsappPhone = whatsappPhone,
                 Message = opener,
+                Priority = priority,
                 ScheduledAt = when,
                 Status = OutboxStatus.Scheduled
             });
@@ -134,6 +141,7 @@ public static class OutboxEnqueueHelper
             EvolutionInstance = instanceName,
             WhatsappPhone = whatsappPhone,
             Message = main,
+            Priority = priority,
             ScheduledAt = when,
             Status = OutboxStatus.Scheduled
         });
@@ -176,6 +184,9 @@ public static class OutboxEnqueueHelper
                 EvolutionInstance = instanceName,
                 WhatsappPhone = whatsappPhone,
                 Message = p,
+                // Onboarding = lead caliente de anuncio/form: sale ANTES que el outreach frío
+                // (a FIFO pura esperaba días en la cola y llegaba helado).
+                Priority = 80,
                 ScheduledAt = when,
                 Status = OutboxStatus.Scheduled
             });

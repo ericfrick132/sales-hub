@@ -720,11 +720,41 @@ public class ConversationAgentService
             where last != null
                 && last.Direction == MessageDirection.Outbound
                 && last.Timestamp < cutoff
-            select new { LeadId = l.Id, LastAt = last.Timestamp }
+            select new { LeadId = l.Id, LastAt = last.Timestamp, NeverReplied = false }
+        ).Take(BatchSize).ToListAsync(ct);
+
+        // ── Los que NUNCA respondieron: sin esto, un lead contactado que no contesta queda
+        // muerto para siempre (el caso típico: Meta Lead Ads que reciben la intro del
+        // onboarding y nada más — la cadencia no aplica y el re-enganche clásico exige
+        // FirstReplyAt). Nudge a las Reengage:NoReplyAfterHours (default 24) del último
+        // outbound, mismo tope MaxNudges. Solo si el lead NO tiene steps de cadencia
+        // pendientes (la cadencia encolada YA es su follow-up; no duplicar).
+        var noReplyCutoff = now.AddHours(-_config.GetValue("Reengage:NoReplyAfterHours", 24));
+        var noReplyCandidates = await (
+            from l in _db.Leads
+            where l.SellerId != null
+                && l.BotMutedAt == null
+                && l.FirstReplyAt == null
+                && l.Status == LeadStatus.Sent
+                // Solo leads CALIENTES (anuncios/forms/app-fed, source >= 400): a los scrapeados
+                // fríos ya los persiguió su cadencia; nudgearlos a todos quemaría la línea.
+                && (int)l.Source >= 400
+                && l.AiSuggestedReply == null
+                && l.NudgeCount < MaxNudges
+                && (l.LastNudgeAt == null || l.LastNudgeAt < noReplyCutoff)
+                && !_db.Outbox.Any(o => o.LeadId == l.Id && o.Status == OutboxStatus.Scheduled)
+            let last = _db.ConversationMessages
+                .Where(m => m.LeadId == l.Id)
+                .OrderByDescending(m => m.Timestamp)
+                .FirstOrDefault()
+            where last != null
+                && last.Direction == MessageDirection.Outbound
+                && last.Timestamp < noReplyCutoff
+            select new { LeadId = l.Id, LastAt = last.Timestamp, NeverReplied = true }
         ).Take(BatchSize).ToListAsync(ct);
 
         var done = 0;
-        foreach (var c in candidates)
+        foreach (var c in candidates.Concat(noReplyCandidates))
         {
             var lead = await _db.Leads
                 .Include(l => l.Product)
