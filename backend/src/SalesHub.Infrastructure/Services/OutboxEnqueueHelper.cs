@@ -19,6 +19,22 @@ namespace SalesHub.Infrastructure.Services;
 /// </summary>
 public static class OutboxEnqueueHelper
 {
+    /// <summary>
+    /// Identificador lógico de la cadencia Meta Ads en CadenceCategory y en la
+    /// rotación de variantes. No es una categoría de búsqueda real.
+    /// </summary>
+    public const string MetaAdsCadence = "meta-ads";
+
+    /// <summary>
+    /// Prioridad de outbox según el origen del lead. Meta Lead Ads = lead caliente
+    /// que YA dejó sus datos en un formulario: sale SIEMPRE antes que cualquier
+    /// opener frío (default 50), sin importar cuándo entró a la cola. 80 queda
+    /// abajo de 90 (respuesta en charla activa, ConversationAgentService) a
+    /// propósito: contestar una conversación abierta sigue primero.
+    /// </summary>
+    public static int PriorityForLead(Lead lead) =>
+        lead.Source == LeadSource.MetaLeadAd ? 80 : 50;
+
     public static int EnqueueLeadMessages(
         ApplicationDbContext db,
         IMessageRenderer renderer,
@@ -56,7 +72,12 @@ public static class OutboxEnqueueHelper
                 if (string.IsNullOrWhiteSpace(step.Text) && !hasMedia) continue;
 
                 if (i > 0) when = when.AddSeconds(Math.Max(0, step.DelaySeconds));
-                var rendered = i == 0 && !string.IsNullOrWhiteSpace(lead.RenderedMessage) && !hasMedia
+                // RenderedMessage es el opener frío pre-rendereado (MessageTemplate) — NO
+                // aplica a la cadencia Meta Ads, cuyo step 0 es el alta de cuenta. Importa
+                // para productos relay (/hub/outbound manda este snapshot tal cual).
+                var useRenderedMessage = i == 0 && !string.IsNullOrWhiteSpace(lead.RenderedMessage)
+                    && !hasMedia && cadenceCategory != MetaAdsCadence;
+                var rendered = useRenderedMessage
                     ? lead.RenderedMessage!
                     : renderer.RenderTemplate(step.Text, lead, product, seller);
 
@@ -87,7 +108,8 @@ public static class OutboxEnqueueHelper
                     StepIndex = i,
                     CadenceCategory = cadenceCategory,
                     ScheduledAt = when,
-                    Status = OutboxStatus.Scheduled
+                    Status = OutboxStatus.Scheduled,
+                    Priority = PriorityForLead(lead)
                 });
                 count++;
                 // +1s para garantizar orden estable entre steps adyacentes
@@ -115,7 +137,8 @@ public static class OutboxEnqueueHelper
                 WhatsappPhone = whatsappPhone,
                 Message = opener,
                 ScheduledAt = when,
-                Status = OutboxStatus.Scheduled
+                Status = OutboxStatus.Scheduled,
+                Priority = PriorityForLead(lead)
             });
             count++;
             when = when.AddSeconds(1);
@@ -130,7 +153,8 @@ public static class OutboxEnqueueHelper
             WhatsappPhone = whatsappPhone,
             Message = main,
             ScheduledAt = when,
-            Status = OutboxStatus.Scheduled
+            Status = OutboxStatus.Scheduled,
+            Priority = PriorityForLead(lead)
         });
         count++;
         return count;
@@ -172,7 +196,8 @@ public static class OutboxEnqueueHelper
                 WhatsappPhone = whatsappPhone,
                 Message = p,
                 ScheduledAt = when,
-                Status = OutboxStatus.Scheduled
+                Status = OutboxStatus.Scheduled,
+                Priority = PriorityForLead(lead)
             });
             count++;
             // +1s para orden estable entre partes que comparten ScheduledAt.
@@ -189,6 +214,13 @@ public static class OutboxEnqueueHelper
     /// </summary>
     public static (List<MessageStep> steps, string cadenceCategory) ResolveStepsForLead(Lead lead, Product product)
     {
+        // Leads de Meta Lead Ads: si el producto tiene cadencia específica (el paso
+        // a paso de alta de cuenta), gana sobre cualquier override de categoría —
+        // estos leads ya dejaron sus datos, no va el opener frío. Sin cadencia
+        // configurada, caen al flujo normal.
+        if (lead.Source == LeadSource.MetaLeadAd && product.MetaAdsMessageSteps is { Count: > 0 })
+            return (product.MetaAdsMessageSteps, MetaAdsCadence);
+
         var leadCat = (lead.SearchCategory ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(leadCat) && product.CategoryCadences is { Count: > 0 })
         {

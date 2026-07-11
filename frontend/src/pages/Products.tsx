@@ -16,6 +16,7 @@ const EMPTY: Product = {
   replyTemplates: [],
   messageSteps: [],
   categoryCadences: [],
+  metaAdsMessageSteps: [],
   aiSalesPlaybook: '',
   autoPilot: true,
   autoReengage: true
@@ -163,8 +164,10 @@ export default function Products() {
           categories={draft.categories}
           defaultSteps={draft.messageSteps ?? []}
           overrides={draft.categoryCadences ?? []}
+          metaSteps={draft.metaAdsMessageSteps ?? []}
           onChangeDefault={(steps) => onChange('messageSteps', steps)}
           onChangeOverrides={(over) => onChange('categoryCadences', over)}
+          onChangeMeta={(steps) => onChange('metaAdsMessageSteps', steps)}
         />
         <Field label="Respuestas rápidas (una por línea)">
           <ReplyTemplatesEditor
@@ -398,17 +401,24 @@ function cloneSteps(src: MessageStep[]): MessageStep[] {
   }));
 }
 
+// Sentinel para la tab de cadencia Meta Ads (no puede colisionar con una
+// categoría real: las categorías vienen de búsquedas de Maps, sin "::").
+const META_TAB = '::meta-ads';
+
 function CadencesEditor({
-  productKey, categories, defaultSteps, overrides, onChangeDefault, onChangeOverrides
+  productKey, categories, defaultSteps, overrides, metaSteps, onChangeDefault, onChangeOverrides, onChangeMeta
 }: {
   productKey: string;
   categories: string[];
   defaultSteps: MessageStep[];
   overrides: CategoryCadence[];
+  metaSteps: MessageStep[];
   onChangeDefault: (s: MessageStep[]) => void;
   onChangeOverrides: (o: CategoryCadence[]) => void;
+  onChangeMeta: (s: MessageStep[]) => void;
 }) {
-  // Tab activa: '' = default; otro string = nombre de la categoría override.
+  // Tab activa: '' = default; META_TAB = cadencia Meta Ads; otro string =
+  // nombre de la categoría override.
   const [activeTab, setActiveTab] = useState<string>('');
   const overrideMap = new Map(overrides.map((o) => [o.category, o.steps]));
   const overriddenCats = new Set(overrides.map((o) => o.category));
@@ -432,14 +442,26 @@ function CadencesEditor({
   }
   function importDefaultIntoActive() {
     if (activeTab === '') return;
-    if (!confirm(`Reemplazar los pasos de "${activeTab}" con los del default? Lo editado se pierde.`)) return;
-    updateOverrideSteps(activeTab, cloneSteps(defaultSteps));
+    if (!confirm(`Reemplazar los pasos de "${activeTab === META_TAB ? 'Meta Ads' : activeTab}" con los del default? Lo editado se pierde.`)) return;
+    if (activeTab === META_TAB) onChangeMeta(cloneSteps(defaultSteps));
+    else updateOverrideSteps(activeTab, cloneSteps(defaultSteps));
+  }
+  function clearMetaSteps() {
+    if (!confirm('Vaciar la cadencia Meta Ads? Esos leads van a volver a recibir la cadencia default.')) return;
+    onChangeMeta([]);
+    setActiveTab('');
   }
 
-  const stepsForActiveTab = activeTab === '' ? defaultSteps : (overrideMap.get(activeTab) ?? []);
+  const stepsForActiveTab = activeTab === ''
+    ? defaultSteps
+    : activeTab === META_TAB
+      ? metaSteps
+      : (overrideMap.get(activeTab) ?? []);
   const onChangeForActiveTab = activeTab === ''
     ? onChangeDefault
-    : (s: MessageStep[]) => updateOverrideSteps(activeTab, s);
+    : activeTab === META_TAB
+      ? onChangeMeta
+      : (s: MessageStep[]) => updateOverrideSteps(activeTab, s);
 
   const noOverrideCats = categories.filter((c) => !overriddenCats.has(c));
 
@@ -452,6 +474,13 @@ function CadencesEditor({
             onClick={() => setActiveTab('')}>
             Default
             <span className="ml-1 text-[10px] text-slate-400">({defaultSteps.length})</span>
+          </button>
+          <button type="button"
+            className={`text-xs px-3 py-1.5 -mb-px border-b-2 ${activeTab === META_TAB ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            title="Cadencia para leads que llegan del formulario de Meta Lead Ads (paso a paso de alta de cuenta)"
+            onClick={() => setActiveTab(META_TAB)}>
+            📣 Meta Ads
+            <span className={`ml-1 text-[10px] ${metaSteps.length > 0 ? 'text-indigo-700' : 'text-slate-400'}`}>({metaSteps.length})</span>
           </button>
           {overrides.map((o) => (
             <button key={o.category} type="button"
@@ -473,7 +502,30 @@ function CadencesEditor({
         </div>
       </div>
 
-      {activeTab !== '' && (
+      {activeTab === META_TAB && (
+        <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded p-2 text-xs gap-2 flex-wrap">
+          <span>
+            Cadencia <b>Meta Ads</b> — para leads que dejaron sus datos en el formulario del anuncio:
+            acá va el <b>paso a paso de alta de cuenta</b>, no el opener frío. Salen con prioridad
+            (antes que cualquier cold outreach). Vacía = usan el default.
+          </span>
+          <div className="flex gap-3">
+            <button type="button"
+              className="text-indigo-700 hover:underline"
+              title="Reemplaza los pasos actuales con una copia de los del default"
+              onClick={importDefaultIntoActive}>
+              ⤓ Importar del default
+            </button>
+            <button type="button"
+              className="text-rose-600 hover:underline"
+              onClick={clearMetaSteps}>
+              Vaciar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab !== '' && activeTab !== META_TAB && (
         <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded p-2 text-xs gap-2 flex-wrap">
           <span>
             Cadencia <b>{activeTab}</b> — solo se usa cuando el lead viene de esa búsqueda.

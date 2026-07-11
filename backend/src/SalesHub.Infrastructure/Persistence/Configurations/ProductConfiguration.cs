@@ -41,6 +41,19 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
                     ? new List<MessageStep>()
                     : JsonSerializer.Deserialize<List<MessageStep>>(v, (JsonSerializerOptions?)null) ?? new());
 
+        // Cadencia específica para leads de Meta Lead Ads. Mismo shape que
+        // MessageSteps, también jsonb.
+        b.Property(x => x.MetaAdsMessageSteps)
+            .HasColumnName("meta_ads_message_steps")
+            .HasColumnType("jsonb")
+            // Sin esto el generador emite DEFAULT '' — inválido para jsonb en Postgres.
+            .HasDefaultValueSql("'[]'::jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v ?? new(), (JsonSerializerOptions?)null),
+                v => string.IsNullOrWhiteSpace(v)
+                    ? new List<MessageStep>()
+                    : JsonSerializer.Deserialize<List<MessageStep>>(v, (JsonSerializerOptions?)null) ?? new());
+
         // Overrides de cadencia por categoría. También jsonb por la misma razón.
         // Deserialize con try/catch porque migrations viejas pueden haber dejado
         // basura en la columna ({} en vez de []) — preferimos lista vacía a
