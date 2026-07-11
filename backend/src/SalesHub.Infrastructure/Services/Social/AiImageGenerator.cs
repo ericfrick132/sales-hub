@@ -191,7 +191,21 @@ public class AiImageGenerator : ISocialAssetGenerator
         // Texto en la imagen: SOLO el overlay corto que Claude escribió como copy.
         // Nunca el concepto (descripción interna larga → el modelo lo trunca y lo rompe).
         var overlay = overlayText?.Trim() ?? string.Empty;
-        if (overlay.Length > 0)
+        // Overlay multilínea (stories con arco hook → desarrollo → CTA): cada línea es un
+        // bloque del layout vertical — hook grande arriba, desarrollo al medio, CTA como botón.
+        var overlayLines = overlay.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (overlayLines.Length > 1)
+        {
+            sb.Append(" TEXT LAYOUT (vertical story-ad flow, top to bottom): render ONLY the following text blocks, nothing else written, every word perfectly spelled.");
+            sb.Append($" TOP — the hook, in the biggest boldest type: \"{overlayLines[0]}\".");
+            foreach (var mid in overlayLines[1..^1])
+                sb.Append($" MIDDLE — supporting line, medium size: \"{mid}\".");
+            sb.Append($" BOTTOM — the call to action, rendered inside a small rounded pill/button shape: \"{overlayLines[^1]}\".");
+            sb.Append(" Generous empty space between the blocks so each one breathes.");
+            if (!string.IsNullOrWhiteSpace(profile.BrandFonts))
+                sb.Append($" All text typography MUST match this exact typeface style: {profile.BrandFonts}. Reproduce that font's look faithfully (letterforms, weight, spacing) — do NOT use generic AI lettering, decorative fonts, or any other typeface.");
+        }
+        else if (overlay.Length > 0)
         {
             sb.Append($" Render ONLY this exact short headline text, nothing else written: \"{overlay}\" — bold, perfectly spelled, legible, well integrated into the layout.");
             // La tipografía SOLO importa si hay texto — y tiene que ser la de la marca,

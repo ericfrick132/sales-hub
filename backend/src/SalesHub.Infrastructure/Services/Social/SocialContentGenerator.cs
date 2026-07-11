@@ -75,15 +75,20 @@ public class SocialContentGenerator
         "Sin emojis, sin hashtags, sin URLs — es para leer en voz alta. Si el assetKind es 'image', devolvé narration = \"\".";
 
     /// <summary>
-    /// Regla para STORIES: son verticales, efímeras (24h) y más íntimas/casuales que el
-    /// feed. Menos producidas, más "momento". El overlay es clave (la story vive del texto
-    /// grande arriba de la imagen), y va bárbaro para una pregunta o un guiño rápido.
+    /// Regla para STORIES: cada story es un MINI-ANUNCIO autocontenido con el arco
+    /// completo hook → desarrollo → CTA adentro de la MISMA placa. El overlay deja de
+    /// ser una línea suelta: son 3 bloques separados por salto de línea que la imagen
+    /// renderiza como layout vertical (hook grande arriba, desarrollo al medio, CTA
+    /// abajo como botón). Esta regla PISA el límite de 8 palabras del overlay general.
     /// </summary>
     private const string StoryRule =
-        "ES UNA STORY (vertical 9:16, efímera 24h): tono más casual e íntimo que el feed, como un mensaje al toque. " +
-        "El 'overlay' es PROTAGONISTA (la story se lee de ese texto grande) — que sea un gancho, pregunta o guiño corto. " +
-        "El caption es breve. El visual es simple, con aire arriba y abajo para el texto, no una placa recargada. " +
-        "Ideal para preguntas, un tip rápido o un momento del día — no un anuncio formal.";
+        "ES UNA STORY (vertical 9:16): NO es un momento casual ni un guiño suelto — es un MINI-ANUNCIO autocontenido con el arco COMPLETO adentro de la misma story. " +
+        "El 'overlay' lleva EXACTAMENTE tres bloques separados por salto de línea ('\\n'), en este orden:\n" +
+        "1) HOOK (máx 7 palabras): el gancho que frena el scroll — pregunta que duele o dato concreto. Va arriba, en tipografía grande.\n" +
+        "2) DESARROLLO (1 o 2 líneas de máx 10 palabras cada una): el valor real — el dolor, el dato o el beneficio, sin humo. Va al medio.\n" +
+        "3) CTA (máx 5 palabras): el llamado a la acción ('Probalo gratis', 'Escribinos hoy', 'Link acá abajo'). Va abajo, como botón.\n" +
+        "EXCEPCIÓN A LA REGLA DEL OVERLAY: en stories el overlay estructurado reemplaza el límite de 8 palabras (máx ~28 palabras en total) y NUNCA es un string vacío. " +
+        "El visual es un fondo simple con mucho aire para que los tres bloques respiren — no una placa recargada. El caption es breve (en stories casi no se ve).";
 
     private const string VideoPromptRecipe =
         "REGLA DEL PROMPT DE VIDEO — si el assetKind es 'video', el campo 'prompt' (en INGLÉS) es dirección de cine para UNA sola toma continua, vertical 9:16, ~5 segundos. Escribilo así:\n" +
@@ -194,7 +199,6 @@ public class SocialContentGenerator
         sys.AppendLine(type.Directive);
         sys.AppendLine();
         sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies). Caption en español rioplatense (voseo). El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
-        if (ch.Format == SocialPostFormat.Story) sys.AppendLine(StoryRule);
 
         var slideCount = Math.Max(1, ch.SlideCount);
         if (slideCount > 1)
@@ -210,15 +214,17 @@ public class SocialContentGenerator
             sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"caption\":string, \"hashtags\":string[], \"slides\":[{\"role\":string, \"overlay\":string, \"prompt\":string}]}");
             sys.AppendLine($"El array 'slides' tiene EXACTAMENTE {slideCount} elementos, en orden narrativo.");
             sys.AppendLine(OverlayRule);
-        sys.AppendLine(BannedWordsRule);
-        sys.AppendLine(StructureRule);
+            sys.AppendLine(BannedWordsRule);
+            sys.AppendLine(StructureRule);
         }
         else
         {
             sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
             sys.AppendLine(OverlayRule);
-        sys.AppendLine(BannedWordsRule);
-        sys.AppendLine(StructureRule);
+            sys.AppendLine(BannedWordsRule);
+            sys.AppendLine(StructureRule);
+            // Va DESPUÉS de OverlayRule: su excepción al límite de 8 palabras tiene que pesar más.
+            if (ch.Format == SocialPostFormat.Story) sys.AppendLine(StoryRule);
             if (ch.AssetKind == SocialAssetKind.Video) { sys.AppendLine(NarrationRule); sys.AppendLine(VideoPromptRecipe); }
         }
 
@@ -313,6 +319,7 @@ public class SocialContentGenerator
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);
+        if (ch?.Format == SocialPostFormat.Story) sys.AppendLine(StoryRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
@@ -363,6 +370,7 @@ public class SocialContentGenerator
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);
+        if (ch?.Format == SocialPostFormat.Story) sys.AppendLine(StoryRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
