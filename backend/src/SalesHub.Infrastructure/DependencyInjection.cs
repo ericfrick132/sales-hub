@@ -117,6 +117,8 @@ public static class DependencyInjection
         // Acumulador del modo batch: junta imágenes/texto/audio y responde un PDF (debounce).
         // Singleton: vive entre webhooks (cada uno es un request) y al cerrar el batch abre su scope.
         services.AddSingleton<TranscriptionBatchAccumulator>();
+        // Resumen diario por WhatsApp (compone y manda el digest; lo agenda DailyDigestWorker).
+        services.AddScoped<DailyDigestService>();
         // Reglas duras de la IA (cache 30s, leídas vía scope) — inyectadas al system prompt.
         services.AddSingleton<AiRulesProvider>();
         services.AddScoped<AiSuggestionService>();

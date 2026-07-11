@@ -52,6 +52,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<TranscriptionPhone> TranscriptionPhones => Set<TranscriptionPhone>();
     public DbSet<TranscriptionSettings> TranscriptionSettings => Set<TranscriptionSettings>();
 
+    // Resumen diario por WhatsApp: config global (on/off + línea + destino + hora).
+    public DbSet<DigestSettings> DigestSettings => Set<DigestSettings>();
+
     // Follow-up de abandono unificado y AGNÓSTICO: secuencias genéricas por (app, trigger) +
     // telemetría que reportan las apps, para reportes centralizados por app.
     public DbSet<FollowupSequence> FollowupSequences => Set<FollowupSequence>();

@@ -31,6 +31,7 @@ import Objetivos from './pages/Objetivos';
 import ReglasIa from './pages/ReglasIa';
 import OnboardingApps from './pages/OnboardingApps';
 import Transcripcion from './pages/Transcripcion';
+import Digest from './pages/Digest';
 import Seguimientos from './pages/Seguimientos';
 import Manual from './pages/Manual';
 import VoiceTest from './pages/VoiceTest';
@@ -74,6 +75,7 @@ export default function App() {
             <Route path="/reglas-ia" element={<ReglasIa />} />
             <Route path="/onboarding-apps" element={<OnboardingApps />} />
             <Route path="/transcripcion" element={<Transcripcion />} />
+            <Route path="/digest" element={<Digest />} />
             <Route path="/voice-test" element={<VoiceTest />} />
             <Route path="/seguimientos" element={<Seguimientos />} />
             <Route path="/sellers/zones" element={<SellerZones />} />

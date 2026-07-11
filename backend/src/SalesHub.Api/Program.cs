@@ -37,6 +37,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<SocialContentWorker>();              // posteos automáticos → Buffer (gated por Workers:PosteosAutoStart)
     builder.Services.AddHostedService<LeadImportWorker>();                 // re-engagement: import de leads de TurnosPro/GymHero
     builder.Services.AddHostedService<LeadStateGuardWorker>();             // pull-guard: corta el follow-up de leads que ya convirtieron en su producto
+    builder.Services.AddHostedService<DailyDigestWorker>();                // resumen diario por WhatsApp (config en /digest)
 
     // Workers de Instagram. Corren acá (no en un contenedor aparte) porque la imagen
     // ya trae Playwright/Chromium y el droplet tiene RAM de sobra. Sin esto, las
