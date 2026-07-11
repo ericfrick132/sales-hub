@@ -604,7 +604,7 @@ public class SocialPostsController : ControllerBase
                 ImageUrls = slideUrls.Count > 0 ? slideUrls : null,
                 VideoUrl = post.AssetKind == SocialAssetKind.Video ? post.AssetUrl : null,
                 ThumbnailUrl = post.ThumbnailUrl,
-                InstagramType = post.Format.ToString().ToLowerInvariant(),
+                InstagramType = post.Format.ToBufferInstagramType(),
                 ScheduledAt = null,          // shareNow
                 SaveAsDraft = false,
                 Automatic = !ch.NotifyPublish,
@@ -805,7 +805,7 @@ public class SocialPostsController : ControllerBase
             ImageUrls = slideUrls.Count > 0 ? slideUrls : null,
             VideoUrl = post.AssetKind == SocialAssetKind.Video ? assetUrl : null,
             ThumbnailUrl = post.ThumbnailUrl,
-            InstagramType = post.Format.ToString().ToLowerInvariant(),
+            InstagramType = post.Format.ToBufferInstagramType(),
             ScheduledAt = req?.ScheduledAt,
             SaveAsDraft = asDraft,
             Automatic = !notify,

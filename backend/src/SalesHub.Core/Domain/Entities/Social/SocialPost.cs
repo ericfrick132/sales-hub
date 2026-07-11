@@ -20,6 +20,21 @@ public enum SocialPostFormat
     Video = 5
 }
 
+public static class SocialPostFormatExtensions
+{
+    /// <summary>
+    /// Buffer/Instagram solo acepta post|story|reel: un carrusel se manda como "post"
+    /// con varias imágenes, y video de feed va como "reel".
+    /// </summary>
+    public static string ToBufferInstagramType(this SocialPostFormat format) => format switch
+    {
+        SocialPostFormat.Story => "story",
+        SocialPostFormat.Reel => "reel",
+        SocialPostFormat.Video => "reel",
+        _ => "post",
+    };
+}
+
 /// <summary>Qué asset lleva → decide el generador (imagen=AiImageGenerator, video=fal.ai).</summary>
 public enum SocialAssetKind
 {

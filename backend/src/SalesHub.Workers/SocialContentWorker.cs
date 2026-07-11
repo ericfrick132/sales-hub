@@ -239,7 +239,7 @@ public class SocialContentWorker : BackgroundService
                     ImageUrls = slideUrls.Count > 0 ? slideUrls : null,
                     VideoUrl = post.AssetKind == SocialAssetKind.Video ? post.AssetUrl : null,
                     ThumbnailUrl = post.ThumbnailUrl,
-                    InstagramType = post.Format.ToString().ToLowerInvariant(),
+                    InstagramType = post.Format.ToBufferInstagramType(),
                     ScheduledAt = post.ScheduledAt,
                     SaveAsDraft = !autoPublish,
                     Automatic = !channel.NotifyPublish,
