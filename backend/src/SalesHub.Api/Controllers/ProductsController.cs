@@ -386,6 +386,7 @@ public class ProductsController : ControllerBase
             .Where(s => s.Length > 0)
             .ToList();
         p.MessageSteps = MapSteps(r.MessageSteps);
+        p.MetaAdsMessageSteps = MapSteps(r.MetaAdsMessageSteps);
         p.CategoryCadences = (r.CategoryCadences ?? new())
             .Where(c => !string.IsNullOrWhiteSpace(c.Category))
             .GroupBy(c => c.Category.Trim())
@@ -427,5 +428,6 @@ public class ProductsController : ControllerBase
         p.CategoryCadences.Select(c => new CategoryCadenceDto(c.Category, StepsToDto(c.Steps))).ToList(),
         p.AiSalesPlaybook ?? string.Empty,
         p.AutoPilot,
-        p.AutoReengage);
+        p.AutoReengage,
+        StepsToDto(p.MetaAdsMessageSteps));
 }

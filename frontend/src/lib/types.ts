@@ -166,6 +166,9 @@ export interface Product {
   replyTemplates: string[];
   messageSteps: MessageStep[];
   categoryCadences: CategoryCadence[];
+  /** Cadencia para leads que llegan por Meta Lead Ads (paso a paso de alta de
+   *  cuenta). Vacía = esos leads usan la cadencia default como cualquier otro. */
+  metaAdsMessageSteps: MessageStep[];
   aiSalesPlaybook: string;
   autoPilot: boolean;
   autoReengage: boolean;

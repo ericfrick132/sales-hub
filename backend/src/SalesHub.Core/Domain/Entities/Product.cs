@@ -30,6 +30,11 @@ public class Product
     // Útil para que "yoga" tenga audios y textos distintos a "gimnasio"
     // dentro del mismo producto.
     public List<CategoryCadence> CategoryCadences { get; set; } = new();
+    // Cadencia específica para leads que llegan por Meta Lead Ads (formulario de
+    // anuncio). Estos leads YA nos dejaron sus datos, así que el mensaje no es el
+    // opener frío: acá va el paso a paso para crearles la cuenta. Si está vacío,
+    // caen a la cadencia default (MessageSteps) como cualquier lead.
+    public List<MessageStep> MetaAdsMessageSteps { get; set; } = new();
     public string MessageTemplate { get; set; } = string.Empty;
     // Mensaje "opener" opcional. Si está, se manda primero (ej. "buenas") y el
     // mensaje principal sale después con el delay normal del seller. Vacío = un solo mensaje.
