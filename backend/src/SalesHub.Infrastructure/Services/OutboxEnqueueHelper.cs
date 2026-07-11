@@ -56,7 +56,12 @@ public static class OutboxEnqueueHelper
                 if (string.IsNullOrWhiteSpace(step.Text) && !hasMedia) continue;
 
                 if (i > 0) when = when.AddSeconds(Math.Max(0, step.DelaySeconds));
-                var rendered = i == 0 && !string.IsNullOrWhiteSpace(lead.RenderedMessage) && !hasMedia
+                // El shortcut de RenderedMessage (pre-render legacy de assign-time) solo vale
+                // para la cadencia DEFAULT: en overrides (origen/categoría) el copy es otro, y
+                // los productos relay (/hub/outbound) mandan este snapshot SIN re-render — acá
+                // pisar el step 0 con el template frío re-introduciría el bug de Meta Lead Ads.
+                var rendered = i == 0 && cadenceCategory.Length == 0
+                    && !string.IsNullOrWhiteSpace(lead.RenderedMessage) && !hasMedia
                     ? lead.RenderedMessage!
                     : renderer.RenderTemplate(step.Text, lead, product, seller);
 
@@ -182,13 +187,31 @@ public static class OutboxEnqueueHelper
     }
 
     /// <summary>
-    /// Devuelve los steps efectivos a usar para este lead (override de la
-    /// categoría si existe + tiene contenido, sino el MessageSteps default
-    /// del producto). También retorna la "categoría" lógica para identificar
-    /// la cadencia en la rotación (vacío = default).
+    /// Prefijo que identifica una cadencia por origen en CadenceCategory y en la
+    /// rotación de variantes (ej. "origen:MetaLeadAd"). Los ":" no aparecen en
+    /// categorías de búsqueda reales, así que no colisiona.
+    /// </summary>
+    public const string SourceCadencePrefix = "origen:";
+
+    /// <summary>
+    /// Devuelve los steps efectivos a usar para este lead. Precedencia:
+    /// 1) override por ORIGEN (lead.Source, ej. MetaLeadAd — el lead ya nos
+    ///    dejó sus datos, el opener frío no aplica), 2) override por categoría
+    ///    de búsqueda, 3) MessageSteps default del producto. También retorna
+    /// la "categoría" lógica para identificar la cadencia en la rotación
+    /// (vacío = default, "origen:X" = cadencia por origen).
     /// </summary>
     public static (List<MessageStep> steps, string cadenceCategory) ResolveStepsForLead(Lead lead, Product product)
     {
+        if (product.SourceCadences is { Count: > 0 })
+        {
+            var srcKey = lead.Source.ToString();
+            var bySource = product.SourceCadences.FirstOrDefault(
+                c => string.Equals(c.Source, srcKey, StringComparison.OrdinalIgnoreCase));
+            if (bySource is not null && bySource.Steps is { Count: > 0 })
+                return (bySource.Steps, SourceCadencePrefix + bySource.Source);
+        }
+
         var leadCat = (lead.SearchCategory ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(leadCat) && product.CategoryCadences is { Count: > 0 })
         {

@@ -125,6 +125,8 @@ public class TestSendController : ControllerBase
         // Lead "fake" para que el renderer pueda llenar placeholders. Usamos
         // valores neutros que sirven para preview. SearchCategory dispara la
         // selección de cadencia override (si el seller eligió categoría).
+        // "origen:X" en Category simula un lead con Source=X para probar las
+        // cadencias por origen (ej. "origen:MetaLeadAd").
         var fakeLead = new Lead
         {
             Name = "(prueba)",
@@ -134,6 +136,13 @@ public class TestSendController : ControllerBase
             WhatsappPhone = phone,
             SearchCategory = req.Category
         };
+        if (req.Category is not null
+            && req.Category.StartsWith(OutboxEnqueueHelper.SourceCadencePrefix, StringComparison.OrdinalIgnoreCase)
+            && Enum.TryParse<LeadSource>(req.Category[OutboxEnqueueHelper.SourceCadencePrefix.Length..], true, out var src))
+        {
+            fakeLead.Source = src;
+            fakeLead.SearchCategory = null;
+        }
 
         var (steps, _) = OutboxEnqueueHelper.ResolveStepsForLead(fakeLead, product);
         if (steps.Count == 0) return BadRequest(new

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
-import type { CategoryCadence, MediaAsset, MessageStep, Product, Seller } from '../lib/types';
+import type { CategoryCadence, MediaAsset, MessageStep, Product, Seller, SourceCadence } from '../lib/types';
+import { SOURCE_ORIGINS, SRC_PREFIX, originLabel } from '../lib/origins';
 import Switch from '../components/Switch';
 
 const EMPTY: Product = {
@@ -16,6 +17,7 @@ const EMPTY: Product = {
   replyTemplates: [],
   messageSteps: [],
   categoryCadences: [],
+  sourceCadences: [],
   aiSalesPlaybook: '',
   autoPilot: true,
   autoReengage: true
@@ -163,8 +165,10 @@ export default function Products() {
           categories={draft.categories}
           defaultSteps={draft.messageSteps ?? []}
           overrides={draft.categoryCadences ?? []}
+          sourceOverrides={draft.sourceCadences ?? []}
           onChangeDefault={(steps) => onChange('messageSteps', steps)}
           onChangeOverrides={(over) => onChange('categoryCadences', over)}
+          onChangeSourceOverrides={(over) => onChange('sourceCadences', over)}
         />
         <Field label="Respuestas rápidas (una por línea)">
           <ReplyTemplatesEditor
@@ -210,19 +214,23 @@ export default function Products() {
           defaultPrefix={draft.phonePrefix}
           categories={draft.categories}
           overrideCats={(draft.categoryCadences ?? []).map((c) => c.category)}
-          hasSteps={(draft.messageSteps ?? []).length > 0 || (draft.categoryCadences ?? []).some((c) => c.steps.length > 0)}
+          overrideSources={(draft.sourceCadences ?? []).map((c) => c.source)}
+          hasSteps={(draft.messageSteps ?? []).length > 0
+            || (draft.categoryCadences ?? []).some((c) => c.steps.length > 0)
+            || (draft.sourceCadences ?? []).some((c) => c.steps.length > 0)}
         />
       </div>
     </div>
   );
 }
 
-function TestSendPanel({ productId, defaultPrefix, hasSteps, categories, overrideCats }: {
+function TestSendPanel({ productId, defaultPrefix, hasSteps, categories, overrideCats, overrideSources }: {
   productId: string;
   defaultPrefix: string;
   hasSteps: boolean;
   categories: string[];
   overrideCats: string[];
+  overrideSources: string[];
 }) {
   const sellersQ = useQuery({
     queryKey: ['sellers-admin'],
@@ -282,10 +290,15 @@ function TestSendPanel({ productId, defaultPrefix, hasSteps, categories, overrid
           <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)}
             placeholder={`${defaultPrefix}9XXXXXXXXX`} />
         </Field>
-        {categories.length > 0 && (
-          <Field label="Categoría a probar">
+        {(categories.length > 0 || overrideSources.length > 0) && (
+          <Field label="Cadencia a probar">
             <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="">Default (sin categoría)</option>
+              {overrideSources.map((s) => (
+                <option key={SRC_PREFIX + s} value={SRC_PREFIX + s}>
+                  ⚡ Origen: {originLabel(s)} · cadencia propia
+                </option>
+              ))}
               {categories.map((c) => {
                 const hasOverride = overrideCats.includes(c);
                 return (
@@ -399,20 +412,28 @@ function cloneSteps(src: MessageStep[]): MessageStep[] {
 }
 
 function CadencesEditor({
-  productKey, categories, defaultSteps, overrides, onChangeDefault, onChangeOverrides
+  productKey, categories, defaultSteps, overrides, sourceOverrides, onChangeDefault, onChangeOverrides, onChangeSourceOverrides
 }: {
   productKey: string;
   categories: string[];
   defaultSteps: MessageStep[];
   overrides: CategoryCadence[];
+  sourceOverrides: SourceCadence[];
   onChangeDefault: (s: MessageStep[]) => void;
   onChangeOverrides: (o: CategoryCadence[]) => void;
+  onChangeSourceOverrides: (o: SourceCadence[]) => void;
 }) {
-  // Tab activa: '' = default; otro string = nombre de la categoría override.
+  // Tab activa: '' = default; 'origen:X' = override por origen; otro string =
+  // nombre de la categoría override.
   const [activeTab, setActiveTab] = useState<string>('');
   const overrideMap = new Map(overrides.map((o) => [o.category, o.steps]));
   const overriddenCats = new Set(overrides.map((o) => o.category));
   const availableCategoriesToAdd = categories.filter((c) => !overriddenCats.has(c));
+
+  const sourceMap = new Map(sourceOverrides.map((o) => [o.source, o.steps]));
+  const overriddenSources = new Set(sourceOverrides.map((o) => o.source));
+  const availableOriginsToAdd = SOURCE_ORIGINS.filter((o) => !overriddenSources.has(o.key));
+  const activeSource = activeTab.startsWith(SRC_PREFIX) ? activeTab.slice(SRC_PREFIX.length) : null;
 
   function addOverride(cat: string) {
     if (!cat || overriddenCats.has(cat)) return;
@@ -430,16 +451,40 @@ function CadencesEditor({
   function updateOverrideSteps(cat: string, steps: MessageStep[]) {
     onChangeOverrides(overrides.map((o) => o.category === cat ? { ...o, steps } : o));
   }
-  function importDefaultIntoActive() {
-    if (activeTab === '') return;
-    if (!confirm(`Reemplazar los pasos de "${activeTab}" con los del default? Lo editado se pierde.`)) return;
-    updateOverrideSteps(activeTab, cloneSteps(defaultSteps));
+
+  function addSourceOverride(src: string) {
+    if (!src || overriddenSources.has(src)) return;
+    // Arranca VACÍO a propósito: el punto de una cadencia por origen es que el
+    // copy es otro (el lead ya nos conoce) — copiar el opener frío acá es
+    // exactamente el bug que queremos evitar.
+    onChangeSourceOverrides([...sourceOverrides, { source: src, steps: [] }]);
+    setActiveTab(SRC_PREFIX + src);
+  }
+  function removeSourceOverride(src: string) {
+    if (!confirm(`Quitar la cadencia de "${originLabel(src)}"? Esos leads van a volver al default (opener frío).`)) return;
+    onChangeSourceOverrides(sourceOverrides.filter((o) => o.source !== src));
+    if (activeTab === SRC_PREFIX + src) setActiveTab('');
+  }
+  function updateSourceSteps(src: string, steps: MessageStep[]) {
+    onChangeSourceOverrides(sourceOverrides.map((o) => o.source === src ? { ...o, steps } : o));
   }
 
-  const stepsForActiveTab = activeTab === '' ? defaultSteps : (overrideMap.get(activeTab) ?? []);
-  const onChangeForActiveTab = activeTab === ''
-    ? onChangeDefault
-    : (s: MessageStep[]) => updateOverrideSteps(activeTab, s);
+  function importDefaultIntoActive() {
+    if (activeTab === '') return;
+    const label = activeSource ? originLabel(activeSource) : activeTab;
+    if (!confirm(`Reemplazar los pasos de "${label}" con los del default? Lo editado se pierde.`)) return;
+    if (activeSource) updateSourceSteps(activeSource, cloneSteps(defaultSteps));
+    else updateOverrideSteps(activeTab, cloneSteps(defaultSteps));
+  }
+
+  const stepsForActiveTab = activeSource
+    ? (sourceMap.get(activeSource) ?? [])
+    : activeTab === '' ? defaultSteps : (overrideMap.get(activeTab) ?? []);
+  const onChangeForActiveTab = activeSource
+    ? (s: MessageStep[]) => updateSourceSteps(activeSource, s)
+    : activeTab === ''
+      ? onChangeDefault
+      : (s: MessageStep[]) => updateOverrideSteps(activeTab, s);
 
   const noOverrideCats = categories.filter((c) => !overriddenCats.has(c));
 
@@ -461,19 +506,61 @@ function CadencesEditor({
               <span className="ml-1 text-[10px] text-emerald-700">({o.steps.length})</span>
             </button>
           ))}
-          {availableCategoriesToAdd.length > 0 && (
-            <select
-              className="ml-auto text-xs px-2 py-1 border border-slate-200 rounded bg-white text-slate-600"
-              value=""
-              onChange={(e) => { if (e.target.value) addOverride(e.target.value); e.target.selectedIndex = 0; }}>
-              <option value="">+ Override de categoría</option>
-              {availableCategoriesToAdd.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          )}
+          {sourceOverrides.map((o) => (
+            <button key={SRC_PREFIX + o.source} type="button"
+              className={`text-xs px-3 py-1.5 -mb-px border-b-2 ${activeTab === SRC_PREFIX + o.source ? 'border-violet-600 text-violet-700 font-semibold' : 'border-transparent text-violet-500 hover:text-violet-800'}`}
+              onClick={() => setActiveTab(SRC_PREFIX + o.source)}>
+              ⚡ {originLabel(o.source)}
+              <span className="ml-1 text-[10px] text-violet-600">({o.steps.length})</span>
+            </button>
+          ))}
+          <div className="ml-auto flex items-center gap-1">
+            {availableCategoriesToAdd.length > 0 && (
+              <select
+                className="text-xs px-2 py-1 border border-slate-200 rounded bg-white text-slate-600"
+                value=""
+                onChange={(e) => { if (e.target.value) addOverride(e.target.value); e.target.selectedIndex = 0; }}>
+                <option value="">+ Override de categoría</option>
+                {availableCategoriesToAdd.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+            {availableOriginsToAdd.length > 0 && (
+              <select
+                className="text-xs px-2 py-1 border border-violet-200 rounded bg-white text-violet-700"
+                value=""
+                onChange={(e) => { if (e.target.value) addSourceOverride(e.target.value); e.target.selectedIndex = 0; }}>
+                <option value="">+ Cadencia por origen</option>
+                {availableOriginsToAdd.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+            )}
+          </div>
         </div>
       </div>
 
-      {activeTab !== '' && (
+      {activeSource !== null && (
+        <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded p-2 text-xs gap-2 flex-wrap">
+          <span>
+            Cadencia para leads de <b>{originLabel(activeSource)}</b> — estos leads ya nos conocen
+            (dejaron sus datos / nos escribieron), así que NO va el opener frío. Pisa el default
+            y los overrides por categoría. Si queda sin pasos, caen al default.
+          </span>
+          <div className="flex gap-3">
+            <button type="button"
+              className="text-violet-700 hover:underline"
+              title="Reemplaza los pasos actuales con una copia de los del default"
+              onClick={importDefaultIntoActive}>
+              ⤓ Importar del default
+            </button>
+            <button type="button"
+              className="text-rose-600 hover:underline"
+              onClick={() => removeSourceOverride(activeSource)}>
+              Quitar cadencia
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeSource === null && activeTab !== '' && (
         <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded p-2 text-xs gap-2 flex-wrap">
           <span>
             Cadencia <b>{activeTab}</b> — solo se usa cuando el lead viene de esa búsqueda.

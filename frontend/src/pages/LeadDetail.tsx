@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import { LEAD_STATUS_LABEL, type Lead, type LeadPreview, type LeadStatus, type Seller } from '../lib/types';
+import { cadenceLabel } from '../lib/origins';
 import StatusBadge from '../components/StatusBadge';
 import { isAdmin, useAuthStore } from '../lib/auth';
 
@@ -313,7 +314,7 @@ function MessagePreview({
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className="font-semibold">Mensaje a enviar</h3>
         <div className="text-xs text-slate-500">
-          Cadencia: {preview.category ? <span className="font-medium">{preview.category}</span> : 'default'} ·
+          Cadencia: {preview.category ? <span className="font-medium">{cadenceLabel(preview.category)}</span> : 'default'} ·
           {' '}{preview.steps.length} paso{preview.steps.length === 1 ? '' : 's'}
         </div>
       </div>

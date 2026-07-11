@@ -51,12 +51,27 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasConversion(
                 v => JsonSerializer.Serialize(v ?? new(), (JsonSerializerOptions?)null),
                 v => DeserializeCategoryCadences(v));
+
+        // Overrides de cadencia por origen del lead. Mismo patrón jsonb defensivo.
+        b.Property(x => x.SourceCadences)
+            .HasColumnName("source_cadences")
+            .HasColumnType("jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v ?? new(), (JsonSerializerOptions?)null),
+                v => DeserializeSourceCadences(v));
     }
 
     private static List<CategoryCadence> DeserializeCategoryCadences(string? json)
     {
         if (string.IsNullOrWhiteSpace(json) || !json.TrimStart().StartsWith('[')) return new();
         try { return JsonSerializer.Deserialize<List<CategoryCadence>>(json) ?? new(); }
+        catch { return new(); }
+    }
+
+    private static List<SourceCadence> DeserializeSourceCadences(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || !json.TrimStart().StartsWith('[')) return new();
+        try { return JsonSerializer.Deserialize<List<SourceCadence>>(json) ?? new(); }
         catch { return new(); }
     }
 }

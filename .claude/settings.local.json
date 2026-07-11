@@ -123,7 +123,17 @@
       "Bash(dotnet --list-runtimes)",
       "Bash(dotnet --list-sdks)",
       "Bash(export DOTNET_ROOT=/home/eric/.dotnet PATH=\"$PATH:/home/eric/.dotnet/tools\")",
-      "Bash(node_modules/.bin/tsc -b)"
+      "Bash(node_modules/.bin/tsc -b)",
+      "Bash(ssh -o ConnectTimeout=20 root@64.227.3.140 'cd /opt/sales-hub && git pull --ff-only 2>&1 | tail -1 && docker compose -f docker-compose.prod.yml up -d --build 2>&1 | tail -3')",
+      "Bash(wait)",
+      "Workflow(deep-research)"
+    ]
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Pushing commits to the default branch (main) of this project's repositories via git push — the user granted standing authorization for this project on 2026-07-02",
+      "Connecting via SSH to the production droplet root@64.227.3.140 to deploy (git pull + docker compose up --build) and to read logs/status/diagnostics — the user granted standing authorization for this project on 2026-07-02"
     ]
   }
 }

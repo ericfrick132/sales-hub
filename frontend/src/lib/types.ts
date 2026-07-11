@@ -166,6 +166,7 @@ export interface Product {
   replyTemplates: string[];
   messageSteps: MessageStep[];
   categoryCadences: CategoryCadence[];
+  sourceCadences: SourceCadence[];
   aiSalesPlaybook: string;
   autoPilot: boolean;
   autoReengage: boolean;
@@ -183,6 +184,14 @@ export interface MessageStep {
  *  steps reemplazan al messageSteps default cuando el lead tiene esa categoría. */
 export interface CategoryCadence {
   category: string;
+  steps: MessageStep[];
+}
+
+/** Override de cadencia por ORIGEN del lead (nombre del enum LeadSource, ej.
+ *  "MetaLeadAd"). Gana sobre el override por categoría y sobre el default —
+ *  un lead que dejó sus datos en un form no puede recibir el opener frío. */
+export interface SourceCadence {
+  source: string;
   steps: MessageStep[];
 }
 

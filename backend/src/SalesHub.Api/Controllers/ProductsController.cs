@@ -398,6 +398,20 @@ public class ProductsController : ControllerBase
             // que caiga al default. No vale la pena guardar el override.
             .Where(c => c.Steps.Count > 0)
             .ToList();
+        p.SourceCadences = (r.SourceCadences ?? new())
+            // Solo nombres válidos del enum LeadSource — un typo acá haría que
+            // el override no matchee nunca y el lead caiga al opener frío.
+            .Where(c => Enum.TryParse<Core.Domain.Enums.LeadSource>(c.Source?.Trim(), true, out _))
+            .GroupBy(c => c.Source!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new SourceCadence
+            {
+                // Normalizamos al nombre canónico del enum para que el match y
+                // la key de rotación ("origen:X") sean estables.
+                Source = Enum.Parse<Core.Domain.Enums.LeadSource>(g.Key, true).ToString(),
+                Steps = MapSteps(g.Last().Steps)
+            })
+            .Where(c => c.Steps.Count > 0)
+            .ToList();
         return p;
     }
 
@@ -425,6 +439,7 @@ public class ProductsController : ControllerBase
         p.ReplyTemplates,
         StepsToDto(p.MessageSteps),
         p.CategoryCadences.Select(c => new CategoryCadenceDto(c.Category, StepsToDto(c.Steps))).ToList(),
+        p.SourceCadences.Select(c => new SourceCadenceDto(c.Source, StepsToDto(c.Steps))).ToList(),
         p.AiSalesPlaybook ?? string.Empty,
         p.AutoPilot,
         p.AutoReengage);

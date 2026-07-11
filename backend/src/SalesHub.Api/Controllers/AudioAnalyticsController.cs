@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SalesHub.Api.Dtos;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Api.Controllers;
 
@@ -43,6 +44,7 @@ public class AudioAnalyticsController : ControllerBase
     private record LeadRow(
         Guid Id,
         string? SearchCategory,
+        LeadSource Source,
         LeadStatus Status,
         bool Replied,
         bool Sent);
@@ -83,6 +85,7 @@ public class AudioAnalyticsController : ControllerBase
             .Select(l => new LeadRow(
                 l.Id,
                 l.SearchCategory,
+                l.Source,
                 l.Status,
                 l.FirstReplyAt != null,
                 l.SentAt != null))
@@ -120,10 +123,19 @@ public class AudioAnalyticsController : ControllerBase
 
         var strategies = new List<StrategyDto>();
 
-        // Default = cualquier lead cuya SearchCategory NO esté en overrideCats.
+        // Orígenes con cadencia propia. Misma precedencia que ResolveStepsForLead:
+        // origen > categoría > default — un lead de MetaLeadAd con override de
+        // origen NO cuenta en el bucket de su categoría ni en el default.
+        var overrideSources = product.SourceCadences
+            .Select(c => c.Source)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        bool UsesSourceCadence(LeadRow l) => overrideSources.Contains(l.Source.ToString());
+
+        // Default = leads sin override de origen NI de categoría.
         var defaultLeads = leads.Where(l =>
-            string.IsNullOrWhiteSpace(l.SearchCategory)
-            || !overrideCats.Contains(l.SearchCategory!));
+            !UsesSourceCadence(l)
+            && (string.IsNullOrWhiteSpace(l.SearchCategory) || !overrideCats.Contains(l.SearchCategory!)));
         strategies.Add(new StrategyDto(
             Key: "__default__",
             Label: "Default",
@@ -133,9 +145,22 @@ public class AudioAnalyticsController : ControllerBase
                 .ToList(),
             Metrics: MetricsFor(defaultLeads)));
 
+        foreach (var ov in product.SourceCadences)
+        {
+            var bucket = leads.Where(l => string.Equals(l.Source.ToString(), ov.Source, StringComparison.OrdinalIgnoreCase));
+            strategies.Add(new StrategyDto(
+                Key: OutboxEnqueueHelper.SourceCadencePrefix + ov.Source,
+                Label: $"Origen: {ov.Source}",
+                IsDefault: false,
+                Steps: ov.Steps
+                    .Select(s => new MessageStepDto(s.Text, s.DelaySeconds, s.MediaAssetId, s.MediaAssetIds))
+                    .ToList(),
+                Metrics: MetricsFor(bucket)));
+        }
+
         foreach (var ov in product.CategoryCadences)
         {
-            var bucket = leads.Where(l => l.SearchCategory == ov.Category);
+            var bucket = leads.Where(l => !UsesSourceCadence(l) && l.SearchCategory == ov.Category);
             strategies.Add(new StrategyDto(
                 Key: ov.Category,
                 Label: ov.Category,

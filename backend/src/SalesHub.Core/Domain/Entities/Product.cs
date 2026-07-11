@@ -30,6 +30,11 @@ public class Product
     // Útil para que "yoga" tenga audios y textos distintos a "gimnasio"
     // dentro del mismo producto.
     public List<CategoryCadence> CategoryCadences { get; set; } = new();
+    // Overrides por ORIGEN del lead (LeadSource). Un lead que vino de un form
+    // de Meta ya nos dejó sus datos — no puede recibir el opener frío. Si el
+    // Source del lead tiene override con steps, gana sobre CategoryCadences
+    // y sobre el default. Sin override, cae a la resolución por categoría.
+    public List<SourceCadence> SourceCadences { get; set; } = new();
     public string MessageTemplate { get; set; } = string.Empty;
     // Mensaje "opener" opcional. Si está, se manda primero (ej. "buenas") y el
     // mensaje principal sale después con el delay normal del seller. Vacío = un solo mensaje.

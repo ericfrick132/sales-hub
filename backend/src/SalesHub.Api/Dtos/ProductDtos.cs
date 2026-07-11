@@ -4,6 +4,9 @@ public record MessageStepDto(string Text, int DelaySeconds, Guid? MediaAssetId, 
 
 public record CategoryCadenceDto(string Category, List<MessageStepDto> Steps);
 
+/// <summary>Override de cadencia por origen del lead. Source = nombre del enum LeadSource (ej. "MetaLeadAd").</summary>
+public record SourceCadenceDto(string Source, List<MessageStepDto> Steps);
+
 public record ProductDto(
     Guid Id,
     string ProductKey,
@@ -28,6 +31,7 @@ public record ProductDto(
     List<string> ReplyTemplates,
     List<MessageStepDto> MessageSteps,
     List<CategoryCadenceDto> CategoryCadences,
+    List<SourceCadenceDto> SourceCadences,
     string AiSalesPlaybook,
     bool AutoPilot,
     bool AutoReengage);
@@ -57,4 +61,5 @@ public record CreateOrUpdateProductRequest(
     List<CategoryCadenceDto>? CategoryCadences,
     string? AiSalesPlaybook = null,
     bool AutoPilot = false,
-    bool AutoReengage = false);
+    bool AutoReengage = false,
+    List<SourceCadenceDto>? SourceCadences = null);
