@@ -101,21 +101,10 @@ public class InstagramStructureAnalyzerWorker : BackgroundService
     /// </summary>
     public async Task<bool> RunAnalysisOnDemandAsync(CancellationToken ct = default)
     {
-        if (!await _runningLock.WaitAsync(0, ct))
-        {
-            _log.LogWarning("Ya hay un análisis de estructura en ejecución");
-            return false;
-        }
-
-        try
-        {
-            await RunAnalysisAsync(ct);
-            return true;
-        }
-        finally
-        {
-            _runningLock.Release();
-        }
+        // No tomamos el lock acá: RunAnalysisAsync ya lo maneja. Tomarlo dos veces hacía
+        // que el análisis a demanda no ejecutara nada (WaitAsync(0) fallaba adentro).
+        await RunAnalysisAsync(ct);
+        return true;
     }
 
     private async Task<bool> CheckIfAlreadyRanTodayAsync(CancellationToken ct)

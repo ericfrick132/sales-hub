@@ -42,7 +42,10 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     // ya trae Playwright/Chromium y el droplet tiene RAM de sobra. Sin esto, las
     // automatizaciones de IG (follow, DM, inbox) quedan deployadas pero nunca se ejecutan.
     builder.Services.AddHostedService<InstagramScraperWorker>();          // + login batch de cuentas
-    builder.Services.AddHostedService<InstagramStructureAnalyzerWorker>(); // self-healing de selectores
+    // Singleton + hosted sobre la MISMA instancia: así el controller puede inyectarlo
+    // (antes solo estaba como hosted → no resoluble → 500 en /api/instagram/structure/*).
+    builder.Services.AddSingleton<InstagramStructureAnalyzerWorker>(); // self-healing de selectores
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<InstagramStructureAnalyzerWorker>());
     builder.Services.AddHostedService<InstagramFollowWorker>();            // campañas de auto-follow
     builder.Services.AddHostedService<InstagramDmWorker>();                // envío de DMs (Channel=Instagram)
     builder.Services.AddHostedService<InstagramInboxWorker>();             // poll del inbox → conversaciones
