@@ -436,53 +436,65 @@ public class InstagramClient : IAsyncDisposable
         EnsureLoggedIn();
         targetHandle = NormalizeHandle(targetHandle);
 
-        // 1) Navegar al PERFIL (igual que el scrape) y buscar el link de followers.
+        var log = new List<string>();
+
+        // 1) Navegar al PERFIL (igual que el scrape).
         await _page!.GotoAsync($"https://www.instagram.com/{targetHandle}/", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.DOMContentLoaded,
             Timeout = _opts.NavigationTimeoutMs
         });
-        await Task.Delay(4000, ct);
+        log.Add($"nav profile -> {_page.Url}");
+        var loginRedirect = _page.Url.Contains("/accounts/login");
 
-        var profileUrl = _page.Url;
-        var loginRedirect = profileUrl.Contains("/accounts/login");
-        var followersLink = await _page.QuerySelectorAsync("a[href$='/followers/']");
-        var linkFound = followersLink is not null;
-        var totalPageAnchors = (await _page.QuerySelectorAllAsync("a[href^='/']")).Count;
-
-        // 2) Click en el link (igual que el scrape) y esperar el dialog.
-        var clickError = "";
-        if (linkFound)
+        // 2) ESPERAR el link de followers hasta 15s (igual que el scrape, que espera 12s).
+        IElementHandle? followersLink = null;
+        try
         {
-            try { await followersLink!.ClickAsync(); await Task.Delay(6000, ct); }
-            catch (Exception ex) { clickError = ex.Message; }
+            followersLink = await _page.WaitForSelectorAsync("a[href$='/followers/']",
+                new PageWaitForSelectorOptions { Timeout = 15000 });
+        }
+        catch { }
+        var linkFound = followersLink is not null;
+        log.Add($"followersLink apareció (15s): {linkFound}");
+
+        // 3) Click y esperar el dialog hasta 15s.
+        var dialogFound = false;
+        var dialogAnchors = 0;
+        if (followersLink is not null)
+        {
+            try { await followersLink.ClickAsync(); } catch (Exception ex) { log.Add("click error: " + ex.Message); }
+            IElementHandle? dlg = null;
+            try { dlg = await _page.WaitForSelectorAsync("div[role='dialog']", new PageWaitForSelectorOptions { Timeout = 15000 }); }
+            catch { }
+            dialogFound = dlg is not null;
+            log.Add($"dialog apareció tras click (15s): {dialogFound}");
+            if (dialogFound)
+            {
+                await Task.Delay(3500, ct); // dejar cargar las filas
+                dialogAnchors = (await _page.QuerySelectorAllAsync("div[role='dialog'] a[href^='/']")).Count;
+                log.Add($"anchors a[href^=/] en dialog: {dialogAnchors}");
+            }
         }
 
-        var roleDialogCount = (await _page.QuerySelectorAllAsync("[role='dialog']")).Count;
-        var dialogFound = roleDialogCount > 0;
-        var dialogAnchors = (await _page.QuerySelectorAllAsync("div[role='dialog'] a[href^='/']")).Count;
-
-        // Muestra del BODY (sin head/script/style/svg) y SIN clases ofuscadas, para leer la
-        // estructura real y ver dónde quedan las filas de followers (o si no hay lista).
-        var body = await _page.QuerySelectorAsync("body");
-        var html = body is not null ? await body.InnerHTMLAsync() : await _page.ContentAsync();
+        // Dump: si hay dialog, su innerHTML; si no, el body — sin clases/style/svg para leer.
+        var dumpTarget = dialogFound
+            ? await _page.QuerySelectorAsync("div[role='dialog']")
+            : await _page.QuerySelectorAsync("body");
+        var html = dumpTarget is not null ? await dumpTarget.InnerHTMLAsync() : await _page.ContentAsync();
         html = Regex.Replace(html, @"<(script|style|svg|head)[^>]*>[\s\S]*?</\1>", "", RegexOptions.IgnoreCase);
-        html = Regex.Replace(html, @"\sclass=""[^""]*""", "");
-        html = Regex.Replace(html, @"\sstyle=""[^""]*""", "");
-        if (html.Length > 8000) html = html[..8000];
+        html = Regex.Replace(html, @"\s(class|style|data-visualcompletion|crossorigin|data-p|data-btmanifest|data-c)=""[^""]*""", "");
+        if (html.Length > 9000) html = html[..9000];
 
         return JsonSerializer.Serialize(new
         {
             handle = targetHandle,
-            profileUrl,
             loginRedirect,
             linkFound,
-            totalPageAnchors,
-            clickError,
-            roleDialogCount,
             dialogFound,
             dialogAnchors,
-            bodySample = html
+            log,
+            htmlDump = html
         });
     }
 
