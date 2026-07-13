@@ -37,12 +37,13 @@ public class TestSendController : ControllerBase
     private readonly IEvolutionClient _evo;
     private readonly IMessageRenderer _renderer;
     private readonly VoiceNoteService _voiceNotes;
+    private readonly ColdOpenAudioRelay _coldOpen;
     private readonly ILogger<TestSendController> _log;
 
     public TestSendController(ApplicationDbContext db, IEvolutionClient evo, IMessageRenderer renderer,
-        VoiceNoteService voiceNotes, ILogger<TestSendController> log)
+        VoiceNoteService voiceNotes, ColdOpenAudioRelay coldOpen, ILogger<TestSendController> log)
     {
-        _db = db; _evo = evo; _renderer = renderer; _voiceNotes = voiceNotes; _log = log;
+        _db = db; _evo = evo; _renderer = renderer; _voiceNotes = voiceNotes; _coldOpen = coldOpen; _log = log;
     }
 
     public record CadenceRequest(Guid ProductId, Guid SellerId, string Phone, string? Category);
@@ -103,6 +104,25 @@ public class TestSendController : ControllerBase
         if (!ok) return StatusCode(502, new { error = "falló el envío" });
         _log.LogInformation("Texto de admin enviado a {Phone} por {Instance}", phone, req.InstanceName);
         return Ok(new { ok = true });
+    }
+
+    public record ColdOpenStartRequest(string InstanceName, string Phone);
+
+    /// <summary>
+    /// Arranca la colecta de audios de cold-open: el bot le manda al número el primer guion
+    /// y va guardando cada nota de voz en la media del producto (ver ColdOpenAudioRelay).
+    /// </summary>
+    [HttpPost("cold-open-start")]
+    public async Task<IActionResult> ColdOpenStart([FromBody] ColdOpenStartRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var phone = new string((req.Phone ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (string.IsNullOrEmpty(phone)) return BadRequest(new { error = "Número inválido (incluí prefijo de país)" });
+        if (string.IsNullOrWhiteSpace(req.InstanceName)) return BadRequest(new { error = "instanceName requerido" });
+
+        await _coldOpen.StartAsync(req.InstanceName, phone, ct);
+        _log.LogInformation("Cold-open colecta arrancada para {Phone} por {Instance}", phone, req.InstanceName);
+        return Ok(new { ok = true, totalScripts = ColdOpenAudioRelay.Scripts.Length });
     }
 
     [HttpPost("cadence")]

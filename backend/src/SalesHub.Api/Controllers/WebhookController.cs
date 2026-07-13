@@ -17,12 +17,13 @@ public class WebhookController : ControllerBase
     private readonly AudioTranscriptionRelay _relay;
     private readonly InspirationIntakeRelay _inspiration;
     private readonly VoiceCalibrationRelay _calibration;
+    private readonly ColdOpenAudioRelay _coldOpen;
     private readonly ILogger<WebhookController> _log;
 
     public WebhookController(ConversationService conv, AudioTranscriptionRelay relay, InspirationIntakeRelay inspiration,
-        VoiceCalibrationRelay calibration, ILogger<WebhookController> log)
+        VoiceCalibrationRelay calibration, ColdOpenAudioRelay coldOpen, ILogger<WebhookController> log)
     {
-        _conv = conv; _relay = relay; _inspiration = inspiration; _calibration = calibration; _log = log;
+        _conv = conv; _relay = relay; _inspiration = inspiration; _calibration = calibration; _coldOpen = coldOpen; _log = log;
     }
 
     [HttpPost("evolution")]
@@ -69,6 +70,9 @@ public class WebhookController : ControllerBase
                 // Los audios sueltos del maestro los deja pasar (siguen a transcripción).
                 // Calibración de voz (self-chat, comando "calibrar"): corre PRIMERO — solo toma
                 // mensajes del propio dueño en su self-chat durante una sesión activa.
+                // Cold-open: colecta los audios del pitch por producto (bot-iniciado o
+                // "grabar openers"). Corre antes que todo para consumir sus notas de voz.
+                if (await _coldOpen.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _calibration.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _inspiration.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _relay.TryHandleAsync(incoming, ct)) { handled++; continue; }
