@@ -477,6 +477,29 @@ public class InstagramClient : IAsyncDisposable
             }
         }
 
+        // TEST de la API interna (misma que el inbox): web_profile_info → friendships/followers.
+        // Si esto trae usernames, el DOM sobra y esta es la vía robusta.
+        string apiResult;
+        try
+        {
+            apiResult = await _page.EvaluateAsync<string>(@"async (handle) => {
+                const h = { 'X-IG-App-ID': '936619743392459' };
+                const p = await fetch(`/api/v1/users/web_profile_info/?username=${handle}`, { headers: h, credentials: 'include' });
+                let pj = null; try { pj = p.ok ? await p.json() : null; } catch(e) {}
+                const uid = pj && pj.data && pj.data.user ? pj.data.user.id : null;
+                const fc = pj && pj.data && pj.data.user && pj.data.user.edge_followed_by ? pj.data.user.edge_followed_by.count : null;
+                let fstatus = null, followers = null;
+                if (uid) {
+                    const f = await fetch(`/api/v1/friendships/${uid}/followers/?count=24`, { headers: h, credentials: 'include' });
+                    fstatus = f.status;
+                    let fj = null; try { fj = f.ok ? await f.json() : null; } catch(e) {}
+                    followers = fj && fj.users ? fj.users.slice(0,10).map(u => u.username) : null;
+                }
+                return JSON.stringify({ profileStatus: p.status, uid: uid, followerCount: fc, followersStatus: fstatus, sampleFollowers: followers });
+            }", targetHandle);
+        }
+        catch (Exception ex) { apiResult = "eval error: " + ex.Message; }
+
         // Dump: si hay dialog, su innerHTML; si no, el body — sin clases/style/svg para leer.
         var dumpTarget = dialogFound
             ? await _page.QuerySelectorAsync("div[role='dialog']")
@@ -493,6 +516,7 @@ public class InstagramClient : IAsyncDisposable
             linkFound,
             dialogFound,
             dialogAnchors,
+            apiResult,
             log,
             htmlDump = html
         });
