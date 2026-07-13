@@ -436,47 +436,53 @@ public class InstagramClient : IAsyncDisposable
         EnsureLoggedIn();
         targetHandle = NormalizeHandle(targetHandle);
 
-        await _page!.GotoAsync($"https://www.instagram.com/{targetHandle}/followers/", new PageGotoOptions
+        // 1) Navegar al PERFIL (igual que el scrape) y buscar el link de followers.
+        await _page!.GotoAsync($"https://www.instagram.com/{targetHandle}/", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.DOMContentLoaded,
             Timeout = _opts.NavigationTimeoutMs
         });
-        await Task.Delay(6000, ct);
+        await Task.Delay(4000, ct);
 
-        var url = _page.Url;
-        var loginRedirect = url.Contains("/accounts/login");
-        var dialog = await _page.QuerySelectorAsync("div[role='dialog']");
-        var dialogAnchors = await _page.QuerySelectorAllAsync("div[role='dialog'] a");
-        var hrefAnchors = await _page.QuerySelectorAllAsync("div[role='dialog'] a[href^='/']");
+        var profileUrl = _page.Url;
+        var loginRedirect = profileUrl.Contains("/accounts/login");
+        var followersLink = await _page.QuerySelectorAsync("a[href$='/followers/']");
+        var linkFound = followersLink is not null;
+        var totalPageAnchors = (await _page.QuerySelectorAllAsync("a[href^='/']")).Count;
 
-        // Cuántos hrefs pasarían el filtro del scrape (perfiles reales) + muestra
-        var profileHrefs = new List<string>();
-        foreach (var a in hrefAnchors)
+        // 2) Click en el link (igual que el scrape) y esperar el dialog.
+        var clickError = "";
+        if (linkFound)
         {
-            var href = await a.GetAttributeAsync("href");
-            if (string.IsNullOrEmpty(href) || href == "/"
-                || href.Contains("/followers/") || href.Contains("/following/")) continue;
-            profileHrefs.Add(href);
-            if (profileHrefs.Count >= 15) break;
+            try { await followersLink!.ClickAsync(); await Task.Delay(6000, ct); }
+            catch (Exception ex) { clickError = ex.Message; }
         }
 
-        // Muestra del HTML (dialog si existe, si no el body), sin scripts/style/svg y recortada
-        var htmlSample = dialog is not null ? await dialog.InnerHTMLAsync() : await _page.ContentAsync();
-        htmlSample = Regex.Replace(htmlSample, @"<(script|style|svg)[^>]*>[\s\S]*?</\1>", "",
-            RegexOptions.IgnoreCase);
-        if (htmlSample.Length > 6000) htmlSample = htmlSample[..6000];
+        var roleDialogCount = (await _page.QuerySelectorAllAsync("[role='dialog']")).Count;
+        var dialogFound = roleDialogCount > 0;
+        var dialogAnchors = (await _page.QuerySelectorAllAsync("div[role='dialog'] a[href^='/']")).Count;
+
+        // Muestra del BODY (sin head/script/style/svg) y SIN clases ofuscadas, para leer la
+        // estructura real y ver dónde quedan las filas de followers (o si no hay lista).
+        var body = await _page.QuerySelectorAsync("body");
+        var html = body is not null ? await body.InnerHTMLAsync() : await _page.ContentAsync();
+        html = Regex.Replace(html, @"<(script|style|svg|head)[^>]*>[\s\S]*?</\1>", "", RegexOptions.IgnoreCase);
+        html = Regex.Replace(html, @"\sclass=""[^""]*""", "");
+        html = Regex.Replace(html, @"\sstyle=""[^""]*""", "");
+        if (html.Length > 8000) html = html[..8000];
 
         return JsonSerializer.Serialize(new
         {
             handle = targetHandle,
-            urlAfterNav = url,
+            profileUrl,
             loginRedirect,
-            dialogFound = dialog is not null,
-            dialogAnchors = dialogAnchors.Count,
-            hrefAnchors = hrefAnchors.Count,
-            profileLinks = profileHrefs.Count,
-            sampleHrefs = profileHrefs,
-            htmlSample
+            linkFound,
+            totalPageAnchors,
+            clickError,
+            roleDialogCount,
+            dialogFound,
+            dialogAnchors,
+            bodySample = html
         });
     }
 
