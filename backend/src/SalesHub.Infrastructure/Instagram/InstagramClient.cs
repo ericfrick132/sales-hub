@@ -331,11 +331,15 @@ public class InstagramClient : IAsyncDisposable
         // Esperar el link de followers/following: IG renderiza el perfil client-side,
         // así que un QuerySelector inmediato suele llegar antes de que el link exista.
         // El selector tolera el href exacto o cualquiera que termine en /{tab}/.
+        // El contador de seguidores del header ya NO es <a href="/x/followers/">: IG lo pasó
+        // a <a href="#"> con el texto "14,3 mil seguidores" (abre el modal por JS). Probamos
+        // el href viejo (por si vuelve) y, si no, matcheamos por el TEXTO del contador.
+        var countWord = following ? "seguidos" : "seguidores";
         IElementHandle? tabLink = null;
         try
         {
             tabLink = await _page.WaitForSelectorAsync(
-                $"a[href='/{targetHandle}/{tab}/'], a[href$='/{tab}/']",
+                $"a[href$='/{tab}/']:not([href$='mutualOnly']), a[role='link']:has-text('{countWord}')",
                 new PageWaitForSelectorOptions { Timeout = 12_000 });
         }
         catch (Exception) { /* timeout: el link no apareció */ }
@@ -471,7 +475,8 @@ public class InstagramClient : IAsyncDisposable
         IElementHandle? followersLink = null;
         try
         {
-            followersLink = await _page.WaitForSelectorAsync("a[href$='/followers/']",
+            followersLink = await _page.WaitForSelectorAsync(
+                "a[href$='/followers/']:not([href$='mutualOnly']), a[role='link']:has-text('seguidores')",
                 new PageWaitForSelectorOptions { Timeout = 15000 });
         }
         catch { }
