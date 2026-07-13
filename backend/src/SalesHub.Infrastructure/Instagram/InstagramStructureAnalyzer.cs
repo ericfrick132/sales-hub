@@ -2,13 +2,14 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
+using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Infrastructure.Instagram;
 
 /// <summary>
 /// Analiza la estructura HTML de Instagram y genera selectores dinámicos.
 /// Una vez por día navega las páginas clave, extrae el HTML, lo limpia
-/// y lo envía a un LLM (OpenAI/DeepSeek) para que devuelva los selectores
+/// y lo envía a Claude (Anthropic) para que devuelva los selectores
 /// actualizados. Esto permite que el scraper se adapte automáticamente
 /// a cambios en el DOM de Instagram sin necesidad de modificar código.
 /// </summary>
@@ -16,16 +17,16 @@ public class InstagramStructureAnalyzer
 {
     private readonly InstagramOptions _opts;
     private readonly ILogger<InstagramStructureAnalyzer> _log;
-    private readonly HttpClient _httpClient;
+    private readonly ClaudeClient _claude;
 
     public InstagramStructureAnalyzer(
         InstagramOptions opts,
         ILogger<InstagramStructureAnalyzer> log,
-        IHttpClientFactory httpClientFactory)
+        ClaudeClient claude)
     {
         _opts = opts;
         _log = log;
-        _httpClient = httpClientFactory.CreateClient();
+        _claude = claude;
     }
 
     /// <summary>
@@ -43,7 +44,7 @@ public class InstagramStructureAnalyzer
         new("login", "https://www.instagram.com/accounts/login/", "Página de login de Instagram", false),
         new("profile_page", "https://www.instagram.com/instagram/", "Página de perfil de usuario", false),
         new("hashtag_page", "https://www.instagram.com/explore/tags/explore/", "Página de exploración por hashtag", false),
-        new("followers_dialog", "https://www.instagram.com/instagram/", "Dialog de seguidores (requiere click)", true),
+        new("followers_dialog", "https://www.instagram.com/instagram/followers/", "Dialog de seguidores de un perfil", true),
         new("dm_inbox", "https://www.instagram.com/direct/inbox/", "Bandeja de entrada de mensajes directos", true),
         new("dm_new", "https://www.instagram.com/direct/new/", "Pantalla para crear nuevo mensaje directo", true),
     };
@@ -55,9 +56,6 @@ public class InstagramStructureAnalyzer
     public async Task<InstagramSelectors> AnalyzeStructureAsync(
         IPage page,
         bool isLoggedIn,
-        string? llmApiKey,
-        string? llmEndpoint,
-        string? llmModel,
         CancellationToken ct = default)
     {
         var pagesData = new List<PageHtmlData>();
@@ -78,17 +76,9 @@ public class InstagramStructureAnalyzer
 
                 await Task.Delay(3000, ct);
 
-                // Para followers_dialog, necesitamos hacer click en el link
-                if (target.Key == "followers_dialog")
-                {
-                    var followersLink = await page.QuerySelectorAsync("a[href$='/followers/']");
-                    if (followersLink is not null)
-                    {
-                        await followersLink.ClickAsync();
-                        await Task.Delay(3000, ct);
-                    }
-                }
-
+                // followers_dialog: navegamos DIRECTO a /{perfil}/followers/ (esa URL abre
+                // el modal sola) en vez de depender de clickear un link que IG puede romper
+                // — si justo ese link cambia, el analyzer igual captura el dialog para sanarlo.
                 var html = await page.ContentAsync();
                 var cleaned = CleanHtml(html, target.Key);
 
@@ -108,15 +98,15 @@ public class InstagramStructureAnalyzer
             }
         }
 
-        // Si no hay API key de LLM, devolver selectores por defecto
-        if (string.IsNullOrEmpty(llmApiKey) || string.IsNullOrEmpty(llmEndpoint))
+        // Si Claude no está configurado (sin API key), devolver selectores por defecto
+        if (!_claude.IsConfigured)
         {
-            _log.LogInformation("No hay LLM configurado, usando selectores por defecto");
+            _log.LogInformation("Claude no configurado, usando selectores por defecto");
             return InstagramSelectors.GetDefault();
         }
 
-        // Enviar al LLM para que analice y devuelva los selectores
-        var selectors = await AnalyzeWithLlmAsync(pagesData, llmApiKey, llmEndpoint, llmModel, ct);
+        // Enviar el HTML a Claude para que analice y devuelva los selectores
+        var selectors = await AnalyzeWithClaudeAsync(pagesData, ct);
 
         _log.LogInformation("Análisis de estructura completado. {Count} selectores generados.",
             selectors?.GetType().GetProperties().Length ?? 0);
@@ -172,14 +162,11 @@ public class InstagramStructureAnalyzer
     }
 
     /// <summary>
-    /// Envía el HTML limpio de todas las páginas a un LLM (OpenAI/DeepSeek)
-    /// y recibe los selectores actualizados en formato JSON.
+    /// Envía el HTML limpio de todas las páginas a Claude (Anthropic) y recibe
+    /// los selectores actualizados en formato JSON.
     /// </summary>
-    private async Task<InstagramSelectors?> AnalyzeWithLlmAsync(
+    private async Task<InstagramSelectors?> AnalyzeWithClaudeAsync(
         List<PageHtmlData> pagesData,
-        string apiKey,
-        string endpoint,
-        string? model,
         CancellationToken ct)
     {
         var systemPrompt = @"
@@ -246,81 +233,32 @@ Usa atributos de aria, roles, text content, y selectores CSS avanzados.
 
         userMessage += "\nResponde SOLO con el JSON de selectores, sin explicaciones ni markdown.";
 
+        var text = await _claude.CompleteAsync(systemPrompt, userMessage, "instagram-selectors", ct);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _log.LogWarning("Claude no devolvió respuesta para el análisis de selectores");
+            return null;
+        }
+
+        // Claude puede devolver el JSON pelado o dentro de un bloque ```json.
+        var json = ExtractJsonBlock(text);
+        if (string.IsNullOrEmpty(json))
+        {
+            _log.LogWarning("No se pudo extraer JSON de la respuesta de Claude");
+            return null;
+        }
+
         try
         {
-            var requestBody = new
-            {
-                model = model ?? "deepseek-chat",
-                messages = new[]
-                {
-                    new { role = "system", content = systemPrompt },
-                    new { role = "user", content = userMessage }
-                },
-                temperature = 0.1,
-                max_tokens = 4000
-            };
-
-            var jsonContent = new StringContent(
-                JsonSerializer.Serialize(requestBody),
-                System.Text.Encoding.UTF8,
-                "application/json");
-
-            var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
-            {
-                Content = jsonContent
-            };
-            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-
-            var response = await _httpClient.SendAsync(request, ct);
-            response.EnsureSuccessStatusCode();
-
-            var responseBody = await response.Content.ReadAsStringAsync(ct);
-
-            // Extraer el JSON de la respuesta
-            var json = ExtractJsonFromResponse(responseBody);
-            if (string.IsNullOrEmpty(json))
-            {
-                _log.LogWarning("No se pudo extraer JSON de la respuesta del LLM");
-                return null;
-            }
-
-            var selectors = JsonSerializer.Deserialize<InstagramSelectors>(json, new JsonSerializerOptions
+            return JsonSerializer.Deserialize<InstagramSelectors>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });
-
-            return selectors;
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Error al analizar con LLM");
+            _log.LogError(ex, "Error al deserializar los selectores de Claude");
             return null;
-        }
-    }
-
-    private static string? ExtractJsonFromResponse(string responseBody)
-    {
-        try
-        {
-            // Intentar parsear como respuesta de OpenAI/DeepSeek
-            using var doc = JsonDocument.Parse(responseBody);
-            var root = doc.RootElement;
-
-            // OpenAI format: choices[0].message.content
-            if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
-            {
-                var content = choices[0].GetProperty("message").GetProperty("content").GetString();
-                if (content is not null)
-                    return ExtractJsonBlock(content);
-            }
-
-            // DeepSeek format similar
-            return null;
-        }
-        catch
-        {
-            // Si no es JSON válido, intentar extraer un bloque JSON del texto
-            return ExtractJsonBlock(responseBody);
         }
     }
 

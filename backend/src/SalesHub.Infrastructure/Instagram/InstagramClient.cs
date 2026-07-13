@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
 using SalesHub.Core.Domain.Entities;
@@ -25,6 +26,13 @@ public class InstagramClient : IAsyncDisposable
     private IPage? _page;
 
     private bool _loggedIn;
+
+    /// <summary>
+    /// Tracker de fallos de selectores (opcional). Si un caller lo setea, el scrape
+    /// reporta cuándo un selector no matchea o trae 0 resultados → tras N fallos se
+    /// dispara el re-análisis con Claude (self-heal). Si es null, no se reporta nada.
+    /// </summary>
+    public SelectorFailureTracker? FailureTracker { get; set; }
 
     // Instagram (form unificado de Meta) usa estos names en el login web.
     // Los dejamos como lista para tolerar variantes A/B y el form viejo.
@@ -275,6 +283,10 @@ public class InstagramClient : IAsyncDisposable
         EnsureLoggedIn();
         var profiles = new List<InstagramProfile>();
 
+        // Selectores del último snapshot válido (auto-reparado por Claude), con fallback
+        // a los defaults hardcodeados si no hay ninguno.
+        var sel = await LoadActiveSelectorsAsync(ct);
+
         // "followers" = seguidores del perfil; "following" = cuentas que el perfil sigue.
         var tab = following ? "following" : "followers";
         var label = following ? "seguidos" : "seguidores";
@@ -319,24 +331,36 @@ public class InstagramClient : IAsyncDisposable
             {
                 _log.LogWarning("No se encontró el link de {Label} para {Target} " +
                     "(perfil privado, o Instagram limita/bloquea la lista para esta cuenta).", label, targetHandle);
+                // Puede ser perfil privado (fuente puntual) o que IG cambió el DOM (rompe
+                // TODAS las fuentes). Reportamos: si es lo segundo, se acumulan fallos y salta
+                // el self-heal; el ReportSuccess de las fuentes que sí andan resetea el ruido.
+                FailureTracker?.ReportFailure("profile", "followersLink");
             }
             return profiles;
         }
 
+        FailureTracker?.ReportSuccess("profile", "followersLink");
         await tabLink.ClickAsync();
         await Task.Delay(3000, ct);
 
         // Scroll para cargar más
-        var dialog = await _page.WaitForSelectorAsync("div[role='dialog']", new PageWaitForSelectorOptions
+        IElementHandle? dialog = null;
+        try
         {
-            Timeout = _opts.NavigationTimeoutMs
-        });
+            dialog = await _page.WaitForSelectorAsync(sel.FollowersDialog.Dialog, new PageWaitForSelectorOptions
+            {
+                Timeout = _opts.NavigationTimeoutMs
+            });
+        }
+        catch (Exception) { /* timeout: el dialog no apareció con el selector actual */ }
 
         if (dialog is null)
         {
             _log.LogWarning("No se abrió el dialog de {Label} para {Target}", label, targetHandle);
+            FailureTracker?.ReportFailure("followersDialog", "dialog");
             return profiles;
         }
+        FailureTracker?.ReportSuccess("followersDialog", "dialog");
 
         var lastCount = 0;
         var scrollAttempts = 0;
@@ -344,7 +368,7 @@ public class InstagramClient : IAsyncDisposable
         while (profiles.Count < maxProfiles && scrollAttempts < 30)
         {
             // Extraer handles visibles
-            var links = await _page.QuerySelectorAllAsync("div[role='dialog'] a[href^='/']");
+            var links = await _page.QuerySelectorAllAsync(sel.FollowersDialog.UserLinks);
             foreach (var link in links)
             {
                 var href = await link.GetAttributeAsync("href");
@@ -373,7 +397,9 @@ public class InstagramClient : IAsyncDisposable
             {
                 scrollAttempts++;
                 // Hacer scroll en el dialog
-                await _page.EvaluateAsync("document.querySelector('div[role=\"dialog\"]')?.scrollBy(0, 300)");
+                await _page.EvaluateAsync(
+                    "(s) => document.querySelector(s)?.scrollBy(0, 300)",
+                    sel.FollowersDialog.ScrollContainer);
             }
             else
             {
@@ -384,8 +410,51 @@ public class InstagramClient : IAsyncDisposable
             await Task.Delay(1500, ct);
         }
 
+        if (profiles.Count == 0)
+        {
+            // El dialog abrió pero no salió ningún handle → muy probablemente el selector
+            // de links de perfil cambió. Reportamos para gatillar el re-análisis con Claude.
+            _log.LogWarning("Dialog de {Label} de {Target} abrió pero 0 perfiles extraídos", label, targetHandle);
+            FailureTracker?.ReportFailure("followersDialog", "userLinks");
+        }
+        else
+        {
+            FailureTracker?.ReportSuccess("followersDialog", "userLinks");
+        }
+
         _log.LogInformation("Scrapeados {Count} {Label} de {Target}", profiles.Count, label, targetHandle);
         return profiles;
+    }
+
+    /// <summary>
+    /// Carga los selectores del último snapshot válido (auto-reparado por Claude),
+    /// con fallback a los defaults hardcodeados si no hay ninguno / no parsea.
+    /// </summary>
+    private async Task<InstagramSelectors> LoadActiveSelectorsAsync(CancellationToken ct)
+    {
+        try
+        {
+            var snap = await _db.InstagramStructureSnapshots
+                .AsNoTracking()
+                .Where(s => s.IsValid)
+                .OrderByDescending(s => s.SnapshotDate)
+                .ThenByDescending(s => s.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+
+            if (snap is not null && !string.IsNullOrWhiteSpace(snap.SelectorsJson))
+            {
+                var parsed = JsonSerializer.Deserialize<InstagramSelectors>(
+                    snap.SelectorsJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (parsed is not null) return parsed;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "No pude cargar selectores del snapshot, uso defaults");
+        }
+
+        return InstagramSelectors.GetDefault();
     }
 
     /// <summary>

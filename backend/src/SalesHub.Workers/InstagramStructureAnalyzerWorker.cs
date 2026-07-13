@@ -183,13 +183,11 @@ public class InstagramStructureAnalyzerWorker : BackgroundService
                     return;
                 }
 
-                // Ejecutar el análisis de estructura
+                // Ejecutar el análisis de estructura (el LLM ahora es Claude, cableado
+                // adentro del analyzer vía ClaudeClient — ya no se pasan endpoint/key acá).
                 var selectors = await analyzer.AnalyzeStructureAsync(
                     page,
                     isLoggedIn: true,
-                    _llmOpts.Value.ApiKey,
-                    _llmOpts.Value.Endpoint,
-                    _llmOpts.Value.Model,
                     ct);
 
                 // Guardar el snapshot en la DB
@@ -199,7 +197,7 @@ public class InstagramStructureAnalyzerWorker : BackgroundService
                     SnapshotDate = DateOnly.FromDateTime(DateTime.UtcNow),
                     SelectorsJson = JsonSerializer.Serialize(selectors, new JsonSerializerOptions { WriteIndented = true }),
                     RawHtmlJson = "{}",
-                    LlmModel = _llmOpts.Value.Model,
+                    LlmModel = "claude",
                     IsValid = true,
                     InstagramAccountId = account.Id,
                     CreatedAt = DateTimeOffset.UtcNow

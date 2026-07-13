@@ -20,6 +20,7 @@ public class InstagramFollowService
     private readonly InstagramEncryptionService _crypto;
     private readonly InstagramOptions _opts;
     private readonly ILogger<InstagramFollowService> _log;
+    private readonly SelectorFailureTracker _failureTracker;
 
     // Gap aleatorio entre follows de una misma cuenta (jitter). Con ventana 10-22h (720 min)
     // y ~30/día, un gap medio de ~20 min los reparte a lo largo del día sin ráfagas. Nunca
@@ -31,12 +32,14 @@ public class InstagramFollowService
         ApplicationDbContext db,
         InstagramEncryptionService crypto,
         InstagramOptions opts,
-        ILogger<InstagramFollowService> log)
+        ILogger<InstagramFollowService> log,
+        SelectorFailureTracker failureTracker)
     {
         _db = db;
         _crypto = crypto;
         _opts = opts;
         _log = log;
+        _failureTracker = failureTracker;
     }
 
     /// <summary>
@@ -165,6 +168,8 @@ public class InstagramFollowService
             campaign.Id, campaign.SourceHandle, campaign.SourceMode, campaign.ScrapeBatchSize);
 
         await using var client = new InstagramClient(_db, _crypto, _opts, _log);
+        // Que el scrape reporte selectores rotos → tras N fallos salta el self-heal (Claude).
+        client.FailureTracker = _failureTracker;
 
         try
         {
@@ -249,6 +254,8 @@ public class InstagramFollowService
         action.Attempts++;
 
         await using var client = new InstagramClient(_db, _crypto, _opts, _log);
+        // Que el scrape reporte selectores rotos → tras N fallos salta el self-heal (Claude).
+        client.FailureTracker = _failureTracker;
 
         try
         {
