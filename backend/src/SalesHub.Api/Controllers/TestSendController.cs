@@ -84,6 +84,27 @@ public class TestSendController : ControllerBase
         return Ok(new { ok = true, script });
     }
 
+    public record TextRequest(string InstanceName, string Phone, string Text);
+
+    /// <summary>
+    /// Manda un texto arbitrario por WhatsApp (herramienta de admin). Se usa, por ej.,
+    /// para pedirle los audios al admin producto por producto con el guion adentro.
+    /// </summary>
+    [HttpPost("text")]
+    public async Task<IActionResult> SendText([FromBody] TextRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var phone = new string((req.Phone ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (string.IsNullOrEmpty(phone)) return BadRequest(new { error = "Número inválido (incluí prefijo de país)" });
+        if (string.IsNullOrWhiteSpace(req.Text)) return BadRequest(new { error = "text requerido" });
+        if (string.IsNullOrWhiteSpace(req.InstanceName)) return BadRequest(new { error = "instanceName requerido" });
+
+        var ok = await _evo.SendTextAsync(req.InstanceName, phone, req.Text, ct);
+        if (!ok) return StatusCode(502, new { error = "falló el envío" });
+        _log.LogInformation("Texto de admin enviado a {Phone} por {Instance}", phone, req.InstanceName);
+        return Ok(new { ok = true });
+    }
+
     [HttpPost("cadence")]
     public async Task<IActionResult> SendCadence([FromBody] CadenceRequest req, CancellationToken ct)
     {
