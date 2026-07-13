@@ -248,6 +248,40 @@ public class InstagramFollowCampaignsController : ControllerBase
         return Accepted(new { ok = true, message = "Run disparado. Mirá las stats en unos segundos." });
     }
 
+    /// <summary>
+    /// DIAGNÓSTICO: loguea por el proxy y devuelve qué ve REALMENTE en la lista de
+    /// followers de un handle (por qué el scrape trae 0). GET /debug-scrape?handle=x
+    /// </summary>
+    [HttpGet("debug-scrape")]
+    public async Task<IActionResult> DebugScrape([FromQuery] string handle)
+    {
+        if (string.IsNullOrWhiteSpace(handle)) return BadRequest(new { error = "handle requerido" });
+
+        using var scope = _scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var crypto = scope.ServiceProvider.GetRequiredService<InstagramEncryptionService>();
+        var opts = scope.ServiceProvider.GetRequiredService<InstagramOptions>();
+
+        var account = await db.InstagramAccounts
+            .Where(a => a.IsActive && !a.IsActionBlocked && a.ProxyUrl != null)
+            .OrderByDescending(a => a.IsLoggedIn)
+            .ThenByDescending(a => a.LastLoginAt)
+            .FirstOrDefaultAsync();
+        if (account is null) return BadRequest(new { error = "no hay cuenta con proxy disponible" });
+
+        try
+        {
+            await using var client = new InstagramClient(db, crypto, opts, _log);
+            await client.InitializeAsync(account);
+            var json = await client.DebugFollowersHtmlAsync(handle);
+            return Content(json, "application/json");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message, account = account.Username });
+        }
+    }
+
     /// <summary>Handle limpio: tolera URL completa (instagram.com/x/), @, barras, query.</summary>
     private static string CleanHandle(string raw)
     {

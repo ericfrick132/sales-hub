@@ -427,6 +427,60 @@ public class InstagramClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// DIAGNÓSTICO (no encola nada): navega directo a /{handle}/followers/, espera el
+    /// dialog y devuelve qué encontró REALMENTE — para entender por qué el scrape trae 0
+    /// (dialog vacío = IG limita la lista; dialog con filas no-&lt;a&gt; = cambió el DOM).
+    /// </summary>
+    public async Task<string> DebugFollowersHtmlAsync(string targetHandle, CancellationToken ct = default)
+    {
+        EnsureLoggedIn();
+        targetHandle = NormalizeHandle(targetHandle);
+
+        await _page!.GotoAsync($"https://www.instagram.com/{targetHandle}/followers/", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.DOMContentLoaded,
+            Timeout = _opts.NavigationTimeoutMs
+        });
+        await Task.Delay(6000, ct);
+
+        var url = _page.Url;
+        var loginRedirect = url.Contains("/accounts/login");
+        var dialog = await _page.QuerySelectorAsync("div[role='dialog']");
+        var dialogAnchors = await _page.QuerySelectorAllAsync("div[role='dialog'] a");
+        var hrefAnchors = await _page.QuerySelectorAllAsync("div[role='dialog'] a[href^='/']");
+
+        // Cuántos hrefs pasarían el filtro del scrape (perfiles reales) + muestra
+        var profileHrefs = new List<string>();
+        foreach (var a in hrefAnchors)
+        {
+            var href = await a.GetAttributeAsync("href");
+            if (string.IsNullOrEmpty(href) || href == "/"
+                || href.Contains("/followers/") || href.Contains("/following/")) continue;
+            profileHrefs.Add(href);
+            if (profileHrefs.Count >= 15) break;
+        }
+
+        // Muestra del HTML (dialog si existe, si no el body), sin scripts/style/svg y recortada
+        var htmlSample = dialog is not null ? await dialog.InnerHTMLAsync() : await _page.ContentAsync();
+        htmlSample = Regex.Replace(htmlSample, @"<(script|style|svg)[^>]*>[\s\S]*?</\1>", "",
+            RegexOptions.IgnoreCase);
+        if (htmlSample.Length > 6000) htmlSample = htmlSample[..6000];
+
+        return JsonSerializer.Serialize(new
+        {
+            handle = targetHandle,
+            urlAfterNav = url,
+            loginRedirect,
+            dialogFound = dialog is not null,
+            dialogAnchors = dialogAnchors.Count,
+            hrefAnchors = hrefAnchors.Count,
+            profileLinks = profileHrefs.Count,
+            sampleHrefs = profileHrefs,
+            htmlSample
+        });
+    }
+
+    /// <summary>
     /// Carga los selectores del último snapshot válido (auto-reparado por Claude),
     /// con fallback a los defaults hardcodeados si no hay ninguno / no parsea.
     /// </summary>
