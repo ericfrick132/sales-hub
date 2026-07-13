@@ -134,9 +134,14 @@ public class InstagramStructureAnalyzerWorker : BackgroundService
 
             _log.LogInformation("Iniciando análisis de estructura de Instagram...");
 
-            // Buscar una cuenta de Instagram disponible
+            // Elegir una cuenta que probablemente PUEDA loguear: preferimos las que ya
+            // tienen sesión viva y login reciente (gymhero/playcrew por iProxy) y exigimos
+            // proxy. Antes agarraba la primera activa (archicloud con 2captcha muerto o
+            // eric.frick sin proxy) → login fallaba → snapshot inválido siempre.
             var account = await db.InstagramAccounts
-                .Where(a => a.IsActive && !a.IsActionBlocked)
+                .Where(a => a.IsActive && !a.IsActionBlocked && a.ProxyUrl != null)
+                .OrderByDescending(a => a.IsLoggedIn)
+                .ThenByDescending(a => a.LastLoginAt)
                 .FirstOrDefaultAsync(ct);
 
             if (account is null)
