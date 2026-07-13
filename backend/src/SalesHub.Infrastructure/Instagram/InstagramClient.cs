@@ -74,7 +74,10 @@ public class InstagramClient : IAsyncDisposable
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu"
+                "--disable-gpu",
+                // Stealth: saca la bandera de automatización que IG usa para detectar el bot
+                // (con headless sin esto, IG sirve el shell logueado pero NO renderiza el perfil).
+                "--disable-blink-features=AutomationControlled"
             }
         };
 
@@ -108,8 +111,25 @@ public class InstagramClient : IAsyncDisposable
         {
             UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             ViewportSize = new ViewportSize { Width = 1280, Height = 800 },
-            Locale = "es-AR"
+            Locale = "es-AR",
+            TimezoneId = "America/Argentina/Buenos_Aires"
         });
+
+        // Stealth: enmascarar los tells típicos de un navegador automatizado ANTES de que
+        // corra el JS de IG. Sin esto, IG detecta el bot y sirve el perfil vacío (solo el nav).
+        await _context.AddInitScriptAsync(@"
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'languages', { get: () => ['es-AR', 'es', 'en'] });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+            window.chrome = { runtime: {} };
+            const _q = window.navigator.permissions && window.navigator.permissions.query;
+            if (_q) {
+                window.navigator.permissions.query = (p) =>
+                    p && p.name === 'notifications'
+                        ? Promise.resolve({ state: Notification.permission })
+                        : _q(p);
+            }
+        ");
 
         // Bloqueo de recursos pesados para minimizar el consumo de datos del
         // proxy mobile: cada byte que baja el navegador SALE POR EL 4G DEL CHIP
@@ -477,29 +497,6 @@ public class InstagramClient : IAsyncDisposable
             }
         }
 
-        // TEST de la API interna (misma que el inbox): web_profile_info → friendships/followers.
-        // Si esto trae usernames, el DOM sobra y esta es la vía robusta.
-        string apiResult;
-        try
-        {
-            apiResult = await _page.EvaluateAsync<string>(@"async (handle) => {
-                const h = { 'X-IG-App-ID': '936619743392459' };
-                const p = await fetch(`/api/v1/users/web_profile_info/?username=${handle}`, { headers: h, credentials: 'include' });
-                let pj = null; try { pj = p.ok ? await p.json() : null; } catch(e) {}
-                const uid = pj && pj.data && pj.data.user ? pj.data.user.id : null;
-                const fc = pj && pj.data && pj.data.user && pj.data.user.edge_followed_by ? pj.data.user.edge_followed_by.count : null;
-                let fstatus = null, followers = null;
-                if (uid) {
-                    const f = await fetch(`/api/v1/friendships/${uid}/followers/?count=24`, { headers: h, credentials: 'include' });
-                    fstatus = f.status;
-                    let fj = null; try { fj = f.ok ? await f.json() : null; } catch(e) {}
-                    followers = fj && fj.users ? fj.users.slice(0,10).map(u => u.username) : null;
-                }
-                return JSON.stringify({ profileStatus: p.status, uid: uid, followerCount: fc, followersStatus: fstatus, sampleFollowers: followers });
-            }", targetHandle);
-        }
-        catch (Exception ex) { apiResult = "eval error: " + ex.Message; }
-
         // Dump: si hay dialog, su innerHTML; si no, el body — sin clases/style/svg para leer.
         var dumpTarget = dialogFound
             ? await _page.QuerySelectorAsync("div[role='dialog']")
@@ -516,7 +513,6 @@ public class InstagramClient : IAsyncDisposable
             linkFound,
             dialogFound,
             dialogAnchors,
-            apiResult,
             log,
             htmlDump = html
         });
