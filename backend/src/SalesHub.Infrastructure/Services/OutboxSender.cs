@@ -1,9 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
+using SalesHub.Infrastructure.Options;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services.Social;
 
 namespace SalesHub.Infrastructure.Services;
 
@@ -26,6 +29,8 @@ public class OutboxSender
     private readonly IEvolutionClient _evo;
     private readonly ISendScheduler _scheduler;
     private readonly IMessageRenderer _renderer;
+    private readonly ElevenLabsClient _tts;
+    private readonly VoiceNoteOptions _voiceOpts;
     private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
     private readonly ILogger<OutboxSender> _log;
 
@@ -34,10 +39,13 @@ public class OutboxSender
         IEvolutionClient evo,
         ISendScheduler scheduler,
         IMessageRenderer renderer,
+        ElevenLabsClient tts,
+        IOptions<VoiceNoteOptions> voiceOpts,
         Microsoft.Extensions.Configuration.IConfiguration config,
         ILogger<OutboxSender> log)
     {
-        _db = db; _evo = evo; _scheduler = scheduler; _renderer = renderer; _config = config; _log = log;
+        _db = db; _evo = evo; _scheduler = scheduler; _renderer = renderer;
+        _tts = tts; _voiceOpts = voiceOpts.Value; _config = config; _log = log;
     }
 
     public async Task<int> TickAsync(CancellationToken ct)
@@ -195,6 +203,7 @@ public class OutboxSender
             // sendAttempted, vamos a Failed sin reintento.
             var sendAttempted = false;
             ConversationMessage? convMsg = null;
+            string? voiceGreeting = null; // saludo de voz personalizado (audio 1 del cold-open), si el step lo define
             try
             {
                 // ─── Re-render at send time ──────────────────────────────────
@@ -227,6 +236,10 @@ public class OutboxSender
                         continue;
                     }
                     var step = steps[next.StepIndex.Value];
+                    // Saludo de voz personalizado (audio 1 del cold-open): render con el nombre del lead.
+                    voiceGreeting = string.IsNullOrWhiteSpace(step.VoiceGreeting)
+                        ? null
+                        : _renderer.RenderTemplate(step.VoiceGreeting, leadCtx, leadCtx.Product, seller);
                     var stepHasMedia = step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 });
                     if (string.IsNullOrWhiteSpace(step.Text) && !stepHasMedia)
                     {
@@ -312,6 +325,35 @@ public class OutboxSender
                 {
                     if (isAudio)
                     {
+                        // AUDIO 1 del cold-open: saludo personalizado con la voz clonada
+                        // ("hola {name}, ¿cómo andás?"), generado por lead y mandado ANTES del
+                        // pitch grabado. Best-effort: si falla la síntesis/envío, sigue el pitch.
+                        if (!string.IsNullOrWhiteSpace(voiceGreeting) && _tts.IsConfigured)
+                        {
+                            try
+                            {
+                                var greetMp3 = await _tts.SynthesizeAsync(voiceGreeting!, _voiceOpts.VoiceId,
+                                    new ElevenLabsClient.TtsVoiceSettings(_voiceOpts.Stability, _voiceOpts.SimilarityBoost, _voiceOpts.Style, _voiceOpts.Speed), ct);
+                                if (greetMp3 is not null)
+                                {
+                                    var gprep = await _evo.PrepareVoiceNoteAsync(greetMp3, ct);
+                                    var grem = Math.Max(1, gprep.DurationSeconds);
+                                    while (grem > 0)
+                                    {
+                                        var chunk = Math.Min(25, grem);
+                                        await _evo.SetPresenceRecordingAsync(seller.EvolutionInstance.InstanceName, jid, chunk, ct);
+                                        await Task.Delay(chunk * 1000, ct);
+                                        grem -= chunk;
+                                    }
+                                    sendAttempted = true;
+                                    await _evo.SendPreparedVoiceNoteAsync(
+                                        seller.EvolutionInstance.InstanceName, next.WhatsappPhone, gprep.OggBytes, ct);
+                                    await Task.Delay(1200, ct); // pausa natural entre saludo y pitch
+                                }
+                            }
+                            catch (Exception gex) { _log.LogWarning(gex, "Cold-open: falló el saludo de voz, sigo con el pitch"); }
+                        }
+
                         // Audio → se manda como nota de voz (PTT), no como adjunto. WhatsApp
                         // no soporta caption en notas de voz; si el step trae texto, lo
                         // mandamos como mensaje separado ANTES del audio (orden natural:

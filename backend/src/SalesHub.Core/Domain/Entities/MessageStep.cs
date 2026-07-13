@@ -20,4 +20,13 @@ public class MessageStep
     /// legacy. Si está vacío, el step es texto puro (o usa MediaAssetId).
     /// </summary>
     public List<Guid> MediaAssetIds { get; set; } = new();
+
+    /// <summary>
+    /// Saludo de voz PERSONALIZADO (audio 1 del cold-open). Si está seteado, ANTES de mandar
+    /// el contenido del step se genera una nota de voz con la voz clonada (ElevenLabs)
+    /// renderizando este texto con los placeholders del lead — ej. "hola {name}, ¿cómo andás?"
+    /// — y se manda primero. El pitch grabado va en MediaAssetIds y sale justo después.
+    /// Null/vacío = sin saludo (comportamiento de siempre).
+    /// </summary>
+    public string? VoiceGreeting { get; set; }
 }
