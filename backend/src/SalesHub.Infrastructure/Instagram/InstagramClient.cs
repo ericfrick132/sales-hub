@@ -829,7 +829,7 @@ public class InstagramClient : IAsyncDisposable
     /// con el resultado: Followed, AlreadyFollowing, NotFound, Blocked o Failed.
     /// Detecta bloqueos de acción (action_blocked) y marca la cuenta.
     /// </summary>
-    public async Task<FollowResult> FollowUserAsync(string handle, CancellationToken ct = default)
+    public async Task<FollowResult> FollowUserAsync(string handle, IReadOnlyList<string>? keywords = null, CancellationToken ct = default)
     {
         EnsureLoggedIn();
 
@@ -859,6 +859,27 @@ public class InstagramClient : IAsyncDisposable
             {
                 _log.LogInformation("Perfil {Handle} no existe", handle);
                 return FollowResult.NotFound;
+            }
+
+            // Filtro por keywords: si la campaña define palabras, seguimos SOLO si el perfil
+            // (nombre + bio + rubro — lo visible del header) MENCIONA alguna. Si no, se saltea.
+            // Aprovecha esta misma visita (no hay carga extra). Si no se puede leer el texto,
+            // no filtramos (dejamos pasar) para no frenar todo por un fallo de lectura.
+            if (keywords is { Count: > 0 })
+            {
+                string profileText = "";
+                try
+                {
+                    profileText = await _page.EvaluateAsync<string>(
+                        "() => (document.querySelector('header')?.innerText || document.querySelector('main')?.innerText || document.body?.innerText || '').slice(0, 2500)");
+                }
+                catch { /* lectura best-effort */ }
+
+                if (!string.IsNullOrWhiteSpace(profileText) && !MatchesAnyKeyword(profileText, keywords))
+                {
+                    _log.LogInformation("Perfil {Handle} no menciona keywords de la campaña → skip", handle);
+                    return FollowResult.SkippedNoMatch;
+                }
             }
 
             // Botón "Following" → ya lo seguimos
@@ -913,6 +934,29 @@ public class InstagramClient : IAsyncDisposable
             _log.LogError(ex, "Error al hacer follow a {Handle}", handle);
             return FollowResult.Failed;
         }
+    }
+
+    /// <summary>True si <paramref name="text"/> contiene alguna keyword (case/acento-insensible).</summary>
+    private static bool MatchesAnyKeyword(string text, IReadOnlyList<string> keywords)
+    {
+        var norm = NormalizeForMatch(text);
+        foreach (var k in keywords)
+        {
+            var kk = NormalizeForMatch(k);
+            if (kk.Length > 0 && norm.Contains(kk, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Lowercase + saca tildes/diacríticos, para matchear sin importar acentos ni mayúsculas.</summary>
+    private static string NormalizeForMatch(string s)
+    {
+        var decomposed = s.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder(decomposed.Length);
+        foreach (var c in decomposed)
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        return sb.ToString();
     }
 
     /// <summary>
@@ -1445,7 +1489,9 @@ public enum FollowResult
     AlreadyFollowing = 1,
     NotFound = 2,
     Blocked = 3,
-    Failed = 4
+    Failed = 4,
+    /// <summary>El perfil no menciona ninguna de las keywords de la campaña → no se siguió.</summary>
+    SkippedNoMatch = 5
 }
 
 /// <summary>

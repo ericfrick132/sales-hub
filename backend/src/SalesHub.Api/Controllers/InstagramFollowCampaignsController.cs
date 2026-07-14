@@ -50,6 +50,7 @@ public class InstagramFollowCampaignsController : ControllerBase
                 ActiveHourStart = c.ActiveHourStart,
                 ActiveHourEnd = c.ActiveHourEnd,
                 MaxTotalFollows = c.MaxTotalFollows,
+                Keywords = c.Keywords,
                 IsActive = c.IsActive,
                 TotalEnqueued = c.TotalEnqueued,
                 TotalFollowed = c.TotalFollowed,
@@ -109,6 +110,7 @@ public class InstagramFollowCampaignsController : ControllerBase
             ActiveHourStart = campaign.ActiveHourStart,
             ActiveHourEnd = campaign.ActiveHourEnd,
             MaxTotalFollows = campaign.MaxTotalFollows,
+            Keywords = campaign.Keywords,
             ScrapeBatchSize = campaign.ScrapeBatchSize,
             MinQueuedThreshold = campaign.MinQueuedThreshold,
             IsActive = campaign.IsActive,
@@ -158,6 +160,7 @@ public class InstagramFollowCampaignsController : ControllerBase
             ActiveHourStart = ClampHour(req.ActiveHourStart),
             ActiveHourEnd = ClampHour(req.ActiveHourEnd),
             MaxTotalFollows = req.MaxTotalFollows,
+            Keywords = string.IsNullOrWhiteSpace(req.Keywords) ? null : req.Keywords.Trim(),
             ScrapeBatchSize = req.ScrapeBatchSize > 0 ? req.ScrapeBatchSize : 100,
             MinQueuedThreshold = req.MinQueuedThreshold > 0 ? req.MinQueuedThreshold : 20,
             IsActive = true,
@@ -199,6 +202,9 @@ public class InstagramFollowCampaignsController : ControllerBase
             campaign.SourceMode = mode;
         if (req.DailyRate.HasValue && req.DailyRate.Value > 0) campaign.DailyRate = req.DailyRate.Value;
         if (req.MaxTotalFollows.HasValue) campaign.MaxTotalFollows = req.MaxTotalFollows.Value;
+        // Keywords: null = no tocar; "" = limpiar el filtro.
+        if (req.Keywords is not null)
+            campaign.Keywords = string.IsNullOrWhiteSpace(req.Keywords) ? null : req.Keywords.Trim();
         if (req.ScrapeBatchSize.HasValue && req.ScrapeBatchSize.Value > 0)
             campaign.ScrapeBatchSize = req.ScrapeBatchSize.Value;
         if (req.MinQueuedThreshold.HasValue && req.MinQueuedThreshold.Value > 0)
@@ -306,6 +312,7 @@ public class InstagramFollowCampaignsController : ControllerBase
         public int? ActiveHourStart { get; init; }
         public int? ActiveHourEnd { get; init; }
         public int MaxTotalFollows { get; init; }
+        public string? Keywords { get; init; }
         public bool IsActive { get; init; }
         public int TotalEnqueued { get; init; }
         public int TotalFollowed { get; init; }
@@ -347,6 +354,8 @@ public class InstagramFollowCampaignsController : ControllerBase
         public int? ActiveHourStart { get; init; } = 10;
         public int? ActiveHourEnd { get; init; } = 22;
         public int MaxTotalFollows { get; init; }
+        /// <summary>Keywords separadas por coma para filtrar por bio (opcional).</summary>
+        public string? Keywords { get; init; }
         public int ScrapeBatchSize { get; init; } = 100;
         public int MinQueuedThreshold { get; init; } = 20;
     }
@@ -362,6 +371,8 @@ public class InstagramFollowCampaignsController : ControllerBase
         public int? ActiveHourStart { get; init; }
         public int? ActiveHourEnd { get; init; }
         public int? MaxTotalFollows { get; init; }
+        /// <summary>Keywords separadas por coma. null = no tocar; "" = limpiar el filtro.</summary>
+        public string? Keywords { get; init; }
         public int? ScrapeBatchSize { get; init; }
         public int? MinQueuedThreshold { get; init; }
     }

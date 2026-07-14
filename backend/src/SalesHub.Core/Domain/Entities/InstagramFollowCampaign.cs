@@ -48,6 +48,13 @@ public class InstagramFollowCampaign
     public int ScrapeBatchSize { get; set; } = 100;
     public int MinQueuedThreshold { get; set; } = 20;
 
+    /// <summary>
+    /// Filtro opcional por keywords (separadas por coma). Si está seteado, al momento de
+    /// seguir se lee el perfil del candidato (nombre + bio) y SOLO se sigue si menciona
+    /// alguna. Case/acento-insensible, matchea cualquiera. Vacío/null = sin filtro.
+    /// </summary>
+    public string? Keywords { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     // Stats

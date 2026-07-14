@@ -28,6 +28,12 @@ public class InstagramFollowService
     private const int MinFollowGapSeconds = 8 * 60;
     private const int MaxFollowGapSeconds = 30 * 60;
 
+    // Cuando un candidato se SALTEA por no matchear keywords, solo miramos su perfil (no
+    // seguimos = acción sensible), así que el próximo intento va con un gap corto para ir
+    // filtrando sin frenar el ritmo. Los follows reales sí usan el gap largo de arriba.
+    private const int MinSkipGapSeconds = 45;
+    private const int MaxSkipGapSeconds = 120;
+
     public InstagramFollowService(
         ApplicationDbContext db,
         InstagramEncryptionService crypto,
@@ -271,7 +277,8 @@ public class InstagramFollowService
                 return;
             }
 
-            var result = await client.FollowUserAsync(action.TargetHandle, ct);
+            var keywords = ParseKeywords(campaign.Keywords);
+            var result = await client.FollowUserAsync(action.TargetHandle, keywords, ct);
             action.ExecutedAt = DateTimeOffset.UtcNow;
 
             switch (result)
@@ -291,6 +298,14 @@ public class InstagramFollowService
                 case FollowResult.NotFound:
                     action.Status = InstagramFollowActionStatus.Skipped;
                     action.ErrorMessage = "not_found";
+                    campaign.TotalSkipped++;
+                    break;
+
+                case FollowResult.SkippedNoMatch:
+                    // El perfil no menciona ninguna keyword → no lo seguimos. NO cuenta contra
+                    // el cap diario (solo vimos el perfil), así seguimos buscando matches.
+                    action.Status = InstagramFollowActionStatus.Skipped;
+                    action.ErrorMessage = "no_keyword_match";
                     campaign.TotalSkipped++;
                     break;
 
@@ -329,8 +344,13 @@ public class InstagramFollowService
             // Paceo: tras CUALQUIER intento (siguió, ya seguía, no encontrado o falló) tocamos IG,
             // así que espaciamos el próximo con jitter. Si fue Blocked no importa (IsActionBlocked
             // ya frena 24h). El gate a nivel cuenta en RunCampaignAsync respeta este horario.
+            // Si solo saltamos por keywords (miramos el perfil pero NO seguimos), usamos un gap
+            // corto para ir filtrando sin frenar el ritmo; los follows reales van con el gap largo.
+            var (minGap, maxGap) = result == FollowResult.SkippedNoMatch
+                ? (MinSkipGapSeconds, MaxSkipGapSeconds)
+                : (MinFollowGapSeconds, MaxFollowGapSeconds);
             account.NextFollowEligibleAt = DateTimeOffset.UtcNow
-                .AddSeconds(Random.Shared.Next(MinFollowGapSeconds, MaxFollowGapSeconds));
+                .AddSeconds(Random.Shared.Next(minGap, maxGap));
 
             await client.SaveSessionCookiesAsync(account, ct);
             await _db.SaveChangesAsync(ct);
@@ -351,6 +371,12 @@ public class InstagramFollowService
             await _db.SaveChangesAsync(ct);
         }
     }
+
+    /// <summary>Parsea las keywords de la campaña (separadas por coma / salto de línea / ;).</summary>
+    private static IReadOnlyList<string> ParseKeywords(string? raw) =>
+        string.IsNullOrWhiteSpace(raw)
+            ? Array.Empty<string>()
+            : raw.Split(new[] { ',', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     /// <summary>true si la hora local AR está dentro de la ventana de la campaña (soporta ventanas que cruzan medianoche).</summary>
     private static bool IsWithinActiveWindow(InstagramFollowCampaign campaign)
