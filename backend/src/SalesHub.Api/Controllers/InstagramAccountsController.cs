@@ -357,6 +357,36 @@ public class InstagramAccountsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// DIAGNÓSTICO: intenta loguear y devuelve la URL + el texto que muestra IG (para saber
+    /// si es contraseña incorrecta, checkpoint de IP/device, o la pantalla de 2FA no detectada).
+    /// </summary>
+    [HttpPost("{id:guid}/debug-login")]
+    public async Task<IActionResult> DebugLogin(Guid id)
+    {
+        var account = await _db.InstagramAccounts.FirstOrDefaultAsync(a => a.Id == id);
+        if (account is null) return NotFound();
+
+        // Forzar re-login limpiando cookies EN MEMORIA (no persistimos).
+        account.SessionCookiesJson = null;
+        account.IsLoggedIn = false;
+
+        await using var client = new InstagramClient(_db, _crypto, _opts, _log);
+        var err = "";
+        try { await client.InitializeAsync(account); }
+        catch (Exception ex) { err = ex.Message; }
+
+        var page = client.Page;
+        if (page is null) return Ok(new { err, note = "sin página (falló antes del browser/proxy)" });
+
+        string url = "", text = "", has2fa = "", hasPwErr = "";
+        try { url = page.Url; } catch { }
+        try { text = await page.EvaluateAsync<string>("() => (document.body?.innerText || '').replace(/\\s+/g,' ').slice(0,2500)"); } catch { }
+        try { has2fa = (await page.QuerySelectorAsync("input[name='verificationCode'], input[autocomplete='one-time-code']")) is not null ? "sí" : "no"; } catch { }
+
+        return Ok(new { err, url, has2faInput = has2fa, text });
+    }
+
     [HttpGet("{id:guid}/metrics")]
     public async Task<IActionResult> GetMetrics(Guid id, [FromQuery] int days = 7)
     {
