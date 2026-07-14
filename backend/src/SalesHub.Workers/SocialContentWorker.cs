@@ -146,7 +146,28 @@ public class SocialContentWorker : BackgroundService
         var hint = string.IsNullOrWhiteSpace(theme) ? null
             : $"Enganchá el posteo con el tema/actualidad del día (con naturalidad, sin forzar): {theme}";
 
-        var gen = await generator.GenerateForChannelAsync(profile, channel, recent, hint, type.Key, ct);
+        // (B) Estilo de gancho: rota el arranque del caption para que no salgan todos con
+        // la misma pregunta retórica.
+        var hook = HookStyles.PickRandom(Random.Shared);
+
+        // (A) Inspiración del rubro: un ángulo de un competidor de ESTA app (Competitor.Vertical
+        // == ProductKey), al azar entre los curados/recientes. Si no hay competidores con posts
+        // scrapeados, queda null y el posteo se genera como antes (degradado, sin romper).
+        string? inspoRef = null;
+        try
+        {
+            var pool = await db.CompetitorPosts.AsNoTracking()
+                .Where(cp => cp.Caption != null && cp.Caption != ""
+                          && cp.Competitor!.IsActive && cp.Competitor.Vertical == profile.ProductKey)
+                .OrderByDescending(cp => cp.Curated).ThenByDescending(cp => cp.PostedAt)
+                .Select(cp => cp.Caption!)
+                .Take(25)
+                .ToListAsync(ct);
+            if (pool.Count > 0) inspoRef = pool[Random.Shared.Next(pool.Count)];
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "No pude traer inspiración de competidores para {P}", profile.ProductKey); }
+
+        var gen = await generator.GenerateForChannelAsync(profile, channel, recent, hint, type.Key, hook.Directive, inspoRef, ct);
         if (gen == null) { _log.LogWarning("Generador null para {Product}/{Net}", profile.ProductKey, channel.Platform); return; }
 
         var post = new SocialPost

@@ -57,7 +57,7 @@ public class SocialContentGenerator
     /// </summary>
     private const string StructureRule =
         "ESTRUCTURA OBLIGATORIA HOOK → DESARROLLO → CTA: el caption arranca con UNA línea de GANCHO que frene el scroll " +
-        "(pregunta que duele o dato concreto — Instagram corta ahí el 'ver más', esa línea tiene que obligar a abrir), " +
+        "(Instagram corta ahí el 'ver más', esa línea tiene que obligar a abrir; seguí el ESTILO DE GANCHO indicado y NO abras siempre con una pregunta retórica tipo '¿cuántas veces...?'), " +
         "sigue el DESARROLLO (2-4 líneas cortas con valor real: el dolor, el dato, el beneficio — sin humo), " +
         "y cierra SIEMPRE con un CTA claro y corto ('Probalo gratis — link en bio', '¿Empezamos hoy? Escribinos', 'Link en bio'). " +
         "Sin CTA no hay posteo.";
@@ -164,7 +164,7 @@ public class SocialContentGenerator
     /// Genera para una red específica usando el prompt propio de ese canal (red×app)
     /// + la base de marca del perfil. El formato/asset los fija el canal (no Claude).
     /// </summary>
-    public async Task<GeneratedPost?> GenerateForChannelAsync(PostingProfile p, PostingChannel ch, IReadOnlyList<string> recentConcepts, string? hint = null, string? contentTypeKey = null, CancellationToken ct = default)
+    public async Task<GeneratedPost?> GenerateForChannelAsync(PostingProfile p, PostingChannel ch, IReadOnlyList<string> recentConcepts, string? hint = null, string? contentTypeKey = null, string? hookDirective = null, string? inspirationRef = null, CancellationToken ct = default)
     {
         if (!_claude.IsConfigured) { _log.LogWarning("Claude no configurado"); return null; }
 
@@ -192,6 +192,12 @@ public class SocialContentGenerator
         sys.AppendLine();
         sys.AppendLine("TIPO DE POSTEO DE ESTA VEZ (respetalo, marca el ángulo):");
         sys.AppendLine(type.Directive);
+        if (!string.IsNullOrWhiteSpace(hookDirective))
+        {
+            sys.AppendLine();
+            sys.AppendLine("ESTILO DE GANCHO DE ESTA VEZ (así ABRE el caption — respetalo; variar el arranque es CLAVE para que los posteos no salgan todos iguales):");
+            sys.AppendLine(hookDirective);
+        }
         sys.AppendLine();
         sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies). Caption en español rioplatense (voseo). El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
         if (ch.Format == SocialPostFormat.Story) sys.AppendLine(StoryRule);
@@ -226,6 +232,12 @@ public class SocialContentGenerator
         user.AppendLine($"Generá 1 idea nueva para {ch.Platform} ({ch.Format}), tipo {type.Label}{(slideCount > 1 ? $", de {slideCount} slides" : "")}.");
         if (!string.IsNullOrWhiteSpace(hint))
             user.AppendLine($"TEMA / INDICACIÓN para este posteo: {hint.Trim()}");
+        if (!string.IsNullOrWhiteSpace(inspirationRef))
+        {
+            user.AppendLine();
+            user.AppendLine("REFERENCIA DEL RUBRO (un ÁNGULO/FORMATO que usó un competidor — NO copies el texto ni menciones NINGUNA marca; agarrá la IDEA o el ángulo y adaptalo a NUESTRO producto con datos reales):");
+            user.AppendLine(inspirationRef.Length > 600 ? inspirationRef[..600] : inspirationRef.Trim());
+        }
         if (recentConcepts.Count > 0)
         {
             user.AppendLine("Evitá repetir estos conceptos recientes:");

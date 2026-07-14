@@ -368,7 +368,7 @@ public class SocialPostsController : ControllerBase
         var recent = await _db.SocialPosts.Where(s => s.ProductKey == ch.ProductKey && s.Platform == ch.Platform)
             .OrderByDescending(s => s.CreatedAt).Select(s => s.Concept).Take(15).ToListAsync(ct);
 
-        var gen = await _generator.GenerateForChannelAsync(profile, ch, recent, null, null, ct);
+        var gen = await _generator.GenerateForChannelAsync(profile, ch, recent, null, null, ct: ct);
         if (gen == null) return StatusCode(502, new { error = "El generador no devolvió contenido." });
 
         var post = new SocialPost
@@ -544,7 +544,7 @@ public class SocialPostsController : ControllerBase
                 resolvedType = ContentTypes.Pick(recentPosts.FirstOrDefault()?.PostType, hasPrices, Random.Shared).Key;
             }
 
-            var gen = await generator.GenerateForChannelAsync(profile, ch, recent, hint, resolvedType, ct);
+            var gen = await generator.GenerateForChannelAsync(profile, ch, recent, hint, resolvedType, ct: ct);
             if (gen is null) { post.Status = SocialPostStatus.Error; post.Error = "El generador no devolvió contenido."; await db.SaveChangesAsync(ct); return; }
 
             post.PostType = gen.Type;
