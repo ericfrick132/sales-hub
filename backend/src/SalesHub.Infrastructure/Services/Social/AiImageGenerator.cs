@@ -186,6 +186,8 @@ public class AiImageGenerator : ISocialAssetGenerator
             sb.Append($" ART DIRECTION (must follow strictly, overrides any conflicting style above): {profile.ImageStyle.Trim()}.");
         // Ancla cultural: si aparece gente/lugares, que se lean latinoamericanos, no asiáticos ni stock USA.
         sb.Append(" If people or places appear, they must read as Latin American / Argentine (latino features, Spanish-language signage), never Asian or generic US stock imagery.");
+        // Anti-'look IA': el fondo/piel que parecen render son lo que más rechaza el dueño.
+        sb.Append(" When it depicts people or a real place it MUST look like an authentic photograph shot on a real camera — natural imperfect background with real, specific details, real skin texture with pores, real directional light and shadows, natural depth of field. Strictly avoid any tell-tale AI-generated look: no plastic or waxy skin, no warped/extra fingers, no melted or impossible objects, no garbled text, no over-smooth surreal or empty backgrounds, no generic stock feel.");
         if (!string.IsNullOrWhiteSpace(profile.BrandColorsJson) && profile.BrandColorsJson.Trim() != "{}")
             sb.Append($" Use this brand color palette (exact hex): {profile.BrandColorsJson}.");
         // Texto en la imagen: SOLO el overlay corto que Claude escribió como copy.

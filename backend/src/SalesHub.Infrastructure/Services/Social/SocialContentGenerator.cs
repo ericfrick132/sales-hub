@@ -63,6 +63,20 @@ public class SocialContentGenerator
         "Sin CTA no hay posteo.";
 
     /// <summary>
+    /// Lo MÁS importante del visual: que el 'prompt' describa una ESCENA REAL, larga y
+    /// específica, con personas — y que NO parezca IA (el fondo falso/plástico es lo peor).
+    /// </summary>
+    private const string PhotoRealismRule =
+        "REGLA DE FOTORREALISMO (lo MÁS importante del visual): salvo que el modo elegido sea claramente un mockup de app, un poster " +
+        "tipográfico o un gráfico de marca, el 'prompt' describe UNA FOTOGRAFÍA REAL — editorial/documental, tomada con cámara, NO un render ni una ilustración. " +
+        "Escribí el 'prompt' LARGO y específico, como indicaciones a un fotógrafo (no seas escueto): " +
+        "PERSONAS reales, diversas, argentinas/latinas, con imperfecciones humanas naturales (piel con textura y poros, no plástica), haciendo una acción concreta y creíble del momento; " +
+        "el LUGAR exacto del rubro con detalles AUTÉNTICOS de fondo (objetos gastados, señalética en español, contexto real, algo de desorden natural) — un fondo real y creíble, jamás vacío ni genérico; " +
+        "la LUZ real (natural, hora del día, dirección, sombras reales); y la cámara ('shot on 35mm, f/2, natural light, editorial documentary photography, photorealistic, sharp focus with natural depth of field'). " +
+        "PROHIBIDO EL 'LOOK IA' (es lo peor): nada de fondos surreales o imposibles, manos/dedos deformes, texto o logos deformados, superficies sobre-suavizadas o plásticas, simetría perfecta irreal, colores fluor irreales, ni gente de stock sonriendo forzado a cámara. " +
+        "El FONDO tiene que verse 100% real y del lugar. Cuanto más específica, humana y detallada la escena, mejor.";
+
+    /// <summary>
     /// Receta "majestic" de video: en vez de una fórmula genérica (que produce el
     /// look IA), le pedimos a Claude DIRECCIÓN DE CINE — una micro-historia real
     /// alrededor del mundo del cliente, con el dolor contado de costado.
@@ -117,6 +131,7 @@ public class SocialContentGenerator
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);
+        sys.AppendLine(PhotoRealismRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
@@ -199,7 +214,7 @@ public class SocialContentGenerator
             sys.AppendLine(hookDirective);
         }
         sys.AppendLine();
-        sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies). Caption en español rioplatense (voseo). El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
+        sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies). Caption en español rioplatense (voseo). El 'prompt' (para generar el visual) va en INGLÉS, LARGO y MUY detallado, describiendo una ESCENA REAL completa (ver REGLA DE FOTORREALISMO abajo), respetando la paleta de marca.");
         if (ch.Format == SocialPostFormat.Story) sys.AppendLine(StoryRule);
 
         var slideCount = Math.Max(1, ch.SlideCount);
@@ -218,6 +233,7 @@ public class SocialContentGenerator
             sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);
+        sys.AppendLine(PhotoRealismRule);
         }
         else
         {
@@ -225,6 +241,7 @@ public class SocialContentGenerator
             sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);
+        sys.AppendLine(PhotoRealismRule);
             if (ch.AssetKind == SocialAssetKind.Video) { sys.AppendLine(NarrationRule); sys.AppendLine(VideoPromptRecipe); }
         }
 
@@ -318,13 +335,14 @@ public class SocialContentGenerator
         if (inspirationImages is { Count: > 0 })
             sys.AppendLine("MIRÁ la imagen de referencia: analizá qué la hace atractiva (composición, colores, tipografía, mood) y reflejá ese ESTILO VISUAL en el 'prompt' — adaptado a nuestra paleta de marca, sin copiarla.");
         sys.AppendLine("NO lo copies textual. NO menciones ni nombres al competidor. Caption en español rioplatense (voseo).");
-        sys.AppendLine("El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta de marca.");
+        sys.AppendLine("El 'prompt' (para generar el visual) va en INGLÉS, LARGO y MUY detallado, describiendo una ESCENA REAL completa (ver REGLA DE FOTORREALISMO abajo), respetando la paleta de marca.");
         if (ch != null)
             sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies).");
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);
+        sys.AppendLine(PhotoRealismRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
@@ -375,6 +393,7 @@ public class SocialContentGenerator
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);
+        sys.AppendLine(PhotoRealismRule);
         sys.AppendLine(NarrationRule);
         sys.AppendLine(VideoPromptRecipe);
 
