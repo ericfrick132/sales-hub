@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities.Social;
@@ -34,8 +35,12 @@ public class InspirationIntakeRelay
     /// <summary>Prefijo de TODA respuesta del bot — corta el loop en self-chat.</summary>
     private const string BotPrefix = "💡";
 
-    /// <summary>Ventana para considerar "pendiente reciente" al etiquetar con la respuesta.</summary>
-    private static readonly TimeSpan PendingWindow = TimeSpan.FromMinutes(60);
+    /// <summary>
+    /// Cuánto vive el contenido sin rutear / las inspiraciones pendientes de tema (la "sesión"
+    /// del intake). Pasado esto se purga. El menú se muestra por debounce al dejar de escribir,
+    /// así que 5 min alcanzan para juntar la ráfaga y contestar.
+    /// </summary>
+    private static readonly TimeSpan PendingWindow = TimeSpan.FromMinutes(5);
 
     /// <summary>Duración (sliding) de una sesión de modo abierta con "insp"/"pdf".</summary>
     private static readonly TimeSpan SessionTtl = TimeSpan.FromMinutes(30);
@@ -57,10 +62,27 @@ public class InspirationIntakeRelay
     private static readonly ConcurrentDictionary<string, DateTimeOffset> Recent = new();
     private static readonly TimeSpan RecentTtl = TimeSpan.FromMinutes(10);
 
-    // Cooldowns para no repetir preguntas en una ráfaga de mensajes.
+    // Cooldown del menú de TEMA (respuesta puntual, no naguea): evita doble pregunta en ráfaga.
     private static DateTimeOffset _lastTopicAskAt = DateTimeOffset.MinValue;
-    private static DateTimeOffset _lastRouteAskAt = DateTimeOffset.MinValue;
     private static readonly TimeSpan AskCooldown = TimeSpan.FromMinutes(2);
+
+    // El menú de RUTEO ("¿qué hago con esto?") NO se manda al toque: se DEBOUNCEA. Mientras el
+    // maestro tira contenido seguido se re-arma el timer; cuando deja de escribir MenuDebounce,
+    // el timer manda el menú UNA vez (out-of-band, con IEvolutionClient de un scope nuevo). Así
+    // no naguea en medio de la ráfaga y aparece recién cuando parás.
+    private static readonly TimeSpan MenuDebounce = TimeSpan.FromSeconds(15);
+    private static System.Threading.Timer? _routeMenuTimer;
+    private static readonly object MenuTimerLock = new();
+    private static string? _menuInstance;
+    private static string? _menuReplyJid;
+    private static IServiceScopeFactory? _scopeFactory;
+
+    private const string RouteMenuText =
+        "¿Qué hago con esto? Contestá:\n" +
+        "1. 💡 Inspiración (posteos)\n" +
+        "2. 📄 PDF de requerimientos\n" +
+        "3. 📅 Tema del día (tiñe los posteos de hoy de todas las apps)\n" +
+        "Tip: mandá \"insp\" o \"pdf\" ANTES la próxima y no te pregunto. \"cancelar\" descarta.";
 
     // Menú numerado de temas que mandamos con la última pregunta: "2" se resuelve
     // contra este snapshot (si el server reinició en el medio, re-mandamos fresco).
@@ -83,9 +105,13 @@ public class InspirationIntakeRelay
     private static volatile CacheEntry? _cache;
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(15);
 
-    public InspirationIntakeRelay(ApplicationDbContext db, IEvolutionClient evo, TranscriptionBatchAccumulator batch, ILogger<InspirationIntakeRelay> log)
+    public InspirationIntakeRelay(ApplicationDbContext db, IEvolutionClient evo, TranscriptionBatchAccumulator batch,
+        IServiceScopeFactory scopeFactory, ILogger<InspirationIntakeRelay> log)
     {
         _db = db; _evo = evo; _batch = batch; _log = log;
+        // El relay es Scoped (uno por request) pero el estado del debounce es estático; el
+        // scope factory es singleton, así que lo capturamos una vez para el timer out-of-band.
+        _scopeFactory ??= scopeFactory;
     }
 
     /// <summary>Fuerza recargar la config en el próximo mensaje (llamar al guardar cambios).</summary>
@@ -174,7 +200,7 @@ public class InspirationIntakeRelay
 
         // Sin contexto: a la cola sin rutear + preguntar qué hacer.
         AddUnrouted(new UnroutedItem(IntakeKind.Image, caption, mime, null, incoming.RawJson, DateTimeOffset.UtcNow));
-        await AskRouteIfDueAsync(incoming, ct);
+        ScheduleRouteMenu(incoming.InstanceName, incoming.FromJid);
         return true;
     }
 
@@ -261,7 +287,7 @@ public class InspirationIntakeRelay
 
         // Sin contexto: idea de texto / link → a la cola sin rutear + preguntar.
         AddUnrouted(new UnroutedItem(IntakeKind.Text, null, null, text, incoming.RawJson, DateTimeOffset.UtcNow));
-        await AskRouteIfDueAsync(incoming, ct);
+        ScheduleRouteMenu(incoming.InstanceName, incoming.FromJid);
         return true;
     }
 
@@ -382,7 +408,7 @@ public class InspirationIntakeRelay
 
         // Cualquier otro texto mientras espera el ruteo: lo tratamos como más contenido.
         AddUnrouted(new UnroutedItem(IntakeKind.Text, null, null, text, incoming.RawJson, DateTimeOffset.UtcNow));
-        await AskRouteIfDueAsync(incoming, ct);
+        ScheduleRouteMenu(incoming.InstanceName, incoming.FromJid);
     }
 
     // ── Respuesta al "¿para qué tema es?" ────────────────────────────────────
@@ -440,17 +466,54 @@ public class InspirationIntakeRelay
 
     // ── Preguntas del bot ────────────────────────────────────────────────────
 
-    /// <summary>Pregunta "¿qué hago con esto?" (1=inspiración, 2=PDF), con cooldown por ráfaga.</summary>
-    private async Task AskRouteIfDueAsync(ConversationService.IncomingMessage incoming, CancellationToken ct)
+    /// <summary>
+    /// (Re)arma el debounce del menú de ruteo: mientras llega contenido seguido se resetea; a los
+    /// <see cref="MenuDebounce"/> de silencio, el timer manda el menú UNA vez. No manda nada acá.
+    /// </summary>
+    private void ScheduleRouteMenu(string instance, string replyJid)
     {
-        if (DateTimeOffset.UtcNow - _lastRouteAskAt < AskCooldown) return;
-        _lastRouteAskAt = DateTimeOffset.UtcNow;
-        await ReplyAsync(incoming,
-            "¿Qué hago con esto? Contestá:\n" +
-            "1. 💡 Inspiración (posteos)\n" +
-            "2. 📄 PDF de requerimientos\n" +
-            "3. 📅 Tema del día (tiñe los posteos de hoy de todas las apps)\n" +
-            "Tip: mandá \"insp\" o \"pdf\" ANTES la próxima y no te pregunto. \"cancelar\" descarta.", ct);
+        lock (MenuTimerLock)
+        {
+            _menuInstance = instance;
+            _menuReplyJid = replyJid;
+            _routeMenuTimer ??= new System.Threading.Timer(static _ => _ = FireRouteMenuAsync());
+            _routeMenuTimer.Change(MenuDebounce, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    /// <summary>
+    /// Callback del debounce (corre fuera de un webhook): manda el menú de ruteo si TODAVÍA hay
+    /// contenido sin rutear y no se abrió una sesión en el ínterin. Usa un scope nuevo para el
+    /// IEvolutionClient (el relay original ya se disposeó).
+    /// </summary>
+    private static async Task FireRouteMenuAsync()
+    {
+        string? instance, jid;
+        lock (MenuTimerLock) { instance = _menuInstance; jid = _menuReplyJid; }
+        var sf = _scopeFactory;
+        if (instance is null || jid is null || sf is null) return;
+
+        // Si abrió sesión (insp/pdf) o ya no queda nada sin rutear (contestó/canceló), no molestamos.
+        var s = _session;
+        if (s is not null && DateTimeOffset.UtcNow < s.Until) return;
+        if (!HasUnrouted()) return;
+
+        try
+        {
+            using var scope = sf.CreateScope();
+            var evo = scope.ServiceProvider.GetRequiredService<IEvolutionClient>();
+            await evo.SendTextAsync(instance, jid, $"{BotPrefix} {RouteMenuText}", CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                using var scope = sf.CreateScope();
+                scope.ServiceProvider.GetRequiredService<ILogger<InspirationIntakeRelay>>()
+                    .LogWarning(ex, "No pude mandar el menú de ruteo (debounce)");
+            }
+            catch { /* best-effort */ }
+        }
     }
 
     /// <summary>
