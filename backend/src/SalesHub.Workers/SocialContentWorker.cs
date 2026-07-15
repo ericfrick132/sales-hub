@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Abstractions;
+using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Entities.Social;
 using SalesHub.Infrastructure.Persistence;
 using SalesHub.Infrastructure.Services.Social;
@@ -158,7 +159,8 @@ public class SocialContentWorker : BackgroundService
         {
             var pool = await db.CompetitorPosts.AsNoTracking()
                 .Where(cp => cp.Caption != null && cp.Caption != ""
-                          && cp.Competitor!.IsActive && cp.Competitor.Vertical == profile.ProductKey)
+                          && cp.Competitor!.IsActive && cp.Competitor.Vertical == profile.ProductKey
+                          && cp.Competitor.Purpose != CompetitorPurpose.FollowSource)
                 .OrderByDescending(cp => cp.Curated).ThenByDescending(cp => cp.PostedAt)
                 .Select(cp => cp.Caption!)
                 .Take(25)

@@ -14,13 +14,25 @@ public class CompetitorsController : ControllerBase
     private readonly ApplicationDbContext _db;
     public CompetitorsController(ApplicationDbContext db) { _db = db; }
 
-    public record CreateCompetitor(string Handle, string Platform, string? DisplayName, string? Vertical);
+    public record CreateCompetitor(string Handle, string Platform, string? DisplayName, string? Vertical, string? Purpose);
+    public record UpdateCompetitor(string? Purpose, string? Vertical, string? DisplayName);
+
+    /// <summary>inspiration | followsource | both (default). Cualquier otra cosa = both.</summary>
+    private static CompetitorPurpose ParsePurpose(string? s) =>
+        Enum.TryParse<CompetitorPurpose>((s ?? "").Trim(), ignoreCase: true, out var p) ? p : CompetitorPurpose.Both;
 
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] string? vertical, CancellationToken ct)
+    public async Task<IActionResult> List([FromQuery] string? vertical, [FromQuery] string? purpose, CancellationToken ct)
     {
         var q = _db.Competitors.AsNoTracking().Where(c => c.IsActive);
         if (!string.IsNullOrWhiteSpace(vertical)) q = q.Where(c => c.Vertical == vertical);
+        // Filtro por propósito: 'inspiration' devuelve Inspiration+Both; 'followsource' devuelve FollowSource+Both.
+        if (!string.IsNullOrWhiteSpace(purpose))
+        {
+            var p = ParsePurpose(purpose);
+            if (p == CompetitorPurpose.Inspiration) q = q.Where(c => c.Purpose != CompetitorPurpose.FollowSource);
+            else if (p == CompetitorPurpose.FollowSource) q = q.Where(c => c.Purpose != CompetitorPurpose.Inspiration);
+        }
         return Ok(await q.OrderBy(c => c.Handle).ToListAsync(ct));
     }
 
@@ -35,11 +47,25 @@ public class CompetitorsController : ControllerBase
             Platform = string.IsNullOrWhiteSpace(req.Platform) ? "instagram" : req.Platform.ToLowerInvariant(),
             DisplayName = req.DisplayName,
             Vertical = req.Vertical,
+            Purpose = ParsePurpose(req.Purpose),
             IsActive = true
         };
         _db.Competitors.Add(entity);
         await _db.SaveChangesAsync(ct);
         return Ok(entity);
+    }
+
+    [HttpPatch("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCompetitor req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var c = await _db.Competitors.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (c is null) return NotFound();
+        if (req.Purpose is not null) c.Purpose = ParsePurpose(req.Purpose);
+        if (!string.IsNullOrWhiteSpace(req.Vertical)) c.Vertical = req.Vertical;
+        if (req.DisplayName is not null) c.DisplayName = req.DisplayName;
+        await _db.SaveChangesAsync(ct);
+        return Ok(c);
     }
 
     [HttpDelete("{id:guid}")]
