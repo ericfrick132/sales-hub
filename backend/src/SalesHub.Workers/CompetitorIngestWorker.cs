@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using SalesHub.Infrastructure.Apify;
+using SalesHub.Infrastructure.Instagram;
 using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Workers;
@@ -32,7 +32,7 @@ public class CompetitorIngestWorker : BackgroundService
             {
                 using var scope = _scopes.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-                var ig = scope.ServiceProvider.GetRequiredService<InstagramCompetitorScraper>();
+                var ig = scope.ServiceProvider.GetRequiredService<InstagramCompetitorBrowserScraper>();
                 var stale = DateTimeOffset.UtcNow.AddHours(-12);
                 var competitors = await db.Competitors
                     .Where(c => c.IsActive && c.Platform == "instagram"

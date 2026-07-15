@@ -1,0 +1,641 @@
+- generic:
+  - generic:
+    - generic:
+      - link:
+        - /url: "#main"
+        - text: Skip to main content
+      - generic:
+        - complementary "Main sidebar navigation":
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - link:
+                      - /url: /
+                      - img
+                    - button:
+                      - generic:
+                        - img
+                        - generic: "1"
+                      - generic: View Streak
+                  - button:
+                    - img
+                    - text: New
+                - generic:
+                  - list:
+                    - listitem:
+                      - generic:
+                        - link:
+                          - /url: /home
+                          - generic:
+                            - img
+                          - generic: Home
+                    - listitem:
+                      - link:
+                        - /url: /create/ideas
+                        - generic:
+                          - img
+                        - generic: Create
+                    - listitem:
+                      - link:
+                        - /url: /schedule
+                        - generic:
+                          - img
+                        - generic: Publish
+                        - generic:
+                          - generic: "0"
+                          - generic: posts
+                    - listitem:
+                      - link:
+                        - /url: /community
+                        - generic:
+                          - img
+                        - generic: Community
+                        - generic:
+                          - generic:
+                            - text: "36"
+                            - generic: unreplied comments
+                    - listitem:
+                      - link:
+                        - /url: https://analyze.buffer.com/
+                        - generic:
+                          - img
+                        - generic:
+                          - text: Analytics
+                          - generic: (opens in a new tab)
+                        - generic:
+                          - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Channels
+                      - generic:
+                        - button "Search channels":
+                          - img
+                          - generic: Search channels
+                        - link "Settings":
+                          - /url: /settings/channels
+                          - img
+                          - generic: Settings
+                        - button "Add Channel":
+                          - img
+                          - generic: Add Channel
+                - generic:
+                  - list:
+                    - listitem:
+                      - button "Drag to reorder efcloud":
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link "efcloud 0 scheduled posts New post Expand menu":
+                              - /url: /channels/686fafc5111211c557a2c7ba/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - img
+                              - generic:
+                                - generic:
+                                  - generic: efcloud
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - text: "0"
+                                      - generic: scheduled posts
+                                  - generic:
+                                    - button "New post":
+                                      - img
+                                      - generic: New post
+                                    - button "Expand menu":
+                                      - img
+                                      - generic: Expand menu
+                          - generic:
+                            - generic:
+                              - list:
+                                - listitem:
+                                  - separator
+                                  - link "Publish":
+                                    - /url: /channels/686fafc5111211c557a2c7ba/schedule
+                                    - generic:
+                                      - img
+                                    - generic: Publish
+                                - listitem:
+                                  - separator
+                                  - link "Community There is a problem with this channel, you may need to refresh it.":
+                                    - /url: /channels/686fafc5111211c557a2c7ba/community
+                                    - generic:
+                                      - img
+                                    - generic: Community
+                                    - generic:
+                                      - img "There is a problem with this channel, you may need to refresh it.":
+                                        - img
+                                - listitem:
+                                  - separator
+                                  - link "Analytics":
+                                    - /url: /channels/686fafc5111211c557a2c7ba/analytics
+                                    - generic:
+                                      - img
+                                    - generic: Analytics
+                    - listitem:
+                      - button "Drag to reorder EFCloud":
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link "EFCloud There is a problem with this channel, you may need to refresh it. New post Expand menu":
+                              - /url: /channels/686fb218111211c557d1244a/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - img
+                              - generic:
+                                - generic:
+                                  - generic: EFCloud
+                              - generic:
+                                - generic:
+                                  - img "There is a problem with this channel, you may need to refresh it.":
+                                    - img
+                                  - generic:
+                                    - button "New post":
+                                      - img
+                                      - generic: New post
+                                    - button "Expand menu":
+                                      - img
+                                      - generic: Expand menu
+                          - generic:
+                            - generic:
+                              - list:
+                                - listitem:
+                                  - separator
+                                  - link "Publish":
+                                    - /url: /channels/686fb218111211c557d1244a/schedule
+                                    - generic:
+                                      - img
+                                    - generic: Publish
+                                - listitem:
+                                  - separator
+                                  - link "Community There is a problem with this channel, you may need to refresh it.":
+                                    - /url: /channels/686fb218111211c557d1244a/community
+                                    - generic:
+                                      - img
+                                    - generic: Community
+                                    - generic:
+                                      - img "There is a problem with this channel, you may need to refresh it.":
+                                        - img
+                                - listitem:
+                                  - separator
+                                  - link "Analytics":
+                                    - /url: https://analyze.buffer.com/facebook/overview/686fb218111211c557d1244a
+                                    - generic:
+                                      - img
+                                    - generic: Analytics
+                                    - generic:
+                                      - img
+                    - listitem:
+                      - button "Drag to reorder gymhero.fitness":
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link "gymhero.fitness New post Collapse menu":
+                              - /url: /channels/68ed1b72669affb4c96beae8/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - img
+                              - generic:
+                                - generic:
+                                  - generic: gymhero.fitness
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - button "New post":
+                                      - img
+                                      - generic: New post
+                                    - button "Collapse menu" [expanded]:
+                                      - img
+                                      - generic: Collapse menu
+                          - generic:
+                            - generic:
+                              - list:
+                                - listitem:
+                                  - separator
+                                  - link "Publish":
+                                    - /url: /channels/68ed1b72669affb4c96beae8/schedule
+                                    - generic:
+                                      - img
+                                    - generic: Publish
+                                - listitem:
+                                  - separator
+                                  - link "Community 35 unreplied comments":
+                                    - /url: /channels/68ed1b72669affb4c96beae8/community
+                                    - generic:
+                                      - img
+                                    - generic: Community
+                                    - generic:
+                                      - generic:
+                                        - text: "35"
+                                        - generic: unreplied comments
+                                - listitem:
+                                  - separator
+                                  - link "Analytics":
+                                    - /url: https://analyze.buffer.com/instagram/overview/68ed1b72669affb4c96beae8
+                                    - generic:
+                                      - img
+                                    - generic: Analytics
+                                    - generic:
+                                      - img
+                  - status
+                  - generic:
+                    - generic: Connect channels
+                    - list:
+                      - listitem:
+                        - button "Threads":
+                          - generic:
+                            - generic:
+                              - img
+                              - generic:
+                                - img
+                          - generic: Threads
+                      - listitem:
+                        - button "LinkedIn":
+                          - generic:
+                            - generic:
+                              - img
+                              - generic:
+                                - img
+                          - generic: LinkedIn
+                      - listitem:
+                        - button "Bluesky":
+                          - generic:
+                            - generic:
+                              - img
+                              - generic:
+                                - img
+                          - generic: Bluesky
+                    - list:
+                      - listitem:
+                        - button "More channels":
+                          - generic:
+                            - generic:
+                              - img
+                          - generic: More channels
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: 3/3 channels connected
+                  - button:
+                    - img
+                    - generic: Dismiss
+                - generic:
+                  - progressbar
+                  - progressbar
+                  - progressbar
+                - button:
+                  - img
+                  - text: Upgrade for More
+            - generic:
+              - generic:
+                - button:
+                  - generic:
+                    - generic:
+                      - generic: My Organization
+                      - generic: free plan
+                - button [expanded]:
+                  - img
+                  - generic: Close sidebar
+            - button [expanded]
+      - main:
+        - list
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - img
+                - heading [level=1]: gymhero.fitness
+                - generic:
+                  - button:
+                    - img
+                    - generic: Save current view
+                  - link:
+                    - /url: /channels/68ed1b72669affb4c96beae8/settings
+                    - img
+                    - generic: Channel settings
+                - generic:
+                  - generic:
+                    - button:
+                      - generic: + Set a posting goal
+              - generic:
+                - button:
+                  - img
+                - link:
+                  - /url: /channels/68ed1b72669affb4c96beae8/shop-grid
+                  - img
+                  - text: Grid
+                - generic:
+                  - radiogroup:
+                    - radio [checked]:
+                      - img
+                      - generic: List
+                    - radio:
+                      - img
+                      - generic: Calendar
+                - button:
+                  - img
+                  - text: New Post
+            - generic:
+              - generic:
+                - tablist:
+                  - tab [selected]:
+                    - text: Queue
+                    - generic:
+                      - text: "0"
+                      - generic: posts
+                  - tab:
+                    - text: Drafts
+                    - generic:
+                      - text: "1"
+                      - generic: posts
+                  - tab:
+                    - text: Approvals
+                    - generic:
+                      - img
+                      - generic: Upgrade
+                  - tab:
+                    - text: Sent
+                    - generic:
+                      - text: "97"
+                      - generic: posts
+              - generic:
+                - button:
+                  - img
+                  - generic: Filter by
+                  - text: Tags
+                  - img
+                - link:
+                  - /url: /channels/68ed1b72669affb4c96beae8/settings?tab=posting-schedule
+                  - img
+                  - text: Buenos Aires
+                - button:
+                  - img
+                  - generic: More actions
+          - main:
+            - feed:
+              - heading [level=3]:
+                - text: Today,
+                - generic: 7 de julio
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 3:16 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 4:06 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - heading [level=3]:
+                - text: Tomorrow,
+                - generic: 8 de julio
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 9:33 AM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 5:19 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - heading [level=3]:
+                - text: jueves,
+                - generic: 9 de julio
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 9:25 AM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 11:10 AM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - heading [level=3]:
+                - text: viernes,
+                - generic: 10 de julio
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 8:50 AM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 9:06 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - heading [level=3]:
+                - text: sábado,
+                - generic: 11 de julio
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 4:10 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 9:04 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - heading [level=3]:
+                - text: domingo,
+                - generic: 12 de julio
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 6:49 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 9:42 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - heading [level=3]:
+                - text: lunes,
+                - generic: 13 de julio
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 12:23 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 6:03 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - heading [level=3]:
+                - text: martes,
+                - generic: 14 de julio
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 3:16 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 4:06 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - heading [level=3]:
+                - text: miércoles,
+                - generic: 15 de julio
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 9:33 AM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 5:19 PM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - heading [level=3]:
+                - text: jueves,
+                - generic: 16 de julio
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 9:25 AM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - generic:
+                - generic:
+                  - generic:
+                    - time:
+                      - generic: 11:10 AM
+                - generic:
+                  - button:
+                    - img
+                    - text: New
+              - progressbar:
+                - img
+            - status
+        - generic:
+          - generic:
+            - button:
+              - generic: Open
+            - generic:
+              - generic:
+                - generic: New
+                - text: Post Composer Improvements ✨
+                - img
+            - button:
+              - img
+              - generic: Dismiss
+    - button "Helpcenter":
+      - img
+    - list
+  - dialog [ref=e704]:
+    - generic [ref=e705]:
+      - button "Close" [active] [ref=e706] [cursor=pointer]:
+        - img [ref=e707]
+        - generic [ref=e709]: Close
+      - generic [ref=e710]:
+        - img [ref=e712]
+        - heading "We're having trouble connecting to your channel" [level=3] [ref=e714]
+      - generic [ref=e716]: Refresh the connection to keep your posts on track.
+      - generic [ref=e719]:
+        - generic [ref=e720]:
+          - generic [ref=e721]:
+            - img "EFCloud" [ref=e723]
+            - img [ref=e725]
+          - generic [ref=e727]:
+            - strong [ref=e729]: EFCloud
+            - generic [ref=e730]: Page
+        - button "Refresh" [ref=e731] [cursor=pointer]

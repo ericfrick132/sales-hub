@@ -1,0 +1,36 @@
+- generic [ref=f8e8]:
+  - banner [ref=f8e10]:
+    - img [ref=f8e12]
+    - navigation "Account Controls and Settings" [ref=f8e17]:
+      - img [ref=f8e20]
+      - generic [ref=f8e25]: Eric Fri
+  - dialog [ref=f8e28]:
+    - generic [ref=f8e32]:
+      - generic [ref=f8e35]:
+        - generic [ref=f8e49]:
+          - img [ref=f8e52]
+          - img [ref=f8e56]
+        - generic [ref=f8e61]:
+          - separator [ref=f8e65]
+          - generic [ref=f8e70]:
+            - heading "You previously logged into Buffer with Facebook." [active] [level=2] [ref=f8e80]:
+              - generic [ref=f8e81]: You previously logged into Buffer with Facebook.
+            - generic [ref=f8e97]: Would you like to continue?
+      - generic [ref=f8e103]:
+        - generic [ref=f8e108]:
+          - generic [ref=f8e115]:
+            - text: By continuing, Buffer will receive ongoing access to the information you share and Meta will record when Buffer accesses it.
+            - button "Learn more" [ref=f8e117] [cursor=pointer]
+            - text: about this sharing and the settings you have.
+          - generic [ref=f8e124]:
+            - text: Buffer's
+            - link "Privacy Policy" [ref=f8e126] [cursor=pointer]:
+              - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fbuffer.com%2Flegal%3Ffbclid%3DIwZXh0bgNhZW0CMTAAYnJpZBExUGdwYkJlR094ZU1vM2JhVnNydGMGYXBwX2lkEDIyMjAzOTE3ODgyMDA4OTIAAR5NUMI5ASLgH8RlX1pxIVpsPhTAkIPDluf5k0Oa27jsw5f_PENtE0N88KqH-g_aem_F8cLWuV3cXyyw9GOR1I0Qg%23privacy-policy&h=AUDklMSwl92k0Aa1W_rBee6JsuXwcSe9ujff0HEPb2uE0Pk9c9Jw70uSb72412WtZxRX6vd8yus_voux9z5WmcEEOr0hZypf1U73jkOJ6pdz_sYXRaFWvanX7BZy81SWQjBW8Gbbntx4FrYbQQNP7ilK
+            - text: and
+            - link "Terms of Service" [ref=f8e128] [cursor=pointer]:
+              - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fbuffer.com%2Fterms%3Ffbclid%3DIwZXh0bgNhZW0CMTAAYnJpZBExUGdwYkJlR094ZU1vM2JhVnNydGMGYXBwX2lkEDIyMjAzOTE3ODgyMDA4OTIAAR5KN3EJwnUFuTZUvhu6hbYaZZ4KZGK0DxGauzYg0X26wkkPLCJJz2Gx7yu-AA_aem_7O33KOpcB5VyD2LT_-I3og&h=AUDklMSwl92k0Aa1W_rBee6JsuXwcSe9ujff0HEPb2uE0Pk9c9Jw70uSb72412WtZxRX6vd8yus_voux9z5WmcEEOr0hZypf1U73jkOJ6pdz_sYXRaFWvanX7BZy81SWQjBW8Gbbntx4FrYbQQNP7ilK
+        - generic [ref=f8e129]:
+          - button "Continue as Eric" [ref=f8e134] [cursor=pointer]:
+            - generic [ref=f8e137]: Continue as Eric
+          - button "Cancel" [ref=f8e142] [cursor=pointer]:
+            - generic [ref=f8e145]: Cancel

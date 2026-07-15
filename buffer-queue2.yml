@@ -1,0 +1,487 @@
+- generic [ref=f21e2]:
+  - generic [ref=f21e3]:
+    - link "Skip to main content" [ref=f21e4] [cursor=pointer]:
+      - /url: "#main"
+    - banner
+    - complementary "Main sidebar navigation" [ref=f21e6]:
+      - generic [ref=f21e8]:
+        - generic [ref=f21e10]:
+          - generic [ref=f21e11]:
+            - generic [ref=f21e12]:
+              - link "Go to home" [ref=f21e13] [cursor=pointer]:
+                - /url: /
+                - img [ref=f21e14]
+              - button "1 View Streak" [ref=f21e1008] [cursor=pointer]:
+                - generic [ref=f21e1009]:
+                  - img [ref=f21e1010]
+                  - generic [ref=f21e1013]: "1"
+                - generic [ref=f21e1014]: View Streak
+            - button "New" [ref=f21e16] [cursor=pointer]:
+              - img [ref=f21e17]
+              - text: New
+          - list [ref=f21e19]:
+            - listitem [ref=f21e20]:
+              - link "Home" [ref=f21e22] [cursor=pointer]:
+                - /url: /home
+                - img [ref=f21e24]
+                - generic [ref=f21e26]: Home
+            - listitem [ref=f21e27]:
+              - link "Create" [ref=f21e28] [cursor=pointer]:
+                - /url: /create/ideas
+                - img [ref=f21e30]
+                - generic [ref=f21e32]: Create
+            - listitem [ref=f21e33]:
+              - link "Publish 0 posts" [ref=f21e1015] [cursor=pointer]:
+                - /url: /schedule
+                - img [ref=f21e36]
+                - generic [ref=f21e38]: Publish
+                - generic [ref=f21e39]:
+                  - generic [ref=f21e1016]: "0"
+                  - generic [ref=f21e1017]: posts
+            - listitem [ref=f21e41]:
+              - link "Community 36 unreplied comments" [ref=f21e1018] [cursor=pointer]:
+                - /url: /community
+                - img [ref=f21e44]
+                - generic [ref=f21e47]: Community
+                - generic [ref=f21e1020]:
+                  - text: "36"
+                  - generic [ref=f21e1021]: unreplied comments
+            - listitem [ref=f21e48]:
+              - link "Analytics (opens in a new tab)" [ref=f21e49] [cursor=pointer]:
+                - /url: https://analyze.buffer.com/
+                - img [ref=f21e51]
+                - generic [ref=f21e53]:
+                  - text: Analytics
+                  - generic [ref=f21e54]: (opens in a new tab)
+                - img [ref=f21e56]
+        - generic [ref=f21e1022]:
+          - generic [ref=f21e1025]:
+            - generic [ref=f21e1026]: Channels
+            - generic [ref=f21e1027]:
+              - button "Search channels" [ref=f21e1028] [cursor=pointer]:
+                - img [ref=f21e1029]
+                - generic [ref=f21e1032]: Search channels
+              - link "Settings" [ref=f21e1033] [cursor=pointer]:
+                - /url: /settings/channels
+                - img [ref=f21e1034]
+                - generic [ref=f21e1037]: Settings
+              - button "Add Channel" [ref=f21e1038] [cursor=pointer]:
+                - img [ref=f21e1039]
+                - generic [ref=f21e1040]: Add Channel
+          - generic [ref=f21e1041]:
+            - list [ref=f21e1042]:
+              - listitem [ref=f21e1043]:
+                - button "Drag to reorder efcloud" [ref=f21e1044]:
+                  - img [ref=f21e1045]
+                - generic [ref=f21e1053]:
+                  - link "efcloud 0 scheduled posts New post Expand menu" [ref=f21e1055] [cursor=pointer]:
+                    - /url: /channels/686fafc5111211c557a2c7ba/schedule
+                    - img [ref=f21e1061]
+                    - generic [ref=f21e1065]: efcloud
+                    - generic [ref=f21e1067]:
+                      - generic [ref=f21e1069]:
+                        - text: "0"
+                        - generic [ref=f21e1070]: scheduled posts
+                      - generic:
+                        - button "New post":
+                          - img
+                          - generic: New post
+                        - button "Expand menu":
+                          - img
+                          - generic: Expand menu
+                  - list [ref=f21e1071]:
+                    - listitem [ref=f21e1072]:
+                      - separator [ref=f21e1073]
+                      - link "Publish" [ref=f21e1074] [cursor=pointer]:
+                        - /url: /channels/686fafc5111211c557a2c7ba/schedule
+                        - img [ref=f21e1076]
+                        - generic [ref=f21e1078]: Publish
+                    - listitem [ref=f21e1079]:
+                      - separator [ref=f21e1080]
+                      - link "Community There is a problem with this channel, you may need to refresh it." [ref=f21e1081] [cursor=pointer]:
+                        - /url: /channels/686fafc5111211c557a2c7ba/community
+                        - img [ref=f21e1083]
+                        - generic [ref=f21e1086]: Community
+                        - img "There is a problem with this channel, you may need to refresh it." [ref=f21e1088]:
+                          - img [ref=f21e1089]
+                    - listitem [ref=f21e1091]:
+                      - separator [ref=f21e1092]
+                      - link "Analytics" [ref=f21e1093] [cursor=pointer]:
+                        - /url: /channels/686fafc5111211c557a2c7ba/analytics
+                        - img [ref=f21e1095]
+                        - generic [ref=f21e1097]: Analytics
+              - listitem [ref=f21e1098]:
+                - button "Drag to reorder EFCloud" [ref=f21e1099]:
+                  - img [ref=f21e1100]
+                - generic [ref=f21e1108]:
+                  - link "EFCloud 0 scheduled posts New post Expand menu" [ref=f21e1110] [cursor=pointer]:
+                    - /url: /channels/686fb218111211c557d1244a/schedule
+                    - img [ref=f21e1116]
+                    - generic [ref=f21e1121]: EFCloud
+                    - generic [ref=f21e1123]:
+                      - generic [ref=f21e1125]:
+                        - text: "0"
+                        - generic [ref=f21e1126]: scheduled posts
+                      - generic:
+                        - button "New post":
+                          - img
+                          - generic: New post
+                        - button "Expand menu":
+                          - img
+                          - generic: Expand menu
+                  - list [ref=f21e1127]:
+                    - listitem [ref=f21e1128]:
+                      - separator [ref=f21e1129]
+                      - link "Publish" [ref=f21e1130] [cursor=pointer]:
+                        - /url: /channels/686fb218111211c557d1244a/schedule
+                        - img [ref=f21e1132]
+                        - generic [ref=f21e1134]: Publish
+                    - listitem [ref=f21e1135]:
+                      - separator [ref=f21e1136]
+                      - link "Community 1 unreplied comments" [ref=f21e1137] [cursor=pointer]:
+                        - /url: /channels/686fb218111211c557d1244a/community
+                        - img [ref=f21e1139]
+                        - generic [ref=f21e1142]: Community
+                        - generic [ref=f21e1144]:
+                          - text: "1"
+                          - generic [ref=f21e1145]: unreplied comments
+                    - listitem [ref=f21e1146]:
+                      - separator [ref=f21e1147]
+                      - link "Analytics" [ref=f21e1148] [cursor=pointer]:
+                        - /url: https://analyze.buffer.com/facebook/overview/686fb218111211c557d1244a
+                        - img [ref=f21e1150]
+                        - generic [ref=f21e1152]: Analytics
+                        - img [ref=f21e1154]
+              - listitem [ref=f21e1158]:
+                - button "Drag to reorder gymhero.fitness" [ref=f21e1159]:
+                  - img [ref=f21e1160]
+                - generic [ref=f21e1168]:
+                  - link "gymhero.fitness New post Collapse menu" [ref=f21e1170] [cursor=pointer]:
+                    - /url: /channels/68ed1b72669affb4c96beae8/schedule
+                    - img [ref=f21e1176]
+                    - generic [ref=f21e1181]: gymhero.fitness
+                    - generic:
+                      - generic:
+                        - generic:
+                          - button "New post":
+                            - img
+                            - generic: New post
+                          - button "Collapse menu" [expanded]:
+                            - img
+                            - generic: Collapse menu
+                  - list [ref=f21e1184]:
+                    - listitem [ref=f21e1185]:
+                      - separator [ref=f21e1186]
+                      - link "Publish" [ref=f21e1187] [cursor=pointer]:
+                        - /url: /channels/68ed1b72669affb4c96beae8/schedule
+                        - img [ref=f21e1189]
+                        - generic [ref=f21e1191]: Publish
+                    - listitem [ref=f21e1192]:
+                      - separator [ref=f21e1193]
+                      - link "Community 35 unreplied comments" [ref=f21e1194] [cursor=pointer]:
+                        - /url: /channels/68ed1b72669affb4c96beae8/community
+                        - img [ref=f21e1196]
+                        - generic [ref=f21e1199]: Community
+                        - generic [ref=f21e1201]:
+                          - text: "35"
+                          - generic [ref=f21e1202]: unreplied comments
+                    - listitem [ref=f21e1203]:
+                      - separator [ref=f21e1204]
+                      - link "Analytics" [ref=f21e1205] [cursor=pointer]:
+                        - /url: https://analyze.buffer.com/instagram/overview/68ed1b72669affb4c96beae8
+                        - img [ref=f21e1207]
+                        - generic [ref=f21e1209]: Analytics
+                        - img [ref=f21e1211]
+            - status [ref=f21e1215]
+            - generic [ref=f21e1216]:
+              - generic [ref=f21e1217]: Connect channels
+              - list [ref=f21e1218]:
+                - listitem [ref=f21e1219]:
+                  - button "Threads" [ref=f21e1220] [cursor=pointer]:
+                    - generic [ref=f21e1222]:
+                      - img [ref=f21e1223]
+                      - img [ref=f21e1226]
+                    - generic [ref=f21e1227]: Threads
+                - listitem [ref=f21e1228]:
+                  - button "LinkedIn" [ref=f21e1229] [cursor=pointer]:
+                    - generic [ref=f21e1231]:
+                      - img [ref=f21e1232]
+                      - img [ref=f21e1235]
+                    - generic [ref=f21e1236]: LinkedIn
+                - listitem [ref=f21e1237]:
+                  - button "Bluesky" [ref=f21e1238] [cursor=pointer]:
+                    - generic [ref=f21e1240]:
+                      - img [ref=f21e1241]
+                      - img [ref=f21e1244]
+                    - generic [ref=f21e1245]: Bluesky
+              - list [ref=f21e1246]:
+                - listitem [ref=f21e1247]:
+                  - button "More channels" [ref=f21e1248] [cursor=pointer]:
+                    - img [ref=f21e1251]
+                    - generic [ref=f21e1252]: More channels
+        - generic [ref=f21e330]:
+          - generic [ref=f21e331]:
+            - paragraph [ref=f21e332]: 3/3 channels connected
+            - button "Dismiss" [ref=f21e333] [cursor=pointer]:
+              - img [ref=f21e334]
+              - generic [ref=f21e336]: Dismiss
+          - generic [ref=f21e337]:
+            - progressbar
+            - progressbar
+            - progressbar
+          - button "Upgrade for More" [ref=f21e1253] [cursor=pointer]:
+            - img [ref=f21e1254]
+            - text: Upgrade for More
+        - generic [ref=f21e342]:
+          - button "My Organization" [ref=f21e343] [cursor=pointer]:
+            - generic [ref=f21e347]:
+              - generic [ref=f21e348]: My Organization
+              - generic [ref=f21e349]: free plan
+          - button "Close sidebar" [expanded] [ref=f21e350] [cursor=pointer]:
+            - img [ref=f21e351]
+            - generic [ref=f21e354]: Close sidebar
+        - button "Close sidebar" [expanded] [ref=f21e355] [cursor=pointer]
+    - main [ref=f21e356]:
+      - region "Notifications (F8)":
+        - list
+      - generic [ref=f21e1256]:
+        - generic [ref=f21e1257]:
+          - generic [ref=f21e1258]:
+            - generic [ref=f21e1259]:
+              - generic [ref=f21e1261]:
+                - img "instagram" [ref=f21e1263]
+                - img [ref=f21e1265]
+              - heading "gymhero.fitness" [level=1] [ref=f21e1267]
+              - generic [ref=f21e1268]:
+                - button "Save current view" [ref=f21e1269] [cursor=pointer]:
+                  - img [ref=f21e1270]
+                  - generic [ref=f21e1272]: Save current view
+                - link "Channel settings" [ref=f21e1273] [cursor=pointer]:
+                  - /url: /channels/68ed1b72669affb4c96beae8/settings
+                  - img [ref=f21e1274]
+                  - generic [ref=f21e1277]: Channel settings
+              - button "+ Set a posting goal" [ref=f21e1280] [cursor=pointer]:
+                - generic [ref=f21e1281]: + Set a posting goal
+            - generic [ref=f21e1282]:
+              - button "Share Feedback" [ref=f21e1283] [cursor=pointer]:
+                - img [ref=f21e1284]
+                - generic: Share Feedback
+              - link "Grid" [ref=f21e1287] [cursor=pointer]:
+                - /url: /channels/68ed1b72669affb4c96beae8/shop-grid
+                - img [ref=f21e1288]
+                - text: Grid
+              - radiogroup [ref=f21e1291]:
+                - radio "List" [checked] [ref=f21e1292] [cursor=pointer]:
+                  - img [ref=f21e1293]
+                  - generic [ref=f21e1294]: List
+                - radio "Calendar" [ref=f21e1295] [cursor=pointer]:
+                  - img [ref=f21e1296]
+                  - generic [ref=f21e1298]: Calendar
+              - button "New Post" [ref=f21e1299] [cursor=pointer]:
+                - img [ref=f21e1300]
+                - text: New Post
+          - generic [ref=f21e1301]:
+            - tablist [ref=f21e1303]:
+              - tab "Queue 0 posts" [selected] [ref=f21e1304] [cursor=pointer]:
+                - text: Queue
+                - generic:
+                  - text: "0"
+                  - generic: posts
+              - tab "Drafts 1 posts" [ref=f21e1305] [cursor=pointer]:
+                - text: Drafts
+                - generic:
+                  - text: "1"
+                  - generic: posts
+              - tab "Approvals Upgrade" [ref=f21e1306] [cursor=pointer]:
+                - text: Approvals
+                - generic [ref=f21e1307]:
+                  - img [ref=f21e1308]
+                  - generic [ref=f21e1310]: Upgrade
+              - tab "Sent 97 posts" [ref=f21e1311] [cursor=pointer]:
+                - text: Sent
+                - generic:
+                  - text: "97"
+                  - generic: posts
+            - generic [ref=f21e1312]:
+              - button "Filter by Tags" [ref=f21e1313] [cursor=pointer]:
+                - img [ref=f21e1314]
+                - generic [ref=f21e1317]: Filter by
+                - text: Tags
+                - img [ref=f21e1318]
+              - link "Time zone Buenos Aires" [ref=f21e1320] [cursor=pointer]:
+                - /url: /channels/68ed1b72669affb4c96beae8/settings?tab=posting-schedule
+                - img "Time zone" [ref=f21e1321]
+                - text: Buenos Aires
+              - button "More actions" [ref=f21e1324] [cursor=pointer]:
+                - img [ref=f21e1325]
+                - generic [ref=f21e1329]: More actions
+        - main [ref=f21e1330]:
+          - feed [ref=f21e1331]:
+            - heading "Today, 7 de julio" [level=3] [ref=f21e1332]:
+              - text: Today,
+              - generic [ref=f21e1333]: 7 de julio
+            - generic [ref=f21e1334]:
+              - time [ref=f21e1337]:
+                - generic [ref=f21e1338]: 3:16 PM
+              - button "New" [ref=f21e1340] [cursor=pointer]:
+                - img [ref=f21e1341]
+                - text: New
+            - generic [ref=f21e1342]:
+              - time [ref=f21e1345]:
+                - generic [ref=f21e1346]: 4:06 PM
+              - button "New" [ref=f21e1348] [cursor=pointer]:
+                - img [ref=f21e1349]
+                - text: New
+            - heading "Tomorrow, 8 de julio" [level=3] [ref=f21e1350]:
+              - text: Tomorrow,
+              - generic [ref=f21e1351]: 8 de julio
+            - generic [ref=f21e1352]:
+              - time [ref=f21e1355]:
+                - generic [ref=f21e1356]: 9:33 AM
+              - button "New" [ref=f21e1358] [cursor=pointer]:
+                - img [ref=f21e1359]
+                - text: New
+            - generic [ref=f21e1360]:
+              - time [ref=f21e1363]:
+                - generic [ref=f21e1364]: 5:19 PM
+              - button "New" [ref=f21e1366] [cursor=pointer]:
+                - img [ref=f21e1367]
+                - text: New
+            - heading "jueves, 9 de julio" [level=3] [ref=f21e1368]:
+              - text: jueves,
+              - generic [ref=f21e1369]: 9 de julio
+            - generic [ref=f21e1370]:
+              - time [ref=f21e1373]:
+                - generic [ref=f21e1374]: 9:25 AM
+              - button "New" [ref=f21e1376] [cursor=pointer]:
+                - img [ref=f21e1377]
+                - text: New
+            - generic [ref=f21e1378]:
+              - time [ref=f21e1381]:
+                - generic [ref=f21e1382]: 11:10 AM
+              - button "New" [ref=f21e1384] [cursor=pointer]:
+                - img [ref=f21e1385]
+                - text: New
+            - heading "viernes, 10 de julio" [level=3] [ref=f21e1386]:
+              - text: viernes,
+              - generic [ref=f21e1387]: 10 de julio
+            - generic [ref=f21e1388]:
+              - time [ref=f21e1391]:
+                - generic [ref=f21e1392]: 8:50 AM
+              - button "New" [ref=f21e1394] [cursor=pointer]:
+                - img [ref=f21e1395]
+                - text: New
+            - generic [ref=f21e1396]:
+              - time [ref=f21e1399]:
+                - generic [ref=f21e1400]: 9:06 PM
+              - button "New" [ref=f21e1402] [cursor=pointer]:
+                - img [ref=f21e1403]
+                - text: New
+            - heading "sábado, 11 de julio" [level=3] [ref=f21e1404]:
+              - text: sábado,
+              - generic [ref=f21e1405]: 11 de julio
+            - generic [ref=f21e1406]:
+              - time [ref=f21e1409]:
+                - generic [ref=f21e1410]: 4:10 PM
+              - button "New" [ref=f21e1412] [cursor=pointer]:
+                - img [ref=f21e1413]
+                - text: New
+            - generic [ref=f21e1414]:
+              - time [ref=f21e1417]:
+                - generic [ref=f21e1418]: 9:04 PM
+              - button "New" [ref=f21e1420] [cursor=pointer]:
+                - img [ref=f21e1421]
+                - text: New
+            - heading "domingo, 12 de julio" [level=3] [ref=f21e1422]:
+              - text: domingo,
+              - generic [ref=f21e1423]: 12 de julio
+            - generic [ref=f21e1424]:
+              - time [ref=f21e1427]:
+                - generic [ref=f21e1428]: 6:49 PM
+              - button "New" [ref=f21e1430] [cursor=pointer]:
+                - img [ref=f21e1431]
+                - text: New
+            - generic [ref=f21e1432]:
+              - time [ref=f21e1435]:
+                - generic [ref=f21e1436]: 9:42 PM
+              - button "New" [ref=f21e1438] [cursor=pointer]:
+                - img [ref=f21e1439]
+                - text: New
+            - heading "lunes, 13 de julio" [level=3] [ref=f21e1440]:
+              - text: lunes,
+              - generic [ref=f21e1441]: 13 de julio
+            - generic [ref=f21e1442]:
+              - time [ref=f21e1445]:
+                - generic [ref=f21e1446]: 12:23 PM
+              - button "New" [ref=f21e1448] [cursor=pointer]:
+                - img [ref=f21e1449]
+                - text: New
+            - generic [ref=f21e1450]:
+              - time [ref=f21e1453]:
+                - generic [ref=f21e1454]: 6:03 PM
+              - button "New" [ref=f21e1456] [cursor=pointer]:
+                - img [ref=f21e1457]
+                - text: New
+            - heading "martes, 14 de julio" [level=3] [ref=f21e1458]:
+              - text: martes,
+              - generic [ref=f21e1459]: 14 de julio
+            - generic [ref=f21e1460]:
+              - time [ref=f21e1463]:
+                - generic [ref=f21e1464]: 3:16 PM
+              - button "New" [ref=f21e1466] [cursor=pointer]:
+                - img [ref=f21e1467]
+                - text: New
+            - generic [ref=f21e1468]:
+              - time [ref=f21e1471]:
+                - generic [ref=f21e1472]: 4:06 PM
+              - button "New" [ref=f21e1474] [cursor=pointer]:
+                - img [ref=f21e1475]
+                - text: New
+            - heading "miércoles, 15 de julio" [level=3] [ref=f21e1476]:
+              - text: miércoles,
+              - generic [ref=f21e1477]: 15 de julio
+            - generic [ref=f21e1478]:
+              - time [ref=f21e1481]:
+                - generic [ref=f21e1482]: 9:33 AM
+              - button "New" [ref=f21e1484] [cursor=pointer]:
+                - img [ref=f21e1485]
+                - text: New
+            - generic [ref=f21e1486]:
+              - time [ref=f21e1489]:
+                - generic [ref=f21e1490]: 5:19 PM
+              - button "New" [ref=f21e1492] [cursor=pointer]:
+                - img [ref=f21e1493]
+                - text: New
+            - heading "jueves, 16 de julio" [level=3] [ref=f21e1494]:
+              - text: jueves,
+              - generic [ref=f21e1495]: 16 de julio
+            - generic [ref=f21e1496]:
+              - time [ref=f21e1499]:
+                - generic [ref=f21e1500]: 9:25 AM
+              - button "New" [ref=f21e1502] [cursor=pointer]:
+                - img [ref=f21e1503]
+                - text: New
+            - generic [ref=f21e1504]:
+              - time [ref=f21e1507]:
+                - generic [ref=f21e1508]: 11:10 AM
+              - button "New" [ref=f21e1510] [cursor=pointer]:
+                - img [ref=f21e1511]
+                - text: New
+            - progressbar [ref=f21e1512]:
+              - img [ref=f21e1513]
+          - status [ref=f21e1515]
+      - generic [ref=f21e1517]:
+        - button "Open" [ref=f21e1518] [cursor=pointer]:
+          - generic [ref=f21e1519]: Open
+        - generic:
+          - generic:
+            - generic: New
+            - text: Post Composer Improvements ✨
+            - img
+        - button "Dismiss" [ref=f21e1520] [cursor=pointer]:
+          - img [ref=f21e1521]
+          - generic [ref=f21e1523]: Dismiss
+  - button "Helpcenter" [ref=f21e1524] [cursor=pointer]:
+    - img [ref=f21e1525]
+  - region "Notifications (F8)":
+    - list

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SalesHub.Infrastructure.Apify;
+using SalesHub.Infrastructure.Instagram;
 
 namespace SalesHub.Api.Controllers;
 
@@ -12,14 +13,14 @@ public class EnrichController : ControllerBase
     private readonly InstagramProfileEnricher _ig;
     private readonly WebsiteCrawlerEnricher _web;
     private readonly GoogleSearchService _search;
-    private readonly InstagramCompetitorScraper _igCompetitor;
+    private readonly InstagramCompetitorBrowserScraper _igCompetitor;
     private readonly ApifyTikTokSource _tiktok;
 
     public EnrichController(
         InstagramProfileEnricher ig,
         WebsiteCrawlerEnricher web,
         GoogleSearchService search,
-        InstagramCompetitorScraper igCompetitor,
+        InstagramCompetitorBrowserScraper igCompetitor,
         ApifyTikTokSource tiktok)
     {
         _ig = ig; _web = web; _search = search; _igCompetitor = igCompetitor; _tiktok = tiktok;

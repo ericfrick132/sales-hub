@@ -1,0 +1,81 @@
+- generic [ref=f7e3]:
+  - generic [ref=f7e4]:
+    - generic [ref=f7e6]:
+      - generic [ref=f7e7]: Cargando
+      - progressbar [ref=f7e8]
+    - main [ref=f7e15]:
+      - generic [ref=f7e16]:
+        - generic [ref=f7e18]:
+          - generic [ref=f7e19]:
+            - img [ref=f7e21]
+            - generic [ref=f7e26]: Iniciar sesión con Google
+          - img "ElevenLabs" [ref=f7e27]
+        - generic [ref=f7e28]:
+          - heading "Iniciar sesión en ElevenLabs" [level=1] [ref=f7e29]
+          - link "Se ha seleccionado ericnfrick@gmail.com. Cambiar de cuenta" [ref=f7e31] [cursor=pointer]:
+            - generic [ref=f7e34]: ericnfrick@gmail.com
+            - img [ref=f7e36]
+      - generic [ref=f7e45]:
+        - generic [ref=f7e46]:
+          - heading "Google permitirá que ElevenLabs acceda a esta información sobre ti" [level=2] [ref=f7e48]:
+            - generic [ref=f7e49]: Google permitirá que ElevenLabs acceda a esta información sobre ti
+          - list [ref=f7e53]:
+            - listitem [ref=f7e54]:
+              - generic [ref=f7e55]:
+                - img [ref=f7e57]
+                - generic [ref=f7e60]:
+                  - generic [ref=f7e61]: Eric
+                  - generic [ref=f7e62]: Nombre e imagen de perfil
+            - listitem [ref=f7e63]:
+              - generic [ref=f7e64]:
+                - img [ref=f7e66]
+                - generic [ref=f7e68]:
+                  - generic [ref=f7e69]: ericnfrick@gmail.com
+                  - generic [ref=f7e70]: Dirección de correo electrónico
+        - generic [ref=f7e73]:
+          - generic [ref=f7e74]:
+            - text: Consulta la
+            - link "Política de Privacidad de ElevenLabs (enlace externo, se abre en una ventana nueva)" [ref=f7e75] [cursor=pointer]:
+              - /url: https://elevenlabs.io/privacy
+              - text: Política de Privacidad
+            - text: y los
+            - link "Términos del Servicio de ElevenLabs (enlace externo, se abre en una ventana nueva)" [ref=f7e76] [cursor=pointer]:
+              - /url: https://elevenlabs.io/terms
+              - text: Términos del Servicio
+            - text: de ElevenLabs para saber cómo tratará y protegerá ElevenLabs tus datos.
+          - generic [ref=f7e77]:
+            - text: Para hacer cambios en cualquier momento, ve a tu
+            - link "Configuración de la cuenta de Google (enlace externo, se abre en una ventana nueva)" [ref=f7e78] [cursor=pointer]:
+              - /url: https://myaccount.google.com/connections#filter=4
+              - text: cuenta de Google
+            - text: .
+          - generic [ref=f7e79]:
+            - text: Consulta más información sobre
+            - link "Más información sobre Iniciar sesión con Google (enlace externo, se abre en una ventana nueva)" [ref=f7e80] [cursor=pointer]:
+              - /url: https://support.google.com/accounts/answer/12921417?sjid=1919169284593837430-NC
+              - text: Iniciar sesión con Google
+            - text: .
+      - generic [ref=f7e83]:
+        - button "Cancelar" [ref=f7e87]: Cancelar
+        - button "Continuar" [ref=f7e93]: Continuar
+      - button "Desplazar la vista hacia abajo" [ref=f7e99]:
+        - img [ref=f7e102]
+  - contentinfo [ref=f7e106]:
+    - combobox "Cómo cambiar de idioma Español (España)" [ref=f7e110] [cursor=pointer]:
+      - generic:
+        - generic: Español (España)
+      - generic:
+        - img
+    - list [ref=f7e112]:
+      - listitem [ref=f7e113]:
+        - link "Abrir el Centro de Ayuda de Cuenta de Google (enlace externo, se abre en una ventana nueva)" [ref=f7e114] [cursor=pointer]:
+          - /url: https://support.google.com/accounts?hl=es&p=account_iph
+          - text: Ayuda
+      - listitem [ref=f7e115]:
+        - link "Política de Privacidad (enlace externo, se abre en una ventana nueva)" [ref=f7e116] [cursor=pointer]:
+          - /url: https://accounts.google.com/TOS?loc=AR&hl=es&privacy=true
+          - text: Privacidad
+      - listitem [ref=f7e117]:
+        - link "Términos del Servicio de Google (enlace externo, se abre en una ventana nueva)" [ref=f7e118] [cursor=pointer]:
+          - /url: https://accounts.google.com/TOS?loc=AR&hl=es
+          - text: Términos

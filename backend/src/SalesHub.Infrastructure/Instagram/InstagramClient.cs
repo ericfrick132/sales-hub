@@ -826,6 +826,104 @@ public class InstagramClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Baja los últimos posts públicos de un competidor con la sesión LOGUEADA, vía fetch
+    /// same-origin al endpoint web (web_profile_info). Es un READ (GET), bajo riesgo — mismo
+    /// patrón que ReadInboxAsync. Reemplaza el scraper de Apify. NO trae comentarios (ese
+    /// endpoint solo da metadata del post). Lista vacía si el perfil no cargó o no hay sesión.
+    /// </summary>
+    public async Task<List<InstagramScrapedPost>> ScrapeCompetitorPostsAsync(string handle, int maxPosts, CancellationToken ct = default)
+    {
+        EnsureLoggedIn();
+        var result = new List<InstagramScrapedPost>();
+        handle = handle.TrimStart('@').Trim();
+        if (handle.Length == 0) return result;
+
+        // El fetch tiene que ser same-origin (www.instagram.com) para mandar cookies + headers.
+        if (string.IsNullOrEmpty(_page!.Url) || !_page.Url.Contains("instagram.com"))
+        {
+            await _page.GotoAsync("https://www.instagram.com/", new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.DOMContentLoaded,
+                Timeout = _opts.NavigationTimeoutMs
+            });
+            await Task.Delay(1500, ct);
+        }
+
+        string raw;
+        try
+        {
+            raw = await _page.EvaluateAsync<string>(@"async (username) => {
+                const url = `/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
+                const res = await fetch(url, { headers: { 'X-IG-App-ID': '936619743392459' }, credentials: 'include' });
+                return JSON.stringify({ status: res.status, body: res.ok ? await res.json() : null });
+            }", handle);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("ScrapeCompetitorPosts @{Handle}: fetch falló: {Err}", handle, ex.Message);
+            return result;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("body", out var body) || body.ValueKind != JsonValueKind.Object)
+            {
+                var status = root.TryGetProperty("status", out var s) ? s.ToString() : "?";
+                _log.LogWarning("ScrapeCompetitorPosts @{Handle}: respuesta inesperada de IG (status {Status})", handle, status);
+                return result;
+            }
+            if (!body.TryGetProperty("data", out var data)
+                || !data.TryGetProperty("user", out var user) || user.ValueKind != JsonValueKind.Object
+                || !user.TryGetProperty("edge_owner_to_timeline_media", out var media)
+                || !media.TryGetProperty("edges", out var edges) || edges.ValueKind != JsonValueKind.Array)
+                return result;
+
+            foreach (var edge in edges.EnumerateArray())
+            {
+                if (result.Count >= maxPosts) break;
+                if (!edge.TryGetProperty("node", out var node)) continue;
+
+                var externalId = (node.TryGetProperty("id", out var idEl) ? idEl.GetString() : null)
+                    ?? (node.TryGetProperty("shortcode", out var scEl) ? scEl.GetString() : null);
+                if (string.IsNullOrWhiteSpace(externalId)) continue;
+                var shortcode = node.TryGetProperty("shortcode", out var sc2) ? sc2.GetString() : null;
+
+                string? caption = null;
+                if (node.TryGetProperty("edge_media_to_caption", out var capE)
+                    && capE.TryGetProperty("edges", out var capEs) && capEs.ValueKind == JsonValueKind.Array
+                    && capEs.GetArrayLength() > 0 && capEs[0].TryGetProperty("node", out var capN)
+                    && capN.TryGetProperty("text", out var capT))
+                    caption = capT.GetString();
+
+                var isVideo = node.TryGetProperty("is_video", out var iv) && iv.ValueKind == JsonValueKind.True;
+                var displayUrl = node.TryGetProperty("display_url", out var du) ? du.GetString() : null;
+                var videoUrl = node.TryGetProperty("video_url", out var vu) ? vu.GetString() : null;
+                DateTimeOffset? postedAt = node.TryGetProperty("taken_at_timestamp", out var tsEl) && tsEl.ValueKind == JsonValueKind.Number
+                    ? DateTimeOffset.FromUnixTimeSeconds(tsEl.GetInt64()) : null;
+
+                result.Add(new InstagramScrapedPost(
+                    externalId!, shortcode, caption, postedAt,
+                    EdgeCount(node, "edge_liked_by") ?? EdgeCount(node, "edge_media_preview_like") ?? 0,
+                    EdgeCount(node, "edge_media_to_comment") ?? 0,
+                    displayUrl, videoUrl, isVideo, node.GetRawText()));
+            }
+            _log.LogInformation("ScrapeCompetitorPosts @{Handle}: {N} posts", handle, result.Count);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("ScrapeCompetitorPosts @{Handle}: parseo falló: {Err}", handle, ex.Message);
+        }
+
+        return result;
+    }
+
+    private static int? EdgeCount(JsonElement node, string prop)
+        => node.TryGetProperty(prop, out var e) && e.ValueKind == JsonValueKind.Object
+           && e.TryGetProperty("count", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : null;
+
+    /// <summary>
     /// Sigue (follow) al usuario indicado. Devuelve un <see cref="FollowResult"/>
     /// con el resultado: Followed, AlreadyFollowing, NotFound, Blocked o Failed.
     /// Detecta bloqueos de acción (action_blocked) y marca la cuenta.

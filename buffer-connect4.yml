@@ -1,0 +1,655 @@
+- generic:
+  - generic:
+    - generic:
+      - link:
+        - /url: "#main"
+        - text: Skip to main content
+      - generic:
+        - complementary "Main sidebar navigation":
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - link:
+                      - /url: /
+                      - img
+                    - button:
+                      - generic:
+                        - img
+                        - generic: "1"
+                      - generic: View Streak
+                  - button:
+                    - img
+                    - text: New
+                - generic:
+                  - list:
+                    - listitem:
+                      - generic:
+                        - link:
+                          - /url: /home
+                          - generic:
+                            - img
+                          - generic: Home
+                    - listitem:
+                      - link:
+                        - /url: /create/ideas
+                        - generic:
+                          - img
+                        - generic: Create
+                    - listitem:
+                      - link:
+                        - /url: /schedule
+                        - generic:
+                          - img
+                        - generic: Publish
+                        - generic:
+                          - generic: Post counts loading
+                    - listitem:
+                      - link:
+                        - /url: /community
+                        - generic:
+                          - img
+                        - generic: Community
+                        - generic:
+                          - generic:
+                            - text: "36"
+                            - generic: unreplied comments
+                    - listitem:
+                      - link:
+                        - /url: https://analyze.buffer.com/
+                        - generic:
+                          - img
+                        - generic:
+                          - text: Analytics
+                          - generic: (opens in a new tab)
+                        - generic:
+                          - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Channels · 10
+                      - generic:
+                        - button:
+                          - img
+                          - generic: Search channels
+                        - link:
+                          - /url: /settings/channels
+                          - img
+                          - generic: Settings
+                        - button:
+                          - img
+                          - generic: Add Channel
+                - generic:
+                  - list:
+                    - listitem:
+                      - button:
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link:
+                              - /url: /channels/6a4d2fdc40483446287d9019/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                              - generic:
+                                - generic:
+                                  - generic: playcrewpadel
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                                  - generic:
+                                    - button
+                                    - button
+                          - list:
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d2fdc40483446287d9019/schedule
+                                - generic:
+                                  - img
+                                - generic: Publish
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d2fdc40483446287d9019/community
+                                - generic:
+                                  - img
+                                - generic: Community
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d2fdc40483446287d9019/analytics
+                                - generic:
+                                  - img
+                                - generic: Analytics
+                    - listitem:
+                      - button:
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link:
+                              - /url: /channels/6a4d0f8f40483446287cd95c/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                              - generic:
+                                - generic:
+                                  - generic: playcrewpadel
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                                  - generic:
+                                    - button
+                                    - button
+                          - list:
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d0f8f40483446287cd95c/schedule
+                                - generic:
+                                  - img
+                                - generic: Publish
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d0f8f40483446287cd95c/community
+                                - generic:
+                                  - img
+                                - generic: Community
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: https://analyze.buffer.com/instagram/overview/6a4d0f8f40483446287cd95c
+                                - generic:
+                                  - img
+                                - generic: Analytics
+                                - generic:
+                                  - img
+                    - listitem:
+                      - button:
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link:
+                              - /url: /channels/6a4d109140483446287cdd5a/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                              - generic:
+                                - generic:
+                                  - generic: turnos.pro
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                                  - generic:
+                                    - button
+                                    - button
+                          - list:
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d109140483446287cdd5a/schedule
+                                - generic:
+                                  - img
+                                - generic: Publish
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d109140483446287cdd5a/community
+                                - generic:
+                                  - img
+                                - generic: Community
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: https://analyze.buffer.com/instagram/overview/6a4d109140483446287cdd5a
+                                - generic:
+                                  - img
+                                - generic: Analytics
+                                - generic:
+                                  - img
+                    - listitem:
+                      - button:
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link:
+                              - /url: /channels/6a4d16bc40483446287d074c/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                              - generic:
+                                - generic:
+                                  - generic: bunker__tech
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                                  - generic:
+                                    - button
+                                    - button
+                          - list:
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d16bc40483446287d074c/schedule
+                                - generic:
+                                  - img
+                                - generic: Publish
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d16bc40483446287d074c/community
+                                - generic:
+                                  - img
+                                - generic: Community
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: https://analyze.buffer.com/instagram/overview/6a4d16bc40483446287d074c
+                                - generic:
+                                  - img
+                                - generic: Analytics
+                                - generic:
+                                  - img
+                    - listitem:
+                      - button:
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link:
+                              - /url: /channels/6a4d170c40483446287d098e/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                              - generic:
+                                - generic:
+                                  - generic: dashflow.erp
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                                  - generic:
+                                    - button
+                                    - button
+                          - list:
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d170c40483446287d098e/schedule
+                                - generic:
+                                  - img
+                                - generic: Publish
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d170c40483446287d098e/community
+                                - generic:
+                                  - img
+                                - generic: Community
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: https://analyze.buffer.com/instagram/overview/6a4d170c40483446287d098e
+                                - generic:
+                                  - img
+                                - generic: Analytics
+                                - generic:
+                                  - img
+                    - listitem:
+                      - button:
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link:
+                              - /url: /channels/6a4d08fc40483446287cb857/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                              - generic:
+                                - generic:
+                                  - generic: archicloud.tech
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                                  - generic:
+                                    - button
+                                    - button
+                          - list:
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d08fc40483446287cb857/schedule
+                                - generic:
+                                  - img
+                                - generic: Publish
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/6a4d08fc40483446287cb857/community
+                                - generic:
+                                  - img
+                                - generic: Community
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: https://analyze.buffer.com/instagram/overview/6a4d08fc40483446287cb857
+                                - generic:
+                                  - img
+                                - generic: Analytics
+                                - generic:
+                                  - img
+                    - listitem:
+                      - button:
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link:
+                              - /url: /channels/686fafc5111211c557a2c7ba/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                              - generic:
+                                - generic:
+                                  - generic: efcloud
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                                  - generic:
+                                    - button
+                                    - button
+                          - list:
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/686fafc5111211c557a2c7ba/schedule
+                                - generic:
+                                  - img
+                                - generic: Publish
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/686fafc5111211c557a2c7ba/community
+                                - generic:
+                                  - img
+                                - generic: Community
+                                - generic:
+                                  - img:
+                                    - img
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/686fafc5111211c557a2c7ba/analytics
+                                - generic:
+                                  - img
+                                - generic: Analytics
+                    - listitem:
+                      - button:
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link:
+                              - /url: /channels/686fb218111211c557d1244a/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                              - generic:
+                                - generic:
+                                  - generic: EFCloud
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                                  - generic:
+                                    - button
+                                    - button
+                          - list:
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/686fb218111211c557d1244a/schedule
+                                - generic:
+                                  - img
+                                - generic: Publish
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/686fb218111211c557d1244a/community
+                                - generic:
+                                  - img
+                                - generic: Community
+                                - generic:
+                                  - generic:
+                                    - text: "1"
+                                    - generic: unreplied comments
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: https://analyze.buffer.com/facebook/overview/686fb218111211c557d1244a
+                                - generic:
+                                  - img
+                                - generic: Analytics
+                                - generic:
+                                  - img
+                    - listitem:
+                      - button:
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link:
+                              - /url: /channels/686fb232111211c557d35d27/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                              - generic:
+                                - generic:
+                                  - generic: EFCloud_tech
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                                  - generic:
+                                    - button
+                                    - button
+                          - list:
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/686fb232111211c557d35d27/schedule
+                                - generic:
+                                  - img
+                                - generic: Publish
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/686fb232111211c557d35d27/community
+                                - generic:
+                                  - img
+                                - generic: Community
+                                - generic:
+                                  - img:
+                                    - img
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: https://analyze.buffer.com/twitter/overview/686fb232111211c557d35d27
+                                - generic:
+                                  - img
+                                - generic: Analytics
+                                - generic:
+                                  - img
+                    - listitem:
+                      - button:
+                        - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - link:
+                              - /url: /channels/68ed1b72669affb4c96beae8/schedule
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                              - generic:
+                                - generic:
+                                  - generic: gymhero.fitness
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic
+                                  - generic:
+                                    - button
+                                    - button
+                          - list:
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/68ed1b72669affb4c96beae8/schedule
+                                - generic:
+                                  - img
+                                - generic: Publish
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: /channels/68ed1b72669affb4c96beae8/community
+                                - generic:
+                                  - img
+                                - generic: Community
+                                - generic:
+                                  - generic:
+                                    - text: "35"
+                                    - generic: unreplied comments
+                            - listitem:
+                              - separator
+                              - link:
+                                - /url: https://analyze.buffer.com/instagram/overview/68ed1b72669affb4c96beae8
+                                - generic:
+                                  - img
+                                - generic: Analytics
+                                - generic:
+                                  - img
+                  - status
+            - generic:
+              - generic:
+                - button:
+                  - generic:
+                    - generic:
+                      - generic: My Organization
+                      - generic: essentials plan
+                - button [expanded]:
+                  - img
+                  - generic: Close sidebar
+            - button [expanded]
+      - main:
+        - list
+        - generic:
+          - generic:
+            - img
+          - heading [level=1]: Failed to load
+          - paragraph: Error happened, please let our team know about it. Variable "$channelId" got invalid value "connect"; Invalid ChannelId format.
+    - button:
+      - img
+    - list
+  - dialog "Connect a channel" [ref=f205e1386]:
+    - generic [ref=f205e1387]:
+      - heading "Connect a channel" [level=3] [ref=f205e1388]
+      - paragraph [ref=f205e1389]: Connect a social media channel to Buffer.
+    - button "Close" [active] [ref=f205e1391] [cursor=pointer]:
+      - img [ref=f205e1392]
+      - generic [ref=f205e1394]: Close
+    - generic [ref=f205e1395]:
+      - banner [ref=f205e1396]:
+        - heading "Connect a New Channel" [level=3] [ref=f205e1397]
+      - region [ref=f205e1400]:
+        - generic [ref=f205e1403]:
+          - button "Connect Instagram" [ref=f205e1404] [cursor=pointer]:
+            - img [ref=f205e1405]
+            - generic [ref=f205e1407]:
+              - heading "Instagram" [level=4] [ref=f205e1408]
+              - generic [ref=f205e1410]: Business, Creator, or Personal
+          - button "Connect Threads" [ref=f205e1411] [cursor=pointer]:
+            - img [ref=f205e1412]
+            - generic [ref=f205e1414]:
+              - heading "Threads" [level=4] [ref=f205e1415]
+              - generic [ref=f205e1417]: Profile
+          - button "Connect LinkedIn" [ref=f205e1418] [cursor=pointer]:
+            - img [ref=f205e1419]
+            - generic [ref=f205e1421]:
+              - heading "LinkedIn" [level=4] [ref=f205e1422]
+              - generic [ref=f205e1424]: Page or Profile
+          - button "Connect Facebook" [ref=f205e1425] [cursor=pointer]:
+            - img [ref=f205e1426]
+            - generic [ref=f205e1428]:
+              - heading "Facebook" [level=4] [ref=f205e1429]
+              - generic [ref=f205e1431]: Page or Group
+          - button "Connect Bluesky" [ref=f205e1432] [cursor=pointer]:
+            - img [ref=f205e1433]
+            - generic [ref=f205e1435]:
+              - heading "Bluesky" [level=4] [ref=f205e1436]
+              - generic [ref=f205e1438]: Profile
+          - button "Connect YouTube" [ref=f205e1439] [cursor=pointer]:
+            - img [ref=f205e1440]
+            - generic [ref=f205e1442]:
+              - heading "YouTube" [level=4] [ref=f205e1443]
+              - generic [ref=f205e1445]: Channel
+          - button "Connect TikTok" [ref=f205e1446] [cursor=pointer]:
+            - img [ref=f205e1447]
+            - generic [ref=f205e1449]:
+              - heading "TikTok" [level=4] [ref=f205e1450]
+              - generic [ref=f205e1452]: Business or Personal
+          - button "Connect Mastodon" [ref=f205e1453] [cursor=pointer]:
+            - img [ref=f205e1454]
+            - generic [ref=f205e1456]:
+              - heading "Mastodon" [level=4] [ref=f205e1457]
+              - generic [ref=f205e1459]: Profile
+          - button "Connect Pinterest" [ref=f205e1460] [cursor=pointer]:
+            - img [ref=f205e1461]
+            - generic [ref=f205e1463]:
+              - heading "Pinterest" [level=4] [ref=f205e1464]
+              - generic [ref=f205e1466]: Business or Profile
+          - button "Connect Google Business" [ref=f205e1467] [cursor=pointer]:
+            - img [ref=f205e1468]
+            - generic [ref=f205e1470]:
+              - heading "Google Business" [level=4] [ref=f205e1471]
+              - generic [ref=f205e1473]: Profile
+          - button "Connect Twitter / X" [ref=f205e1474] [cursor=pointer]:
+            - img [ref=f205e1475]
+            - generic [ref=f205e1477]:
+              - heading "Twitter / X" [level=4] [ref=f205e1478]
+              - generic [ref=f205e1480]: Profile
+          - button "Connect Start Page" [ref=f205e1481] [cursor=pointer]:
+            - img [ref=f205e1482]
+            - generic [ref=f205e1484]:
+              - heading "Start Page" [level=4] [ref=f205e1485]
+              - generic [ref=f205e1487]: Simple, powerful link-in-bio
+          - button "Request a Channel" [ref=f205e1488] [cursor=pointer]:
+            - img [ref=f205e1489]
+            - generic [ref=f205e1490]:
+              - heading "Can't find it?" [level=4] [ref=f205e1491]
+              - generic [ref=f205e1493]: Request a channel

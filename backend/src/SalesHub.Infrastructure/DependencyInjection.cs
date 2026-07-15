@@ -96,7 +96,8 @@ public static class DependencyInjection
         services.AddScoped<InstagramProfileEnricher>();
         services.AddScoped<WebsiteCrawlerEnricher>();
         services.AddScoped<GoogleSearchService>();
-        services.AddScoped<InstagramCompetitorScraper>();
+        // Scraper de competidores para inspiración: browser logueado (reemplazó a Apify).
+        services.AddScoped<Instagram.InstagramCompetitorBrowserScraper>();
         services.AddScoped<ApifyTikTokSource>();
 
         services.AddScoped<IPhoneNormalizer, PhoneNormalizer>();

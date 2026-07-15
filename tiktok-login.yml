@@ -1,0 +1,101 @@
+- generic [ref=f119e3]:
+  - generic [ref=f119e4]:
+    - link "Ir al feed Para ti en TikTok" [ref=f119e5] [cursor=pointer]:
+      - /url: /
+      - img [ref=f119e6]
+      - strong: TikTok
+    - link "Comentarios y ayuda" [ref=f119e16] [cursor=pointer]:
+      - /url: https://www.tiktok.com/feedback/?lang=es-419
+      - img [ref=f119e17]
+      - generic [ref=f119e19]: Comentarios y ayuda
+  - generic [ref=f119e20]:
+    - generic [ref=f119e83]:
+      - heading "Iniciar sesión" [level=2] [ref=f119e84]
+      - generic [ref=f119e85]:
+        - generic [ref=f119e86]:
+          - text: Teléfono
+          - link "Iniciar sesión con correo electrónico o nombre de usuario" [ref=f119e87] [cursor=pointer]:
+            - /url: /login/phone-or-email/email
+        - generic [ref=f119e88]:
+          - generic [ref=f119e90]:
+            - 'button "Código telefónico del país: AR +54. Pulsa dos veces para ver más opciones" [ref=f119e92] [cursor=pointer]':
+              - generic [ref=f119e93]: AR +54
+              - img [ref=f119e94]
+            - textbox "Número de teléfono" [ref=f119e97]
+          - generic [ref=f119e100]:
+            - textbox "Ingresa el código de 6 dígitos" [ref=f119e102]
+            - button "Enviar código" [disabled] [ref=f119e104]
+          - textbox [ref=f119e105]
+          - link "Iniciar sesión con contraseña" [ref=f119e107] [cursor=pointer]:
+            - /url: /login/phone-or-email/phone-password
+          - button "Iniciar sesión" [disabled]:
+            - generic: Iniciar sesión
+    - link "Go back" [ref=f119e108] [cursor=pointer]:
+      - img [ref=f119e109]
+      - text: Go back
+  - generic [ref=f119e67]:
+    - generic [ref=f119e72]:
+      - generic [ref=f119e73]: ¿No tienes una cuenta?
+      - link "Registrarse" [ref=f119e74] [cursor=pointer]:
+        - /url: /signup
+    - generic [ref=f119e75]:
+      - generic [ref=f119e76] [cursor=pointer]:
+        - paragraph [ref=f119e77]: Español (Latinoamérica)
+        - combobox [ref=f119e78]:
+          - option "Azərbaycan"
+          - option "Bahasa Indonesia"
+          - option "Bahasa Melayu"
+          - option "Basa Jawa"
+          - option "Català"
+          - option "Cebuano"
+          - option "Čeština"
+          - option "Dansk"
+          - option "Deutsch"
+          - option "Eesti"
+          - option "English (UK)"
+          - option "English (US)"
+          - option "Español"
+          - option "Español (Latinoamérica)" [selected]
+          - option "Filipino"
+          - option "Français"
+          - option "Français (Canada)"
+          - option "Gaeilge"
+          - option "Hrvatski"
+          - option "Íslenska"
+          - option "Italiano"
+          - option "Kiswahili"
+          - option "Latviešu"
+          - option "Lietuvių"
+          - option "Magyar"
+          - option "Nederlands"
+          - option "norsk (bokmål)"
+          - option "Oʻzbek"
+          - option "Polski"
+          - option "Português"
+          - option "Português (Brasil)"
+          - option "Română"
+          - option "Shqip"
+          - option "Slovenčina"
+          - option "Slovenščina"
+          - option "Suomi"
+          - option "Svenska"
+          - option "Tiếng Việt"
+          - option "Türkçe"
+          - option "Ελληνικά"
+          - option "Български"
+          - option "Қазақша"
+          - option "Русский"
+          - option "Українська"
+          - option "עברית"
+          - option "اردو"
+          - option "العربية"
+          - option "हिंदी"
+          - option "বাংলা"
+          - option "ภาษาไทย"
+          - option "မြန်မာ"
+          - option "ខ្មែរ"
+          - option "日本語"
+          - option "中文 (繁體)"
+          - option "中文 (简体)"
+          - option "한국어"
+      - generic [ref=f119e79]: © 2026 TikTok
