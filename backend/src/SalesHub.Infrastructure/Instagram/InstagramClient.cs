@@ -83,16 +83,17 @@ public class InstagramClient : IAsyncDisposable
 
         // Proxy: prioridad al de la cuenta (geo-matcheado a su origen real,
         // ej. gymhero → residencial AR) y fallback al global de InstagramOptions.
-        // Antes de usarlo, verificamos que la sesión LLEGUE a Instagram con cert
-        // válido; si el peer de salida la intercepta/bloquea (ej. un Kaspersky en la
-        // PC residencial que hace MITM), rotamos el token de sesión a otro peer limpio.
-        var rawProxy = !string.IsNullOrWhiteSpace(account.ProxyUrl) ? account.ProxyUrl : _opts.ProxyUrl;
-        if (!string.IsNullOrWhiteSpace(rawProxy))
+        // Se arma una LISTA de candidatos con FAILOVER: primario (cuenta o global) y luego
+        // los FallbackProxies globales; se prueba en orden y se usa el primero que LLEGUE a
+        // Instagram con cert válido. Si el primario (ej. túnel de la compu) está caído, la
+        // sesión salta sola al siguiente (ej. iProxy del celu) sin frenar el follow.
+        var proxyCandidates = BuildProxyCandidates(account.ProxyUrl);
+        if (proxyCandidates.Count > 0)
         {
-            var proxy = await ResolveWorkingProxyAsync(rawProxy!, account.Username, ct);
+            var proxy = await ResolveWorkingProxyAsync(proxyCandidates, account.Username, ct);
             if (proxy is null)
                 throw new InvalidOperationException(
-                    $"Ninguna sesión del proxy llegó a Instagram para {account.Username}. " +
+                    $"Ningún proxy (de {proxyCandidates.Count} candidato/s) llegó a Instagram para {account.Username}. " +
                     "No se intenta sin proxy para no exponer la cuenta desde la IP del server.");
 
             launchOpts.Proxy = proxy;
@@ -1171,13 +1172,68 @@ public class InstagramClient : IAsyncDisposable
     private const int MaxRotationTries = 3;
 
     /// <summary>
+    /// Arma la lista ORDENADA de proxies a probar (failover): primero el primario
+    /// (el de la cuenta si tiene, si no el global <see cref="InstagramOptions.ProxyUrl"/>),
+    /// y después los <see cref="InstagramOptions.FallbackProxies"/> globales. Tanto el
+    /// primario como cada fallback pueden traer VARIOS proxies separados por coma/;/salto
+    /// de línea. Deduplica preservando el orden. Vacía = sin proxy configurado.
+    /// </summary>
+    private List<string> BuildProxyCandidates(string? accountProxy)
+    {
+        var list = new List<string>();
+
+        static IEnumerable<string> Split(string? s) =>
+            string.IsNullOrWhiteSpace(s)
+                ? Array.Empty<string>()
+                : s.Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        // Primario: el de la cuenta manda; si no tiene, el global. (No se mezclan:
+        // una cuenta con proxy propio no hereda el primario global, pero SÍ los fallbacks.)
+        var primary = !string.IsNullOrWhiteSpace(accountProxy) ? accountProxy : _opts.ProxyUrl;
+        list.AddRange(Split(primary));
+
+        // Respaldos globales, en orden.
+        foreach (var fb in _opts.FallbackProxies ?? new())
+            list.AddRange(Split(fb));
+
+        // Dedup preservando orden (case-insensitive por si repiten mayúsculas).
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return list.Where(p => seen.Add(p)).ToList();
+    }
+
+    /// <summary>
+    /// Recorre los proxies candidatos en orden y devuelve el PRIMERO cuya sesión llega
+    /// a Instagram. Es el failover entre proxies distintos (ej. túnel de la compu → iProxy
+    /// del celu → IPRoyal). Cada candidato, internamente, hace su propio pin+rotación de
+    /// ciudad antes de darse por caído. Null si NINGUNO llega.
+    /// </summary>
+    private async Task<Proxy?> ResolveWorkingProxyAsync(IReadOnlyList<string> candidates, string accountUser, CancellationToken ct)
+    {
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            var resolved = await ResolveOneProxyAsync(candidates[i], accountUser, ct);
+            if (resolved is not null)
+            {
+                if (i > 0)
+                    _log.LogWarning("Proxy de {User}: FAILOVER al candidato #{N}/{Total} — el/los anterior/es no llegaron a IG.",
+                        accountUser, i + 1, candidates.Count);
+                return resolved;
+            }
+
+            _log.LogWarning("Proxy de {User}: candidato #{N}/{Total} no llegó a IG — probando el siguiente.",
+                accountUser, i + 1, candidates.Count);
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Devuelve un proxy cuya sesión llega a Instagram con certificado válido,
     /// PRIORIZANDO mantener el peer pinneado (misma IP/ciudad) para no disparar
     /// "viajes imposibles" en IG. Solo rota a otro peer (cambio de ciudad) si la
     /// sesión pinneada falla repetidamente — un fallo transitorio no la abandona.
     /// Null si ni el peer pinneado ni los alternativos sirven.
     /// </summary>
-    private async Task<Proxy?> ResolveWorkingProxyAsync(string rawProxy, string accountUser, CancellationToken ct)
+    private async Task<Proxy?> ResolveOneProxyAsync(string rawProxy, string accountUser, CancellationToken ct)
     {
         var baseProxy = BuildProxy(rawProxy);
         if (baseProxy is null) return null;

@@ -26,8 +26,19 @@ public class InstagramOptions
     /// <summary>Intervalo entre ejecuciones del scraper worker.</summary>
     public int ScraperIntervalMinutes { get; set; } = 60;
 
-    /// <summary>URL del proxy (opcional). Ej: http://user:pass@host:port</summary>
+    /// <summary>
+    /// URL del proxy primario (opcional). Ej: http://user:pass@host:port o socks5://host:port.
+    /// Admite una LISTA separada por coma/;/salto de línea: se prueban en orden hasta que una
+    /// llegue a IG (failover). Ej: "socks5://172.17.0.1:1080, http://user:pass@iproxy:port".
+    /// </summary>
     public string? ProxyUrl { get; set; }
+
+    /// <summary>
+    /// Proxies de RESPALDO globales, en orden de preferencia. Se anexan DESPUÉS del proxy
+    /// primario (el de la cuenta o el global) para que, si el primario no llega a IG, la
+    /// sesión salte solo al siguiente. Ej: túnel de la compu primero, iProxy del celu de backup.
+    /// </summary>
+    public List<string> FallbackProxies { get; set; } = new();
 
     /// <summary>
     /// Bloquea la descarga de recursos pesados (imágenes, video/audio, fuentes)
