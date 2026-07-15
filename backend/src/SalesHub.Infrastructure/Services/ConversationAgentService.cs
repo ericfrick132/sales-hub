@@ -214,6 +214,20 @@ public class ConversationAgentService
                 continue;
             }
 
+            // ── Audio ILEGIBLE: el lead mandó una nota de voz que no se pudo transcribir
+            // (Evolution no pudo bajar/desencriptar el media, o Groq falló los 3 intentos) y no
+            // escribió nada más legible en la ráfaga. NO hay contenido para responder: antes el
+            // bot le contestaba a "[audio — no se pudo transcribir]" con la IA → "cualquier cosa".
+            // Ahora le pedimos que lo escriba. Al entregar, su último mensaje pasa a outbound (o
+            // queda como sugerencia) → no re-entra, sin loop.
+            if (IsFailedAudioPlaceholder(last) && !BurstHasRealText(recentBurst))
+            {
+                await DeliverAsync(lead, PickAudioUnreadableReply(lead.Id), LeadIntent.Unknown, "audio-ilegible", ct);
+                _log.LogInformation("Lead {Lead}: audio inaudible → pedido de reescritura (sin IA)", lead.Id);
+                done++;
+                continue;
+            }
+
             // ── Post-alta: si ya le creamos la cuenta (onboarding provisionado), el alta terminó.
             // SOPORTE REAL en vez de improvisar: si pide el link / no puede entrar / no tiene
             // contraseña, REGENERAMOS el acceso contra la app (bot-register idempotente devuelve
@@ -432,6 +446,34 @@ public class ConversationAgentService
     /// <summary>El lead ya provisionado pide el acceso/link/credenciales → se lo reenviamos.</summary>
     private static bool AsksForAccessLink(string? msg)
         => !string.IsNullOrWhiteSpace(msg) && AccessLinkRx.IsMatch(msg!);
+
+    // ── Audio inaudible: en vez de contestarle "cualquier cosa" al placeholder de un audio que
+    // no se pudo transcribir, le pedimos que lo escriba. Variantes al azar (estable por lead)
+    // para no sonar robótico si pasa seguido en la misma línea.
+    private static readonly string[] AudioUnreadableReplies =
+    {
+        "perdón, se me escuchó cortado tu audio 🙈 ¿me lo escribís en un mensajito así te sigo?",
+        "uh, no me llegó bien esa nota de voz 🙏 ¿me la pasás por texto?",
+        "disculpá, no pude escuchar bien el audio 😅 ¿me lo escribís y seguimos?",
+    };
+    private static string PickAudioUnreadableReply(Guid seed)
+        => AudioUnreadableReplies[(int)((uint)seed.GetHashCode() % (uint)AudioUnreadableReplies.Length)];
+
+    // "[audio — no se pudo transcribir]" (o cualquier variante que arranque con [audio ... no se pudo).
+    private static readonly Regex FailedAudioRx = new(
+        @"^\[audio\b.*no se pudo", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static bool IsFailedAudioPlaceholder(string? t)
+        => !string.IsNullOrWhiteSpace(t) && FailedAudioRx.IsMatch(t!.TrimStart());
+
+    // Línea que es SOLO un placeholder del sistema ([audio], [imagen], [audio — no se pudo…], etc.).
+    // Un audio ya transcripto ("🎤 hola quiero info") NO matchea → cuenta como texto real.
+    private static readonly Regex SystemPlaceholderLineRx = new(
+        @"^\s*(🎤\s*)?\[(audio|imagen|video|documento|sticker|ubicaci[oó]n|contacto)\b[^\]]*\]\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    /// <summary>True si en la ráfaga el lead escribió algo legible además de placeholders.</summary>
+    private static bool BurstHasRealText(string? burst)
+        => !string.IsNullOrWhiteSpace(burst)
+           && burst!.Split('\n').Any(l => !string.IsNullOrWhiteSpace(l) && !SystemPlaceholderLineRx.IsMatch(l));
 
     // Salvavidas determinístico: el prompt ya prohíbe "boludo" pero el modelo a veces lo ignora.
     // Lo sacamos SIEMPRE del texto que sale al lead (cualquier fuente: aside, chat, sugerencia),
