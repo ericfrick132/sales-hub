@@ -21,3 +21,11 @@ scripts/localities/localities-import.json
 # Secretos sueltos y screenshots de verificación (no commitear — repo público)
 /1.md
 /*.png
+
+# Playwright recordings sueltos (no van al repo)
+/buffer-*.yml
+/el-*.yml
+/fb-*.yml
+/google-*.yml
+/iproxy-*.yml
+/tiktok-*.yml
