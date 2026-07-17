@@ -18,12 +18,15 @@ public class WebhookController : ControllerBase
     private readonly InspirationIntakeRelay _inspiration;
     private readonly VoiceCalibrationRelay _calibration;
     private readonly ColdOpenAudioRelay _coldOpen;
+    private readonly SalesHub.Api.AdminMenu.AdminMenuRelay _adminMenu;
     private readonly ILogger<WebhookController> _log;
 
     public WebhookController(ConversationService conv, AudioTranscriptionRelay relay, InspirationIntakeRelay inspiration,
-        VoiceCalibrationRelay calibration, ColdOpenAudioRelay coldOpen, ILogger<WebhookController> log)
+        VoiceCalibrationRelay calibration, ColdOpenAudioRelay coldOpen, SalesHub.Api.AdminMenu.AdminMenuRelay adminMenu,
+        ILogger<WebhookController> log)
     {
-        _conv = conv; _relay = relay; _inspiration = inspiration; _calibration = calibration; _coldOpen = coldOpen; _log = log;
+        _conv = conv; _relay = relay; _inspiration = inspiration; _calibration = calibration; _coldOpen = coldOpen;
+        _adminMenu = adminMenu; _log = log;
     }
 
     [HttpPost("evolution")]
@@ -74,6 +77,9 @@ public class WebhookController : ControllerBase
                 // "grabar openers"). Corre antes que todo para consumir sus notas de voz.
                 if (await _coldOpen.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _calibration.TryHandleAsync(incoming, ct)) { handled++; continue; }
+                // Bot de config del maestro: consume "menu"/"config" y todo mientras esté en modo menú
+                // (los números NO caen en inspiración). Devuelve false para el resto → sigue la cadena.
+                if (await _adminMenu.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _inspiration.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _relay.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 // fromMe = mensaje saliente por la línea. Takeover humano: "-" mutea el bot

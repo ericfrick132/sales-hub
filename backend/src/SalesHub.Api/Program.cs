@@ -21,6 +21,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSalesHubInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddHttpClient(); // IHttpClientFactory para el LeadImportWorker
+// Bot de configuración por WhatsApp (menú numerado del maestro): ejecutor que pega a la propia API
+// con un JWT admin minteado + el relay navegador. Ver src/SalesHub.Api/AdminMenu/.
+builder.Services.AddHttpClient<SalesHub.Api.AdminMenu.AdminApiExecutor>();
+builder.Services.AddScoped<SalesHub.Api.AdminMenu.AdminMenuRelay>();
 
 if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "true")
 {
