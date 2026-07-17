@@ -363,6 +363,149 @@ public class PipelineService
         return new ReassignOrphansResult(orphans.Count, assigned, queued, stillOrphan);
     }
 
+    public record ReassignByOwnerResult(
+        int Scanned,
+        int Reassigned,
+        int Queued,
+        int WaitingSellerOffline,
+        int AlreadyOk,
+        int PooledNoOwner,
+        int NoProduct,
+        Dictionary<string, int> NoOwnerByProduct);
+
+    /// <summary>
+    /// Reasignación por DUEÑO de la app (botón "Reasignar todo"). A diferencia del assigner normal
+    /// —que solo asigna a vendedores listos para enviar AHORA— acá el criterio es la PROPIEDAD:
+    /// cada lead sin contactar va al vendedor cuya whitelist incluye ese producto, esté conectado o
+    /// no. Si hay varios dueños, prioriza uno LISTO (conectado + enviando) para que salga ya y balancea
+    /// por carga; si ningún dueño está listo, igual se lo asigna al dueño (queda Assigned y sale solo
+    /// cuando ese vendedor conecte — lo encola el LeadRebalancer). Dueños dedicados (whitelist con el
+    /// producto) ganan sobre catch-all (whitelist vacía). Si NADIE tiene esa app → al pool + se reporta.
+    /// Nunca toca leads que ya arrancaron conversación (SentAt/FirstReplyAt).
+    /// </summary>
+    public async Task<ReassignByOwnerResult> ReassignByOwnershipAsync(CancellationToken ct)
+    {
+        // Candidatos a DUEÑO (independiente de conexión): activos; Seller siempre, Admin solo con
+        // whitelist explícita (para no arrastrarle todo al admin que la dejó vacía).
+        var sellers = (await _db.Sellers.Include(s => s.EvolutionInstance)
+                .Where(s => s.IsActive)
+                .ToListAsync(ct))
+            .Where(s => s.Role == SellerRole.Seller
+                     || (s.Role == SellerRole.Admin && s.VerticalsWhitelist is { Count: > 0 }))
+            .ToList();
+
+        static bool IsReady(Seller s) =>
+            s.SendingEnabled && s.EvolutionInstance is { Status: InstanceStatus.Connected };
+
+        // Dueños de un producto: dedicados (whitelist lo contiene) primero; si no hay, catch-all
+        // (whitelist vacía) como fallback.
+        List<Seller> OwnersFor(string productKey)
+        {
+            var dedicated = sellers
+                .Where(s => s.VerticalsWhitelist is { Count: > 0 } && s.VerticalsWhitelist.Contains(productKey))
+                .ToList();
+            return dedicated.Count > 0
+                ? dedicated
+                : sellers.Where(s => s.VerticalsWhitelist is not { Count: > 0 }).ToList();
+        }
+
+        // Balanceo por carga de las últimas 24h (mismo criterio que el assigner normal).
+        var counts = await _db.Leads
+            .Where(l => l.SellerId != null && l.AssignedAt >= DateTimeOffset.UtcNow.AddHours(-24))
+            .GroupBy(l => l.SellerId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+
+        Seller PickOwner(List<Seller> owners)
+        {
+            var ready = owners.Where(IsReady).ToList();
+            var pool = ready.Count > 0 ? ready : owners;
+            return pool.OrderBy(s => counts.GetValueOrDefault(s.Id)).ThenBy(_ => Guid.NewGuid()).First();
+        }
+
+        var leads = await _db.Leads.Include(l => l.Product)
+            .Where(l => l.SentAt == null && l.FirstReplyAt == null
+                     && (l.Status == LeadStatus.New || l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued))
+            .ToListAsync(ct);
+
+        // Fase 1: decidir (sin tocar la DB todavía).
+        var moves = new List<(Lead lead, Seller target)>();
+        var pools = new List<Lead>();
+        var noOwner = new Dictionary<string, int>();
+        var alreadyOk = 0;
+        var noProduct = 0;
+
+        foreach (var lead in leads)
+        {
+            if (lead.Product is null || string.IsNullOrWhiteSpace(lead.ProductKey)) { noProduct++; continue; }
+
+            var owners = OwnersFor(lead.ProductKey);
+            if (owners.Count == 0)
+            {
+                noOwner[lead.ProductKey] = noOwner.GetValueOrDefault(lead.ProductKey) + 1;
+                if (lead.SellerId != null) pools.Add(lead); // pegado a alguien que no corresponde → pool
+                continue;
+            }
+
+            // Ya está en un dueño válido → no lo movemos (evita churn y re-render inútil).
+            if (lead.SellerId != null && owners.Any(o => o.Id == lead.SellerId.Value)) { alreadyOk++; continue; }
+
+            var target = PickOwner(owners);
+            counts[target.Id] = counts.GetValueOrDefault(target.Id) + 1;
+            moves.Add((lead, target));
+        }
+
+        // Cancelar en bloque el outbox pendiente de todo lo que se mueve o se suelta (1 query por chunk).
+        var affected = moves.Select(m => m.lead.Id).Concat(pools.Select(l => l.Id)).ToList();
+        for (var i = 0; i < affected.Count; i += 1000)
+        {
+            var slice = affected.Skip(i).Take(1000).ToList();
+            var pending = await _db.Outbox
+                .Where(o => slice.Contains(o.LeadId)
+                         && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending))
+                .ToListAsync(ct);
+            foreach (var o in pending) o.Status = OutboxStatus.Cancelled;
+        }
+
+        // Fase 2: aplicar.
+        foreach (var lead in pools)
+        {
+            lead.SellerId = null; lead.AssignedAt = null; lead.QueuedAt = null; lead.Status = LeadStatus.New;
+        }
+
+        var reassigned = 0; var queued = 0; var waiting = 0;
+        foreach (var (lead, target) in moves)
+        {
+            lead.SellerId = target.Id;
+            lead.AssignedAt = DateTimeOffset.UtcNow;
+            lead.QueuedAt = null;
+            lead.RenderedMessage = _renderer.Render(lead, lead.Product!, target);
+            lead.WhatsappLink = BuildWhatsappLink(lead.WhatsappPhone, lead.RenderedMessage);
+            reassigned++;
+
+            if (IsReady(target) && !string.IsNullOrWhiteSpace(lead.WhatsappPhone))
+            {
+                OutboxEnqueueHelper.EnqueueLeadMessages(
+                    _db, _renderer, lead, lead.Product!, target,
+                    lead.WhatsappPhone, target.EvolutionInstance!.InstanceName);
+                lead.Status = LeadStatus.Queued; lead.QueuedAt = DateTimeOffset.UtcNow; queued++;
+            }
+            else if (IsReady(target) && await TryQueueInstagramAsync(lead, lead.Product!, target, ct))
+            {
+                lead.Status = LeadStatus.Queued; lead.QueuedAt = DateTimeOffset.UtcNow; queued++;
+            }
+            else
+            {
+                // Dueño desconectado/pausado: queda Assigned; el LeadRebalancer lo encola cuando conecte.
+                lead.Status = LeadStatus.Assigned; waiting++;
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return new ReassignByOwnerResult(
+            leads.Count, reassigned, queued, waiting, alreadyOk, pools.Count, noProduct, noOwner);
+    }
+
     /// <summary>
     /// Descarta leads que no valen la pena contactar: sin ningún canal, negocios cerrados,
     /// o establecimientos con rating bajo + suficientes reviews para confiar en el dato.

@@ -120,6 +120,20 @@ public class LeadsController : ControllerBase
         return result;
     }
 
+    /// <summary>
+    /// Botón "Reasignar todo": reasigna cada lead sin contactar al VENDEDOR DUEÑO de esa app
+    /// (whitelist), esté conectado o no. Ver <see cref="PipelineService.ReassignByOwnershipAsync"/>.
+    /// </summary>
+    [HttpPost("reassign-by-owner")]
+    public async Task<ActionResult<PipelineService.ReassignByOwnerResult>> ReassignByOwner(CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var result = await _pipeline.ReassignByOwnershipAsync(ct);
+        _log.LogWarning("reassign-by-owner (manual): {Reassigned} reasignados ({Queued} en cola, {Waiting} esperando conexión), {AlreadyOk} ya ok, {Pooled} al pool sin dueño, {NoProduct} sin producto",
+            result.Reassigned, result.Queued, result.WaitingSellerOffline, result.AlreadyOk, result.PooledNoOwner, result.NoProduct);
+        return result;
+    }
+
     public record MapLeadDto(
         Guid Id, string Name, string ProductKey, string? City, string? Province, string? Address,
         string? WhatsappPhone, string? SellerName,

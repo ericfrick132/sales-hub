@@ -152,19 +152,23 @@ export default function MyLeads() {
               className="btn-secondary"
               onClick={async () => {
                 if (!confirm(
-                  'Reasignar TODO el equipo según la config actual de vendedores.\n\n' +
-                  '• Suelta al pool los leads sin contactar pegados a un vendedor que ya no maneja ese producto (le cambiaste las apps) o cuya línea está caída.\n' +
-                  '• Reparte todo el pool con whitelist + regiones de los vendedores conectados.\n' +
-                  '• Drena backlog hacia las líneas dedicadas.\n\n' +
+                  'Reasignar TODOS los leads sin contactar al vendedor DUEÑO de cada app (su whitelist), esté conectado o no.\n\n' +
+                  '• Si el lead está pegado a un vendedor que no tiene esa app → lo mueve al que sí la tiene.\n' +
+                  '• Si el dueño está conectado, sale a la cola; si está desconectado, queda asignado y sale solo cuando conecte.\n' +
+                  '• Si ninguna app tiene dueño, o el lead no tiene app, lo deja en el pool y te avisa.\n\n' +
                   'No toca leads que ya arrancaron conversación. ¿Seguir?'
                 )) return;
                 try {
                   const { data } = await api.post<{
-                    mismatchReleased: number; rescued: number; orphansAssigned: number; drained: number
-                  }>('/leads/rebalance-now');
+                    scanned: number; reassigned: number; queued: number; waitingSellerOffline: number;
+                    alreadyOk: number; pooledNoOwner: number; noProduct: number; noOwnerByProduct: Record<string, number>
+                  }>('/leads/reassign-by-owner');
+                  const noOwner = Object.entries(data.noOwnerByProduct);
                   toast.success(
-                    `Reasignados: ${data.orphansAssigned} · Liberados por apps: ${data.mismatchReleased} · ` +
-                    `Rescatados (líneas caídas): ${data.rescued} · Drenados a dedicadas: ${data.drained}`
+                    `Reasignados: ${data.reassigned} (${data.queued} a la cola · ${data.waitingSellerOffline} esperan que el vendedor conecte) · Ya ok: ${data.alreadyOk}` +
+                    (data.noProduct > 0 ? ` · Sin app: ${data.noProduct}` : '') +
+                    (noOwner.length > 0 ? ` · Sin vendedor para: ${noOwner.map(([k, v]) => `${k}(${v})`).join(', ')}` : ''),
+                    { duration: 8000 }
                   );
                   qc.invalidateQueries({ queryKey: ['leads'] });
                 } catch (err) {

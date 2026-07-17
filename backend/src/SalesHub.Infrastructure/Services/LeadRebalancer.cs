@@ -49,7 +49,7 @@ public class LeadRebalancer
         _db = db; _assigner = assigner; _renderer = renderer; _config = config; _log = log;
     }
 
-    public record RebalanceResult(int MismatchReleased, int Rescued, int OrphansAssigned, int Drained);
+    public record RebalanceResult(int MismatchReleased, int Rescued, int OrphansAssigned, int Drained, int QueuedForReady);
 
     /// <param name="force">
     /// Disparo manual desde el botón "Reasignar todo": rescata YA los leads sin contactar de
@@ -77,15 +77,64 @@ public class LeadRebalancer
                      || (s.Role == SellerRole.Admin && s.VerticalsWhitelist is { Count: > 0 }))
             .ToList();
 
-        if (capable.Count == 0) return new RebalanceResult(mismatch, rescued, 0, 0);
+        if (capable.Count == 0) return new RebalanceResult(mismatch, rescued, 0, 0, 0);
 
         var orphansAssigned = await RetryOrphansAsync(capable, ct);
+        var queuedForReady = await QueueAssignedForReadyAsync(capable, ct);
         var drained = await DrainToSpecialistsAsync(capable, ct);
 
-        if (mismatch + rescued + orphansAssigned + drained > 0)
-            _log.LogInformation("Rebalance: {Mismatch} liberados por whitelist, {Rescued} rescatados al pool, {Orphans} huérfanos asignados, {Drained} drenados a líneas dedicadas",
-                mismatch, rescued, orphansAssigned, drained);
-        return new RebalanceResult(mismatch, rescued, orphansAssigned, drained);
+        if (mismatch + rescued + orphansAssigned + queuedForReady + drained > 0)
+            _log.LogInformation("Rebalance: {Mismatch} liberados por whitelist, {Rescued} rescatados al pool, {Orphans} huérfanos asignados, {Queued} encolados de dueños recién conectados, {Drained} drenados a líneas dedicadas",
+                mismatch, rescued, orphansAssigned, queuedForReady, drained);
+        return new RebalanceResult(mismatch, rescued, orphansAssigned, drained, queuedForReady);
+    }
+
+    /// <summary>
+    /// Leads que quedaron <c>Assigned</c> a su dueño mientras ese vendedor estaba desconectado
+    /// (ej. los repartió el botón "Reasignar todo" por PROPIEDAD): apenas el dueño vuelve a estar
+    /// listo (conectado + enviando), les encola la cadencia. Sin esto, un lead asignado a un dueño
+    /// offline nunca saldría aunque el vendedor después conecte.
+    /// </summary>
+    private async Task<int> QueueAssignedForReadyAsync(IReadOnlyList<Seller> capable, CancellationToken ct)
+    {
+        var capableById = capable.ToDictionary(s => s.Id);
+        var capableIds = capableById.Keys.ToList();
+
+        var toQueue = await _db.Leads.Include(l => l.Product)
+            .Where(l => l.SellerId != null && capableIds.Contains(l.SellerId.Value)
+                     && l.Status == LeadStatus.Assigned
+                     && l.SentAt == null && l.FirstReplyAt == null
+                     && l.WhatsappPhone != null && l.WhatsappPhone != "")
+            .OrderBy(l => l.AssignedAt)
+            .Take(OrphanBatchPerTick)
+            .ToListAsync(ct);
+        if (toQueue.Count == 0) return 0;
+
+        // Evitar re-encolar leads que ya tengan outbox pendiente.
+        var ids = toQueue.Select(l => l.Id).ToList();
+        var withPending = (await _db.Outbox
+                .Where(o => ids.Contains(o.LeadId)
+                         && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending))
+                .Select(o => o.LeadId)
+                .ToListAsync(ct))
+            .ToHashSet();
+
+        var queued = 0;
+        foreach (var lead in toQueue)
+        {
+            if (lead.Product is null || withPending.Contains(lead.Id)) continue;
+            var seller = capableById[lead.SellerId!.Value];
+            if (seller.EvolutionInstance is null) continue;
+
+            OutboxEnqueueHelper.EnqueueLeadMessages(
+                _db, _renderer, lead, lead.Product, seller,
+                lead.WhatsappPhone!, seller.EvolutionInstance.InstanceName);
+            lead.Status = LeadStatus.Queued;
+            lead.QueuedAt = DateTimeOffset.UtcNow;
+            queued++;
+        }
+        if (queued > 0) await _db.SaveChangesAsync(ct);
+        return queued;
     }
 
     /// <summary>
