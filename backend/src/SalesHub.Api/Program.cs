@@ -50,6 +50,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     // (antes solo estaba como hosted → no resoluble → 500 en /api/instagram/structure/*).
     builder.Services.AddSingleton<InstagramStructureAnalyzerWorker>(); // self-healing de selectores
     builder.Services.AddHostedService(sp => sp.GetRequiredService<InstagramStructureAnalyzerWorker>());
+    builder.Services.AddHostedService<InstagramReloginWorker>();           // self-heal: cuando el proxy vuelve, relogin auto de cuentas caídas con campañas (flag 'instagram')
     builder.Services.AddHostedService<InstagramFollowWorker>();            // campañas de auto-follow
     builder.Services.AddHostedService<InstagramDmWorker>();                // envío de DMs (Channel=Instagram)
     builder.Services.AddHostedService<InstagramInboxWorker>();             // poll del inbox → conversaciones

@@ -1393,7 +1393,22 @@ public class InstagramClient : IAsyncDisposable
     /// la validación TLS por defecto tira excepción y devolvemos false (no exponemos
     /// credenciales por ese peer).
     /// </summary>
-    private async Task<bool> ProxyReachesInstagramAsync(Proxy proxy, CancellationToken ct)
+    private Task<bool> ProxyReachesInstagramAsync(Proxy proxy, CancellationToken ct)
+        => ProbeReachesInstagramAsync(proxy, _log, ct);
+
+    /// <summary>
+    /// Probe BARATO (HttpClient, sin browser) de si un proxy llega a la página de login de
+    /// Instagram con cert válido. Lo usa el self-heal (InstagramReloginWorker) para gatear:
+    /// si el túnel está caído no spinnea logins. <paramref name="rawProxy"/> en formato URI
+    /// (scheme://user:pass@host:port) o lista 2captcha; null/vacío o no parseable = false.
+    /// </summary>
+    public static Task<bool> ProbeProxyReachesInstagramAsync(string? rawProxy, ILogger? log, CancellationToken ct = default)
+    {
+        var proxy = BuildProxy(rawProxy);
+        return proxy is null ? Task.FromResult(false) : ProbeReachesInstagramAsync(proxy, log, ct);
+    }
+
+    private static async Task<bool> ProbeReachesInstagramAsync(Proxy proxy, ILogger? log, CancellationToken ct)
     {
         try
         {
@@ -1415,7 +1430,7 @@ public class InstagramClient : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _log.LogDebug("Verificación de proxy falló: {Err}", ex.Message);
+            log?.LogDebug("Verificación de proxy falló: {Err}", ex.Message);
             return false;
         }
     }
