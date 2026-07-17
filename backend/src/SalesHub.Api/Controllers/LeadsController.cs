@@ -18,6 +18,7 @@ public class LeadsController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly IMessageRenderer _renderer;
     private readonly PipelineService _pipeline;
+    private readonly LeadRebalancer _rebalancer;
     private readonly IPhoneNormalizer _phone;
     private readonly IGooglePlacesEnricher _enricher;
     private readonly IEvolutionClient _evo;
@@ -28,13 +29,14 @@ public class LeadsController : ControllerBase
         ApplicationDbContext db,
         IMessageRenderer renderer,
         PipelineService pipeline,
+        LeadRebalancer rebalancer,
         IPhoneNormalizer phone,
         IGooglePlacesEnricher enricher,
         IEvolutionClient evo,
         IProductStatusNotifier statusNotifier,
         ILogger<LeadsController> log)
     {
-        _db = db; _renderer = renderer; _pipeline = pipeline; _phone = phone; _enricher = enricher;
+        _db = db; _renderer = renderer; _pipeline = pipeline; _rebalancer = rebalancer; _phone = phone; _enricher = enricher;
         _evo = evo; _statusNotifier = statusNotifier; _log = log;
     }
 
@@ -98,6 +100,23 @@ public class LeadsController : ControllerBase
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
         var result = await _pipeline.ReassignOrphansAsync(autoQueue, ct);
+        return result;
+    }
+
+    /// <summary>
+    /// Reasignación masiva del botón "Reasignar todo": corre el rebalanceo COMPLETO al instante
+    /// (sin esperar el tick de 5 min). Suelta al pool los leads sin contactar pegados a un
+    /// vendedor que ya no corresponde —por whitelist cambiada o por línea caída (force)—, re-corre
+    /// el assigner sobre todo el pool y drena backlog hacia las líneas dedicadas. Solo toca leads
+    /// que todavía no arrancaron conversación (sin enviar / sin responder).
+    /// </summary>
+    [HttpPost("rebalance-now")]
+    public async Task<ActionResult<LeadRebalancer.RebalanceResult>> RebalanceNow(CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var result = await _rebalancer.RebalanceAsync(ct, force: true);
+        _log.LogWarning("rebalance-now (manual): {Mismatch} liberados por whitelist, {Rescued} rescatados, {Orphans} asignados, {Drained} drenados",
+            result.MismatchReleased, result.Rescued, result.OrphansAssigned, result.Drained);
         return result;
     }
 

@@ -229,6 +229,91 @@ public class DashboardController : ControllerBase
 
     public record AdLeadsRow(string ProductKey, string DisplayName, int MetaLeadAd, int WhatsAppAd, int Total, int Last7d);
 
+    public record IgFollowAccountStatus(
+        Guid AccountId, string Username, bool IsActive, bool IsLoggedIn, bool IsActionBlocked,
+        bool IsAwaitingTwoFactor, DateTimeOffset? BlockedUntil, DateTimeOffset? LastLoginAt,
+        DateTimeOffset? LastFollowAt, int ActiveCampaigns, int DailyRate, int FollowedToday,
+        int Pending, string? LastError, string Status);
+    public record IgFollowSummary(
+        bool Enabled, int Accounts, int Ok, int Attention, int FollowedToday,
+        IEnumerable<IgFollowAccountStatus> Rows);
+
+    /// <summary>
+    /// Salud del auto-follow de Instagram por cuenta: si el worker está prendido (flag),
+    /// login vivo, bloqueos/2FA, follows de hoy vs. ritmo diario y último follow/error. Sirve
+    /// para ver de un vistazo si las cuentas están andando o si alguna se trabó (típico: túnel
+    /// de proxy caído → login OK pero 0 follows → status "trabada").
+    /// </summary>
+    [HttpGet("instagram-follow")]
+    public async Task<ActionResult<IgFollowSummary>> InstagramFollow(CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        var enabled = await _db.IsFlagOnAsync("instagram", true, ct);
+        var todayUtc = DateTimeOffset.UtcNow.Date;
+        var staleCutoff = DateTimeOffset.UtcNow.AddHours(-26); // margen sobre ventana 10-22h + noche
+
+        var accounts = await _db.InstagramAccounts
+            .Where(a => a.IsActive)
+            .OrderBy(a => a.Username)
+            .ToListAsync(ct);
+        var campaigns = await _db.InstagramFollowCampaigns.ToListAsync(ct);
+
+        var followedToday = await _db.InstagramFollowActions
+            .Where(a => a.Status == InstagramFollowActionStatus.Done
+                     && a.ExecutedAt != null && a.ExecutedAt >= todayUtc)
+            .GroupBy(a => a.InstagramAccountId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+
+        var pending = await _db.InstagramFollowActions
+            .Where(a => a.Status == InstagramFollowActionStatus.Pending)
+            .GroupBy(a => a.InstagramAccountId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+
+        // Último error por cuenta: ordenamos en SQL y reducimos en memoria (GroupBy+First no
+        // traduce confiable en Npgsql).
+        var recentFailed = await _db.InstagramFollowActions
+            .Where(a => a.Status == InstagramFollowActionStatus.Failed && a.ErrorMessage != null)
+            .OrderByDescending(a => a.ExecutedAt ?? a.EnqueuedAt)
+            .Take(200)
+            .Select(a => new { a.InstagramAccountId, a.ErrorMessage })
+            .ToListAsync(ct);
+        var lastErrorByAccount = recentFailed
+            .GroupBy(a => a.InstagramAccountId)
+            .ToDictionary(g => g.Key, g => g.First().ErrorMessage);
+
+        var rows = accounts.Select(a =>
+        {
+            var mine = campaigns.Where(c => c.InstagramAccountId == a.Id).ToList();
+            var active = mine.Where(c => c.IsActive).ToList();
+            var lastFollow = mine.Where(c => c.LastFollowAt != null)
+                .Select(c => c.LastFollowAt).DefaultIfEmpty(null).Max();
+            var todayCount = followedToday.GetValueOrDefault(a.Id);
+
+            string status =
+                !enabled ? "off"
+                : a.IsAwaitingTwoFactor ? "2fa"
+                : a.IsActionBlocked ? "blocked"
+                : !a.IsLoggedIn ? "logged_out"
+                : active.Count == 0 ? "idle"
+                : (todayCount == 0 && (lastFollow == null || lastFollow < staleCutoff)) ? "stale"
+                : "ok";
+
+            return new IgFollowAccountStatus(
+                a.Id, a.Username, a.IsActive, a.IsLoggedIn, a.IsActionBlocked,
+                a.IsAwaitingTwoFactor, a.BlockedUntil, a.LastLoginAt, lastFollow,
+                active.Count, active.Sum(c => c.DailyRate), todayCount,
+                pending.GetValueOrDefault(a.Id), lastErrorByAccount.GetValueOrDefault(a.Id), status);
+        }).ToList();
+
+        var attention = rows.Count(r => r.Status is "2fa" or "blocked" or "logged_out" or "stale");
+        return new IgFollowSummary(
+            enabled, rows.Count, rows.Count(r => r.Status == "ok"), attention,
+            rows.Sum(r => r.FollowedToday), rows);
+    }
+
     [HttpGet("admin")]
     public async Task<ActionResult<GlobalMetrics>> Admin(CancellationToken ct)
     {

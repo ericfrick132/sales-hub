@@ -11,6 +11,7 @@ import MainCalendar from '../components/MainCalendar';
 import TodayChecklist from '../components/TodayChecklist';
 import PosteosHoy from '../components/PosteosHoy';
 import AdLeadsCard from '../components/AdLeadsCard';
+import InstagramFollowCard from '../components/InstagramFollowCard';
 import Collapsible from '../components/Collapsible';
 
 interface DailyActivity {
@@ -140,6 +141,10 @@ export default function AdminDashboard() {
 
       <Collapsible title="Leads de anuncios por app" subtitle="Meta Lead Ads + WhatsApp Ads" summary={<span className="tabular-nums font-medium">{adTotal}</span>}>
         <AdLeadsCard />
+      </Collapsible>
+
+      <Collapsible title="Auto-follow Instagram" subtitle="salud de las cuentas: login, bloqueos, follows de hoy vs. ritmo">
+        <InstagramFollowCard />
       </Collapsible>
 
       <Collapsible title="Rendimiento por vendedor" subtitle="cumplimiento, estado de envíos y actividad de 14 días">

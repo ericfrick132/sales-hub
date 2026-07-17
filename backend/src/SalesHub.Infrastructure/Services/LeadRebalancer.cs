@@ -49,11 +49,21 @@ public class LeadRebalancer
         _db = db; _assigner = assigner; _renderer = renderer; _config = config; _log = log;
     }
 
-    public record RebalanceResult(int Rescued, int OrphansAssigned, int Drained);
+    public record RebalanceResult(int MismatchReleased, int Rescued, int OrphansAssigned, int Drained);
 
-    public async Task<RebalanceResult> RebalanceAsync(CancellationToken ct)
+    /// <param name="force">
+    /// Disparo manual desde el botón "Reasignar todo": rescata YA los leads sin contactar de
+    /// cualquier vendedor que no pueda enviar (sin esperar la ventana de gracia de
+    /// Rebalance:FrozenAfterHours que usa el tick automático). El release por whitelist corre
+    /// siempre, con o sin force.
+    /// </param>
+    public async Task<RebalanceResult> RebalanceAsync(CancellationToken ct, bool force = false)
     {
-        var rescued = await RescueFrozenAsync(ct);
+        // Nuevo: soltar al pool los leads pegados a un vendedor CONECTADO al que el admin le
+        // sacó ese producto de la whitelist (cambió las apps asignadas). Sin esto quedaban
+        // "muertos" — ningún otro path los rescataba.
+        var mismatch = await ReleaseConfigMismatchedAsync(ct);
+        var rescued = await RescueFrozenAsync(ct, force);
 
         // Mismos criterios de elegibilidad que LeadAssigner: listos para enviar AHORA.
         var capable = (await _db.Sellers
@@ -67,21 +77,61 @@ public class LeadRebalancer
                      || (s.Role == SellerRole.Admin && s.VerticalsWhitelist is { Count: > 0 }))
             .ToList();
 
-        if (capable.Count == 0) return new RebalanceResult(rescued, 0, 0);
+        if (capable.Count == 0) return new RebalanceResult(mismatch, rescued, 0, 0);
 
         var orphansAssigned = await RetryOrphansAsync(capable, ct);
         var drained = await DrainToSpecialistsAsync(capable, ct);
 
-        if (rescued + orphansAssigned + drained > 0)
-            _log.LogInformation("Rebalance: {Rescued} rescatados al pool, {Orphans} huérfanos asignados, {Drained} drenados a líneas dedicadas",
-                rescued, orphansAssigned, drained);
-        return new RebalanceResult(rescued, orphansAssigned, drained);
+        if (mismatch + rescued + orphansAssigned + drained > 0)
+            _log.LogInformation("Rebalance: {Mismatch} liberados por whitelist, {Rescued} rescatados al pool, {Orphans} huérfanos asignados, {Drained} drenados a líneas dedicadas",
+                mismatch, rescued, orphansAssigned, drained);
+        return new RebalanceResult(mismatch, rescued, orphansAssigned, drained);
     }
 
-    /// <summary>Leads sin contactar de sellers que no pueden enviar hace rato → al pool.</summary>
-    private async Task<int> RescueFrozenAsync(CancellationToken ct)
+    /// <summary>
+    /// Leads sin contactar pegados a un vendedor que SIGUE conectado y enviando, pero cuya
+    /// whitelist ya NO incluye el producto del lead (el admin le cambió las apps asignadas) → al
+    /// pool, para que RetryOrphans los reparta a quien sí corresponda. Solo aplica a vendedores
+    /// con whitelist explícita: los catch-all (whitelist vacía) aceptan todo, no hay mismatch.
+    /// </summary>
+    private async Task<int> ReleaseConfigMismatchedAsync(CancellationToken ct)
     {
-        var frozenHours = _config.GetValue<int>("Rebalance:FrozenAfterHours", 24);
+        // Pocos sellers: traemos todos y filtramos en memoria (VerticalsWhitelist es jsonb,
+        // .Count no traduce a SQL de forma confiable).
+        var restricted = (await _db.Sellers.ToListAsync(ct))
+            .Where(s => s.VerticalsWhitelist is { Count: > 0 })
+            .ToDictionary(s => s.Id, s => new HashSet<string>(s.VerticalsWhitelist, StringComparer.OrdinalIgnoreCase));
+        if (restricted.Count == 0) return 0;
+
+        var restrictedIds = restricted.Keys.ToList();
+        var held = await _db.Leads
+            .Where(l => l.SellerId != null && restrictedIds.Contains(l.SellerId.Value)
+                     && (l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued)
+                     && l.SentAt == null && l.FirstReplyAt == null)
+            .ToListAsync(ct);
+
+        var mismatched = held
+            .Where(l => restricted.TryGetValue(l.SellerId!.Value, out var wl) && !wl.Contains(l.ProductKey))
+            .ToList();
+        if (mismatched.Count == 0) return 0;
+
+        await CancelPendingOutboxAsync(mismatched.Select(l => l.Id).ToList(), ct);
+        foreach (var lead in mismatched)
+        {
+            lead.SellerId = null;
+            lead.AssignedAt = null;
+            lead.QueuedAt = null;
+            lead.Status = LeadStatus.New;
+        }
+        await _db.SaveChangesAsync(ct);
+        return mismatched.Count;
+    }
+
+    /// <summary>Leads sin contactar de sellers que no pueden enviar hace rato → al pool.
+    /// Con <paramref name="force"/> ignora la ventana de gracia (rescata ya, sin esperar horas).</summary>
+    private async Task<int> RescueFrozenAsync(CancellationToken ct, bool force = false)
+    {
+        var frozenHours = force ? 0 : _config.GetValue<int>("Rebalance:FrozenAfterHours", 24);
         var cutoff = DateTimeOffset.UtcNow.AddHours(-frozenHours);
 
         var holders = await _db.Sellers.Include(s => s.EvolutionInstance).ToListAsync(ct);

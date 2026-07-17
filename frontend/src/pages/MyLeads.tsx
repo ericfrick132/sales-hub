@@ -147,19 +147,24 @@ export default function MyLeads() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{title}</h1>
         <div className="flex gap-2">
-          {admin && tab === 'pool' && (
+          {admin && (
             <button
               className="btn-secondary"
               onClick={async () => {
-                if (!confirm('Reasignar todos los leads "Sin asignar" usando whitelist + regiones de los vendedores conectados?')) return;
+                if (!confirm(
+                  'Reasignar TODO el equipo según la config actual de vendedores.\n\n' +
+                  '• Suelta al pool los leads sin contactar pegados a un vendedor que ya no maneja ese producto (le cambiaste las apps) o cuya línea está caída.\n' +
+                  '• Reparte todo el pool con whitelist + regiones de los vendedores conectados.\n' +
+                  '• Drena backlog hacia las líneas dedicadas.\n\n' +
+                  'No toca leads que ya arrancaron conversación. ¿Seguir?'
+                )) return;
                 try {
                   const { data } = await api.post<{
-                    scanned: number; assigned: number; queued: number; stillOrphanByProduct: Record<string, number>
-                  }>('/leads/reassign-orphans?autoQueue=true');
-                  const stuck = Object.entries(data.stillOrphanByProduct);
+                    mismatchReleased: number; rescued: number; orphansAssigned: number; drained: number
+                  }>('/leads/rebalance-now');
                   toast.success(
-                    `Asignados: ${data.assigned} de ${data.scanned} · En cola: ${data.queued}` +
-                    (stuck.length > 0 ? ` · Sin destino: ${stuck.map(([k, v]) => `${k}(${v})`).join(', ')}` : '')
+                    `Reasignados: ${data.orphansAssigned} · Liberados por apps: ${data.mismatchReleased} · ` +
+                    `Rescatados (líneas caídas): ${data.rescued} · Drenados a dedicadas: ${data.drained}`
                   );
                   qc.invalidateQueries({ queryKey: ['leads'] });
                 } catch (err) {
@@ -167,7 +172,7 @@ export default function MyLeads() {
                   toast.error(e?.response?.data?.error ?? 'Falló la reasignación');
                 }
               }}>
-              Reasignar todos
+              Reasignar todo
             </button>
           )}
           <Link to="/leads/import" className="btn-secondary">Importar de Maps</Link>

@@ -19,6 +19,9 @@ namespace SalesHub.Infrastructure.Services;
 /// </summary>
 public static class OutboxEnqueueHelper
 {
+    /// <summary>Tope de toques del drip para leads FRÍOS (scrapeados). Opener + 2 follow-ups.</summary>
+    public const int ColdMaxSteps = 3;
+
     public static int EnqueueLeadMessages(
         ApplicationDbContext db,
         IMessageRenderer renderer,
@@ -45,6 +48,15 @@ public static class OutboxEnqueueHelper
         // Resolver qué cadencia usar para este lead (override por categoría
         // o default del producto).
         var (steps, cadenceCategory) = ResolveStepsForLead(lead, product);
+
+        // Venta FRÍA (leads scrapeados, Source < 400): máximo 3 toques — opener + 2 follow-ups.
+        // Un "toque" = un paso de la cadencia (un solo step puede emitir saludo de voz + pitch
+        // juntos; sigue contando como 1). Evita sobre-pinguear a un contacto frío que no pidió
+        // nada. Los leads CALIENTES (anuncios/formularios, Source >= 400) no se capan: ya nos
+        // conocen y su cadencia es corta y a medida.
+        if ((int)lead.Source < 400 && steps is { Count: > ColdMaxSteps })
+            steps = steps.Take(ColdMaxSteps).ToList();
+
         if (steps is { Count: > 0 })
         {
             // Modelo nuevo: cada step se renderiza con los placeholders del
