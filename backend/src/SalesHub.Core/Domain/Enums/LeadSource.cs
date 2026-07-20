@@ -27,5 +27,9 @@ public enum LeadSource
     ProductOnboarding = 403,
     // Lead que dejó sus datos en un formulario instantáneo de Meta (Lead Ad): teléfono +
     // respuestas de calificación, ingerido por el webhook /api/webhooks/meta-leads.
-    MetaLeadAd = 404
+    MetaLeadAd = 404,
+    // Número desconocido que escribió a una línea vinculada (vendedor o app) sin texto
+    // de anuncio: se crea igual para que TODOS los chats queden centralizados en
+    // Conversaciones. El bot arranca muteado (lo maneja un humano salvo que lo prendan).
+    WhatsAppInbound = 405
 }

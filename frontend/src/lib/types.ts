@@ -90,7 +90,8 @@ export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   ProductReengage: 'Re-enganche producto',
   WhatsAppAd: 'WhatsApp Ad (CTWA)',
   ProductOnboarding: 'Onboarding / OTP',
-  MetaLeadAd: 'Meta Lead Ads'
+  MetaLeadAd: 'Meta Lead Ads',
+  WhatsAppInbound: 'WhatsApp entrante'
 };
 
 export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
@@ -111,7 +112,7 @@ export type LeadSource =
   | 'ApifyInstagram' | 'ApifyFacebookPages' | 'Manual'
   | 'ManualMaps' | 'ManualInstagram' | 'ManualWhatsApp' | 'ManualWeb'
   | 'BrowserCapture' | 'InstagramScraper' | 'DemoSignup' | 'ProductReengage'
-  | 'WhatsAppAd' | 'ProductOnboarding' | 'MetaLeadAd';
+  | 'WhatsAppAd' | 'ProductOnboarding' | 'MetaLeadAd' | 'WhatsAppInbound';
 
 export interface Lead {
   id: string;

@@ -42,6 +42,19 @@ public interface IEvolutionClient
     /// JSON del mensaje (key + message), tal como llegó por webhook. Devuelve los
     /// bytes desencriptados o null si falla.</summary>
     Task<byte[]?> GetMediaBase64Async(string instanceName, string messageJson, CancellationToken ct = default);
+
+    /// <summary>Chats de la instancia (POST /chat/findChats). Trae remoteJid + última actividad;
+    /// el sync de conversaciones lo usa para saber qué chats tuvieron movimiento reciente.</summary>
+    Task<IReadOnlyList<EvolutionChatSummary>> FindChatsAsync(string instanceName, CancellationToken ct = default);
+
+    /// <summary>Mensajes de un chat (POST /chat/findMessages), paginados del más nuevo al más
+    /// viejo. Cada record tiene la misma forma que el "data" del webhook messages.upsert
+    /// (key + message + messageTimestamp + pushName).</summary>
+    Task<EvolutionMessagesPage> FindMessagesAsync(string instanceName, string remoteJid, int page, int pageSize, CancellationToken ct = default);
 }
+
+public record EvolutionChatSummary(string RemoteJid, DateTimeOffset? UpdatedAt);
+
+public record EvolutionMessagesPage(int Total, int Pages, int CurrentPage, IReadOnlyList<System.Text.Json.JsonElement> Records);
 
 public record PreparedVoiceNote(byte[] OggBytes, int DurationSeconds);

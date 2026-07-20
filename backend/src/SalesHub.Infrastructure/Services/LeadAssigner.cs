@@ -106,6 +106,40 @@ public class LeadAssigner : ILeadAssigner
         return PickRoundRobin(pool, await GetCountsAsync(ct));
     }
 
+    /// <summary>
+    /// Dueño del producto por whitelist, esté conectado o no — mismas reglas que
+    /// "Reasignar todo" (<c>PipelineService.ReassignByOwnershipAsync</c>): dedicados
+    /// (whitelist contiene el producto) primero; si no hay, catch-all (whitelist vacía).
+    /// Prefiere a los que pueden enviar YA; balancea por carga de las últimas 24h.
+    /// Es el fallback cuando el pick estricto (solo conectados) no encuentra a nadie:
+    /// mejor un lead Assigned esperando a su dueño que un lead New que nadie ve.
+    /// </summary>
+    public async Task<Guid?> PickOwnerAsync(string productKey, CancellationToken ct = default)
+    {
+        var sellers = (await _db.Sellers
+                .Include(s => s.EvolutionInstance)
+                .Where(s => s.IsActive)
+                .ToListAsync(ct))
+            .Where(s => s.Role == SellerRole.Seller
+                     || (s.Role == SellerRole.Admin && s.VerticalsWhitelist is { Count: > 0 }))
+            .ToList();
+
+        var dedicated = sellers
+            .Where(s => s.VerticalsWhitelist is { Count: > 0 } && s.VerticalsWhitelist.Contains(productKey))
+            .ToList();
+        var owners = dedicated.Count > 0
+            ? dedicated
+            : sellers.Where(s => s.VerticalsWhitelist is not { Count: > 0 }).ToList();
+        if (owners.Count == 0) return null;
+
+        static bool IsReady(Seller s) =>
+            s.SendingEnabled && s.EvolutionInstance is { Status: InstanceStatus.Connected };
+
+        var ready = owners.Where(IsReady).ToList();
+        var pool = ready.Count > 0 ? ready : owners;
+        return PickRoundRobin(pool, await GetCountsAsync(ct));
+    }
+
     private async Task<Dictionary<Guid, int>> GetCountsAsync(CancellationToken ct)
     {
         var since = DateTimeOffset.UtcNow.AddHours(-24);

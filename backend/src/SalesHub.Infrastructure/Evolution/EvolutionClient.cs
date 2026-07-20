@@ -501,6 +501,56 @@ public class EvolutionClient : IEvolutionClient
         }
     }
 
+    public async Task<IReadOnlyList<EvolutionChatSummary>> FindChatsAsync(string instanceName, CancellationToken ct = default)
+    {
+        var resp = await _http.PostAsJsonAsync($"chat/findChats/{Uri.EscapeDataString(instanceName)}", new { }, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            _log.LogWarning("FindChats {Instance} failed: {Status}", instanceName, resp.StatusCode);
+            return Array.Empty<EvolutionChatSummary>();
+        }
+        using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        if (doc.RootElement.ValueKind != JsonValueKind.Array) return Array.Empty<EvolutionChatSummary>();
+
+        var chats = new List<EvolutionChatSummary>();
+        foreach (var chat in doc.RootElement.EnumerateArray())
+        {
+            var jid = chat.TryGetProperty("remoteJid", out var rj) && rj.ValueKind == JsonValueKind.String
+                ? rj.GetString() : null;
+            if (string.IsNullOrWhiteSpace(jid)) continue;
+            DateTimeOffset? updatedAt = null;
+            if (chat.TryGetProperty("updatedAt", out var up) && up.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(up.GetString(), out var parsed))
+                updatedAt = parsed;
+            chats.Add(new EvolutionChatSummary(jid!, updatedAt));
+        }
+        return chats;
+    }
+
+    public async Task<EvolutionMessagesPage> FindMessagesAsync(
+        string instanceName, string remoteJid, int page, int pageSize, CancellationToken ct = default)
+    {
+        // OJO nomenclatura de Evolution: "offset" acá es el TAMAÑO de página, no un skip.
+        var body = new { where = new { key = new { remoteJid } }, page, offset = pageSize };
+        var resp = await _http.PostAsJsonAsync($"chat/findMessages/{Uri.EscapeDataString(instanceName)}", body, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            _log.LogWarning("FindMessages {Instance} {Jid} failed: {Status}", instanceName, remoteJid, resp.StatusCode);
+            return new EvolutionMessagesPage(0, 0, page, Array.Empty<JsonElement>());
+        }
+        using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        if (!doc.RootElement.TryGetProperty("messages", out var messages))
+            return new EvolutionMessagesPage(0, 0, page, Array.Empty<JsonElement>());
+
+        var total = messages.TryGetProperty("total", out var t) && t.ValueKind == JsonValueKind.Number ? t.GetInt32() : 0;
+        var pages = messages.TryGetProperty("pages", out var p) && p.ValueKind == JsonValueKind.Number ? p.GetInt32() : 0;
+        var records = new List<JsonElement>();
+        if (messages.TryGetProperty("records", out var recs) && recs.ValueKind == JsonValueKind.Array)
+            foreach (var r in recs.EnumerateArray())
+                records.Add(r.Clone()); // el JsonDocument se dispone al salir — clonamos
+        return new EvolutionMessagesPage(total, pages, page, records);
+    }
+
     private class CheckResponseItem
     {
         [JsonPropertyName("number")] public string? number { get; set; }

@@ -63,7 +63,6 @@ public class LeadRebalancer
         // sacó ese producto de la whitelist (cambió las apps asignadas). Sin esto quedaban
         // "muertos" — ningún otro path los rescataba.
         var mismatch = await ReleaseConfigMismatchedAsync(ct);
-        var rescued = await RescueFrozenAsync(ct, force);
 
         // Mismos criterios de elegibilidad que LeadAssigner: listos para enviar AHORA.
         var capable = (await _db.Sellers
@@ -77,11 +76,24 @@ public class LeadRebalancer
                      || (s.Role == SellerRole.Admin && s.VerticalsWhitelist is { Count: > 0 }))
             .ToList();
 
-        if (capable.Count == 0) return new RebalanceResult(mismatch, rescued, 0, 0, 0);
+        var rescued = await RescueFrozenAsync(capable, ct, force);
 
-        var orphansAssigned = await RetryOrphansAsync(capable, ct);
-        var queuedForReady = await QueueAssignedForReadyAsync(capable, ct);
-        var drained = await DrainToSpecialistsAsync(capable, ct);
+        var orphansAssigned = 0;
+        var queuedForReady = 0;
+        var drained = 0;
+        if (capable.Count > 0)
+        {
+            orphansAssigned = await RetryOrphansAsync(capable, ct);
+            queuedForReady = await QueueAssignedForReadyAsync(capable, ct);
+            drained = await DrainToSpecialistsAsync(capable, ct);
+        }
+
+        // Huérfanos de productos SIN vendedor conectado: al DUEÑO por whitelist aunque esté
+        // offline (mismas reglas que "Reasignar todo"). Quedan Assigned esperando; cuando el
+        // dueño conecta, QueueAssignedForReady los encola. Sin esto, los leads de un producto
+        // cuyo dueño está desconectado (turnospro) o sin whitelistear en nadie conectado
+        // (playcrew) se acumulaban como New/sin asignar para siempre.
+        orphansAssigned += await AssignOrphansToOwnersAsync(capable, ct);
 
         if (mismatch + rescued + orphansAssigned + queuedForReady + drained > 0)
             _log.LogInformation("Rebalance: {Mismatch} liberados por whitelist, {Rescued} rescatados al pool, {Orphans} huérfanos asignados, {Queued} encolados de dueños recién conectados, {Drained} drenados a líneas dedicadas",
@@ -177,8 +189,10 @@ public class LeadRebalancer
     }
 
     /// <summary>Leads sin contactar de sellers que no pueden enviar hace rato → al pool.
-    /// Con <paramref name="force"/> ignora la ventana de gracia (rescata ya, sin esperar horas).</summary>
-    private async Task<int> RescueFrozenAsync(CancellationToken ct, bool force = false)
+    /// Con <paramref name="force"/> ignora la ventana de gracia (rescata ya, sin esperar horas).
+    /// Solo rescata leads cuyo producto HOY tiene vendedor conectado que lo cubra: sacárselos
+    /// al dueño offline para que el fallback por dueño se los vuelva a dar sería puro churn.</summary>
+    private async Task<int> RescueFrozenAsync(IReadOnlyList<Seller> capable, CancellationToken ct, bool force = false)
     {
         var frozenHours = force ? 0 : _config.GetValue<int>("Rebalance:FrozenAfterHours", 24);
         var cutoff = DateTimeOffset.UtcNow.AddHours(-frozenHours);
@@ -193,11 +207,20 @@ public class LeadRebalancer
             .ToHashSet();
         if (frozenIds.Count == 0) return 0;
 
-        var leads = await _db.Leads
+        var hasCatchAll = capable.Any(s => s.VerticalsWhitelist is not { Count: > 0 });
+        var coverable = capable
+            .Where(s => s.VerticalsWhitelist is { Count: > 0 })
+            .SelectMany(s => s.VerticalsWhitelist!)
+            .Distinct()
+            .ToList();
+
+        var q = _db.Leads
             .Where(l => l.SellerId != null && frozenIds.Contains(l.SellerId.Value)
                      && (l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued)
-                     && l.SentAt == null && l.FirstReplyAt == null)
-            .ToListAsync(ct);
+                     && l.SentAt == null && l.FirstReplyAt == null);
+        if (!hasCatchAll) q = q.Where(l => coverable.Contains(l.ProductKey));
+
+        var leads = await q.ToListAsync(ct);
         if (leads.Count == 0) return 0;
 
         await CancelPendingOutboxAsync(leads.Select(l => l.Id).ToList(), ct);
@@ -243,6 +266,61 @@ public class LeadRebalancer
             assigned++;
         }
         if (assigned > 0) await _db.SaveChangesAsync(ct);
+        return assigned;
+    }
+
+    /// <summary>
+    /// Huérfanos (New, sin seller) cuyo producto NO tiene vendedor conectado: al DUEÑO por
+    /// whitelist aunque esté offline (LeadAssigner.PickOwnerAsync = mismas reglas que
+    /// "Reasignar todo"). Quedan Assigned sin encolar; QueueAssignedForReady los encola
+    /// cuando el dueño conecta. Los productos coverables ya los maneja RetryOrphans.
+    /// </summary>
+    private async Task<int> AssignOrphansToOwnersAsync(IReadOnlyList<Seller> capable, CancellationToken ct)
+    {
+        var hasCatchAll = capable.Any(s => s.VerticalsWhitelist is not { Count: > 0 });
+        if (hasCatchAll) return 0; // todo producto es coverable → RetryOrphans ya lo cubre
+
+        var coverable = capable
+            .Where(s => s.VerticalsWhitelist is { Count: > 0 })
+            .SelectMany(s => s.VerticalsWhitelist!)
+            .Distinct()
+            .ToList();
+
+        var orphans = await _db.Leads.Include(l => l.Product)
+            .Where(l => l.SellerId == null && l.Status == LeadStatus.New
+                     && !coverable.Contains(l.ProductKey))
+            .OrderBy(l => l.CreatedAt)
+            .Take(OrphanBatchPerTick)
+            .ToListAsync(ct);
+        if (orphans.Count == 0) return 0;
+
+        var ownerByProduct = new Dictionary<string, Seller?>(StringComparer.OrdinalIgnoreCase);
+        var assigned = 0;
+        foreach (var lead in orphans)
+        {
+            if (lead.Product is null || string.IsNullOrWhiteSpace(lead.ProductKey)) continue;
+            if (!ownerByProduct.TryGetValue(lead.ProductKey, out var owner))
+            {
+                var ownerId = await _assigner.PickOwnerAsync(lead.ProductKey, ct);
+                owner = ownerId is null
+                    ? null
+                    : await _db.Sellers.Include(s => s.EvolutionInstance)
+                        .FirstOrDefaultAsync(s => s.Id == ownerId.Value, ct);
+                ownerByProduct[lead.ProductKey] = owner;
+            }
+            if (owner is null) continue;
+
+            lead.SellerId = owner.Id;
+            lead.AssignedAt = DateTimeOffset.UtcNow;
+            lead.Status = LeadStatus.Assigned;
+            lead.RenderedMessage = _renderer.Render(lead, lead.Product, owner);
+            assigned++;
+        }
+        if (assigned > 0)
+        {
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("Rebalance: {N} huérfanos asignados a su dueño offline (esperan conexión)", assigned);
+        }
         return assigned;
     }
 

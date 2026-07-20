@@ -58,6 +58,12 @@ public class LeadIngestService : ILeadIngestService
                 || s.VerticalsWhitelist.Contains(req.ProductKey));
             sellerId = match?.Id;
         }
+        // Último fallback: el DUEÑO de la app por whitelist, conectado o no (mismas reglas
+        // que "Reasignar todo"). Sin esto, los leads de productos cuyo dueño está
+        // desconectado (o sin whitelistear en nadie conectado) quedaban New/sin asignar
+        // PARA SIEMPRE — el retry del pool solo mira productos con vendedor conectado.
+        // Queda Assigned sin encolar; cuando el dueño conecta, el rebalanceo lo encola.
+        sellerId ??= await _assigner.PickOwnerAsync(req.ProductKey, ct);
         if (sellerId is not null)
         {
             var seller = await _db.Sellers.Include(s => s.EvolutionInstance)
@@ -69,9 +75,11 @@ public class LeadIngestService : ILeadIngestService
                 lead.Status = LeadStatus.Assigned;
                 lead.RenderedMessage = _renderer.Render(lead, product, seller);
                 // Relay: encolamos el opener aunque el vendedor no tenga instancia conectada en
-                // sales-hub (la app provee el transporte). No-relay: igual que antes.
+                // sales-hub (la app provee el transporte). No-relay: solo con línea CONECTADA —
+                // el fallback por dueño puede asignar a un vendedor offline; ese lead queda
+                // Assigned y el rebalanceo lo encola cuando el dueño conecta.
                 var canQueue = lead.RenderedMessage is not null
-                    && (seller.EvolutionInstance is not null || product.AppManagedTransport);
+                    && (seller.EvolutionInstance is { Status: InstanceStatus.Connected } || product.AppManagedTransport);
                 if (canQueue)
                 {
                     var instanceName = seller.EvolutionInstance?.InstanceName ?? string.Empty;

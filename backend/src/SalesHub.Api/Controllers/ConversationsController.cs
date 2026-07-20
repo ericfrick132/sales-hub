@@ -65,7 +65,8 @@ public class ConversationsController : ControllerBase
         [FromQuery] string? status,
         [FromQuery(Name = "from")] DateTimeOffset? fromTs,
         [FromQuery(Name = "to")] DateTimeOffset? toTs,
-        // bucket: "replied" (lead respondió alguna vez), "waiting" (mandamos último, esperando),
+        // bucket: "unread" (con entrantes sin leer), "replied" (lead respondió alguna vez),
+        //         "waiting" (mandamos último, esperando),
         //         "cold" (sin respuesta + > coldDays sin actividad), "all" (default).
         [FromQuery] string? bucket,
         [FromQuery] int coldDays = 3,
@@ -82,6 +83,11 @@ public class ConversationsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<LeadStatus>(status, ignoreCase: true, out var st))
             leadQ = leadQ.Where(l => l.Status == st);
 
+        // Los buckets filtran EN SQL, antes del Take: si fueran post-Take, "sin leer"
+        // solo vería los N hilos más recientes y se perdería el backlog viejo.
+        bucket = string.IsNullOrWhiteSpace(bucket) ? "all" : bucket;
+        var coldCutoff = DateTimeOffset.UtcNow.AddDays(-coldDays);
+
         var items = await (from l in leadQ
                            let latest = _db.ConversationMessages.Where(m => m.LeadId == l.Id)
                                           .OrderByDescending(m => m.Timestamp).FirstOrDefault()
@@ -90,7 +96,20 @@ public class ConversationsController : ControllerBase
                            where latest != null
                            where fromTs == null || latest.Timestamp >= fromTs
                            where toTs == null || latest.Timestamp <= toTs
-                           orderby unread descending, latest.Timestamp descending
+                           // Con mensajes entrantes sin leer.
+                           where bucket != "unread" || unread > 0
+                           // El lead nos contestó al menos una vez.
+                           where bucket != "replied" || l.FirstReplyAt != null
+                           // Nosotros mandamos último → estamos esperando respuesta.
+                           where bucket != "waiting" || (l.FirstReplyAt == null
+                                    && latest.Direction == MessageDirection.Outbound)
+                           // Sin respuesta y sin actividad reciente → follow-up.
+                           where bucket != "cold" || (l.FirstReplyAt == null
+                                    && latest.Timestamp <= coldCutoff)
+                           // Orden por RECENCIA (estilo WhatsApp). Antes era unread-first y una
+                           // conversación de HOY quedaba enterrada bajo cientos de hilos viejos
+                           // con no-leídos acumulados (el caso "escribió y no lo veo en la lista").
+                           orderby latest.Timestamp descending
                            select new ConversationListItem(
                                l.Id, l.Name, l.City, l.ProductKey,
                                l.Product != null ? l.Product.DisplayName : null,
@@ -100,24 +119,6 @@ public class ConversationsController : ControllerBase
                                latest.Text, latest.Direction, latest.Timestamp, unread,
                                l.FirstReplyAt, l.SentAt))
                        .Take(Math.Min(limit, 500)).ToListAsync(ct);
-
-        if (!string.IsNullOrWhiteSpace(bucket) && bucket != "all")
-        {
-            var now = DateTimeOffset.UtcNow;
-            items = bucket switch
-            {
-                // El lead nos contestó al menos una vez.
-                "replied" => items.Where(i => i.FirstReplyAt is not null).ToList(),
-                // Nosotros mandamos último → estamos esperando respuesta.
-                "waiting" => items.Where(i => i.LastDirection == MessageDirection.Outbound
-                                              && i.FirstReplyAt is null).ToList(),
-                // Sin respuesta y sin actividad reciente → follow-up.
-                "cold" => items.Where(i => i.FirstReplyAt is null
-                                           && i.LastTimestamp is not null
-                                           && (now - i.LastTimestamp.Value).TotalDays >= coldDays).ToList(),
-                _ => items
-            };
-        }
 
         return items;
     }

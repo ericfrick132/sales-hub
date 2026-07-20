@@ -22,7 +22,7 @@ export type ConvListItem = {
   sentAt?: string;
 };
 
-type Bucket = 'all' | 'replied' | 'waiting' | 'cold';
+type Bucket = 'all' | 'unread' | 'replied' | 'waiting' | 'cold';
 
 type Props = {
   // Si está, filtra por seller (vista admin de un seller). Si no, backend usa el caller.
@@ -39,6 +39,7 @@ type Props = {
 
 const BUCKET_LABELS: Record<Bucket, string> = {
   all: 'Todas',
+  unread: 'Sin leer',
   replied: 'Respondieron',
   waiting: 'Esperando',
   cold: 'Sin contestar'
@@ -84,6 +85,7 @@ export default function ConversationsList({
     if (bucket !== 'all') return null;
     const now = Date.now();
     return {
+      unread: data.filter((d) => d.unreadCount > 0).length,
       replied: data.filter((d) => d.firstReplyAt).length,
       waiting: data.filter((d) => !d.firstReplyAt && d.lastDirection === 'Outbound').length,
       cold: data.filter((d) =>
@@ -108,6 +110,9 @@ export default function ConversationsList({
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
               )}>
               {BUCKET_LABELS[b]}
+              {b === 'unread' && counts && counts.unread > 0 && (
+                <span className="ml-1 text-rose-600 font-semibold">{counts.unread}</span>
+              )}
               {b === 'cold' && counts && counts.cold > 0 && (
                 <span className="ml-1 text-rose-600 font-semibold">{counts.cold}</span>
               )}
@@ -146,6 +151,7 @@ export default function ConversationsList({
             {bucket === 'cold' && 'Nada para hacer follow-up — buenas noticias.'}
             {bucket === 'waiting' && 'Sin conversaciones esperando respuesta.'}
             {bucket === 'replied' && 'Todavía no respondieron leads en este período.'}
+            {bucket === 'unread' && 'Sin mensajes sin leer.'}
             {bucket === 'all' && 'Sin conversaciones.'}
           </div>
         )}
