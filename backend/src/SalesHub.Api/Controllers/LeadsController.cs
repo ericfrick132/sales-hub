@@ -134,6 +134,47 @@ public class LeadsController : ControllerBase
         return result;
     }
 
+    /// <summary>
+    /// Limpieza puntual: leads WhatsAppInbound duplicados (mismo teléfono+producto) que dejó
+    /// el bug del chat-sync (dedup post-creación → leads fantasma en serie). Borra SOLO los
+    /// que no tienen ningún mensaje; conserva el que tiene el hilo (o el más viejo).
+    /// </summary>
+    [HttpPost("dedup-inbound")]
+    public async Task<IActionResult> DedupInbound(CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        var inbound = await _db.Leads
+            .Where(l => l.Source == Core.Domain.Enums.LeadSource.WhatsAppInbound)
+            .ToListAsync(ct);
+
+        var msgCounts = await _db.ConversationMessages
+            .GroupBy(m => m.LeadId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+
+        var toDelete = new List<Core.Domain.Entities.Lead>();
+        foreach (var group in inbound
+                     .GroupBy(l => (l.ProductKey, l.WhatsappPhone))
+                     .Where(g => g.Count() > 1))
+        {
+            var keeper = group
+                .OrderByDescending(l => msgCounts.GetValueOrDefault(l.Id))
+                .ThenBy(l => l.CreatedAt)
+                .First();
+            toDelete.AddRange(group.Where(l =>
+                l.Id != keeper.Id && msgCounts.GetValueOrDefault(l.Id) == 0));
+        }
+
+        if (toDelete.Count > 0)
+        {
+            _db.Leads.RemoveRange(toDelete);
+            await _db.SaveChangesAsync(ct);
+        }
+        _log.LogWarning("dedup-inbound: {N} leads fantasma borrados", toDelete.Count);
+        return Ok(new { deleted = toDelete.Count });
+    }
+
     public record MapLeadDto(
         Guid Id, string Name, string ProductKey, string? City, string? Province, string? Address,
         string? WhatsappPhone, string? SellerName,

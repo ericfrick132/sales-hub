@@ -67,6 +67,15 @@ public class ConversationService
         // Normalizar a solo dígitos (FromPhone puede traer separadores).
         phone = NonDigit.Replace(phone, "");
 
+        // Dedup por id de WhatsApp ANTES de crear nada. Si esto corría después de crear
+        // el lead, un mensaje ya conocido retornaba temprano SIN SaveChanges y el lead
+        // recién agregado quedaba colgado en el change tracker: el próximo mensaje del
+        // mismo número no lo encontraba en DB y creaba OTRO — leads duplicados en serie
+        // (pasó en el re-barrido del sync con chats ya ingestados por otra instancia).
+        if (!string.IsNullOrWhiteSpace(incoming.MessageId)
+            && await _db.ConversationMessages.AnyAsync(m => m.WhatsappMessageId == incoming.MessageId, ct))
+            return true;
+
         // Cualquier instancia VINCULADA al hub cuenta: líneas de vendedor (Seller) y
         // líneas de APP (ProductKey, sin seller — ej. app_playcrew). Solo se descartan
         // instancias que el hub no conoce (ej. las líneas de tenants de gymhero).
@@ -112,13 +121,6 @@ public class ConversationService
                 _log.LogWarning("Inbound de {Phone} por {I} descartado: no pude determinar producto", phone, incoming.InstanceName);
                 return false;
             }
-        }
-
-        // Dedup by WhatsApp message id.
-        if (!string.IsNullOrWhiteSpace(incoming.MessageId))
-        {
-            var dupe = await _db.ConversationMessages.AnyAsync(m => m.WhatsappMessageId == incoming.MessageId, ct);
-            if (dupe) return true;
         }
 
         _db.ConversationMessages.Add(new ConversationMessage
