@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import type { Product, Seller } from '../lib/types';
 import QrConnectModal from './QrConnectModal';
@@ -136,7 +137,24 @@ export default function WaCoverageCard() {
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     {r.appLineConnected ? (
-                      <span className="text-xs text-emerald-700">📱 {r.appLine?.connectedPhoneNumber ?? 'conectada'}</span>
+                      <>
+                        <span className="text-xs text-emerald-700">📱 {r.appLine?.connectedPhoneNumber ?? 'conectada'}</span>
+                        <button
+                          className="text-[11px] px-2 py-0.5 rounded border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
+                          title="Desconectar esta línea de app (cierra la sesión de WhatsApp; se reconecta con QR)"
+                          onClick={async () => {
+                            if (!confirm(`¿Desconectar la línea de WhatsApp de ${r.displayName || r.productKey}?`)) return;
+                            try {
+                              await api.post(`/products/${r.productKey}/whatsapp/logout`);
+                              toast.success(`Línea de ${r.displayName || r.productKey} desconectada`);
+                              refresh();
+                            } catch {
+                              toast.error('No se pudo desconectar');
+                            }
+                          }}>
+                          desconectar
+                        </button>
+                      </>
                     ) : (
                       <>
                         <span className="text-xs text-slate-400">

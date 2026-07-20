@@ -89,6 +89,29 @@ public class ProductsController : ControllerBase
         return new QrCodeResponse(qr, info.Status);
     }
 
+    /// <summary>
+    /// Desconecta (logout) la línea de WhatsApp propia de una app: cierra la sesión en
+    /// Evolution y marca la instancia como Disconnected. No borra la instancia — se puede
+    /// reconectar escaneando el QR de nuevo. Sirve para apagar una línea de app puntual
+    /// (deja de recibir/rutear) sin tocar el resto. Solo admin.
+    /// </summary>
+    [HttpPost("{productKey}/whatsapp/logout")]
+    public async Task<IActionResult> WhatsappLogout(string productKey, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var key = productKey.Trim().ToLowerInvariant();
+        var instance = await _db.EvolutionInstances.FirstOrDefaultAsync(i => i.ProductKey == key, ct);
+        if (instance is null) return NotFound(new { error = "Esta app no tiene línea propia." });
+
+        await _evo.LogoutInstanceAsync(instance.InstanceName, ct);
+        instance.Status = InstanceStatus.Disconnected;
+        instance.DisconnectedAt = DateTimeOffset.UtcNow;
+        instance.LastQrCodeBase64 = null;
+        instance.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ProductDto>>> List(CancellationToken ct)
     {

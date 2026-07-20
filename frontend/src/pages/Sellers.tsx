@@ -6,11 +6,13 @@ import toast from 'react-hot-toast';
 import type { Seller, Product } from '../lib/types';
 import GaugeEditor from '../components/GaugeEditor';
 import Switch from '../components/Switch';
+import QrConnectModal from '../components/QrConnectModal';
 
 export default function Sellers() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Seller | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [qrSellerId, setQrSellerId] = useState<string | null>(null);
 
   const sellersQ = useQuery({
     queryKey: ['sellers'],
@@ -103,6 +105,30 @@ export default function Sellers() {
                 <p className="text-sm text-slate-500 break-all">{selected.email}</p>
               </div>
               <div className="flex gap-2 flex-wrap items-center">
+                {selected.instanceStatus === 'Connected' ? (
+                  <button
+                    className="btn-secondary text-xs"
+                    title={`WhatsApp conectado (${selected.evolutionInstance ?? ''}). Clic para desconectar.`}
+                    onClick={async () => {
+                      if (!confirm('¿Desconectar el WhatsApp de este vendedor? Deja de poder enviar hasta reconectar.')) return;
+                      try {
+                        await api.post(`/sellers/${selected.id}/instance/logout`);
+                        toast.success('WhatsApp desconectado');
+                        setSelected({ ...selected, instanceStatus: 'Disconnected', sendingEnabled: false });
+                        qc.invalidateQueries({ queryKey: ['sellers'] });
+                      } catch {
+                        toast.error('No se pudo desconectar');
+                      }
+                    }}>
+                    📱 conectado — desconectar
+                  </button>
+                ) : (
+                  <button
+                    className="text-xs px-2 py-1 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    onClick={() => setQrSellerId(selected.id)}>
+                    📱 Conectar WhatsApp
+                  </button>
+                )}
                 <div className="flex items-center gap-2 px-1">
                   <Switch
                     on={selected.sendingEnabled}
@@ -156,6 +182,18 @@ export default function Sellers() {
         products={products.data ?? []}
         onClose={() => setShowCreate(false)}
         onDone={() => { qc.invalidateQueries({ queryKey: ['sellers'] }); setShowCreate(false); }} />}
+
+      {qrSellerId && (
+        <QrConnectModal
+          title="Conectar WhatsApp del vendedor"
+          fetchUrl={`/sellers/${qrSellerId}/instance/qr`}
+          onClose={() => setQrSellerId(null)}
+          onConnected={() => {
+            qc.invalidateQueries({ queryKey: ['sellers'] });
+            if (selected?.id === qrSellerId) setSelected({ ...selected, instanceStatus: 'Connected' });
+          }}
+        />
+      )}
     </div>
   );
 }
