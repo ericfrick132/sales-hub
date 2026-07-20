@@ -132,14 +132,16 @@ public class EvolutionChatSyncWorker : BackgroundService
 
             foreach (var rec in records.Where(r => TsOf(r) >= cutoff).OrderBy(TsOf))
             {
-                var incoming = EvolutionMessageParser.Parse(instanceName, rec, topSender: null, fromSync: true);
-                if (incoming is null) continue;
-                // Chat LID sin teléfono real resolvible (el webhook en vivo tiene el
-                // payload.sender como fallback; acá no) → mejor saltear que inventar.
-                if (incoming.FromJid.EndsWith("@lid", StringComparison.Ordinal) && incoming.FromPhone is null)
-                    continue;
+                // Parse adentro del try: un record podrido (message null, key rara) no debe
+                // matar el sync de toda la instancia.
                 try
                 {
+                    var incoming = EvolutionMessageParser.Parse(instanceName, rec, topSender: null, fromSync: true);
+                    if (incoming is null) continue;
+                    // Chat LID sin teléfono real resolvible (el webhook en vivo tiene el
+                    // payload.sender como fallback; acá no) → mejor saltear que inventar.
+                    if (incoming.FromJid.EndsWith("@lid", StringComparison.Ordinal) && incoming.FromPhone is null)
+                        continue;
                     var handled = incoming.FromMe
                         ? await conv.HandleOwnMessageAsync(incoming, ct)
                         : await conv.HandleIncomingAsync(incoming, ct);
@@ -147,7 +149,7 @@ public class EvolutionChatSyncWorker : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    _log.LogWarning(ex, "Chat sync: mensaje {Id} de {Instance} falló", incoming.MessageId, instanceName);
+                    _log.LogWarning(ex, "Chat sync: un mensaje de {Chat} en {Instance} falló", chat.RemoteJid, instanceName);
                 }
             }
         }

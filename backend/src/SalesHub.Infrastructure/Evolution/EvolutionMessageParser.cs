@@ -16,8 +16,12 @@ public static class EvolutionMessageParser
     {
         // fromMe: mensaje propio/saliente. NO lo descartamos acá — el relay de transcripción lo
         // necesita (self-chat: te mandás un audio a vos mismo). El flujo de leads lo ignora aparte.
+        // OJO: en los records de findMessages, "key"/"message" pueden venir como JSON null
+        // (mensajes borrados, entradas de protocolo) — TryGetProperty sobre un Null EXPLOTA,
+        // por eso se chequea ValueKind antes de tocar nada.
+        if (msg.ValueKind != JsonValueKind.Object) return null;
         bool fromMe = false;
-        if (msg.TryGetProperty("key", out var key))
+        if (msg.TryGetProperty("key", out var key) && key.ValueKind == JsonValueKind.Object)
         {
             if (key.TryGetProperty("fromMe", out var fm) && fm.ValueKind == JsonValueKind.True) fromMe = true;
         }
@@ -54,7 +58,7 @@ public static class EvolutionMessageParser
         // ve en Conversaciones. En AR la mayoría responde con nota de voz: descartar
         // los no-texto perdía casi todas las respuestas.
         string? text = null;
-        if (msg.TryGetProperty("message", out var body))
+        if (msg.TryGetProperty("message", out var body) && body.ValueKind == JsonValueKind.Object)
         {
             if (body.TryGetProperty("conversation", out var conv) && conv.ValueKind == JsonValueKind.String)
                 text = conv.GetString();
