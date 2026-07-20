@@ -12,6 +12,7 @@ import TodayChecklist from '../components/TodayChecklist';
 import PosteosHoy from '../components/PosteosHoy';
 import AdLeadsCard from '../components/AdLeadsCard';
 import InstagramFollowCard from '../components/InstagramFollowCard';
+import WaCoverageCard from '../components/WaCoverageCard';
 import Collapsible from '../components/Collapsible';
 
 interface DailyActivity {
@@ -133,6 +134,14 @@ export default function AdminDashboard() {
         }
       >
         <ControlCenter sellers={data.sellers} />
+      </Collapsible>
+
+      <Collapsible
+        title="Líneas WhatsApp por app"
+        subtitle="¿cada app tiene dueño con línea conectada? QR al toque si falta"
+        defaultOpen
+      >
+        <WaCoverageCard />
       </Collapsible>
 
       <Collapsible title="Efectividad por aplicación" subtitle="embudo leads → cerrados y tasas de conversión" defaultOpen>

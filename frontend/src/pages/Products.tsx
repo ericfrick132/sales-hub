@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import type { CategoryCadence, MediaAsset, MessageStep, Product, Seller, SourceCadence } from '../lib/types';
 import { SOURCE_ORIGINS, SRC_PREFIX, originLabel } from '../lib/origins';
 import Switch from '../components/Switch';
+import QrConnectModal from '../components/QrConnectModal';
 
 const EMPTY: Product = {
   id: '', productKey: '', displayName: '', active: true, country: 'AR', countryName: 'Argentina',
@@ -990,21 +991,6 @@ function WhatsappLineBadge({ productKey }: { productKey: string }) {
   const line = (linesQ.data ?? []).find((l) => l.productKey === productKey);
   const connected = line?.status === 'Connected';
 
-  const qrQ = useQuery({
-    queryKey: ['app-wa-qr', productKey],
-    enabled: showQr,
-    refetchInterval: showQr ? 15000 : false, // el QR de WhatsApp expira ~20s
-    queryFn: async () => (await api.get<{ qrBase64?: string; status: string }>(`/products/${productKey}/whatsapp/qr`)).data,
-  });
-
-  useEffect(() => {
-    if (showQr && (qrQ.data?.status === 'open' || qrQ.data?.status === 'connected')) {
-      toast.success(`WhatsApp de ${productKey} conectado ✅`);
-      setShowQr(false);
-      qc.invalidateQueries({ queryKey: ['app-wa-lines'] });
-    }
-  }, [qrQ.data?.status, showQr]);
-
   return (
     <>
       <button
@@ -1019,26 +1005,12 @@ function WhatsappLineBadge({ productKey }: { productKey: string }) {
       </button>
 
       {showQr && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowQr(false)}>
-          <div className="bg-white rounded-xl p-5 max-w-sm w-full text-center space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-semibold">WhatsApp de {productKey}</h3>
-            <p className="text-xs text-slate-500">
-              En el celular con el número para esta app: WhatsApp → Dispositivos vinculados → Vincular dispositivo → escaneá.
-            </p>
-            {qrQ.isLoading ? (
-              <div className="py-10 text-slate-400 text-sm">Generando QR…</div>
-            ) : qrQ.data?.qrBase64 ? (
-              <img src={qrQ.data.qrBase64.startsWith('data:') ? qrQ.data.qrBase64 : `data:image/png;base64,${qrQ.data.qrBase64}`}
-                alt="QR" className="mx-auto w-56 h-56" />
-            ) : (
-              <div className="py-10 text-slate-400 text-sm">
-                {qrQ.data?.status === 'open' ? 'Ya está conectada ✅' : 'Sin QR (probá de nuevo en unos segundos)'}
-              </div>
-            )}
-            <div className="text-[11px] text-slate-400">Estado: {qrQ.data?.status ?? '…'} — el QR se renueva solo cada 15s</div>
-            <button className="btn-secondary text-sm w-full" onClick={() => setShowQr(false)}>Cerrar</button>
-          </div>
-        </div>
+        <QrConnectModal
+          title={`WhatsApp de ${productKey}`}
+          fetchUrl={`/products/${productKey}/whatsapp/qr`}
+          onClose={() => setShowQr(false)}
+          onConnected={() => qc.invalidateQueries({ queryKey: ['app-wa-lines'] })}
+        />
       )}
     </>
   );
