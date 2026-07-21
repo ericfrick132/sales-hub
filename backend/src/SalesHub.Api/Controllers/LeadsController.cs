@@ -420,6 +420,122 @@ public class LeadsController : ControllerBase
         return new LeadPreviewDto(true, category, null, result);
     }
 
+    public record PhoneRepairRow(Guid LeadId, string Name, string ProductKey, string Status, string OldPhone, string? NewPhone, string Outcome);
+    public record PhoneRepairResult(int Scanned, int Fixed, int Unfixable, int Duplicates, bool Applied, List<PhoneRepairRow> Rows);
+
+    /// <summary>
+    /// Repara teléfonos argentinos mal cargados (típico de formularios Meta: dígitos de más,
+    /// 54 duplicado, 0/15, etc.). Determinístico primero; si quedan ambiguos genera candidatos
+    /// y le pregunta a WhatsApp cuál existe (CheckNumbers vía una instancia conectada).
+    /// Dry-run por default; con apply=true pisa el teléfono del lead Y de su outbox pendiente.
+    /// Solo leads pre-envío (New/Assigned/Queued) — a los ya contactados no les cambia el número.
+    /// </summary>
+    [HttpPost("repair-phones")]
+    public async Task<ActionResult<PhoneRepairResult>> RepairPhones(
+        [FromQuery] bool apply = false, [FromQuery] string? productKey = null, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        var pre = new[] { LeadStatus.New, LeadStatus.Assigned, LeadStatus.Queued };
+        var q = _db.Leads.Include(l => l.Product)
+            .Where(l => pre.Contains(l.Status) && l.WhatsappPhone != null && l.WhatsappPhone != "");
+        if (!string.IsNullOrWhiteSpace(productKey)) q = q.Where(l => l.ProductKey == productKey);
+        var leads = (await q.ToListAsync(ct)).Where(l => !_phone.IsCanonicalAr(l.WhatsappPhone)).ToList();
+
+        var rows = new List<PhoneRepairRow>();
+        var fixes = new Dictionary<Guid, string>();
+        var pendingCheck = new List<(Lead lead, IReadOnlyList<string> candidates)>();
+
+        foreach (var lead in leads)
+        {
+            var strict = _phone.NormalizeArStrict(lead.WhatsappPhone);
+            if (strict is not null) { fixes[lead.Id] = strict; continue; }
+            var candidates = _phone.ArRepairCandidates(lead.WhatsappPhone);
+            if (candidates.Count == 0)
+                rows.Add(new PhoneRepairRow(lead.Id, lead.Name, lead.ProductKey, lead.Status.ToString(),
+                    lead.WhatsappPhone!, null, "unfixable"));
+            else
+                pendingCheck.Add((lead, candidates));
+        }
+
+        // Verificación contra WhatsApp de los ambiguos, en un solo batch por instancia conectada.
+        if (pendingCheck.Count > 0)
+        {
+            var instance = await _db.EvolutionInstances.AsNoTracking()
+                .Where(i => i.Status == Core.Domain.Enums.InstanceStatus.Connected)
+                .OrderBy(i => i.InstanceName)
+                .Select(i => i.InstanceName)
+                .FirstOrDefaultAsync(ct);
+            if (instance is null)
+            {
+                foreach (var (lead, _) in pendingCheck)
+                    rows.Add(new PhoneRepairRow(lead.Id, lead.Name, lead.ProductKey, lead.Status.ToString(),
+                        lead.WhatsappPhone!, null, "sin instancia conectada para verificar"));
+            }
+            else
+            {
+                var allCandidates = pendingCheck.SelectMany(p => p.candidates).Distinct().ToList();
+                var existing = new HashSet<string>();
+                foreach (var chunk in allCandidates.Chunk(50))
+                {
+                    var check = await _evo.CheckNumbersAsync(instance, chunk, ct);
+                    foreach (var r in check.Where(r => r.Exists)) existing.Add(r.Number);
+                }
+                foreach (var (lead, candidates) in pendingCheck)
+                {
+                    // primero en orden de plausibilidad que exista en WhatsApp
+                    var pick = candidates.FirstOrDefault(existing.Contains);
+                    if (pick is null)
+                        rows.Add(new PhoneRepairRow(lead.Id, lead.Name, lead.ProductKey, lead.Status.ToString(),
+                            lead.WhatsappPhone!, null, "ningun candidato existe en WhatsApp"));
+                    else fixes[lead.Id] = pick;
+                }
+            }
+        }
+
+        // Duplicados: si el número reparado ya es de otro lead, no pisamos (quedaría repetido).
+        var fixedPhones = fixes.Values.Distinct().ToList();
+        var taken = await _db.Leads.AsNoTracking()
+            .Where(l => fixedPhones.Contains(l.WhatsappPhone!))
+            .Select(l => new { l.Id, l.WhatsappPhone })
+            .ToListAsync(ct);
+        var takenByOther = taken.GroupBy(t => t.WhatsappPhone!).ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
+
+        var dup = 0;
+        foreach (var lead in leads)
+        {
+            if (!fixes.TryGetValue(lead.Id, out var newPhone)) continue;
+            if (takenByOther.TryGetValue(newPhone, out var owners) && owners.Any(id => id != lead.Id))
+            {
+                dup++;
+                rows.Add(new PhoneRepairRow(lead.Id, lead.Name, lead.ProductKey, lead.Status.ToString(),
+                    lead.WhatsappPhone!, newPhone, "duplicado: ya existe un lead con ese numero"));
+                fixes.Remove(lead.Id);
+                continue;
+            }
+            rows.Add(new PhoneRepairRow(lead.Id, lead.Name, lead.ProductKey, lead.Status.ToString(),
+                lead.WhatsappPhone!, newPhone, apply ? "fixed" : "fixable"));
+        }
+
+        if (apply && fixes.Count > 0)
+        {
+            var ids = fixes.Keys.ToList();
+            var outbox = await _db.Outbox
+                .Where(o => ids.Contains(o.LeadId) && o.Status == OutboxStatus.Scheduled)
+                .ToListAsync(ct);
+            foreach (var lead in leads)
+            {
+                if (!fixes.TryGetValue(lead.Id, out var newPhone)) continue;
+                lead.WhatsappPhone = newPhone;
+                lead.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            foreach (var o in outbox) o.WhatsappPhone = fixes[o.LeadId];
+            await _db.SaveChangesAsync(ct);
+        }
+
+        return new PhoneRepairResult(leads.Count, fixes.Count, rows.Count(r => r.Outcome.StartsWith("unfixable") || r.Outcome.StartsWith("ningun") || r.Outcome.StartsWith("sin ")), dup, apply, rows);
+    }
+
     [HttpGet("pool")]
     public async Task<ActionResult<IEnumerable<LeadDto>>> Pool(
         [FromQuery] string? productKey, [FromQuery] int limit = 200, CancellationToken ct = default)

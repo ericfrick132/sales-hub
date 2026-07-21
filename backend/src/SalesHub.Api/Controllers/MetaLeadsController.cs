@@ -26,16 +26,17 @@ namespace SalesHub.Api.Controllers;
 public class MetaLeadsController : ControllerBase
 {
     private readonly ILeadIngestService _ingest;
+    private readonly IPhoneNormalizer _phones;
     private readonly ApplicationDbContext _db;
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _http;
     private readonly ILogger<MetaLeadsController> _log;
 
     public MetaLeadsController(
-        ILeadIngestService ingest, ApplicationDbContext db, IConfiguration config,
+        ILeadIngestService ingest, IPhoneNormalizer phones, ApplicationDbContext db, IConfiguration config,
         IHttpClientFactory http, ILogger<MetaLeadsController> log)
     {
-        _ingest = ingest; _db = db; _config = config; _http = http; _log = log;
+        _ingest = ingest; _phones = phones; _db = db; _config = config; _http = http; _log = log;
     }
 
     /// <summary>Verificación del webhook (Meta hace un GET con hub.challenge al suscribir).</summary>
@@ -145,7 +146,9 @@ public class MetaLeadsController : ControllerBase
         }
 
         var phoneRaw = FirstOf(fields, "phone_number", "phone", "telefono", "teléfono", "celular", "whatsapp");
-        var phone = NormalizePhone(phoneRaw);
+        // Estricto primero (arregla 54 duplicado, 0/15, 9 doble); si no da, cae al naive
+        // de siempre y el sweep /leads/repair-phones lo agarra después con CheckNumbers.
+        var phone = _phones.NormalizeArStrict(phoneRaw) ?? NormalizePhone(phoneRaw);
         if (phone.Length < 8)
         {
             _log.LogWarning("Meta lead {LeadId}: sin teléfono válido — descartado", leadgenId);
