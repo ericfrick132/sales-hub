@@ -87,6 +87,12 @@ public class ClaudeClient
             return null;
         }
 
+        if (IsCircuitOpen(out var reopensAt))
+        {
+            _log.LogDebug("Claude en pausa por falta de crédito hasta {ReopensAt:HH:mm:ss} — no se llama (feature {Feature})", reopensAt, feature);
+            return null;
+        }
+
         var usedModel = string.IsNullOrWhiteSpace(model) ? _opts.Model : model;
 
         // Sin imágenes el content es string plano (formato histórico); con
@@ -126,9 +132,11 @@ public class ClaudeClient
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await resp.Content.ReadAsStringAsync(ct);
+                if (TripCircuitIfOutOfCredit(err)) return null;
                 _log.LogWarning("Claude completion failed: {Status} {Body}", resp.StatusCode, err);
                 return null;
             }
+            CloseCircuit();
             var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
 
             // Registrar el uso (tokens + costo) — nos cobraron aunque no haya bloque de texto.
@@ -161,6 +169,49 @@ public class ClaudeClient
             _log.LogWarning(ex, "Claude completion threw");
             return null;
         }
+    }
+
+    // ── Cortacircuitos por saldo agotado ───────────────────────────────────
+    // Cuando la cuenta se queda sin crédito, la API responde 400 a TODO. Los workers
+    // que llaman por lote no marcan el ítem como procesado si falla, así que al tick
+    // siguiente reintentan el mismo batch entero: se llegó a ~100 requests por minuto
+    // rebotando. Mientras no hay saldo eso solo ensucia los logs, pero apenas se
+    // recarga la cuenta ese mismo loop empieza a quemar crédito real a esa velocidad.
+    // Ante el error de saldo cortamos en seco por un rato y ni siquiera salimos a la red.
+    private static readonly TimeSpan OutOfCreditCooldown = TimeSpan.FromMinutes(30);
+    private static long _pausedUntilTicks;
+
+    private static bool IsCircuitOpen(out DateTimeOffset reopensAt)
+    {
+        var ticks = Interlocked.Read(ref _pausedUntilTicks);
+        reopensAt = new DateTimeOffset(ticks, TimeSpan.Zero);
+        return ticks > DateTimeOffset.UtcNow.Ticks;
+    }
+
+    /// <summary>Vuelve a habilitar las llamadas apenas una responde OK (saldo recargado).</summary>
+    private void CloseCircuit()
+    {
+        if (Interlocked.Exchange(ref _pausedUntilTicks, 0) > 0)
+            _log.LogInformation("Claude respondió OK — se reanudan las llamadas");
+    }
+
+    /// <summary>
+    /// Detecta el error de saldo y abre el cortacircuitos. Devuelve true si lo manejó
+    /// (para no volver a loguear el mismo cuerpo de error en cada intento).
+    /// </summary>
+    private bool TripCircuitIfOutOfCredit(string errorBody)
+    {
+        if (string.IsNullOrEmpty(errorBody)) return false;
+        var isOutOfCredit = errorBody.Contains("credit balance is too low", StringComparison.OrdinalIgnoreCase)
+            || errorBody.Contains("insufficient_quota", StringComparison.OrdinalIgnoreCase);
+        if (!isOutOfCredit) return false;
+
+        var until = DateTimeOffset.UtcNow.Add(OutOfCreditCooldown);
+        // Solo el primero loguea: los que ya venían en vuelo no repiten el mensaje.
+        if (Interlocked.Exchange(ref _pausedUntilTicks, until.UtcTicks) <= DateTimeOffset.UtcNow.Ticks)
+            _log.LogError("Claude sin crédito — se pausan TODAS las llamadas por {Min} min (hasta {Until:HH:mm:ss} UTC). Recargar en Plans & Billing.",
+                OutOfCreditCooldown.TotalMinutes, until);
+        return true;
     }
 
     /// <summary>Lee usage.* de la respuesta, calcula el costo USD y lo persiste. Best-effort.</summary>
