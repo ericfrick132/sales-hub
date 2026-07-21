@@ -540,6 +540,74 @@ public class LeadsController : ControllerBase
         return new PhoneRepairResult(leads.Count, fixes.Count, rows.Count(r => r.Outcome.StartsWith("unfixable") || r.Outcome.StartsWith("ningun") || r.Outcome.StartsWith("sin ")), dup, apply, rows);
     }
 
+    public record ReviveResult(int Scanned, int Revived, bool Applied, Dictionary<string, int> ByProduct, List<string> Sample);
+
+    /// <summary>
+    /// Revive leads con envíos FANTASMA: la instancia aceptó el send (quedaron Sent) pero la
+    /// sesión estaba zombie y nada llegó al WhatsApp real. Vuelve los leads a Queued, borra los
+    /// mensajes salientes fantasma de la conversación y re-encola la cadencia desde cero.
+    /// Solo leads Sent SIN respuesta (si respondió, el mensaje llegó — no es fantasma).
+    /// Dry-run por default. El re-envío recién sale cuando el seller tenga envío ON y línea viva.
+    /// </summary>
+    [HttpPost("revive-phantom-sends")]
+    public async Task<ActionResult<ReviveResult>> RevivePhantomSends(
+        [FromQuery] string instance, [FromQuery] DateTimeOffset since,
+        [FromQuery] bool apply = false, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        if (string.IsNullOrWhiteSpace(instance)) return BadRequest(new { error = "instance requerido" });
+
+        var sellerIds = await _db.Sellers
+            .Where(s => s.EvolutionInstance != null && s.EvolutionInstance.InstanceName == instance)
+            .Select(s => s.Id).ToListAsync(ct);
+        if (sellerIds.Count == 0) return BadRequest(new { error = $"Ningún seller usa la instancia '{instance}'" });
+
+        var leads = await _db.Leads
+            .Include(l => l.Product)
+            .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
+            .Where(l => l.SellerId != null && sellerIds.Contains(l.SellerId.Value)
+                     && l.Status == LeadStatus.Sent
+                     && l.SentAt != null && l.SentAt >= since
+                     && l.FirstReplyAt == null)
+            .ToListAsync(ct);
+
+        var byProduct = leads.GroupBy(l => l.ProductKey).ToDictionary(g => g.Key, g => g.Count());
+        var sample = leads.Take(15).Select(l => $"{l.Name} ({l.ProductKey}, sent {l.SentAt:HH:mm})").ToList();
+
+        var revived = 0;
+        if (apply)
+        {
+            var leadIds = leads.Select(l => l.Id).ToList();
+            // Mensajes salientes fantasma del hilo (nunca llegaron): fuera, así el re-envío
+            // arranca limpio en /conversaciones y el bot no cree que ya hubo contacto.
+            var phantoms = await _db.ConversationMessages
+                .Where(m => leadIds.Contains(m.LeadId)
+                         && m.Direction == MessageDirection.Outbound
+                         && m.Timestamp >= since)
+                .ToListAsync(ct);
+            _db.ConversationMessages.RemoveRange(phantoms);
+
+            foreach (var lead in leads)
+            {
+                if (lead.Product is null || lead.Seller?.EvolutionInstance is null
+                    || string.IsNullOrWhiteSpace(lead.WhatsappPhone)) continue;
+                lead.Status = LeadStatus.Queued;
+                lead.SentAt = null;
+                lead.QueuedAt = DateTimeOffset.UtcNow;
+                lead.UpdatedAt = DateTimeOffset.UtcNow;
+                OutboxEnqueueHelper.EnqueueLeadMessages(
+                    _db, _renderer, lead, lead.Product, lead.Seller, lead.WhatsappPhone,
+                    lead.Seller.EvolutionInstance.InstanceName);
+                revived++;
+            }
+            await _db.SaveChangesAsync(ct);
+            _log.LogWarning("revive-phantom-sends: {N} leads re-encolados (instancia {Inst}, desde {Since})",
+                revived, instance, since);
+        }
+
+        return new ReviveResult(leads.Count, revived, apply, byProduct, sample);
+    }
+
     [HttpGet("pool")]
     public async Task<ActionResult<IEnumerable<LeadDto>>> Pool(
         [FromQuery] string? productKey, [FromQuery] int limit = 200, CancellationToken ct = default)
