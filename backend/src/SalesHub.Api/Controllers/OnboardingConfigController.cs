@@ -27,7 +27,7 @@ public class OnboardingConfigController : ControllerBase
         // estos campos NO los pise con vacío en el Upsert.
         string? ReengageIntro = null, List<string>? ReengageQuestions = null,
         List<Guid>? ReengageMediaAssetIds = null, List<string>? ReengageMediaCaptions = null,
-        string? PostSignupCheckin = null, string? TrialDiscountNudge = null);
+        string? PostSignupCheckin = null, string? TrialDiscountNudge = null, string? FirstStepsMessage = null);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -49,7 +49,8 @@ public class OnboardingConfigController : ControllerBase
                 c?.ProvisionNameField ?? "name", c?.SuccessMessage ?? "", c?.ClosingMessage ?? "",
                 c?.UsePitchAudio ?? false, c?.ReplyDelayMinSec ?? 0, c?.ReplyDelayMaxSec ?? 0, ac,
                 c?.ReengageIntro ?? "", c?.ReengageQuestions ?? new(), c?.ReengageMediaAssetIds ?? new(),
-                c?.ReengageMediaCaptions ?? new(), c?.PostSignupCheckin ?? "", c?.TrialDiscountNudge ?? "");
+                c?.ReengageMediaCaptions ?? new(), c?.PostSignupCheckin ?? "", c?.TrialDiscountNudge ?? "",
+                c?.FirstStepsMessage ?? "");
         });
         return Ok(result);
     }
@@ -85,6 +86,7 @@ public class OnboardingConfigController : ControllerBase
             c.ReengageMediaCaptions = dto.ReengageMediaCaptions.Select(x => (x ?? "").Trim()).ToList();
         if (dto.PostSignupCheckin is not null) c.PostSignupCheckin = dto.PostSignupCheckin;
         if (dto.TrialDiscountNudge is not null) c.TrialDiscountNudge = dto.TrialDiscountNudge;
+        if (dto.FirstStepsMessage is not null) c.FirstStepsMessage = dto.FirstStepsMessage;
         c.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true });

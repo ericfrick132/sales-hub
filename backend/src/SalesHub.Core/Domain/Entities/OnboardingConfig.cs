@@ -100,6 +100,14 @@ public class OnboardingConfig
     /// </summary>
     public string TrialDiscountNudge { get; set; } = string.Empty;
 
+    /// <summary>
+    /// "Primeros pasos" de la app (bullet list corta). El SuccessMessage cierra con "avisame
+    /// cuando estas adentro y te paso los primeros pasos" — cuando el lead responde CUALQUIER
+    /// cosa despues del alta, el bot manda esto UNA vez (marca LeadOnboarding.FirstStepsSentAt).
+    /// Vacio = no se manda (la IA sigue sola). Soporta [NUEVO_MENSAJE] y placeholders.
+    /// </summary>
+    public string FirstStepsMessage { get; set; } = string.Empty;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

@@ -252,6 +252,22 @@ public class ConversationAgentService
                 }
             }
 
+            // ── Primeros pasos: el SuccessMessage cierra con "avisame cuando estas adentro y te
+            // paso los primeros pasos". Al PRIMER inbound post-alta (cualquiera — un "gracias"
+            // tambien), mandamos la bullet list de la app UNA vez. Mata el "muere en gracias".
+            if (onb?.ProvisionedAt != null && onb.FirstStepsSentAt == null)
+            {
+                onbConfigs.TryGetValue(lead.ProductKey, out var fsCfg);
+                if (!string.IsNullOrWhiteSpace(fsCfg?.FirstStepsMessage))
+                {
+                    onb.FirstStepsSentAt = DateTimeOffset.UtcNow;
+                    await OnboardingSendAsync(lead, fsCfg!.FirstStepsMessage, ct);
+                    await _db.SaveChangesAsync(ct);
+                    done++;
+                    continue;
+                }
+            }
+
             // ── Onboarding de ads MULTI-APP. Gated por flag 'onboarding' + config Enabled de la app.
             // Solo arranca si el lead ya está en el flujo o es FRESCO (sin outbound previo): así
             // prender el flag NO re-introduce leads viejos con historia (backfill / atendidos por n8n).
