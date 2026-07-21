@@ -252,19 +252,34 @@ public class ConversationAgentService
                 }
             }
 
-            // ── Primeros pasos: el SuccessMessage cierra con "avisame cuando estas adentro y te
-            // paso los primeros pasos". Al PRIMER inbound post-alta (cualquiera — un "gracias"
-            // tambien), mandamos la bullet list de la app UNA vez. Mata el "muere en gracias".
+            // ── Primeros pasos en DOS toques (mantiene el ida y vuelta, mata el "muere en
+            // gracias"): 1er inbound post-alta → OFRECER "queres que te diga paso a paso como
+            // empezar?"; siguiente inbound → si no dijo que no, va la bullet list de la app.
             if (onb?.ProvisionedAt != null && onb.FirstStepsSentAt == null)
             {
                 onbConfigs.TryGetValue(lead.ProductKey, out var fsCfg);
                 if (!string.IsNullOrWhiteSpace(fsCfg?.FirstStepsMessage))
                 {
-                    onb.FirstStepsSentAt = DateTimeOffset.UtcNow;
-                    await OnboardingSendAsync(lead, fsCfg!.FirstStepsMessage, ct);
-                    await _db.SaveChangesAsync(ct);
-                    done++;
-                    continue;
+                    if (onb.FirstStepsOfferedAt == null)
+                    {
+                        onb.FirstStepsOfferedAt = DateTimeOffset.UtcNow;
+                        await OnboardingSendAsync(lead,
+                            "{genial|buenisimo}! queres que te diga paso a paso como empezar?", ct);
+                        await _db.SaveChangesAsync(ct);
+                        done++;
+                        continue;
+                    }
+                    // respuesta a la oferta: solo un "no" claro la saltea; cualquier otra cosa = dale
+                    if (!DeclinesFirstStepsRx.IsMatch(last ?? string.Empty))
+                    {
+                        onb.FirstStepsSentAt = DateTimeOffset.UtcNow;
+                        await OnboardingSendAsync(lead, fsCfg!.FirstStepsMessage, ct);
+                        await _db.SaveChangesAsync(ct);
+                        done++;
+                        continue;
+                    }
+                    onb.FirstStepsSentAt = DateTimeOffset.UtcNow; // dijo que no: no insistir
+                    // sigue al flujo normal (IA) para responderle lo que haya dicho
                 }
             }
 
@@ -510,6 +525,11 @@ public class ConversationAgentService
         }
         await _db.SaveChangesAsync(ct);
     }
+
+    // "no"/"despues" claros a la oferta del paso a paso — cualquier otra respuesta cuenta como sí.
+    private static readonly Regex DeclinesFirstStepsRx = new(
+        @"^\s*(no+\b|nah\b|no hace falta|no gracias|despu[eé]s|luego|m[aá]s tarde|ahora no|ya s[eé]\b|ya la vi|ya entend)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex AccessLinkRx = new(
         @"(link|enlace|url|ingres|entrar|acced|acceso|logue|log ?in|inici[aá]r? sesi[oó]n|no me lleg|no puedo entrar|no pude entrar|c[oó]mo entro|d[oó]nde entro|clave|contrase|password|regist|c[oó]digo|no (me )?(anda|funciona|carga|abre)|error|pantalla (en )?blanc)",

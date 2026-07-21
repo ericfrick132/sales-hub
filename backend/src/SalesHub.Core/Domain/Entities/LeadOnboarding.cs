@@ -25,6 +25,9 @@ public class LeadOnboarding
 
     public DateTimeOffset? ProvisionedAt { get; set; }
 
+    /// <summary>Cuándo se OFRECIÓ el paso a paso ("queres que te diga como empezar?"). Null = todavía no.</summary>
+    public DateTimeOffset? FirstStepsOfferedAt { get; set; }
+
     /// <summary>Cuándo se mandaron los "primeros pasos" (respuesta al primer inbound post-alta). Null = todavía no.</summary>
     public DateTimeOffset? FirstStepsSentAt { get; set; }
 
