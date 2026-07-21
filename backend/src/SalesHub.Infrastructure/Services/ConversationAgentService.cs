@@ -1018,7 +1018,7 @@ public class ConversationAgentService
             {
                 template = !string.IsNullOrWhiteSpace(cfg?.PostSignupCheckin)
                     ? cfg!.PostSignupCheckin
-                    : "{che|buenas}! {pudiste entrar|entraste} al panel? {como te fue|que tal}?[NUEVO_MENSAJE]cualquier cosa que se {trabe|complique} avisame y lo {vemos|resolvemos} juntos";
+                    : "{resaludo}{pudiste entrar|entraste} al panel? {como te fue|que tal}?[NUEVO_MENSAJE]cualquier cosa que se {trabe|complique} avisame y lo {vemos|resolvemos} juntos";
                 r.Ob.CheckinSentAt = now;
             }
             else if (r.Ob.DiscountNudgeSentAt == null && r.Ob.ProvisionedAt < discountCutoff
@@ -1029,6 +1029,18 @@ public class ConversationAgentService
                 isDiscount = true;
             }
             if (template is null) continue;
+
+            // {resaludo}: saludar por hora SOLO si paso un dia entero desde el ultimo mensaje
+            // del hilo (no se re-saluda a alguien con quien hablaste hace un rato).
+            var lastMsgAt = await _db.ConversationMessages
+                .Where(m => m.LeadId == lead.Id)
+                .OrderByDescending(m => m.Timestamp)
+                .Select(m => (DateTimeOffset?)m.Timestamp)
+                .FirstOrDefaultAsync(ct);
+            var greet = lastMsgAt == null || (now - lastMsgAt.Value) >= TimeSpan.FromHours(24)
+                ? MessageRenderer.TimeGreeting(lead.Seller) + "! "
+                : string.Empty;
+            template = template.Replace("{resaludo}", greet).Replace("{saludo}! ", greet);
 
             var msg = _renderer.RenderTemplate(template, lead, lead.Product, lead.Seller);
             foreach (var part in msg.Split("[NUEVO_MENSAJE]", StringSplitOptions.RemoveEmptyEntries))

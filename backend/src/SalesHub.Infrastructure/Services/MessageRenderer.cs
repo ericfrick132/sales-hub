@@ -47,7 +47,7 @@ public class MessageRenderer : IMessageRenderer
     }
 
     /// <summary>Saludo por hora en la zona del vendedor: mañana/tarde/noche.</summary>
-    private static string TimeGreeting(Seller? seller)
+    public static string TimeGreeting(Seller? seller)
     {
         var tz = TimeZoneInfo.Utc;
         var id = seller?.Timezone;
