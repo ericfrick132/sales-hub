@@ -220,8 +220,19 @@ public class ConversationService
         {
             lead.BotMutedAt = null;
             lead.UpdatedAt = DateTimeOffset.UtcNow;
+            // El humano llevó la charla y la devuelve: el bot tiene que SEGUIR la conversación,
+            // no re-arrancar el guion de onboarding desde el intro (caso real: "+" re-mandaba
+            // la cadencia entera). Sembramos el step centinela; ProcessAsync → IA libre.
+            var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
+            if (ob is null)
+                _db.Add(new LeadOnboarding { LeadId = lead.Id, Step = OnboardingService.StepHumanHandoff, ContactName = lead.Name });
+            else if (ob.ProvisionedAt is null)
+            {
+                ob.Step = OnboardingService.StepHumanHandoff;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+            }
             await _db.SaveChangesAsync(ct);
-            _log.LogInformation("Takeover: bot REACTIVADO para lead {Lead} (comando '+')", lead.Id);
+            _log.LogInformation("Takeover: bot REACTIVADO para lead {Lead} (comando '+', guion en modo conversación)", lead.Id);
             return true;
         }
 

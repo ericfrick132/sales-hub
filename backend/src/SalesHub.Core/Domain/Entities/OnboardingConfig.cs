@@ -87,6 +87,19 @@ public class OnboardingConfig
     /// <summary>Cierre para venta asistida (SelfServe=false): pitch + handoff a demo. Sin mail ni provisión.</summary>
     public string ClosingMessage { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Check-in post-alta ("y pudiste entrar? como te fue?"). Vacío = usa el default del motor.
+    /// Soporta spins y placeholders. Se manda UNA vez, ~20h después de provisionar, solo si el
+    /// lead no escribió nada desde el alta.
+    /// </summary>
+    public string PostSignupCheckin { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Oferta de cierre anticipado de prueba ("activá hoy y te llevás X% off"). VACÍO = NO se
+    /// manda (no inventamos descuentos). Una vez, ~96h post-alta, mismo criterio de silencio.
+    /// </summary>
+    public string TrialDiscountNudge { get; set; } = string.Empty;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

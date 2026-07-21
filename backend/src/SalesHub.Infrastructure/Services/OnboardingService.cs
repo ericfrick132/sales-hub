@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
@@ -23,13 +24,21 @@ public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, 
 /// </summary>
 public class OnboardingService
 {
+    /// <summary>
+    /// Step centinela: un humano llevó la conversación y la devolvió con "+". El guion NO debe
+    /// re-arrancar (nada de intro/preguntas): ProcessAsync cae al else final → IA libre, que
+    /// continúa la charla con todo el contexto del hilo.
+    /// </summary>
+    public const int StepHumanHandoff = -9;
+
     private readonly ApplicationDbContext _db;
     private readonly IOnboardingProvisionClient _provision;
+    private readonly IEmailSender _email;
     private readonly ILogger<OnboardingService> _log;
 
-    public OnboardingService(ApplicationDbContext db, IOnboardingProvisionClient provision, ILogger<OnboardingService> log)
+    public OnboardingService(ApplicationDbContext db, IOnboardingProvisionClient provision, IEmailSender email, ILogger<OnboardingService> log)
     {
-        _db = db; _provision = provision; _log = log;
+        _db = db; _provision = provision; _email = email; _log = log;
     }
 
     private static readonly Regex KeywordRx = new(
@@ -42,6 +51,36 @@ public class OnboardingService
         @"(\?|no s[eé]\b|no estoy segur|no entiend|(duda|consulta|pregunta)s?\b|y si\b|se puede|puedo\b|es seguro|no me convence|desconf[ií])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private const string NL = "[NUEVO_MENSAJE]";
+
+    // Typos clásicos de dominio tipeados a mano en WhatsApp. Se corrigen en silencio antes de
+    // provisionar (un "gmial.com" crea una cuenta con mail muerto y el cliente nunca recibe nada).
+    private static readonly Dictionary<string, string> DomainFixes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["gmial.com"] = "gmail.com", ["gmai.com"] = "gmail.com", ["gmal.com"] = "gmail.com",
+        ["gamil.com"] = "gmail.com", ["gemail.com"] = "gmail.com", ["gmail.co"] = "gmail.com",
+        ["gmail.con"] = "gmail.com", ["gmail.cm"] = "gmail.com", ["gmaill.com"] = "gmail.com",
+        ["hotmial.com"] = "hotmail.com", ["hotmal.com"] = "hotmail.com", ["hotmil.com"] = "hotmail.com",
+        ["hotmail.con"] = "hotmail.com", ["hotmail.co"] = "hotmail.com", ["hormail.com"] = "hotmail.com",
+        ["outlok.com"] = "outlook.com", ["outlook.con"] = "outlook.com",
+        ["yaho.com"] = "yahoo.com", ["yahooo.com"] = "yahoo.com", ["yahoo.con"] = "yahoo.com",
+        ["icloud.con"] = "icloud.com", ["iclod.com"] = "icloud.com",
+    };
+
+    /// <summary>Corrige typos obvios del dominio ("juan@gmial.con" → "juan@gmail.com"). También
+    /// arregla el TLD ".con"/".cm" pegado a dominios conocidos. Devuelve el mail final.</summary>
+    private static string FixEmailTypos(string email)
+    {
+        var at = email.LastIndexOf('@');
+        if (at <= 0 || at == email.Length - 1) return email;
+        var local = email[..at];
+        var domain = email[(at + 1)..].Trim().TrimEnd('.');
+        if (DomainFixes.TryGetValue(domain, out var fixedDomain)) return local + "@" + fixedDomain;
+        // TLD ".con"/".cm" es SIEMPRE typo de ".com"
+        if (domain.EndsWith(".con", StringComparison.OrdinalIgnoreCase)) return local + "@" + domain[..^4] + ".com";
+        if (domain.EndsWith(".cm", StringComparison.OrdinalIgnoreCase) && !domain.EndsWith("cameroon.cm", StringComparison.OrdinalIgnoreCase))
+            return local + "@" + domain[..^3] + ".com";
+        return local + "@" + domain;
+    }
 
     public async Task<OnboardingResult> ProcessAsync(Lead lead, string lastMessage, OnboardingConfig cfg, CancellationToken ct, string? recentBurst = null)
     {
@@ -175,7 +214,11 @@ public class OnboardingService
                 if (k == 1)
                 {
                     ob.GymName = Trunc(msg, 160);
-                    if (!string.IsNullOrWhiteSpace(ob.GymName)) lead.Name = ob.GymName!; // el negocio/persona es el lead
+                    // Solo propagar al lead un nombre PRESENTABLE: si tras el re-ask siguió
+                    // mandando "hola"/frases, el nombre viejo del lead es mejor que la basura
+                    // (el renderer usa lead.Name en los mensajes: "Hola hola!" es el caso real).
+                    if (!string.IsNullOrWhiteSpace(ob.GymName) && !IsBusinessNameSuspicious(ob.GymName!))
+                        lead.Name = ob.GymName!; // el negocio/persona es el lead
                 }
                 if (k < n) { reply = questions[k]; ob.Step = k + 1; }
                 else if (cfg.SelfServe) // última pregunta → audio del pitch (si hay) + pide mail
@@ -204,7 +247,7 @@ public class OnboardingService
             }
             else
             {
-                ob.Email = email.Value;
+                ob.Email = FixEmailTypos(email.Value.Trim());
                 var url = await _provision.RegisterAsync(provisionUrl, provisionNameField,
                     ob.GymName ?? lead.Name, ob.Email, ob.ContactName, cfg.ProductKey, ct, provisionExtra);
                 if (string.IsNullOrWhiteSpace(url))
@@ -219,7 +262,16 @@ public class OnboardingService
                     provisioned = true;
                     lead.Status = LeadStatus.Closed; // cuenta creada = venta cerrada
                     lead.ClosedAt ??= DateTimeOffset.UtcNow;
-                    reply = (successMessage ?? string.Empty).Replace("{accessUrl}", url);
+                    // Anti-spam de links: con SMTP configurado el link viaja por MAIL y por
+                    // WhatsApp solo se avisa. Sin SMTP (o si el mail falla) sale como siempre.
+                    var appName = lead.Product?.DisplayName ?? cfg.ProductKey;
+                    var mailed = _email.IsConfigured && await _email.SendAsync(ob.Email!,
+                        $"Tu acceso a {appName}",
+                        $"<p>Hola! Tu cuenta de <b>{appName}</b> ya está lista.</p>" +
+                        $"<p><a href=\"{url}\">Entrar a mi cuenta</a></p>" +
+                        $"<p>Es un acceso directo, sin usuario ni contraseña. Cualquier cosa respondé el WhatsApp.</p>", ct);
+                    reply = (successMessage ?? string.Empty).Replace("{accessUrl}",
+                        mailed ? "te acabo de mandar el link de acceso por mail (mirá también promociones/spam)" : url);
                     _log.LogInformation("Onboarding {Product} provisionado: lead={Lead} persona={Persona}", cfg.ProductKey, lead.Id, ob.PersonaKey ?? "-");
                 }
             }

@@ -123,6 +123,12 @@ public class AiImageGenerator : ISocialAssetGenerator
 
     private async Task<byte[]> ApplyLogosForTextAsync(PostingProfile profile, string contextText, byte[] bytes, CancellationToken ct)
     {
+        // Logos APAGADOS (pedido 2026-07-21): los posteos salen sin logo de marca ni de
+        // features (los logos cargados de unistock/gymhero además estaban mal). Para
+        // reactivar: borrar este return y volver a la composición de abajo.
+        await Task.CompletedTask;
+        return bytes;
+#pragma warning disable CS0162
         try
         {
             byte[]? brand = null;
@@ -146,6 +152,7 @@ public class AiImageGenerator : ISocialAssetGenerator
             return await _logos.CompositeAsync(bytes, brand, featureLogos, ct);
         }
         catch (Exception ex) { _log.LogWarning(ex, "No pude aplicar logos"); return bytes; }
+#pragma warning restore CS0162
     }
 
     // Los logos de feature (globales) se guardan como SocialPostAssets con un id fijo por clave.

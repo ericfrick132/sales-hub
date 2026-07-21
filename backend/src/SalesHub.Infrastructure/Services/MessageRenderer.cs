@@ -26,7 +26,9 @@ public class MessageRenderer : IMessageRenderer
         "mi", "tu", "su", "el", "la", "los", "las", "un", "una", "nuevo", "nueva",
         "gym", "gimnasio", "club", "fitness", "centro", "estudio", "salon", "salón",
         "barberia", "barbería", "peluqueria", "peluquería", "estetica", "estética",
-        "spa", "canchas", "padel", "pádel", "obra", "obras", "tienda", "local", "distribuidora"
+        "spa", "canchas", "padel", "pádel", "obra", "obras", "tienda", "local", "distribuidora",
+        // Saludos tipeados donde iba el nombre ("hola" como nombre del gym: caso real).
+        "hola", "holis", "hello", "buenas", "buenass", "buen", "buenos", "hey", "ola", "si", "sí", "no", "ok", "dale"
     };
 
     /// <summary>Primer nombre presentable, o "" si el nombre es basura/negocio/vacío.

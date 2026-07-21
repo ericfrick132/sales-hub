@@ -63,7 +63,8 @@ public class ConversationAgentService
         var transcribed = await TranscribeAudiosAsync(ct);
         var replied = await GenerateSuggestionsAsync(ct);
         var reengaged = await GenerateReengagementsAsync(ct);
-        return transcribed + replied + reengaged;
+        var postSignup = await GeneratePostSignupNudgesAsync(ct);
+        return transcribed + replied + reengaged + postSignup;
     }
 
     /// <summary>Transcribe las notas de voz inbound que el webhook dejó como "[audio]".</summary>
@@ -641,7 +642,10 @@ public class ConversationAgentService
         if (autoGate)
         {
             var st = await SellerSendStateAsync(lead.Seller!, ct);
-            canAutoReply = st.active && st.sentToday < OutboxSender.MaxMessagesPerSellerPerDay;
+            // Reply-driven a CUALQUIER hora (pedido 2026-07-21): si el lead escribe a las 23,
+            // el bot contesta a las 23 — esperar a la ventana mataba conversiones. La ventana
+            // (st.active) sigue aplicando a lo PROACTIVO (OutboxSender/nudges). Cap diario queda.
+            canAutoReply = st.sentToday < OutboxSender.MaxMessagesPerSellerPerDay;
         }
 
         if (canAutoReply && await AutoSendAsync(lead, text, ct))
@@ -919,6 +923,93 @@ public class ConversationAgentService
                 canQueue ? "encolado" : "sugerido", lead.Id, score, lead.NudgeCount, MaxNudges);
         }
 
+        return done;
+    }
+
+    /// <summary>
+    /// Follow-ups POST-ALTA (cuenta ya provisionada): 1) check-in "pudiste entrar? como te
+    /// fue?" a las ~20h; 2) oferta de descuento por activación anticipada a las ~96h (solo si
+    /// la app la configuró — no inventamos descuentos). Una vez cada uno, solo a leads que NO
+    /// escribieron nada desde el alta (los que hablan ya los atiende el bot conversacional).
+    /// Salen por el Outbox humanizado → respetan ventana/warmup/caps.
+    /// </summary>
+    private async Task<int> GeneratePostSignupNudgesAsync(CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var checkinCutoff = now.AddHours(-_config.GetValue("Reengage:CheckinAfterHours", 20));
+        var discountCutoff = now.AddHours(-_config.GetValue("Reengage:DiscountAfterHours", 96));
+        var tooOld = now.AddDays(-14); // altas viejas: no resucitar historia antigua
+
+        var rows = await (
+            from ob in _db.Set<LeadOnboarding>()
+            join l in _db.Leads on ob.LeadId equals l.Id
+            where ob.ProvisionedAt != null && ob.ProvisionedAt > tooOld
+                && l.BotMutedAt == null && l.SellerId != null
+                && ((ob.CheckinSentAt == null && ob.ProvisionedAt < checkinCutoff)
+                 || (ob.DiscountNudgeSentAt == null && ob.ProvisionedAt < discountCutoff))
+                // silencio total desde el alta: si escribió, lo lleva la conversación normal
+                && !_db.ConversationMessages.Any(m => m.LeadId == l.Id
+                        && m.Direction == MessageDirection.Inbound
+                        && m.Timestamp > ob.ProvisionedAt)
+            select new { Ob = ob, LeadId = l.Id }
+        ).Take(30).ToListAsync(ct);
+        if (rows.Count == 0) return 0;
+
+        var cfgs = await _db.OnboardingConfigs.AsNoTracking()
+            .ToDictionaryAsync(c => c.ProductKey, ct);
+
+        var done = 0;
+        foreach (var r in rows)
+        {
+            var lead = await _db.Leads
+                .Include(l => l.Product)
+                .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
+                .FirstOrDefaultAsync(l => l.Id == r.LeadId, ct);
+            if (lead?.Product is null || lead.Seller?.EvolutionInstance is not { Status: InstanceStatus.Connected } inst
+                || string.IsNullOrWhiteSpace(lead.WhatsappPhone)) continue;
+            cfgs.TryGetValue(lead.ProductKey, out var cfg);
+
+            string? template = null;
+            var isDiscount = false;
+            if (r.Ob.CheckinSentAt == null && r.Ob.ProvisionedAt < checkinCutoff)
+            {
+                template = !string.IsNullOrWhiteSpace(cfg?.PostSignupCheckin)
+                    ? cfg!.PostSignupCheckin
+                    : "{che|buenas}! {pudiste entrar|entraste} al panel? {como te fue|que tal}?[NUEVO_MENSAJE]cualquier cosa que se {trabe|complique} avisame y lo {vemos|resolvemos} juntos";
+                r.Ob.CheckinSentAt = now;
+            }
+            else if (r.Ob.DiscountNudgeSentAt == null && r.Ob.ProvisionedAt < discountCutoff
+                && !string.IsNullOrWhiteSpace(cfg?.TrialDiscountNudge))
+            {
+                template = cfg!.TrialDiscountNudge;
+                r.Ob.DiscountNudgeSentAt = now;
+                isDiscount = true;
+            }
+            if (template is null) continue;
+
+            var msg = _renderer.RenderTemplate(template, lead, lead.Product, lead.Seller);
+            foreach (var part in msg.Split("[NUEVO_MENSAJE]", StringSplitOptions.RemoveEmptyEntries))
+            {
+                _db.Outbox.Add(new MessageOutbox
+                {
+                    Id = Guid.NewGuid(),
+                    LeadId = lead.Id,
+                    SellerId = lead.SellerId!.Value,
+                    Channel = MessageChannel.WhatsApp,
+                    EvolutionInstance = inst.InstanceName,
+                    WhatsappPhone = lead.WhatsappPhone!,
+                    Message = part.Trim(),
+                    StepIndex = null,
+                    Priority = 420, // caliente: cliente con cuenta creada
+                    ScheduledAt = now,
+                    Status = OutboxStatus.Scheduled,
+                });
+            }
+            await _db.SaveChangesAsync(ct);
+            done++;
+            _log.LogInformation("Post-alta {Kind} encolado para lead {Lead} ({Product})",
+                isDiscount ? "descuento" : "check-in", lead.Id, lead.ProductKey);
+        }
         return done;
     }
 

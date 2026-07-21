@@ -134,6 +134,11 @@ public class ClaudeClient
             // Registrar el uso (tokens + costo) — nos cobraron aunque no haya bloque de texto.
             await LogUsageAsync(doc.RootElement, usedModel, feature, ct);
 
+            // Cortado por tope de salida: el texto llega truncado (JSON de posteos roto).
+            // Lo avisamos fuerte para verlo en logs; el caller decide si el parse sobrevive.
+            if (doc.RootElement.TryGetProperty("stop_reason", out var sr) && sr.GetString() == "max_tokens")
+                _log.LogWarning("Claude completion TRUNCADA por max_tokens ({Max}) — subir el presupuesto del caller (feature {Feature})", maxTokens, feature);
+
             // content: [ { type: "text", text: "..." }, ... ]
             if (doc.RootElement.TryGetProperty("content", out var content)
                 && content.ValueKind == JsonValueKind.Array)

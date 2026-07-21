@@ -129,6 +129,7 @@ public static class DependencyInjection
         services.AddHttpClient<OnboardingProvisionClient>();
         services.AddScoped<IOnboardingProvisionClient>(sp => sp.GetRequiredService<OnboardingProvisionClient>());
         services.AddScoped<OnboardingService>();
+        services.AddSingleton<IEmailSender, SmtpEmailSender>();
         services.AddScoped<ConversationAgentService>();
         services.AddScoped<VoiceNoteService>();
         services.AddScoped<VoiceCalibrationRelay>();

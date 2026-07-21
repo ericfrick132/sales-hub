@@ -31,7 +31,7 @@ public class SocialContentGenerator
     /// El default global (400, pensado para respuestas de venta cortas) trunca el JSON
     /// del posteo (concepto + prompt cinematográfico + caption + hashtags) → parse error.
     /// </summary>
-    private const int SocialMaxTokens = 1600;
+    private const int SocialMaxTokens = 3000;
 
     /// <summary>
     /// Los modelos de imagen rompen el texto largo: el ÚNICO texto que va en la imagen
@@ -127,7 +127,7 @@ public class SocialContentGenerator
         sys.AppendLine("Generás ideas de posteo para redes (Instagram/TikTok). Respondés SIEMPRE en español rioplatense (voseo) para el caption.");
         sys.AppendLine("El campo 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico, respetando la paleta y estética de la marca.");
         sys.AppendLine("Devolvés EXCLUSIVAMENTE un objeto JSON válido, sin texto extra ni markdown, con estas claves:");
-        sys.AppendLine("{\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine("{\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"caption\":string, \"hashtags\":string[], \"prompt\":string, \"overlay\":string, \"narration\":string}");
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);
@@ -237,7 +237,7 @@ public class SocialContentGenerator
         }
         else
         {
-            sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
+            sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"concept\":string, \"caption\":string, \"hashtags\":string[], \"prompt\":string, \"overlay\":string, \"narration\":string}");
             sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);
@@ -338,7 +338,7 @@ public class SocialContentGenerator
         sys.AppendLine("El 'prompt' (para generar el visual) va en INGLÉS, LARGO y MUY detallado, describiendo una ESCENA REAL completa (ver REGLA DE FOTORREALISMO abajo), respetando la paleta de marca.");
         if (ch != null)
             sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies).");
-        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"caption\":string, \"hashtags\":string[], \"prompt\":string, \"overlay\":string, \"narration\":string}");
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);
@@ -389,7 +389,7 @@ public class SocialContentGenerator
         sys.AppendLine("El 'prompt' (para generar el visual) va en INGLÉS, detallado y cinematográfico.");
         if (ch != null)
             sys.AppendLine($"El formato es {ch.Format} y el asset es {ch.AssetKind} (NO los cambies).");
-        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"prompt\":string, \"overlay\":string, \"narration\":string, \"caption\":string, \"hashtags\":string[]}");
+        sys.AppendLine("Devolvés EXCLUSIVAMENTE un JSON válido, sin markdown, con: {\"pillar\":string, \"assetKind\":\"image\"|\"video\", \"format\":\"post\"|\"story\"|\"reel\"|\"carousel\", \"concept\":string, \"caption\":string, \"hashtags\":string[], \"prompt\":string, \"overlay\":string, \"narration\":string}");
         sys.AppendLine(OverlayRule);
         sys.AppendLine(BannedWordsRule);
         sys.AppendLine(StructureRule);

@@ -24,6 +24,12 @@ public class LeadOnboarding
     public int GymRetries { get; set; }
 
     public DateTimeOffset? ProvisionedAt { get; set; }
+
+    /// <summary>Cuándo se mandó el check-in post-alta ("pudiste entrar?"). Null = todavía no.</summary>
+    public DateTimeOffset? CheckinSentAt { get; set; }
+
+    /// <summary>Cuándo se mandó la oferta de descuento por activación anticipada. Null = todavía no.</summary>
+    public DateTimeOffset? DiscountNudgeSentAt { get; set; }
     public string? AccessUrl { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
