@@ -72,7 +72,21 @@ public class SendScheduler : ISendScheduler
             .CountAsync(ct);
 
         if (contactedToday >= cap)
-            return NextDayStart(seller, today, tz);
+        {
+            // El cap es de CONTACTOS NUEVOS: las continuaciones de leads ya contactados hoy
+            // (el resto de su cadencia) NO son contactos nuevos y tienen que salir igual.
+            // Sin esto el lead recibe "buenos días! soy Eric de turnospro" y el pitch le
+            // llega AL DÍA SIGUIENTE — la conversación nace partida (caso real 2026-07-21).
+            // El tope duro de volumen (MaxMessagesPerSellerPerDay) sigue aplicando abajo.
+            var hasPendingContinuation = await _db.Outbox.AnyAsync(o =>
+                o.SellerId == seller.Id
+                && o.Status == OutboxStatus.Scheduled
+                && o.Channel == MessageChannel.WhatsApp
+                && o.ScheduledAt <= reference
+                && _db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent), ct);
+            if (!hasPendingContinuation)
+                return NextDayStart(seller, today, tz);
+        }
 
         // Tope absoluto de volumen total/día (follow-ups incluidos), independiente
         // del cap de contactos y de cuántas verticales tenga el vendedor.
