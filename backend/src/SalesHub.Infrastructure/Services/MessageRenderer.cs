@@ -104,7 +104,9 @@ public class MessageRenderer : IMessageRenderer
             .Replace("{search_query}", lead.SearchQuery ?? string.Empty)
             .Replace("{price}", product.PriceDisplay ?? string.Empty)
             .Replace("{checkout_url}", product.CheckoutUrl ?? string.Empty)
-            .Replace("{seller}", seller?.DisplayName ?? "Eric")
+            // Primer nombre solo: los DisplayName del admin son etiquetas internas tipo
+            // "Eric ventas efcloud" / "Juan - archicloud" — al lead se le dice "Eric"/"Juan".
+            .Replace("{seller}", (seller?.DisplayName ?? "Eric").Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "Eric")
             .Replace("\\n", "\n");
 
         // Limpieza para cuando {nombre} queda vacío: colapsá espacios dobles y arreglá
