@@ -19,17 +19,22 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                 nullable: false,
                 defaultValue: "");
 
+            // defaultValueSql agregado a mano: sin default, ADD COLUMN NOT NULL de un array
+            // explota en Postgres si la tabla ya tiene filas (23502) — crasheó prod 2026-07-20.
+            // NO regenerar esta migración: el ID ya figura aplicado en __EFMigrationsHistory.
             migrationBuilder.AddColumn<List<Guid>>(
                 name: "reengage_media_asset_ids",
                 table: "onboarding_configs",
                 type: "uuid[]",
-                nullable: false);
+                nullable: false,
+                defaultValueSql: "'{}'");
 
             migrationBuilder.AddColumn<List<string>>(
                 name: "reengage_questions",
                 table: "onboarding_configs",
                 type: "text[]",
-                nullable: false);
+                nullable: false,
+                defaultValueSql: "'{}'");
         }
 
         /// <inheritdoc />
