@@ -263,8 +263,9 @@ public class ConversationAgentService
                     if (onb.FirstStepsOfferedAt == null)
                     {
                         onb.FirstStepsOfferedAt = DateTimeOffset.UtcNow;
+                        var contacto = MessageRenderer.FirstName(onb.ContactName);
                         await OnboardingSendAsync(lead,
-                            "{genial|buenisimo}! queres que te diga paso a paso como empezar?", ct);
+                            "{genial|buenisimo}" + (contacto.Length > 0 ? " " + contacto : "") + "! queres que te diga paso a paso como empezar?", ct);
                         await _db.SaveChangesAsync(ct);
                         done++;
                         continue;
@@ -273,7 +274,9 @@ public class ConversationAgentService
                     if (!DeclinesFirstStepsRx.IsMatch(last ?? string.Empty))
                     {
                         onb.FirstStepsSentAt = DateTimeOffset.UtcNow;
-                        await OnboardingSendAsync(lead, fsCfg!.FirstStepsMessage, ct);
+                        var c2 = MessageRenderer.FirstName(onb.ContactName);
+                        await OnboardingSendAsync(lead,
+                            fsCfg!.FirstStepsMessage.Replace("{contacto}", c2.Length > 0 ? " " + c2 : ""), ct);
                         await _db.SaveChangesAsync(ct);
                         done++;
                         continue;
@@ -595,6 +598,7 @@ public class ConversationAgentService
         // guion vivía con "Eric" hardcodeado; ahora usa el vendedor real asignado al lead.
         if (lead.Product is not null)
             text = _renderer.RenderTemplate(text, lead, lead.Product, lead.Seller);
+        text = text.Replace("{contacto}", string.Empty);
         text = StripBoludo(text);
         var parts = text.Split("[NUEVO_MENSAJE]", StringSplitOptions.RemoveEmptyEntries)
             .Select(p => p.Trim()).Where(p => p.Length > 0).ToList();

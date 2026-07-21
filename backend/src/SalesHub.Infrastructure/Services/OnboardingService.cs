@@ -272,6 +272,10 @@ public class OnboardingService
                         $"<p>Es un acceso directo, sin usuario ni contraseña. Cualquier cosa respondé el WhatsApp.</p>", ct);
                     reply = (successMessage ?? string.Empty).Replace("{accessUrl}",
                         mailed ? "te acabo de mandar el link de acceso por mail (mirá también promociones/spam)" : url);
+                    // {contacto} = " Rodri" (primer nombre presentable del CONTACTO — lead.Name ya
+                    // es el negocio a esta altura) o vacío. "avisame{contacto} cuando estes adentro".
+                    var contacto = MessageRenderer.FirstName(ob.ContactName);
+                    reply = reply.Replace("{contacto}", contacto.Length > 0 ? " " + contacto : "");
                     _log.LogInformation("Onboarding {Product} provisionado: lead={Lead} persona={Persona}", cfg.ProductKey, lead.Id, ob.PersonaKey ?? "-");
                 }
             }

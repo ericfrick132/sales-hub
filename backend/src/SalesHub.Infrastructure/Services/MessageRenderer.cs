@@ -33,7 +33,7 @@ public class MessageRenderer : IMessageRenderer
 
     /// <summary>Primer nombre presentable, o "" si el nombre es basura/negocio/vacío.
     /// "Santi Pérez" -> "Santi"; "Mi negocio" -> ""; "GYM NEW LIFE" -> "".</summary>
-    private static string FirstName(string? raw)
+    public static string FirstName(string? raw)
     {
         var name = (raw ?? string.Empty).Trim();
         if (name.Length == 0 || JunkNames.Contains(name)) return string.Empty;
