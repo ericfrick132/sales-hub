@@ -12,7 +12,7 @@ namespace SalesHub.Infrastructure.Services;
 /// MediaAssetIds + PostMediaText (solo reenganche): adjuntos a mandar DESPUÉS de Reply y el
 /// texto que va después de los adjuntos (la 1ª pregunta) — orden reacción → media → pregunta.</summary>
 public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, string? PendingQuestion = null, bool WithPitchAudio = false,
-    List<Guid>? MediaAssetIds = null, string? PostMediaText = null);
+    List<Guid>? MediaAssetIds = null, string? PostMediaText = null, List<string>? MediaCaptions = null);
 
 /// <summary>
 /// Motor de onboarding de ads GENÉRICO y multi-app. Lee la <see cref="OnboardingConfig"/> de cada
@@ -153,7 +153,8 @@ public class OnboardingService
                 await _db.SaveChangesAsync(ct);
                 return new OnboardingResult(intro, OffScript: false, Provisioned: false,
                     MediaAssetIds: cfg.ReengageMediaAssetIds.Count > 0 ? cfg.ReengageMediaAssetIds : null,
-                    PostMediaText: questions[0]);
+                    PostMediaText: questions[0],
+                    MediaCaptions: cfg.ReengageMediaCaptions.Count > 0 ? cfg.ReengageMediaCaptions : null);
             }
             reply = Join(intro, questions[0]);
             ob.Step = 1;

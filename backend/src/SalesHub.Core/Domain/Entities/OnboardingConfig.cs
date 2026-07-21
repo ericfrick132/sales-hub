@@ -69,6 +69,12 @@ public class OnboardingConfig
     /// </summary>
     public List<Guid> ReengageMediaAssetIds { get; set; } = new();
 
+    /// <summary>
+    /// Caption de cada adjunto, alineado por índice con <see cref="ReengageMediaAssetIds"/>
+    /// ("" = sin caption). Patrón: la imagen de precios lleva la URL de la página como caption.
+    /// </summary>
+    public List<string> ReengageMediaCaptions { get; set; } = new();
+
     /// <summary>Endpoint de provisión (bot-register) de la app.</summary>
     public string ProvisionUrl { get; set; } = string.Empty;
 

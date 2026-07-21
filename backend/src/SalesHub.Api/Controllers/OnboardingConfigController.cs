@@ -26,7 +26,7 @@ public class OnboardingConfigController : ControllerBase
         // Reenganche (ver OnboardingConfig): nullable para que un frontend viejo que no manda
         // estos campos NO los pise con vacío en el Upsert.
         string? ReengageIntro = null, List<string>? ReengageQuestions = null,
-        List<Guid>? ReengageMediaAssetIds = null);
+        List<Guid>? ReengageMediaAssetIds = null, List<string>? ReengageMediaCaptions = null);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -47,7 +47,8 @@ public class OnboardingConfigController : ControllerBase
                 c?.Questions ?? new(), c?.EmailPrompt ?? "", c?.ProvisionUrl ?? "",
                 c?.ProvisionNameField ?? "name", c?.SuccessMessage ?? "", c?.ClosingMessage ?? "",
                 c?.UsePitchAudio ?? false, c?.ReplyDelayMinSec ?? 0, c?.ReplyDelayMaxSec ?? 0, ac,
-                c?.ReengageIntro ?? "", c?.ReengageQuestions ?? new(), c?.ReengageMediaAssetIds ?? new());
+                c?.ReengageIntro ?? "", c?.ReengageQuestions ?? new(), c?.ReengageMediaAssetIds ?? new(),
+                c?.ReengageMediaCaptions ?? new());
         });
         return Ok(result);
     }
@@ -79,6 +80,8 @@ public class OnboardingConfigController : ControllerBase
             c.ReengageQuestions = dto.ReengageQuestions.Where(q => !string.IsNullOrWhiteSpace(q)).Select(q => q.Trim()).ToList();
         if (dto.ReengageMediaAssetIds is not null)
             c.ReengageMediaAssetIds = dto.ReengageMediaAssetIds.Where(g => g != Guid.Empty).ToList();
+        if (dto.ReengageMediaCaptions is not null)
+            c.ReengageMediaCaptions = dto.ReengageMediaCaptions.Select(x => (x ?? "").Trim()).ToList();
         c.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true });

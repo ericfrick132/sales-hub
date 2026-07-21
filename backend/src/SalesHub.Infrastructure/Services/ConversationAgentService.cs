@@ -290,7 +290,7 @@ public class ConversationAgentService
                     // Reenganche: adjuntos prometidos (video/precios) DESPUÉS de la reacción, y
                     // la 1ª pregunta recién al final — orden de la conversación real que convirtió.
                     if (ob.MediaAssetIds is { Count: > 0 })
-                        await TrySendOnboardingMediaAsync(lead, ob.MediaAssetIds, ct);
+                        await TrySendOnboardingMediaAsync(lead, ob.MediaAssetIds, ob.MediaCaptions, ct);
                     if (!string.IsNullOrWhiteSpace(ob.PostMediaText))
                         await OnboardingSendAsync(lead, ob.PostMediaText!, ct);
                     await _db.SaveChangesAsync(ct);
@@ -453,7 +453,7 @@ public class ConversationAgentService
     /// el flujo (la pregunta post-media sale igual). No aplica a productos con transporte
     /// delegado a la app (el relay es solo texto).
     /// </summary>
-    private async Task TrySendOnboardingMediaAsync(Lead lead, List<Guid> assetIds, CancellationToken ct)
+    private async Task TrySendOnboardingMediaAsync(Lead lead, List<Guid> assetIds, List<string>? captions, CancellationToken ct)
     {
         if (lead.Product?.AppManagedTransport == true) return;
         var instance = lead.Seller?.EvolutionInstance;
@@ -461,12 +461,15 @@ public class ConversationAgentService
             return;
         var assets = await _db.MediaAssets.AsNoTracking()
             .Where(a => assetIds.Contains(a.Id)).ToListAsync(ct);
-        foreach (var id in assetIds)
+        for (var i = 0; i < assetIds.Count; i++)
         {
+            var id = assetIds[i];
             var asset = assets.FirstOrDefault(a => a.Id == id);
             if (asset is null) continue;
+            var caption = captions is not null && i < captions.Count && !string.IsNullOrWhiteSpace(captions[i])
+                ? captions[i] : null;
             var ok = await _evo.SendMediaAsync(instance.InstanceName, lead.WhatsappPhone!,
-                asset.Content, asset.MimeType, asset.FileName, null, ct);
+                asset.Content, asset.MimeType, asset.FileName, caption, ct);
             if (!ok)
             {
                 _log.LogWarning("Onboarding: falló el adjunto {Asset} para lead {Lead}", id, lead.Id);
@@ -480,8 +483,9 @@ public class ConversationAgentService
                 SellerId = lead.SellerId,
                 Direction = MessageDirection.Outbound,
                 Status = MessageDeliveryStatus.Sent,
-                Text = mt.StartsWith("video", StringComparison.OrdinalIgnoreCase) ? "[video]"
-                     : mt.StartsWith("image", StringComparison.OrdinalIgnoreCase) ? "[imagen]" : "[archivo]",
+                Text = (mt.StartsWith("video", StringComparison.OrdinalIgnoreCase) ? "[video]"
+                     : mt.StartsWith("image", StringComparison.OrdinalIgnoreCase) ? "[imagen]" : "[archivo]")
+                     + (caption is null ? string.Empty : " " + caption),
                 EvolutionInstance = instance.InstanceName,
                 Timestamp = DateTimeOffset.UtcNow,
                 IsRead = true,
