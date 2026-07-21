@@ -66,7 +66,9 @@ export default function Sellers() {
                   <div className="text-xs text-slate-500 truncate">{s.email} — {s.role}</div>
                   <div className="text-[11px] mt-0.5">
                     <span className={connected ? 'text-emerald-600' : 'text-slate-400'}>
-                      {connected ? '● WhatsApp conectado' : `○ WhatsApp ${(s.instanceStatus ?? 'sin instancia').toLowerCase()}`}
+                      {connected
+                        ? `● WhatsApp conectado${s.connectedPhoneNumber ? ` · +${s.connectedPhoneNumber}` : ''}`
+                        : `○ WhatsApp ${(s.instanceStatus ?? 'sin instancia').toLowerCase()}`}
                     </span>
                   </div>
                 </button>

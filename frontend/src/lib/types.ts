@@ -239,6 +239,8 @@ export interface Seller {
   whatsappPhone?: string;
   evolutionInstance?: string;
   instanceStatus?: InstanceStatus;
+  /** Numero de WhatsApp vinculado a la instancia (backfill lazy desde Evolution). */
+  connectedPhoneNumber?: string | null;
   verticalsWhitelist: string[];
   regionsAssigned: string[];
   keywordRules: string[];

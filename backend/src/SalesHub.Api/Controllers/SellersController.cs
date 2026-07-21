@@ -27,6 +27,23 @@ public class SellersController : ControllerBase
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
         var sellers = await _db.Sellers.Include(s => s.EvolutionInstance).OrderBy(s => s.DisplayName).ToListAsync(ct);
+        // Backfill del numero vinculado: las instancias conectadas viejas no lo tienen guardado
+        // (solo el flujo de QR de apps lo estampaba). Una consulta a Evolution por instancia,
+        // una sola vez (??=), y queda persistido.
+        var dirty = false;
+        foreach (var s in sellers)
+        {
+            var inst = s.EvolutionInstance;
+            if (inst is null || inst.Status != InstanceStatus.Connected || !string.IsNullOrWhiteSpace(inst.ConnectedPhoneNumber))
+                continue;
+            try
+            {
+                var info = await _evo.GetInstanceStatusAsync(inst.InstanceName, ct);
+                if (!string.IsNullOrWhiteSpace(info.PhoneNumber)) { inst.ConnectedPhoneNumber = info.PhoneNumber; dirty = true; }
+            }
+            catch { /* Evolution caida: la lista sale igual, sin numero */ }
+        }
+        if (dirty) await _db.SaveChangesAsync(ct);
         return sellers.Select(ToDto).ToList();
     }
 
@@ -280,5 +297,5 @@ public class SellersController : ControllerBase
         s.ActiveHoursStart, s.ActiveHoursEnd, s.Timezone,
         s.DelayMinSeconds, s.DelayMaxSeconds, s.BurstSize, s.BurstPauseMinSeconds, s.BurstPauseMaxSeconds,
         s.PreSendTypingMinSeconds, s.PreSendTypingMaxSeconds, s.ReadIncomingFirst,
-        s.SkipDayProbabilityPct, s.TypoProbabilityPct);
+        s.SkipDayProbabilityPct, s.TypoProbabilityPct, s.EvolutionInstance?.ConnectedPhoneNumber);
 }
