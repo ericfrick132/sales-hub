@@ -432,7 +432,8 @@ public class LeadsController : ControllerBase
     /// </summary>
     [HttpPost("repair-phones")]
     public async Task<ActionResult<PhoneRepairResult>> RepairPhones(
-        [FromQuery] bool apply = false, [FromQuery] string? productKey = null, CancellationToken ct = default)
+        [FromQuery] bool apply = false, [FromQuery] string? productKey = null,
+        [FromQuery] LeadSource? source = null, CancellationToken ct = default)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
 
@@ -440,6 +441,9 @@ public class LeadsController : ControllerBase
         var q = _db.Leads.Include(l => l.Product)
             .Where(l => pre.Contains(l.Status) && l.WhatsappPhone != null && l.WhatsappPhone != "");
         if (!string.IsNullOrWhiteSpace(productKey)) q = q.Where(l => l.ProductKey == productKey);
+        // Filtro por origen: el caso de uso real es MetaLeadAd (telefonos tipeados a mano en el
+        // form). Los de Maps guardados como 54-sin-9 hoy mandan igual — no tocarlos en masa.
+        if (source is not null) q = q.Where(l => l.Source == source);
         var leads = (await q.ToListAsync(ct)).Where(l => !_phone.IsCanonicalAr(l.WhatsappPhone)).ToList();
 
         var rows = new List<PhoneRepairRow>();
