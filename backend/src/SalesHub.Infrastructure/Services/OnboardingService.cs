@@ -8,8 +8,11 @@ using SalesHub.Infrastructure.Persistence;
 namespace SalesHub.Infrastructure.Services;
 
 /// <summary>Resultado de procesar un turno de onboarding. PendingQuestion (solo en off-script
-/// durante el alta) es la pregunta del guion a reenviar después de la respuesta de la IA.</summary>
-public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, string? PendingQuestion = null, bool WithPitchAudio = false);
+/// durante el alta) es la pregunta del guion a reenviar después de la respuesta de la IA.
+/// MediaAssetIds + PostMediaText (solo reenganche): adjuntos a mandar DESPUÉS de Reply y el
+/// texto que va después de los adjuntos (la 1ª pregunta) — orden reacción → media → pregunta.</summary>
+public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, string? PendingQuestion = null, bool WithPitchAudio = false,
+    List<Guid>? MediaAssetIds = null, string? PostMediaText = null);
 
 /// <summary>
 /// Motor de onboarding de ads GENÉRICO y multi-app. Lee la <see cref="OnboardingConfig"/> de cada
@@ -55,6 +58,13 @@ public class OnboardingService
         // mail en TODA la ráfaga desde nuestra última respuesta, no solo en el último mensaje.
         var burst = string.IsNullOrWhiteSpace(recentBurst) ? msg : recentBurst;
 
+        // ── Reenganche: el lead YA recibió el opener (que se presenta y promete precios) ──
+        // El guion NO se re-presenta: ReengageIntro reacciona y cumple la promesa, y las
+        // ReengageQuestions suelen ser más cortas (el opener ya hizo la pregunta calificadora).
+        var reengage = lead.Source == LeadSource.ProductReengage;
+        var hasReengageIntro = reengage && !string.IsNullOrWhiteSpace(cfg.ReengageIntro);
+        var effectiveIntro = hasReengageIntro ? cfg.ReengageIntro : cfg.Intro;
+
         // ── Apps multi-perfil: antes de las preguntas, elegir la persona ───────────────
         var hasPersonas = !string.IsNullOrWhiteSpace(cfg.PersonaQuestion);
         var personas = hasPersonas
@@ -71,7 +81,7 @@ public class OnboardingService
                 ob.Step = -1;
                 ob.UpdatedAt = DateTimeOffset.UtcNow;
                 await _db.SaveChangesAsync(ct);
-                return new OnboardingResult(Join(cfg.Intro, cfg.PersonaQuestion), OffScript: false, Provisioned: false);
+                return new OnboardingResult(Join(effectiveIntro, cfg.PersonaQuestion), OffScript: false, Provisioned: false);
             }
             var picked = DetectPersona(personas, lower);
             if (picked is null && ob.GymRetries < 1)
@@ -92,13 +102,14 @@ public class OnboardingService
         }
 
         // ── Settings activos: de la persona elegida, o del config si la app es de una sola persona ──
-        var questions = persona?.Questions ?? cfg.Questions;
+        var questions = persona?.Questions
+            ?? (reengage && cfg.ReengageQuestions.Count > 0 ? cfg.ReengageQuestions : cfg.Questions);
         var emailPrompt = persona is null ? cfg.EmailPrompt : persona.EmailPrompt;
         var provisionUrl = persona is null ? cfg.ProvisionUrl : persona.ProvisionUrl;
         var provisionNameField = persona is null ? cfg.ProvisionNameField : persona.ProvisionNameField;
         var successMessage = persona is null ? cfg.SuccessMessage : persona.SuccessMessage;
         var provisionExtra = persona?.ProvisionExtra;
-        var intro = cfg.Intro;
+        var intro = effectiveIntro;
 
         var n = questions.Count;
         if (n == 0) return new OnboardingResult(null, OffScript: true, Provisioned: false); // sin preguntas → IA libre
@@ -133,6 +144,17 @@ public class OnboardingService
         if (ob.Step == 0)
         {
             // Solo apps de una sola persona (las multi-persona ya pasaron por la selección).
+            if (hasReengageIntro)
+            {
+                // Cumplir la promesa del opener como la conversación real que convirtió:
+                // reacción + precios (+ video/imagen si hay) y RECIÉN después la 1ª pregunta.
+                ob.Step = 1;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult(intro, OffScript: false, Provisioned: false,
+                    MediaAssetIds: cfg.ReengageMediaAssetIds.Count > 0 ? cfg.ReengageMediaAssetIds : null,
+                    PostMediaText: questions[0]);
+            }
             reply = Join(intro, questions[0]);
             ob.Step = 1;
         }

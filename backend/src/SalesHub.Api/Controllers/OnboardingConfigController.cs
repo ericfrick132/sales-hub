@@ -22,7 +22,11 @@ public class OnboardingConfigController : ControllerBase
     public record ConfigDto(string ProductKey, string DisplayName, bool Enabled, bool SelfServe, string Intro,
         List<string> Questions, string EmailPrompt, string ProvisionUrl, string ProvisionNameField,
         string SuccessMessage, string ClosingMessage, bool UsePitchAudio,
-        int ReplyDelayMinSec, int ReplyDelayMaxSec, int AudioCount);
+        int ReplyDelayMinSec, int ReplyDelayMaxSec, int AudioCount,
+        // Reenganche (ver OnboardingConfig): nullable para que un frontend viejo que no manda
+        // estos campos NO los pise con vacío en el Upsert.
+        string? ReengageIntro = null, List<string>? ReengageQuestions = null,
+        List<Guid>? ReengageMediaAssetIds = null);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -42,7 +46,8 @@ public class OnboardingConfigController : ControllerBase
             return new ConfigDto(p.ProductKey, p.DisplayName, c?.Enabled ?? false, c?.SelfServe ?? true, c?.Intro ?? "",
                 c?.Questions ?? new(), c?.EmailPrompt ?? "", c?.ProvisionUrl ?? "",
                 c?.ProvisionNameField ?? "name", c?.SuccessMessage ?? "", c?.ClosingMessage ?? "",
-                c?.UsePitchAudio ?? false, c?.ReplyDelayMinSec ?? 0, c?.ReplyDelayMaxSec ?? 0, ac);
+                c?.UsePitchAudio ?? false, c?.ReplyDelayMinSec ?? 0, c?.ReplyDelayMaxSec ?? 0, ac,
+                c?.ReengageIntro ?? "", c?.ReengageQuestions ?? new(), c?.ReengageMediaAssetIds ?? new());
         });
         return Ok(result);
     }
@@ -68,6 +73,12 @@ public class OnboardingConfigController : ControllerBase
         c.ProvisionUrl = dto.ProvisionUrl ?? "";
         c.ProvisionNameField = string.IsNullOrWhiteSpace(dto.ProvisionNameField) ? "name" : dto.ProvisionNameField.Trim();
         c.SuccessMessage = dto.SuccessMessage ?? "";
+        // Reenganche: solo se actualizan si vienen en el body (frontend viejo no los manda → no pisa).
+        if (dto.ReengageIntro is not null) c.ReengageIntro = dto.ReengageIntro;
+        if (dto.ReengageQuestions is not null)
+            c.ReengageQuestions = dto.ReengageQuestions.Where(q => !string.IsNullOrWhiteSpace(q)).Select(q => q.Trim()).ToList();
+        if (dto.ReengageMediaAssetIds is not null)
+            c.ReengageMediaAssetIds = dto.ReengageMediaAssetIds.Where(g => g != Guid.Empty).ToList();
         c.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true });

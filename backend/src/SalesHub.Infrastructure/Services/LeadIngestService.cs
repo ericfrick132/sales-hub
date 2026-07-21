@@ -103,8 +103,11 @@ public class LeadIngestService : ILeadIngestService
                             var ob = await _onboarding.ProcessAsync(lead, string.Empty, onbCfg, ct);
                             if (!string.IsNullOrWhiteSpace(ob.Reply))
                             {
+                                // Render de placeholders del guion ({seller}, {nombre}, {saludo}…):
+                                // este path encola directo al outbox, no pasa por OnboardingSendAsync.
                                 OutboxEnqueueHelper.EnqueueOnboardingText(
-                                    _db, lead, seller, phone, instanceName, ob.Reply!);
+                                    _db, lead, seller, phone, instanceName,
+                                    _renderer.RenderTemplate(ob.Reply!, lead, product, seller));
                                 startedOnboarding = true;
                             }
                         }

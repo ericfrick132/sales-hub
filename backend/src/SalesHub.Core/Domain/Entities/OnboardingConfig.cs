@@ -49,6 +49,26 @@ public class OnboardingConfig
     /// <summary>Mensaje que pide el mail antes de crear la cuenta.</summary>
     public string EmailPrompt { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Reemplazo del <see cref="Intro"/> para leads de reenganche (Source=ProductReengage): ya
+    /// recibieron el opener que SE PRESENTA y promete "te paso los precios" — acá el bot NO se
+    /// re-presenta: reacciona y cumple la promesa (precios/link; soporta placeholders {price},
+    /// {checkout_url}, {seller}…). Vacío = comportamiento anterior (Intro completo).
+    /// </summary>
+    public string ReengageIntro { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Preguntas del alta para reenganchados. El opener ya hizo la pregunta calificadora, así que
+    /// esta lista suele ser más corta (nombre del negocio → situación actual). Vacío = Questions.
+    /// </summary>
+    public List<string> ReengageQuestions { get; set; } = new();
+
+    /// <summary>
+    /// Adjuntos a mandar junto con el ReengageIntro (video demo, imagen de precios) — el "te paso
+    /// un video" de la conversación real. Vacío = solo texto.
+    /// </summary>
+    public List<Guid> ReengageMediaAssetIds { get; set; } = new();
+
     /// <summary>Endpoint de provisión (bot-register) de la app.</summary>
     public string ProvisionUrl { get; set; } = string.Empty;
 

@@ -128,6 +128,13 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
   const delQ = (i: number) =>
     setForm((f) => ({ ...f, questions: f.questions.filter((_, j) => j !== i) }));
 
+  // ?? []: hasta que el backend con los campos de reenganche esté deployado, el GET no los trae.
+  const setRQ = (i: number, v: string) =>
+    setForm((f) => ({ ...f, reengageQuestions: (f.reengageQuestions ?? []).map((q, j) => (j === i ? v : q)) }));
+  const addRQ = () => setForm((f) => ({ ...f, reengageQuestions: [...(f.reengageQuestions ?? []), ''] }));
+  const delRQ = (i: number) =>
+    setForm((f) => ({ ...f, reengageQuestions: (f.reengageQuestions ?? []).filter((_, j) => j !== i) }));
+
   return (
     <div className="card p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -172,6 +179,41 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
           ))}
           <button type="button" className="btn-secondary text-sm" onClick={addQ}>+ pregunta</button>
         </div>
+      </div>
+
+      <div className="border rounded-lg p-3 space-y-2 bg-slate-50 dark:bg-slate-800/40">
+        <p className="text-sm font-semibold">🔁 Reenganche (leads que crearon cuenta y no siguieron)</p>
+        <p className="text-xs text-slate-500">
+          El opener ya se presentó y prometió los precios — acá el bot NO se re-presenta: reacciona,
+          cumple la promesa y sigue con estas preguntas (suelen ser menos: el opener ya calificó).
+          Soporta <code>{'{seller}'}</code>, <code>{'{price}'}</code>, <code>{'{checkout_url}'}</code>.
+          Vacío = usa el intro/preguntas de arriba (se re-presenta).
+        </p>
+        <Field label="Reacción inicial (cumple la promesa: precios/link, sin re-presentarse)">
+          <textarea className="input min-h-[60px]" value={form.reengageIntro ?? ''}
+            onChange={(e) => setForm((f) => ({ ...f, reengageIntro: e.target.value }))} />
+        </Field>
+        <div>
+          <label className="text-sm font-medium">Preguntas del reenganche (la 1ª es el nombre del negocio)</label>
+          <div className="space-y-2 mt-1">
+            {(form.reengageQuestions ?? []).map((q, i) => (
+              <div key={i} className="flex gap-2">
+                <textarea className="input min-h-[44px] flex-1" value={q}
+                  onChange={(e) => setRQ(i, e.target.value)} />
+                <button type="button" className="btn-danger px-2 self-start" onClick={() => delRQ(i)}>✕</button>
+              </div>
+            ))}
+            <button type="button" className="btn-secondary text-sm" onClick={addRQ}>+ pregunta</button>
+          </div>
+        </div>
+        <Field label="Adjuntos con la reacción (IDs de media del producto, separados por coma — video demo, imagen de precios)">
+          <input className="input" value={(form.reengageMediaAssetIds ?? []).join(', ')}
+            placeholder="vacío = solo texto"
+            onChange={(e) => setForm((f) => ({
+              ...f,
+              reengageMediaAssetIds: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
+            }))} />
+        </Field>
       </div>
 
       {form.selfServe ? (

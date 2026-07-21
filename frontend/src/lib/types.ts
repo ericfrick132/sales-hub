@@ -390,6 +390,12 @@ export interface OnboardingAppConfig {
   replyDelayMinSec: number;
   replyDelayMaxSec: number;
   audioCount: number;
+  /** Reenganche: reemplazo del intro para leads ProductReengage (el opener ya se presentó). */
+  reengageIntro: string;
+  /** Preguntas del alta para reenganchados (vacío = usa las de arriba). */
+  reengageQuestions: string[];
+  /** Adjuntos (video demo / precios) que acompañan al reengageIntro. */
+  reengageMediaAssetIds: string[];
 }
 
 export interface OnboardingAudioVariant {

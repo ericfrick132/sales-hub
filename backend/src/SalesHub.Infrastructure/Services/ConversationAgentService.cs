@@ -43,17 +43,19 @@ public class ConversationAgentService
     private readonly OnboardingService _onboarding;
     private readonly ISendScheduler _scheduler;
     private readonly VoiceNoteService _voiceNotes;
+    private readonly IMessageRenderer _renderer;
     private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
     private readonly ILogger<ConversationAgentService> _log;
 
     public ConversationAgentService(
         ApplicationDbContext db, IEvolutionClient evo, GroqWhisperClient whisper,
         AiSuggestionService suggestions, OnboardingService onboarding, ISendScheduler scheduler,
-        VoiceNoteService voiceNotes, Microsoft.Extensions.Configuration.IConfiguration config,
+        VoiceNoteService voiceNotes, IMessageRenderer renderer,
+        Microsoft.Extensions.Configuration.IConfiguration config,
         ILogger<ConversationAgentService> log)
     {
         _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding;
-        _scheduler = scheduler; _voiceNotes = voiceNotes; _config = config; _log = log;
+        _scheduler = scheduler; _voiceNotes = voiceNotes; _renderer = renderer; _config = config; _log = log;
     }
 
     public async Task<int> TickAsync(CancellationToken ct)
@@ -285,6 +287,12 @@ public class ConversationAgentService
                     var sentAudio = ob.WithPitchAudio && await TrySendPitchAudioAsync(lead, onbCfg!.ProductKey, ct);
                     if ((!sentAudio || onbCfg!.SelfServe) && !string.IsNullOrWhiteSpace(ob.Reply))
                         await OnboardingSendAsync(lead, ob.Reply!, ct);
+                    // Reenganche: adjuntos prometidos (video/precios) DESPUÉS de la reacción, y
+                    // la 1ª pregunta recién al final — orden de la conversación real que convirtió.
+                    if (ob.MediaAssetIds is { Count: > 0 })
+                        await TrySendOnboardingMediaAsync(lead, ob.MediaAssetIds, ct);
+                    if (!string.IsNullOrWhiteSpace(ob.PostMediaText))
+                        await OnboardingSendAsync(lead, ob.PostMediaText!, ct);
                     await _db.SaveChangesAsync(ct);
                     done++;
                     continue;
@@ -439,6 +447,49 @@ public class ConversationAgentService
         return true;
     }
 
+    /// <summary>
+    /// Manda los adjuntos del guion de reenganche (video demo / imagen de precios) en el orden
+    /// configurado, registrándolos en la conversación. Best-effort: un adjunto que falla no corta
+    /// el flujo (la pregunta post-media sale igual). No aplica a productos con transporte
+    /// delegado a la app (el relay es solo texto).
+    /// </summary>
+    private async Task TrySendOnboardingMediaAsync(Lead lead, List<Guid> assetIds, CancellationToken ct)
+    {
+        if (lead.Product?.AppManagedTransport == true) return;
+        var instance = lead.Seller?.EvolutionInstance;
+        if (instance is null || instance.Status != InstanceStatus.Connected || string.IsNullOrWhiteSpace(lead.WhatsappPhone))
+            return;
+        var assets = await _db.MediaAssets.AsNoTracking()
+            .Where(a => assetIds.Contains(a.Id)).ToListAsync(ct);
+        foreach (var id in assetIds)
+        {
+            var asset = assets.FirstOrDefault(a => a.Id == id);
+            if (asset is null) continue;
+            var ok = await _evo.SendMediaAsync(instance.InstanceName, lead.WhatsappPhone!,
+                asset.Content, asset.MimeType, asset.FileName, null, ct);
+            if (!ok)
+            {
+                _log.LogWarning("Onboarding: falló el adjunto {Asset} para lead {Lead}", id, lead.Id);
+                continue;
+            }
+            var mt = asset.MimeType ?? string.Empty;
+            _db.ConversationMessages.Add(new ConversationMessage
+            {
+                Id = Guid.NewGuid(),
+                LeadId = lead.Id,
+                SellerId = lead.SellerId,
+                Direction = MessageDirection.Outbound,
+                Status = MessageDeliveryStatus.Sent,
+                Text = mt.StartsWith("video", StringComparison.OrdinalIgnoreCase) ? "[video]"
+                     : mt.StartsWith("image", StringComparison.OrdinalIgnoreCase) ? "[imagen]" : "[archivo]",
+                EvolutionInstance = instance.InstanceName,
+                Timestamp = DateTimeOffset.UtcNow,
+                IsRead = true,
+            });
+        }
+        await _db.SaveChangesAsync(ct);
+    }
+
     private static readonly Regex AccessLinkRx = new(
         @"(link|enlace|url|ingres|entrar|acced|acceso|logue|log ?in|inici[aá]r? sesi[oó]n|no me lleg|no puedo entrar|no pude entrar|c[oó]mo entro|d[oó]nde entro|clave|contrase|password|regist|c[oó]digo|no (me )?(anda|funciona|carga|abre)|error|pantalla (en )?blanc)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -499,6 +550,10 @@ public class ConversationAgentService
     /// </summary>
     private async Task OnboardingSendAsync(Lead lead, string text, CancellationToken ct)
     {
+        // Placeholders del guion ({seller}, {nombre}, {saludo}, {price}, {checkout_url}…): el
+        // guion vivía con "Eric" hardcodeado; ahora usa el vendedor real asignado al lead.
+        if (lead.Product is not null)
+            text = _renderer.RenderTemplate(text, lead, lead.Product, lead.Seller);
         text = StripBoludo(text);
         var parts = text.Split("[NUEVO_MENSAJE]", StringSplitOptions.RemoveEmptyEntries)
             .Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
