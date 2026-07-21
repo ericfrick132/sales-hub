@@ -39,6 +39,31 @@ public class EvolutionClient : IEvolutionClient
         return new InstanceConnectionInfo(state ?? "unknown", null, null);
     }
 
+    public async Task<Dictionary<string, string>> GetInstanceOwnersAsync(CancellationToken ct = default)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var resp = await _http.GetAsync("instance/fetchInstances", ct);
+            if (!resp.IsSuccessStatusCode) return map;
+            var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return map;
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                // v1: { instance: { instanceName, owner } } ; v2: { name, ownerJid }
+                var inst = item.TryGetProperty("instance", out var i) ? i : item;
+                var name = inst.TryGetProperty("instanceName", out var n) ? n.GetString()
+                         : inst.TryGetProperty("name", out var n2) ? n2.GetString() : null;
+                var owner = inst.TryGetProperty("owner", out var o) ? o.GetString()
+                          : inst.TryGetProperty("ownerJid", out var o2) ? o2.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(owner))
+                    map[name!] = owner!.Split('@')[0];
+            }
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "fetchInstances fallo (owners)"); }
+        return map;
+    }
+
     public async Task<InstanceConnectionInfo> EnsureInstanceAsync(string instanceName, CancellationToken ct = default, string? proxyUrl = null)
     {
         var status = await GetInstanceStatusAsync(instanceName, ct);

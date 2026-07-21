@@ -31,17 +31,16 @@ public class SellersController : ControllerBase
         // (solo el flujo de QR de apps lo estampaba). Una consulta a Evolution por instancia,
         // una sola vez (??=), y queda persistido.
         var dirty = false;
-        foreach (var s in sellers)
+        if (sellers.Any(s => s.EvolutionInstance is { Status: InstanceStatus.Connected } i && string.IsNullOrWhiteSpace(i.ConnectedPhoneNumber)))
         {
-            var inst = s.EvolutionInstance;
-            if (inst is null || inst.Status != InstanceStatus.Connected || !string.IsNullOrWhiteSpace(inst.ConnectedPhoneNumber))
-                continue;
-            try
+            var owners = await _evo.GetInstanceOwnersAsync(ct); // 1 solo call para todas
+            foreach (var s in sellers)
             {
-                var info = await _evo.GetInstanceStatusAsync(inst.InstanceName, ct);
-                if (!string.IsNullOrWhiteSpace(info.PhoneNumber)) { inst.ConnectedPhoneNumber = info.PhoneNumber; dirty = true; }
+                var inst = s.EvolutionInstance;
+                if (inst is null || inst.Status != InstanceStatus.Connected || !string.IsNullOrWhiteSpace(inst.ConnectedPhoneNumber))
+                    continue;
+                if (owners.TryGetValue(inst.InstanceName, out var num)) { inst.ConnectedPhoneNumber = num; dirty = true; }
             }
-            catch { /* Evolution caida: la lista sale igual, sin numero */ }
         }
         if (dirty) await _db.SaveChangesAsync(ct);
         return sellers.Select(ToDto).ToList();

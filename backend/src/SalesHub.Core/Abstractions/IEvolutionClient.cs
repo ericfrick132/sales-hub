@@ -7,6 +7,9 @@ public record InstanceConnectionInfo(string Status, string? PhoneNumber, string?
 public interface IEvolutionClient
 {
     Task<InstanceConnectionInfo> GetInstanceStatusAsync(string instanceName, CancellationToken ct = default);
+
+    /// <summary>Mapa instancia -> numero de WhatsApp vinculado (owner jid sin dominio), via fetchInstances.</summary>
+    Task<Dictionary<string, string>> GetInstanceOwnersAsync(CancellationToken ct = default);
     /// <summary>Crea (si no existe) y asegura webhook + proxy de la instancia. <paramref name="proxyUrl"/>
     /// opcional: el proxy de salida de esta línea; si es null cae al global (Evolution:ProxyUrl).</summary>
     Task<InstanceConnectionInfo> EnsureInstanceAsync(string instanceName, CancellationToken ct = default, string? proxyUrl = null);
