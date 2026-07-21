@@ -249,7 +249,7 @@ public class OnboardingService
             {
                 ob.Email = FixEmailTypos(email.Value.Trim());
                 var url = await _provision.RegisterAsync(provisionUrl, provisionNameField,
-                    ob.GymName ?? lead.Name, ob.Email, ob.ContactName, cfg.ProductKey, ct, provisionExtra);
+                    PresentableBusinessName(ob.GymName, lead.Name), ob.Email, ob.ContactName, cfg.ProductKey, ct, provisionExtra);
                 if (string.IsNullOrWhiteSpace(url))
                 {
                     reply = "Uy, no pude crear la cuenta con ese mail. ¿Me lo confirmás escribiéndolo de nuevo?";
@@ -306,7 +306,7 @@ public class OnboardingService
         var provisionUrl = persona is null ? cfg.ProvisionUrl : persona.ProvisionUrl;
         var nameField = persona is null ? cfg.ProvisionNameField : persona.ProvisionNameField;
         var url = await _provision.RegisterAsync(provisionUrl, nameField,
-            ob.GymName ?? lead.Name, ob.Email!, ob.ContactName, cfg.ProductKey, ct, persona?.ProvisionExtra);
+            PresentableBusinessName(ob.GymName, lead.Name), ob.Email!, ob.ContactName, cfg.ProductKey, ct, persona?.ProvisionExtra);
         if (string.IsNullOrWhiteSpace(url)) return null;
         ob.AccessUrl = url;
         ob.UpdatedAt = DateTimeOffset.UtcNow;
@@ -349,6 +349,19 @@ public class OnboardingService
     }
 
     private static string? Trunc(string s, int n) => string.IsNullOrEmpty(s) ? s : (s.Length > n ? s[..n] : s);
+
+    /// <summary>
+    /// Nombre de negocio PRESENTABLE para crear la cuenta: en las apps es el nombre del tenant
+    /// Y la base del subdominio. Si el lead tipeó un saludo/frase ("hola" es el caso real),
+    /// caemos al nombre del lead si sirve; último recurso, un neutro que las apps renombran
+    /// en su onboarding. Nunca un tenant/subdominio "hola".
+    /// </summary>
+    private static string PresentableBusinessName(string? gymName, string? leadName)
+    {
+        if (!string.IsNullOrWhiteSpace(gymName) && !IsBusinessNameSuspicious(gymName!)) return gymName!.Trim();
+        if (!string.IsNullOrWhiteSpace(leadName) && !IsBusinessNameSuspicious(leadName!)) return leadName!.Trim();
+        return "Mi negocio";
+    }
 
     /// <summary>Heurística (sin IA) para detectar nombres de negocio "truchos" — réplica del nodo de n8n.</summary>
     private static bool IsBusinessNameSuspicious(string raw)
