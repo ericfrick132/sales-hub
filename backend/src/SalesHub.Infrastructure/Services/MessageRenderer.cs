@@ -6,12 +6,50 @@ namespace SalesHub.Infrastructure.Services;
 
 /// <summary>
 /// Renders a product's message_template with placeholders and spin-text.
-/// Placeholders: {name}, {city}, {province}, {price}, {checkout_url}, {seller}
+/// Placeholders: {name}, {nombre}, {saludo}, {city}, {province}, {price}, {checkout_url}, {seller}
 /// Spin syntax: {opt1|opt2|opt3} -> random pick, stable per lead id.
 /// </summary>
 public class MessageRenderer : IMessageRenderer
 {
     private static readonly Regex SpinRx = new(@"\{([^{}]*\|[^{}]*)\}", RegexOptions.Compiled);
+    private static readonly Regex MultiSpaceRx = new(@"[ \t]{2,}", RegexOptions.Compiled);
+
+    // Nombres "basura" que NO son de una persona (leads de form/reengage sin nombre real).
+    // Con estos {nombre} queda vacío para que el saludo lea bien ("buenos días" sin "Mi negocio").
+    private static readonly HashSet<string> JunkNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "mi negocio", "negocio", "lead", "lead de anuncio", "contacto whatsapp", "contacto",
+        "cliente", "sin nombre", "n/a", "na", "test", "prueba"
+    };
+
+    /// <summary>Primer nombre presentable, o "" si el nombre es basura/negocio/vacío.
+    /// "Santi Pérez" -> "Santi"; "Mi negocio" -> ""; "GYM NEW LIFE" -> "".</summary>
+    private static string FirstName(string? raw)
+    {
+        var name = (raw ?? string.Empty).Trim();
+        if (name.Length == 0 || JunkNames.Contains(name)) return string.Empty;
+        var first = name.Split(new[] { ' ', ',', '.' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+        // Descartá tokens que no parecen nombre de pila: con dígitos, muy cortos, o TODO EN MAYÚS
+        // (típico de razón social scrapeada: "ENERGYM", "GYM NEW LIFE").
+        if (first.Length < 2 || first.Any(char.IsDigit) || first.All(c => !char.IsLetter(c) || char.IsUpper(c)))
+            return string.Empty;
+        if (JunkNames.Contains(first)) return string.Empty;
+        return char.ToUpper(first[0]) + first[1..].ToLower();
+    }
+
+    /// <summary>Saludo por hora en la zona del vendedor: mañana/tarde/noche.</summary>
+    private static string TimeGreeting(Seller? seller)
+    {
+        var tz = TimeZoneInfo.Utc;
+        var id = seller?.Timezone;
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            try { tz = TimeZoneInfo.FindSystemTimeZoneById(id); } catch { /* fallback UTC-3 abajo */ }
+        }
+        if (tz == TimeZoneInfo.Utc) tz = TimeZoneInfo.CreateCustomTimeZone("ar", TimeSpan.FromHours(-3), "AR", "AR");
+        var h = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz).Hour;
+        return h < 12 ? "buenos días" : h < 20 ? "buenas tardes" : "buenas noches";
+    }
 
     public string Render(Lead lead, Product product, Seller? seller = null)
         => RenderTemplateInternal(product.MessageTemplate ?? string.Empty, lead, product, seller);
@@ -51,6 +89,8 @@ public class MessageRenderer : IMessageRenderer
 
         template = template
             .Replace("{name}", lead.Name)
+            .Replace("{nombre}", FirstName(lead.Name))
+            .Replace("{saludo}", TimeGreeting(seller))
             .Replace("{city}", string.IsNullOrWhiteSpace(lead.City) ? "tu ciudad" : lead.City)
             .Replace("{province}", lead.Province ?? string.Empty)
             .Replace("{category}", category)
@@ -59,6 +99,12 @@ public class MessageRenderer : IMessageRenderer
             .Replace("{checkout_url}", product.CheckoutUrl ?? string.Empty)
             .Replace("{seller}", seller?.DisplayName ?? "Eric")
             .Replace("\\n", "\n");
+
+        // Limpieza para cuando {nombre} queda vacío: colapsá espacios dobles y arreglá
+        // los artefactos " ," / " !" / " ?" para que "hola {nombre}, {saludo}" lea bien igual.
+        template = MultiSpaceRx.Replace(template, " ")
+            .Replace(" ,", ",").Replace(" .", ".").Replace(" !", "!").Replace(" ?", "?")
+            .Replace(",,", ",");
 
         return template.Trim();
     }
