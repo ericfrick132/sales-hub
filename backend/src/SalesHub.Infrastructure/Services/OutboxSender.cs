@@ -174,8 +174,11 @@ public class OutboxSender
                    && !(o.Lead != null && _db.Products.Any(p => p.ProductKey == o.Lead.ProductKey && p.AppManagedTransport))
                 let leadInProgress = _db.Outbox.Any(x =>
                     x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
-                // Prioridad primero (re-enganche caliente salta la fila), después "en progreso", después FIFO.
-                orderby o.Priority descending, leadInProgress descending, o.ScheduledAt
+                // EN PROGRESO primero: un lead con la cadencia empezada se TERMINA antes de
+                // atender a cualquier otro — nadie se cuela entre el saludo y el pitch
+                // (caso real: "buenos días! soy Eric" y el resto trabado 30 min). Después
+                // prioridad (caliente salta la fila entre leads nuevos), después FIFO.
+                orderby leadInProgress descending, o.Priority descending, o.ScheduledAt
                 select o
             ).Take(20).ToListAsync(ct);
             MessageOutbox? next = null;

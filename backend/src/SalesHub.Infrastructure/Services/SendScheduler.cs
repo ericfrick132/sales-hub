@@ -95,6 +95,22 @@ public class SendScheduler : ISendScheduler
         if (earliest >= dayEnd)
             return NextDayStart(seller, today, tz);
 
+        // CONTINUACIÓN de cadencia: si el último enviado tiene más steps en cola, las
+        // burbujas van juntas (6-15s, ritmo de tipeo) — el jitter largo y las pausas de
+        // tanda quedan ENTRE leads, no en el medio de un saludo y su pitch.
+        var lastSentLead = await _db.Outbox
+            .Where(o => o.SellerId == seller.Id && o.Status == OutboxStatus.Sent && o.SentAt != null)
+            .OrderByDescending(o => o.SentAt)
+            .Select(o => (Guid?)o.LeadId)
+            .FirstOrDefaultAsync(ct);
+        if (lastSentLead is not null && await _db.Outbox.AnyAsync(o =>
+                o.LeadId == lastSentLead && o.Status == OutboxStatus.Scheduled
+                && o.Channel == MessageChannel.WhatsApp, ct))
+        {
+            var shortRng = new Random(HashCombine(seller.Id, reference.UtcTicks));
+            return reference.AddSeconds(shortRng.Next(6, 16));
+        }
+
         // Inter-message jitter + burst pauses
         var rng = new Random(HashCombine(seller.Id, reference.UtcTicks));
         var delaySec = rng.Next(seller.DelayMinSeconds, seller.DelayMaxSeconds + 1);
