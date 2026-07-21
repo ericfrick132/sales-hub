@@ -503,6 +503,7 @@ public class ConversationAgentService
             if (asset is null) continue;
             var caption = captions is not null && i < captions.Count && !string.IsNullOrWhiteSpace(captions[i])
                 ? captions[i] : null;
+            if (i > 0) await Task.Delay(TimeSpan.FromSeconds(Random.Shared.Next(4, 9)), ct);
             var ok = await _evo.SendMediaAsync(instance.InstanceName, lead.WhatsappPhone!,
                 asset.Content, asset.MimeType, asset.FileName, caption, ct);
             if (!ok)
@@ -627,7 +628,9 @@ public class ConversationAgentService
             // pausa breve proporcional al largo (más humano, menos cara de bot).
             if (!firstPart)
             {
-                var pause = Math.Clamp(p.Length / 25, 2, 5);
+                // "de a poco": pausa proporcional al largo del mensaje (como alguien tipeando
+                // de verdad). Antes 2-5s: una pared de 5 burbujas caia en 15 segundos.
+                var pause = Math.Clamp(p.Length / 15, 4, 10);
                 try { await _evo.SetPresenceTypingAsync(instance!.InstanceName, lead.WhatsappPhone!, pause, ct); } catch { }
                 await Task.Delay(TimeSpan.FromSeconds(pause), ct);
             }
