@@ -177,16 +177,19 @@ public class AiImageGenerator : ISocialAssetGenerator
         var sb = new StringBuilder();
         // Base visual: el prompt cinematográfico en inglés que ya generó Claude.
         sb.Append(string.IsNullOrWhiteSpace(visualPrompt) ? concept : visualPrompt);
+        // Tiene que coincidir con DimsFor/size: pedirle 9:16 o 4:5 al modelo era pedirle
+        // proporciones que no sabe generar, y componía para un encuadre que nunca existía.
         var aspect = format switch
         {
-            SocialPostFormat.Story or SocialPostFormat.Reel => "vertical 9:16 full-bleed composition",
-            SocialPostFormat.Carousel => "vertical 4:5 composition",
-            _ => "square 1:1 composition",
+            SocialPostFormat.Story or SocialPostFormat.Reel => "vertical 2:3 portrait full-bleed composition",
+            _ => "square 1:1 full-bleed composition",
         };
         sb.Append($". Social media {format.ToString().ToLowerInvariant()} for {platform}, {aspect}, clean and modern.");
-        // La imagen se recorta después al ratio exacto de IG (el modelo no genera 9:16 ni 4:5),
-        // así que el contenido importante tiene que aguantar un crop centrado.
-        sb.Append(" CRITICAL SAFE AREA: the image will be cropped ~10% on each edge to fit the platform's aspect ratio — keep ALL text and key subjects fully inside the central 80% of the frame, leaving at least 12% of visibly empty background as margin on ALL four edges. No letter may touch or approach an edge.");
+        // La imagen se publica en la MISMA proporción en la que se genera: no hay recorte
+        // posterior, así que sólo pedimos que nada quede pegado al borde.
+        sb.Append(" FRAMING: this exact aspect ratio is the final published frame — nothing will be cropped. "
+            + "Compose for it edge to edge, and keep all text and key subjects comfortably inside, "
+            + "with at least 7% of calm background as margin on every edge. No letter may touch an edge.");
         // Dirección de arte editable por app (Posteos → marca). Va ANTES que el resto de la
         // envoltura para que pese más que los defaults y pueda vetar estilos (ej. "sin caras").
         if (!string.IsNullOrWhiteSpace(profile.ImageStyle))
@@ -227,9 +230,11 @@ public class AiImageGenerator : ISocialAssetGenerator
         var provider = _opts.Provider.Trim().ToLowerInvariant();
         // gpt-image acepta 1024x1024 | 1024x1536 (vertical) | 1536x1024. Para Story/Reel/Carousel
         // pedimos vertical (mejor para IG); para el resto, lo que diga la config (default cuadrado).
-        var size = format is SocialPostFormat.Story or SocialPostFormat.Reel or SocialPostFormat.Carousel
-            ? "1024x1536"
-            : _opts.Size;
+        // La medida pedida tiene que dar la MISMA proporción que DimsFor(format), si no
+        // volvemos a tener que recortar. Story/Reel = 2:3; el resto (carrusel incluido) = 1:1.
+        var size = format is SocialPostFormat.Story or SocialPostFormat.Reel
+            ? "1024x1536"   // 2:3
+            : "1024x1024";  // 1:1
         object body = provider switch
         {
             // Grok (xAI): OpenAI-compatible pero sin size/quality; pedimos b64.
@@ -304,12 +309,17 @@ public class AiImageGenerator : ISocialAssetGenerator
         }
     }
 
-    /// <summary>Dimensiones IG por formato (px).</summary>
+    /// <summary>
+    /// Dimensiones de publicación por formato (px). Están atadas a lo que GPT Image
+    /// PUEDE generar (1:1, 2:3 y 3:2 — no acepta medidas arbitrarias), así la imagen nace
+    /// ya en la proporción final y el reescalado posterior no recorta ni rellena nada.
+    /// Story/Reel van en 2:3 (lo más vertical que sabe hacer) y el carrusel en 1:1,
+    /// que Instagram acepta nativo en el feed.
+    /// </summary>
     private static (int w, int h) DimsFor(SocialPostFormat? format) => format switch
     {
-        SocialPostFormat.Story or SocialPostFormat.Reel => (1080, 1920),
-        SocialPostFormat.Carousel => (1080, 1350),
-        _ => (1080, 1080),
+        SocialPostFormat.Story or SocialPostFormat.Reel => (1080, 1620), // 2:3
+        _ => (1080, 1080),                                              // 1:1 (incluye carrusel)
     };
 
     // ── Persistencia ───────────────────────────────────────────────────────

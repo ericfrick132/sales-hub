@@ -79,9 +79,11 @@ public class BrandLogoService
     }
 
     /// <summary>
-    /// Escala + recorta (cover, centrado) la imagen al tamaño EXACTO pedido con ffmpeg.
-    /// Los modelos texto→imagen no generan en los ratios de Instagram (GPT Image solo sabe
-    /// 1:1 y 2:3) — si no normalizamos acá, Instagram recorta él y corta texto/logos.
+    /// Lleva la imagen al tamaño EXACTO de publicación. Como los formatos de
+    /// <c>AiImageGenerator.DimsFor</c> usan las mismas proporciones que GPT Image sabe
+    /// generar (1:1 y 2:3), esto es un simple reescalado: no recorta ni deforma nada.
+    /// El pad queda como red de seguridad — si algún día la proporción de origen no
+    /// coincidiera, la imagen entra entera con banda en vez de salir cortada o estirada.
     /// Best-effort: si falla, devuelve la imagen original.
     /// </summary>
     public async Task<byte[]> NormalizeAsync(byte[] image, int width, int height, CancellationToken ct = default)
@@ -102,7 +104,9 @@ public class BrandLogoService
             psi.ArgumentList.Add("-y");
             psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(inPath);
             psi.ArgumentList.Add("-vf");
-            psi.ArgumentList.Add($"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}");
+            psi.ArgumentList.Add(
+                $"scale={width}:{height}:force_original_aspect_ratio=decrease," +
+                $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=white");
             psi.ArgumentList.Add(outPath);
 
             using var proc = System.Diagnostics.Process.Start(psi);

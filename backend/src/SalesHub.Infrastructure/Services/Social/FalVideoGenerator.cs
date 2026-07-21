@@ -62,10 +62,14 @@ public class FalVideoGenerator : ISocialAssetGenerator
     {
         if (post.AssetKind != SocialAssetKind.Video) return null;
         var prompt = BuildBrandPrompt(profile, post);
+        // Todas las proporciones de acá son nativas de Seedance, así que el video sale ya
+        // en el encuadre final y no pasa por ningún reencuadre posterior. El carrusel va
+        // en 1:1 para que coincida con las imágenes del feed (ver AiImageGenerator.DimsFor);
+        // 3:4 además caía fuera del rango que acepta el feed de Instagram y lo recortaba él.
         var aspect = post.Format switch
         {
             SocialPostFormat.Story or SocialPostFormat.Reel or SocialPostFormat.Video => "9:16",
-            SocialPostFormat.Carousel => "3:4",
+            SocialPostFormat.Carousel => "1:1",
             _ => "16:9",
         };
         var url = await GenerateVideoUrlAsync(prompt, aspect, ct);
