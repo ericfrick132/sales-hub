@@ -241,6 +241,8 @@ export interface Seller {
   instanceStatus?: InstanceStatus;
   /** Numero de WhatsApp vinculado a la instancia (backfill lazy desde Evolution). */
   connectedPhoneNumber?: string | null;
+  /** Archivar el chat de cada lead (linea que comparte telefono con el uso personal). */
+  autoArchiveChats?: boolean;
   verticalsWhitelist: string[];
   regionsAssigned: string[];
   keywordRules: string[];

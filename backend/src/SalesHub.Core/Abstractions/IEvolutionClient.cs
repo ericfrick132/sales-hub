@@ -10,6 +10,14 @@ public interface IEvolutionClient
 
     /// <summary>Mapa instancia -> numero de WhatsApp vinculado (owner jid sin dominio), via fetchInstances.</summary>
     Task<Dictionary<string, string>> GetInstanceOwnersAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Archiva (o desarchiva) el chat en el WhatsApp de la línea. Pensado para líneas que
+    /// comparten teléfono con el uso personal: el tráfico de ventas queda en Archivados.
+    /// OJO: en WhatsApp un chat archivado vuelve a la lista principal al llegar un mensaje
+    /// nuevo, salvo que el teléfono tenga "Mantener chats archivados" activado.
+    /// </summary>
+    Task<bool> ArchiveChatAsync(string instanceName, string jid, string lastMessageId, bool lastFromMe, bool archive = true, CancellationToken ct = default);
     /// <summary>Crea (si no existe) y asegura webhook + proxy de la instancia. <paramref name="proxyUrl"/>
     /// opcional: el proxy de salida de esta línea; si es null cae al global (Evolution:ProxyUrl).</summary>
     Task<InstanceConnectionInfo> EnsureInstanceAsync(string instanceName, CancellationToken ct = default, string? proxyUrl = null);

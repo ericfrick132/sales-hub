@@ -138,6 +138,20 @@ export default function Sellers() {
                     title="Prender/apagar el envío automático de este vendedor" />
                   <span className="text-xs font-medium text-slate-600">Envío {selected.sendingEnabled ? 'ON' : 'OFF'}</span>
                 </div>
+                <div className="flex items-center gap-2 px-1">
+                  <Switch
+                    on={!!selected.autoArchiveChats}
+                    onClick={async () => {
+                      const next = !selected.autoArchiveChats;
+                      setSelected({ ...selected, autoArchiveChats: next });
+                      await save({ autoArchiveChats: next } as Partial<Seller>);
+                      toast.success(next ? 'Los chats de leads van a Archivados' : 'Archivado automático apagado');
+                    }}
+                    title="Para líneas que comparten teléfono con el uso personal: el chat de cada lead se archiva solo. Activá también 'Mantener chats archivados' en el teléfono." />
+                  <span className="text-xs font-medium text-slate-600">
+                    Archivar chats {selected.autoArchiveChats ? 'ON' : 'OFF'}
+                  </span>
+                </div>
                 <Link to={`/sellers/zones?seller=${selected.id}`} className="btn-secondary text-xs">
                   Editar zonas (mapa)
                 </Link>

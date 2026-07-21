@@ -34,7 +34,8 @@ public record SellerDto(
     bool ReadIncomingFirst,
     int SkipDayProbabilityPct,
     int TypoProbabilityPct,
-    string? ConnectedPhoneNumber = null);
+    string? ConnectedPhoneNumber = null,
+    bool AutoArchiveChats = false);
 
 public record CreateSellerRequest(
     string SellerKey,
@@ -70,6 +71,7 @@ public record UpdateSellerRequest(
     int? PreSendTypingMaxSeconds,
     bool? ReadIncomingFirst,
     int? SkipDayProbabilityPct,
-    int? TypoProbabilityPct);
+    int? TypoProbabilityPct,
+    bool? AutoArchiveChats = null);
 
 public record ToggleSendingRequest(bool Enabled);

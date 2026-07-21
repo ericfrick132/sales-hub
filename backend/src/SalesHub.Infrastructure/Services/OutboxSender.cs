@@ -401,6 +401,11 @@ public class OutboxSender
                 }
                 if (!ok) throw new InvalidOperationException("Evolution rejected the send");
 
+                // Línea que comparte teléfono con el uso personal: el chat del lead va a
+                // Archivados apenas se le manda algo. Best-effort: si falla, el mensaje ya salió.
+                if (seller.AutoArchiveChats)
+                    await TryArchiveAsync(seller.EvolutionInstance!.InstanceName, next.WhatsappPhone, ct);
+
                 next.Status = OutboxStatus.Sent;
                 next.SentAt = DateTimeOffset.UtcNow;
 
@@ -476,4 +481,19 @@ public class OutboxSender
         try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
         catch { return TimeZoneInfo.Utc; }
     }
+    /// <summary>
+    /// Manda el chat a Archivados usando el id del último mensaje que enviamos (el que
+    /// exige Evolution). Nunca tira: archivar es cosmético, el envío ya ocurrió.
+    /// </summary>
+    private async Task TryArchiveAsync(string instanceName, string phone, CancellationToken ct)
+    {
+        try
+        {
+            var id = (_evo as SalesHub.Infrastructure.Evolution.EvolutionClient)?.LastSentMessageId(instanceName, phone);
+            if (string.IsNullOrWhiteSpace(id)) return;
+            await _evo.ArchiveChatAsync(instanceName, phone, id!, lastFromMe: true, archive: true, ct);
+        }
+        catch (Exception ex) { _log.LogDebug(ex, "No pude archivar el chat de {Phone}", phone); }
+    }
+
 }

@@ -257,6 +257,13 @@ public class EvolutionClient : IEvolutionClient
         catch (Exception ex) { _log.LogDebug(ex, "Mark read error (non-fatal)"); }
     }
 
+    /// <summary>Id (key.id) del último SendText exitoso — lo necesita ArchiveChatAsync, que
+    /// exige el último mensaje del chat. Por instancia+jid, se pisa en cada envío.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _lastSentIds = new();
+
+    public string? LastSentMessageId(string instanceName, string jid)
+        => _lastSentIds.TryGetValue(instanceName + "|" + jid, out var id) ? id : null;
+
     public async Task<bool> SendTextAsync(string instanceName, string jid, string message, CancellationToken ct = default)
     {
         var body = new
@@ -271,7 +278,39 @@ public class EvolutionClient : IEvolutionClient
             _log.LogWarning("SendText {Instance} -> {Jid} failed: {Status} {Body}", instanceName, jid, resp.StatusCode, txt);
             return false;
         }
+        // Guardamos el key.id devuelto: es el "último mensaje" que pide el archivado.
+        try
+        {
+            var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            if (doc.RootElement.TryGetProperty("key", out var k) && k.TryGetProperty("id", out var idEl))
+            {
+                var id = idEl.GetString();
+                if (!string.IsNullOrWhiteSpace(id)) _lastSentIds[instanceName + "|" + jid] = id!;
+            }
+        }
+        catch { /* el envío ya salió; sin id el archivado se saltea */ }
         return true;
+    }
+
+    public async Task<bool> ArchiveChatAsync(string instanceName, string jid, string lastMessageId, bool lastFromMe, bool archive = true, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(lastMessageId)) return false;
+        var remoteJid = jid.Contains('@') ? jid : jid + "@s.whatsapp.net";
+        var body = new
+        {
+            lastMessage = new { key = new { id = lastMessageId, remoteJid, fromMe = lastFromMe } },
+            chat = remoteJid,
+            archive
+        };
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"chat/archiveChat/{Uri.EscapeDataString(instanceName)}", body, ct);
+            if (resp.IsSuccessStatusCode) return true;
+            _log.LogWarning("ArchiveChat {Instance} -> {Jid}: {Status} {Body}", instanceName, remoteJid,
+                resp.StatusCode, await resp.Content.ReadAsStringAsync(ct));
+            return false;
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "ArchiveChat threw"); return false; }
     }
 
     public async Task<bool> SendVoiceNoteAsync(string instanceName, string jid, byte[] audio, CancellationToken ct = default)

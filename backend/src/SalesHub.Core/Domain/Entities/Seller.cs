@@ -45,6 +45,14 @@ public class Seller
 
     public bool SendingEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Archivar automáticamente el chat de cada lead en el WhatsApp de esta línea. Para
+    /// líneas que comparten teléfono con el uso personal: el tráfico de ventas queda en
+    /// Archivados y no ensucia la lista principal. Requiere "Mantener chats archivados"
+    /// activado en el teléfono (si no, el chat vuelve al tope con cada mensaje nuevo).
+    /// </summary>
+    public bool AutoArchiveChats { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastLoginAt { get; set; }
