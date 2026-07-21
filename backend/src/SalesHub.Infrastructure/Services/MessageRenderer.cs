@@ -19,7 +19,14 @@ public class MessageRenderer : IMessageRenderer
     private static readonly HashSet<string> JunkNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "mi negocio", "negocio", "lead", "lead de anuncio", "contacto whatsapp", "contacto",
-        "cliente", "sin nombre", "n/a", "na", "test", "prueba"
+        "cliente", "sin nombre", "n/a", "na", "test", "prueba",
+        // Tokens sueltos que delatan razón social y no nombre de pila ("Mi gimnasio" -> "Mi"
+        // se colaba como nombre; caso real del canary 2026-07-20). También se chequean contra
+        // el PRIMER token, así que un artículo/posesivo o rubro acá corta el saludo con nombre.
+        "mi", "tu", "su", "el", "la", "los", "las", "un", "una", "nuevo", "nueva",
+        "gym", "gimnasio", "club", "fitness", "centro", "estudio", "salon", "salón",
+        "barberia", "barbería", "peluqueria", "peluquería", "estetica", "estética",
+        "spa", "canchas", "padel", "pádel", "obra", "obras", "tienda", "local", "distribuidora"
     };
 
     /// <summary>Primer nombre presentable, o "" si el nombre es basura/negocio/vacío.
