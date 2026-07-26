@@ -70,6 +70,40 @@ public class SocialContentWorker : BackgroundService
         }
         catch (Exception ex) { _log.LogWarning(ex, "Reaper de posteos colgados falló"); }
 
+        // Re-push a Buffer: cuando el push falla por algo TRANSITORIO (red, 5xx, rate-limit,
+        // RestProxy) el posteo quedaba en Error para siempre — Buffer no reintentaba y el
+        // contenido (que ya costó generar) se perdía. Reintentamos los de las últimas 24h que
+        // ya tienen asset + canal y nunca llegaron a Buffer (BufferPostId null). Los errores
+        // permanentes (caption inválido, token, canal inexistente) NO se reintentan: IsRetryableError
+        // los filtra para no spamear. El backoff de 15' evita reintentar el mismo posteo cada tick.
+        try
+        {
+            var since = DateTimeOffset.UtcNow.AddHours(-24);
+            var backoff = DateTimeOffset.UtcNow.AddMinutes(-15);
+            var failed = await db.SocialPosts
+                .Where(s => s.Status == SocialPostStatus.Error
+                    && s.Target == SocialDistribution.Buffer
+                    && s.BufferPostId == null
+                    && s.AssetUrl != null && s.AssetUrl != ""
+                    && s.BufferChannelId != ""
+                    && s.CreatedAt >= since
+                    && s.UpdatedAt < backoff)
+                .OrderBy(s => s.UpdatedAt)
+                .Take(20)
+                .ToListAsync(ct);
+            var retryable = failed.Where(p => BufferClient.IsRetryableError(p.Error)).ToList();
+            if (retryable.Count > 0)
+            {
+                var publisher = scope.ServiceProvider.GetRequiredService<ISocialPublisher>();
+                foreach (var p in retryable)
+                {
+                    try { await RepushAsync(publisher, db, p, ct); }
+                    catch (Exception ex) { _log.LogWarning(ex, "Re-push falló para {Product} ({Id})", p.ProductKey, p.Id); }
+                }
+            }
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Re-push de posteos en Error falló"); }
+
         var profiles = await db.PostingProfiles.Where(p => p.Enabled).ToListAsync(ct);
 
         foreach (var profile in profiles)
@@ -279,6 +313,60 @@ public class SocialContentWorker : BackgroundService
         }
 
         _log.LogInformation("Posteo {Status} para {Product}: {Concept}", post.Status, profile.ProductKey, post.Concept);
+    }
+
+    /// <summary>
+    /// Reintenta el push a Buffer de un posteo que ya tiene asset + canal pero quedó en Error
+    /// por un fallo transitorio. Si el slot agendado ya pasó lo corre 5' adelante (Buffer
+    /// rechaza fechas pasadas). Éxito → Scheduled/PushedToBuffer (o Posted si era shareNow);
+    /// si vuelve a fallar, actualiza el Error (y el próximo tick decide según sea o no reintentable).
+    /// </summary>
+    private async Task RepushAsync(ISocialPublisher publisher, ApplicationDbContext db, SocialPost post, CancellationToken ct)
+    {
+        var autoPublish = _config.GetValue<bool>("Workers:PosteosAutoPublish", true);
+        var channel = await db.PostingChannels.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.ProductKey == post.ProductKey && c.Platform == post.Platform && c.Format == post.Format, ct);
+
+        // Slot agendado vencido → Buffer lo rechaza; lo corremos 5' adelante. null = shareNow (Publicar YA).
+        var scheduledAt = post.ScheduledAt;
+        if (scheduledAt.HasValue && scheduledAt.Value <= DateTimeOffset.Now)
+            scheduledAt = DateTimeOffset.Now.AddMinutes(5);
+
+        var slideUrls = SocialPostSlides.AssetUrls(post.SlidesJson);
+        var res = await publisher.CreatePostAsync(new PublishRequest
+        {
+            ChannelId = post.BufferChannelId,
+            Service = post.Platform.ToString().ToLowerInvariant(),
+            Caption = BuildCaption(post),
+            ImageUrl = post.AssetKind == SocialAssetKind.Image && slideUrls.Count == 0 ? post.AssetUrl : null,
+            ImageUrls = slideUrls.Count > 0 ? slideUrls : null,
+            VideoUrl = post.AssetKind == SocialAssetKind.Video ? post.AssetUrl : null,
+            ThumbnailUrl = post.ThumbnailUrl,
+            InstagramType = post.Format.ToBufferInstagramType(),
+            ScheduledAt = scheduledAt,
+            SaveAsDraft = !autoPublish,
+            Automatic = !(channel?.NotifyPublish ?? false),
+        }, ct);
+
+        if (res.Success)
+        {
+            post.BufferPostId = res.ExternalPostId;
+            post.Error = null;
+            if (scheduledAt.HasValue)
+            {
+                post.ScheduledAt = scheduledAt;
+                post.Status = autoPublish ? SocialPostStatus.Scheduled : SocialPostStatus.PushedToBuffer;
+            }
+            else { post.Status = SocialPostStatus.Posted; post.PostedAt = DateTimeOffset.UtcNow; }
+            _log.LogInformation("Re-push OK {Product}/{Net}: {Concept}", post.ProductKey, post.Platform, post.Concept);
+        }
+        else
+        {
+            post.Error = res.Error;
+            if (!res.Retryable) _log.LogWarning("Re-push {Product}: error permanente, no se reintenta más — {Err}", post.ProductKey, res.Error);
+        }
+        post.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>Slot de agenda = hoy a la hora del tick en punto; si ya pasó, ahora + 5'.</summary>

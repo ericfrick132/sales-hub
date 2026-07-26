@@ -43,4 +43,10 @@ public class PublishResult
     public string? Status { get; init; }
     public string? Error { get; init; }
     public string? RawJson { get; init; }
+    /// <summary>
+    /// Solo con Success=false: si el fallo es transitorio (red, 5xx, rate-limit,
+    /// RestProxy) y amerita reintentar. Los permanentes (caption inválido, token,
+    /// canal inexistente) lo dejan en false para no reintentar en loop.
+    /// </summary>
+    public bool Retryable { get; init; }
 }

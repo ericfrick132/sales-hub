@@ -187,13 +187,37 @@ public class BufferClient : ISocialPublisher
                 };
             }
             var err = payload.TryGetProperty("message", out var m) ? m.GetString() : typename;
-            return new PublishResult { Success = false, Error = $"{typename}: {err}", RawJson = payload.GetRawText() };
+            return new PublishResult { Success = false, Error = $"{typename}: {err}", Retryable = IsRetryableTypename(typename), RawJson = payload.GetRawText() };
         }
         catch (Exception ex)
         {
+            // Excepción (red/timeout/5xx/GraphQL top-level): transitorio → reintentable.
             _log.LogWarning(ex, "Buffer createPost falló");
-            return new PublishResult { Success = false, Error = ex.Message };
+            return new PublishResult { Success = false, Error = ex.Message, Retryable = true };
         }
+    }
+
+    /// <summary>
+    /// Clasifica el resultado tipado de createPost: los transitorios amerita reintentar,
+    /// los permanentes no (reintentarlos solo repite el mismo error).
+    /// </summary>
+    private static bool IsRetryableTypename(string? typename) => typename switch
+    {
+        // Permanentes: no cambian por reintentar (contenido/credenciales/canal).
+        "InvalidInputError" or "UnauthorizedError" or "NotFoundError" => false,
+        // LimitReachedError, UnexpectedError, RestProxyError y cualquier otro: transitorios.
+        _ => true,
+    };
+
+    /// <summary>
+    /// ¿El texto de un error de push (ya persistido en SocialPost.Error) amerita reintento?
+    /// Lo usa el re-push del worker para no reintentar en loop los fallos permanentes.
+    /// </summary>
+    public static bool IsRetryableError(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error)) return false;
+        string[] permanent = { "InvalidInputError", "UnauthorizedError", "NotFoundError" };
+        return !permanent.Any(p => error.Contains(p, StringComparison.OrdinalIgnoreCase));
     }
 
     public async Task<bool> DeletePostAsync(string externalPostId, CancellationToken ct = default)
