@@ -77,6 +77,9 @@ public static class DependencyInjection
 
         services.AddScoped<IEvolutionClient>(sp => sp.GetRequiredService<EvolutionClient>());
 
+        // Aviso operativo al número maestro por WhatsApp (ej. Claude sin crédito).
+        services.AddScoped<IAdminAlerter, AdminAlerter>();
+
         // Cliente del endpoint de estado de cada producto (pull-guard del follow-up).
         services.AddHttpClient<ProductStateClient>();
         services.AddScoped<IProductStateClient>(sp => sp.GetRequiredService<ProductStateClient>());

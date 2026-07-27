@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Infrastructure.Options;
 using SalesHub.Infrastructure.Persistence;
@@ -207,11 +208,32 @@ public class ClaudeClient
         if (!isOutOfCredit) return false;
 
         var until = DateTimeOffset.UtcNow.Add(OutOfCreditCooldown);
-        // Solo el primero loguea: los que ya venían en vuelo no repiten el mensaje.
+        // Solo el primero loguea Y avisa: los que ya venían en vuelo no repiten el mensaje.
+        // (Si al expirar el cooldown la cuenta sigue en cero, el próximo fallo re-abre el
+        // circuito y vuelve a avisar → recordatorio cada ~30 min mientras esté sin saldo.)
         if (Interlocked.Exchange(ref _pausedUntilTicks, until.UtcTicks) <= DateTimeOffset.UtcNow.Ticks)
+        {
             _log.LogError("Claude sin crédito — se pausan TODAS las llamadas por {Min} min (hasta {Until:HH:mm:ss} UTC). Recargar en Plans & Billing.",
                 OutOfCreditCooldown.TotalMinutes, until);
+            _ = NotifyOutOfCreditAsync(); // fire-and-forget: no bloquea el request que falló
+        }
         return true;
+    }
+
+    /// <summary>Avisa por WhatsApp al número maestro que la cuenta se quedó sin crédito.</summary>
+    private async Task NotifyOutOfCreditAsync()
+    {
+        try
+        {
+            using var scope = _scopes.CreateScope();
+            var alerter = scope.ServiceProvider.GetService<IAdminAlerter>();
+            if (alerter is null) return;
+            const string msg = "⚠️ Claude se quedó SIN CRÉDITO. Se pausaron TODAS las llamadas de IA "
+                + "(posteos, respuestas del bot, transcripciones, etc.) por 30 min. "
+                + "Recargá para reactivar: https://console.anthropic.com/settings/billing";
+            await alerter.AlertAsync(msg, CancellationToken.None);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "No pude enviar el aviso de Claude sin crédito"); }
     }
 
     /// <summary>Lee usage.* de la respuesta, calcula el costo USD y lo persiste. Best-effort.</summary>
