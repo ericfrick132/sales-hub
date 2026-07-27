@@ -19,6 +19,12 @@ public class ConversationAgentService
 {
     private const int MaxTranscriptionAttempts = 3;
     private const int BatchSize = 10;
+    // Techo diario de RESPUESTAS automáticas por vendedor, APARTE del cap de outreach
+    // (OutboxSender.MaxMessagesPerSellerPerDay). Contestar a alguien que nos escribió es
+    // mucho menos baneable que el contacto frío; cuando compartían cap, el outreach
+    // saturaba el cupo temprano y el bot degradaba a "sugerencia" silenciosa el resto del
+    // día — leads calientes ("quiero contratar") sin respuesta. Caso real 2026-07-27.
+    private const int MaxAutoRepliesPerSellerPerDay = 300;
     // Horas tras crear la cuenta en que seguimos atendiendo al lead aunque quedó Closed
     // (reenviar el link, contestar "cómo funciona"). Después vuelve a quedar excluido.
     private const int PostSignupGraceHours = 72;
@@ -45,6 +51,7 @@ public class ConversationAgentService
     private readonly VoiceNoteService _voiceNotes;
     private readonly IMessageRenderer _renderer;
     private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
+    private readonly TakeoverSignal _takeover;
     private readonly ILogger<ConversationAgentService> _log;
 
     public ConversationAgentService(
@@ -52,11 +59,16 @@ public class ConversationAgentService
         AiSuggestionService suggestions, OnboardingService onboarding, ISendScheduler scheduler,
         VoiceNoteService voiceNotes, IMessageRenderer renderer,
         Microsoft.Extensions.Configuration.IConfiguration config,
+        TakeoverSignal takeover,
         ILogger<ConversationAgentService> log)
     {
         _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding;
-        _scheduler = scheduler; _voiceNotes = voiceNotes; _renderer = renderer; _config = config; _log = log;
+        _scheduler = scheduler; _voiceNotes = voiceNotes; _renderer = renderer; _config = config;
+        _takeover = takeover; _log = log;
     }
+
+    /// <summary>Candidato a respuesta: Priority = reactivado con "+" (salta settle y esperas).</summary>
+    private sealed record ReplyCandidate(Guid LeadId, string LastText, DateTimeOffset LastAt, bool Priority);
 
     public async Task<int> TickAsync(CancellationToken ct)
     {
@@ -134,9 +146,17 @@ public class ConversationAgentService
         // Apagado = ni genera la sugerencia (no gastamos IA en algo que no va a salir);
         // el chat sigue entrando a Conversaciones para que lo tome un humano.
         var replySources = (await _db.LoadMessagingPolicyAsync(ct)).ReplySources;
-        var candidates = await (
+        // AiSuggestedReplyAt sin texto = "ya evaluado, decidimos no responder" (ver abajo):
+        // sin ese marcador, los leads con shouldReply=false re-entraban al batch en CADA
+        // tick y se re-clasificaban con Claude para siempre. El inbound siguiente limpia
+        // ambos campos y el lead vuelve a ser elegible.
+        // Orden por recencia del último mensaje: sin ORDER BY, Postgres devolvía un subset
+        // arbitrario de un pool de cientos y un lead recién llegado podía quedar hambreado
+        // indefinidamente (caso real 2026-07-27: ad lead "quiero contratar" 16 min sin
+        // procesar mientras el batch se llenaba de zombies).
+        var pool = await (
             from l in _db.Leads
-            where l.AiSuggestedReply == null && l.SellerId != null
+            where l.AiSuggestedReply == null && l.AiSuggestedReplyAt == null && l.SellerId != null
                 && replySources.Contains(l.Source)
                 && l.BotMutedAt == null // takeover humano: el bot no toca esta conversación
                 && l.Status != LeadStatus.Lost
@@ -152,8 +172,31 @@ public class ConversationAgentService
             where last != null
                 && last.Direction == MessageDirection.Inbound
                 && last.Text != "[audio]"
+            orderby last.Timestamp descending
             select new { LeadId = l.Id, LastText = last.Text, LastAt = last.Timestamp }
         ).Take(BatchSize).ToListAsync(ct);
+        var candidates = pool.Select(x => new ReplyCandidate(x.LeadId, x.LastText, x.LastAt, false)).ToList();
+
+        // Leads reactivados con "+": saltan la cola YA, sin filtros de política/estado (es
+        // una orden explícita del humano) y aunque su último mensaje sea nuestro (el humano
+        // llevó la charla y la devuelve — el bot tiene que retomarla, no esperar al lead).
+        var priorityIds = _takeover.Drain();
+        if (priorityIds.Count > 0)
+        {
+            var prio = await (
+                from l in _db.Leads
+                where priorityIds.Contains(l.Id) && l.SellerId != null && l.BotMutedAt == null
+                let last = _db.ConversationMessages
+                    .Where(m => m.LeadId == l.Id)
+                    .OrderByDescending(m => m.Timestamp)
+                    .FirstOrDefault()
+                where last != null && last.Text != "[audio]"
+                select new { LeadId = l.Id, LastText = last.Text, LastAt = last.Timestamp }
+            ).ToListAsync(ct);
+            candidates = prio.Select(x => new ReplyCandidate(x.LeadId, x.LastText, x.LastAt, true))
+                .Concat(candidates.Where(c => prio.All(p => p.LeadId != c.LeadId)))
+                .ToList();
+        }
 
         var onboardingOn = await _db.IsFlagOnAsync("onboarding", false, ct);
         // Notas de voz IA en momentos decisivos (espejo de audio / precio / despedida).
@@ -168,13 +211,24 @@ public class ConversationAgentService
         {
             // Settle: si el lead escribió hace menos de BurstSettleSeconds, esperamos al
             // próximo tick — así juntamos toda la ráfaga (mail + lo que siga) antes de responder.
-            if (DateTimeOffset.UtcNow < c.LastAt.AddSeconds(BurstSettleSeconds)) continue;
+            // Los reactivados con "+" no esperan: el humano acaba de pedir respuesta inmediata.
+            if (!c.Priority && DateTimeOffset.UtcNow < c.LastAt.AddSeconds(BurstSettleSeconds)) continue;
 
             var lead = await _db.Leads
                 .Include(l => l.Product)
                 .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
                 .FirstOrDefaultAsync(l => l.Id == c.LeadId, ct);
-            if (lead?.Product is null || lead.Seller is null) continue;
+            if (lead?.Product is null || lead.Seller is null)
+            {
+                // Candidato roto (producto/vendedor dangling): marcarlo como evaluado para
+                // que no vuelva a ocupar un slot del batch en cada tick.
+                if (lead is not null)
+                {
+                    lead.AiSuggestedReplyAt = DateTimeOffset.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                }
+                continue;
+            }
 
             // Cargamos el hilo COMPLETO una sola vez: sirve para clasificar el estado del
             // lead y, si hace falta, para generar la respuesta.
@@ -304,13 +358,18 @@ public class ConversationAgentService
             var fedToClose = lead.Source is LeadSource.ProductReengage or LeadSource.MetaLeadAd;
             var onbEligible = onbCfg is not null
                 && (lead.Source == LeadSource.WhatsAppAd || (fedToClose && onbCfg.SelfServe));
-            var runOnboarding = onbEligible
+            // Tras un "+" (StepHumanHandoff) el guion NO retoma el alta: el humano llevó la
+            // charla y el bot tiene que SEGUIRLA con la IA libre (todo el hilo), no caer al
+            // off-script del onboarding que contesta "corto" como si fuera una duda del alta.
+            var handoff = onb?.Step == OnboardingService.StepHumanHandoff;
+            var runOnboarding = onbEligible && !handoff
                 && (fedToClose
                     || onb is not null
                     || !thread.Any(m => m.Direction == MessageDirection.Outbound));
 
             // Espera humana configurable: random estable entre Min y Max seg desde el mensaje del lead.
-            if (runOnboarding && onbCfg!.ReplyDelayMaxSec > 0)
+            // Los "+" no esperan (el humano pidió respuesta ya).
+            if (!c.Priority && runOnboarding && onbCfg!.ReplyDelayMaxSec > 0)
             {
                 var range = onbCfg.ReplyDelayMaxSec - onbCfg.ReplyDelayMinSec;
                 var delaySec = onbCfg.ReplyDelayMinSec + (range <= 0 ? 0 : (int)(Math.Abs(c.LastAt.ToUnixTimeSeconds()) % (range + 1)));
@@ -359,6 +418,8 @@ public class ConversationAgentService
                 if (autoCount >= 2)
                 {
                     lead.NudgeCount = Math.Max(lead.NudgeCount, 1);
+                    // Evaluado, no responder: fuera del pool hasta el próximo inbound.
+                    lead.AiSuggestedReplyAt = DateTimeOffset.UtcNow;
                     lead.UpdatedAt = DateTimeOffset.UtcNow;
                     await _db.SaveChangesAsync(ct);
                     continue;
@@ -440,7 +501,17 @@ public class ConversationAgentService
                 continue;
             }
 
-            if (!shouldReply || string.IsNullOrWhiteSpace(reply)) continue;
+            if (!shouldReply || string.IsNullOrWhiteSpace(reply))
+            {
+                // Persistir la decisión "no responder": sin esto el lead re-entraba al batch
+                // en CADA tick y se re-clasificaba con Claude infinitamente — quemaba tokens
+                // y hambreaba a los leads nuevos. El próximo mensaje del lead limpia el
+                // marcador y lo vuelve a hacer elegible.
+                lead.AiSuggestedReplyAt = DateTimeOffset.UtcNow;
+                lead.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                continue;
+            }
 
             // Momento decisivo (espejo de audio / precio / despedida): a veces la respuesta
             // sale como NOTA DE VOZ con la voz clonada. Si el audio salió, ese fue el mensaje;
@@ -692,8 +763,10 @@ public class ConversationAgentService
             var st = await SellerSendStateAsync(lead.Seller!, ct);
             // Reply-driven a CUALQUIER hora (pedido 2026-07-21): si el lead escribe a las 23,
             // el bot contesta a las 23 — esperar a la ventana mataba conversiones. La ventana
-            // (st.active) sigue aplicando a lo PROACTIVO (OutboxSender/nudges). Cap diario queda.
-            canAutoReply = st.sentToday < OutboxSender.MaxMessagesPerSellerPerDay;
+            // (st.active) sigue aplicando a lo PROACTIVO (OutboxSender/nudges).
+            // Cap PROPIO de respuestas: el outreach no consume este cupo (antes compartían
+            // los 150 y el bot quedaba mudo en modo sugerencia el resto del día).
+            canAutoReply = st.repliesToday < MaxAutoRepliesPerSellerPerDay;
         }
 
         if (canAutoReply && await AutoSendAsync(lead, text, ct))
@@ -1089,7 +1162,7 @@ public class ConversationAgentService
     /// Con esto el auto-envío del piloto respeta los mismos límites anti-ban que el
     /// outreach humanizado (horario activo, tope diario por número).
     /// </summary>
-    private async Task<(bool active, int sentToday, int dailyCap)> SellerSendStateAsync(Seller seller, CancellationToken ct)
+    private async Task<(bool active, int sentToday, int repliesToday, int dailyCap)> SellerSendStateAsync(Seller seller, CancellationToken ct)
     {
         var tz = SafeTz(seller.Timezone);
         var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz);
@@ -1102,12 +1175,18 @@ public class ConversationAgentService
         var outbox = await _db.Outbox.CountAsync(o => o.SellerId == seller.Id
             && o.Status == OutboxStatus.Sent && o.SentAt != null
             && o.SentAt >= startUtc && o.SentAt < endUtc, ct);
+        // conversation_messages YA incluye los sends del outbox (el sender los espeja antes
+        // de mandar para el eco-matching) además de auto-replies/onboarding/manuales: es el
+        // total real del día. OJO: sumarle outbox de nuevo contaba DOBLE cada send del
+        // outreach y el cap efectivo quedaba en la mitad del declarado.
         var conv = await _db.ConversationMessages.CountAsync(m => m.SellerId == seller.Id
             && m.Direction == MessageDirection.Outbound
             && m.Timestamp >= startUtc && m.Timestamp < endUtc, ct);
 
         var cap = _scheduler.ComputeTodayCap(seller, DateOnly.FromDateTime(localNow.DateTime));
-        return (active, outbox + conv, cap);
+        // repliesToday ≈ salientes que NO son outreach del outbox (respuestas del bot,
+        // onboarding, manuales): es lo que se compara contra el cap de respuestas.
+        return (active, conv, Math.Max(0, conv - outbox), cap);
     }
 
     private static TimeZoneInfo SafeTz(string id)

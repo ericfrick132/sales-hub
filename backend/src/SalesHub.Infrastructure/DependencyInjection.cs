@@ -114,6 +114,7 @@ public static class DependencyInjection
         services.AddScoped<InstanceMonitor>();
         services.AddScoped<LeadRebalancer>();
         services.AddScoped<ConversationService>();
+        services.AddSingleton<TakeoverSignal>(); // señal "+": salto de cola webhook→agente
         // Relay de transcripción de audios (notas de voz → texto, sólo números de la allowlist).
         services.AddScoped<AudioTranscriptionRelay>();
         // Intake de inspiraciones por WhatsApp (imágenes/ideas del número maestro → Posteos).

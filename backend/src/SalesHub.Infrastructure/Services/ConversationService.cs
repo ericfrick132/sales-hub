@@ -19,6 +19,7 @@ public class ConversationService
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
     private readonly ILeadAssigner _assigner;
+    private readonly TakeoverSignal _takeover;
     private readonly ILogger<ConversationService> _log;
     private static readonly Regex NonDigit = new(@"\D", RegexOptions.Compiled);
 
@@ -29,9 +30,10 @@ public class ConversationService
         @"(tu c[oó]digo para entrar|c[oó]digo para que ingreses|^📊 \*?SESI[OÓ]N|^\*(GymHero|TurnosPro|ArchiCloud|PlayCrew|UniStock|GestorZap)\*\s*—)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILeadAssigner assigner, ILogger<ConversationService> log)
+    public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILeadAssigner assigner,
+        TakeoverSignal takeover, ILogger<ConversationService> log)
     {
-        _db = db; _evo = evo; _assigner = assigner; _log = log;
+        _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _log = log;
     }
 
     public record IncomingMessage(
@@ -219,6 +221,10 @@ public class ConversationService
         if (text == "+")
         {
             lead.BotMutedAt = null;
+            // Limpiar la sugerencia vieja Y el marcador "evaluado sin respuesta": el "+" es
+            // una orden explícita de que el bot retome — tiene que re-entrar al pool ya.
+            lead.AiSuggestedReply = null;
+            lead.AiSuggestedReplyAt = null;
             lead.UpdatedAt = DateTimeOffset.UtcNow;
             // El humano llevó la charla y la devuelve: el bot tiene que SEGUIR la conversación,
             // no re-arrancar el guion de onboarding desde el intro (caso real: "+" re-mandaba
@@ -232,6 +238,9 @@ public class ConversationService
                 ob.UpdatedAt = DateTimeOffset.UtcNow;
             }
             await _db.SaveChangesAsync(ct);
+            // Salto de cola: el próximo tick del agente lo atiende primero (sin settle ni
+            // sorteo del batch) — "+" tiene que producir una respuesta YA, no "cuando toque".
+            _takeover.Enqueue(lead.Id);
             _log.LogInformation("Takeover: bot REACTIVADO para lead {Lead} (comando '+', guion en modo conversación)", lead.Id);
             return true;
         }
