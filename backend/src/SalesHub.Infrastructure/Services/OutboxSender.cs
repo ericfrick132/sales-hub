@@ -91,8 +91,26 @@ public class OutboxSender
         {
             if (seller.EvolutionInstance is null || seller.EvolutionInstance.Status != InstanceStatus.Connected) continue;
 
-            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, SafeTz(seller.Timezone)).DateTime);
-            if (_scheduler.IsSkipDay(seller, today)) continue;
+            var local = TimeZoneInfo.ConvertTime(now, SafeTz(seller.Timezone)).DateTime;
+            var today = DateOnly.FromDateTime(local);
+            var isSkipDay = _scheduler.IsSkipDay(seller, today);
+
+            // ─── Fast lane para leads calientes ─────────────────────────────
+            // Un lead que llenó un formulario (Meta Lead Ads y demás source>=400,
+            // Priority>=70 por convención de OutboxEnqueueHelper) espera respuesta
+            // YA: contactado <1h cierra 59%, >3 días cierra 2% (data propia). Por
+            // eso las filas calientes no esperan skip-day ni el horario del seller
+            // (sí un clamp 08-22 local para no escribir de madrugada), no compiten
+            // por el cap de contactos nuevos del día, y van antes que cualquier
+            // cadencia fría. El techo duro de mensajes/día sigue vigente.
+            var fastLanePriority = Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue(_config, "Outbox:FastLanePriority", 70);
+            var fastLaneStart = Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue(_config, "Outbox:FastLaneHourStart", 8);
+            var fastLaneEnd = Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue(_config, "Outbox:FastLaneHourEnd", 22);
+            var insideFastLaneHours = local.Hour >= fastLaneStart && local.Hour < fastLaneEnd;
+            var insideSellerHours = local.Hour >= seller.ActiveHoursStart && local.Hour < seller.ActiveHoursEnd;
+            // Gate normal cerrado (skip-day u horario) → solo pueden salir filas calientes.
+            var hotOnly = isSkipDay || !insideSellerHours;
+            if (hotOnly && !insideFastLaneHours) continue;
 
             var cap = _scheduler.ComputeTodayCap(seller, today);
             // El cap es de CONTACTOS NUEVOS por día (lógica anti-ban), no de mensajes:
@@ -127,10 +145,6 @@ public class OutboxSender
                               && o.SentAt.Value >= dayStart
                               && o.SentAt.Value < dayEnd, ct);
             if (messagesToday >= MaxMessagesPerSellerPerDay) continue;
-
-            // Enforce active hours window.
-            var local = TimeZoneInfo.ConvertTime(now, SafeTz(seller.Timezone)).DateTime;
-            if (local.Hour < seller.ActiveHoursStart || local.Hour >= seller.ActiveHoursEnd) continue;
 
             // Gap mínimo por LÍNEA con jitter: el tick corre cada ~30s, y sin esto un backlog
             // vencido se drena en ráfaga sostenida de 2/min (patrón de bot, riesgo de ban).
@@ -173,9 +187,15 @@ public class OutboxSender
                    && o.ScheduledAt <= now
                    && (!hasWhitelist
                        || (o.Lead != null && whitelist!.Contains(o.Lead.ProductKey)))
+                   // Gate normal cerrado (fuera de horario del seller / skip-day):
+                   // solo pasan las filas calientes del fast lane.
+                   && (!hotOnly || o.Priority >= fastLanePriority)
                    // Con el cap de contactos nuevos agotado, sólo son elegibles los leads
-                   // que YA recibieron algo (follow-up, no contacto nuevo).
-                   && (!capReached || _db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent))
+                   // que YA recibieron algo (follow-up, no contacto nuevo) — salvo los
+                   // calientes: un lead de formulario no puede quedar para mañana porque
+                   // el scraping frío ya consumió el cupo del día.
+                   && (!capReached || o.Priority >= fastLanePriority
+                       || _db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent))
                    // Política de mensajería por origen: un lead que nunca recibió nada es un
                    // MENSAJE NUEVO; si ya recibió algo, es SEGUIMIENTO. Cada uno se prende/apaga
                    // por separado y por origen (ej. cortar todo lo nuevo y seguir con Meta Lead Ads).
@@ -189,16 +209,24 @@ public class OutboxSender
                    && !(o.Lead != null && _db.Products.Any(p => p.ProductKey == o.Lead.ProductKey && p.AppManagedTransport))
                 let leadInProgress = _db.Outbox.Any(x =>
                     x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
-                // EN PROGRESO primero: un lead con la cadencia empezada se TERMINA antes de
-                // atender a cualquier otro — nadie se cuela entre el saludo y el pitch
-                // (caso real: "buenos días! soy Eric" y el resto trabado 30 min). Después
-                // prioridad (caliente salta la fila entre leads nuevos), después FIFO.
-                orderby leadInProgress descending, o.Priority descending, o.ScheduledAt
+                let hot = o.Priority >= fastLanePriority
+                // FAST LANE primero: un lead caliente recién llegado le gana incluso a las
+                // cadencias frías en progreso — lo peor que le pasa al frío es demorar su
+                // próximo step un line-gap (~90s), mientras que el caliente enfriándose
+                // pierde la venta. Dentro de cada grupo, EN PROGRESO primero: un lead con
+                // la cadencia empezada se TERMINA antes de atender a otro — nadie se cuela
+                // entre el saludo y el pitch (caso real: "buenos días! soy Eric" y el resto
+                // trabado 30 min). Después prioridad, después FIFO.
+                orderby hot descending, leadInProgress descending, o.Priority descending, o.ScheduledAt
                 select o
             ).Take(20).ToListAsync(ct);
             MessageOutbox? next = null;
             foreach (var cand in candidates)
             {
+                // Fast lane: los calientes tampoco esperan la ventana horaria del
+                // producto — el que llenó el formulario a la noche espera respuesta
+                // a la noche (el clamp 08-22 ya se aplicó arriba).
+                if (cand.Priority >= fastLanePriority) { next = cand; break; }
                 var lead = await _db.Leads.AsNoTracking()
                     .Include(l => l.Product)
                     .FirstOrDefaultAsync(l => l.Id == cand.LeadId, ct);
