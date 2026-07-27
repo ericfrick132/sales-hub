@@ -75,6 +75,16 @@ export default function ControlCenter({ sellers }: { sellers: SellerLite[] }) {
         </div>
       </div>
 
+      {/* Qué se manda y a quién — corte fino por origen de lead */}
+      <div>
+        <h3 className="text-sm font-semibold">Qué se manda y a quién</h3>
+        <p className="text-xs text-slate-400 mb-2">
+          Los motores de arriba prenden o apagan todo. Si querés cortar más fino —por ejemplo dejar de
+          abrir conversaciones nuevas y seguir contestando sólo a los que llegan por formulario de Meta—
+          se hace en <Link to="/mensajeria" className="text-slate-600 underline">Mensajería</Link>.
+        </p>
+      </div>
+
       {/* Envío de WhatsApp por vendedor */}
       <div>
         <h3 className="text-sm font-semibold">Envío de WhatsApp por vendedor</h3>

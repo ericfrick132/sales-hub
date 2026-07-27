@@ -188,6 +188,13 @@ public class HubController : ControllerBase
         var lineDailyCap = _config.GetValue("Hub:LineDailyCap", 120);  // tope diario de leads distintos por línea
         var batch = Math.Max(_config.GetValue("Hub:OutboundBatch", 1), 1); // chico a propósito: el gap controla el ritmo
 
+        // Política de mensajería por origen: acá también, si no la app seguiría mandando
+        // por su línea lo que el switch apagó. Un lead que nunca recibió nada = MENSAJE
+        // NUEVO; si ya recibió algo = SEGUIMIENTO.
+        var policy = await _db.LoadMessagingPolicyAsync(ct);
+        var outreachSources = policy.OutreachSources;
+        var followupSources = policy.FollowupSources;
+
         // 1) Elegir el/los candidato(s) top del producto pedido (todavía sin reclamar).
         var claimCutoff = now.AddMinutes(-5);
         var candidates = await (
@@ -197,6 +204,10 @@ public class HubController : ControllerBase
                && o.ScheduledAt <= now
                && o.Lead != null && o.Lead.ProductKey == productKey
                && (o.LockedAt == null || o.LockedAt < claimCutoff)
+               && ((_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
+                        && followupSources.Contains(o.Lead.Source))
+                   || (!_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
+                        && outreachSources.Contains(o.Lead.Source)))
             orderby o.Priority descending, o.ScheduledAt
             select o
         ).Take(batch).ToListAsync(ct);

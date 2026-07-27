@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using SalesHub.Core.Domain;
 
 namespace SalesHub.Api.AdminMenu;
 
@@ -15,6 +16,7 @@ public static class AdminMenuTree
         Children = new()
         {
             Flags(),
+            Mensajeria(),
             Onboarding(),
             Competidores(),
             IaVentas(),
@@ -53,6 +55,46 @@ public static class AdminMenuTree
             SuccessText = $"✅ listo, flag '{key}' actualizado.",
         }
     };
+
+    // ── 2. Mensajería: qué se manda y a quién (por origen de lead) ──────────────
+    private static MenuNode Mensajeria() => new()
+    {
+        Title = "Mensajería (qué se manda y a quién)", Icon = "📨",
+        Children = new()
+        {
+            new MenuNode
+            {
+                Title = "Prender/apagar por origen",
+                Action = new ActionSpec
+                {
+                    Method = "POST",
+                    PathTemplate = "/api/messaging-policy/{group}/{kind}",
+                    Impact = Impact.High,
+                    ConfirmText = "cambiar qué mensajes salen para ese origen",
+                    SuccessText = "✅ listo. Lo que quede frenado espera en la cola y sale cuando lo vuelvas a prender.",
+                    Inputs = new()
+                    {
+                        new InputField { Name = "group", Prompt = "¿Qué origen de leads?", Type = InputType.Choice, Options = MessagingGroupChoices },
+                        new InputField { Name = "kind", Prompt = "¿Qué tipo de mensaje?", Type = InputType.Choice, Options = MessagingKindChoices },
+                        new InputField { Name = "enabled", Prompt = "¿Prenderlo?", Type = InputType.Bool },
+                    },
+                }
+            }
+        }
+    };
+
+    private static Task<List<Choice>> MessagingGroupChoices(
+        IReadOnlyDictionary<string, string> _, AdminApiExecutor exec, CancellationToken ct) =>
+        Task.FromResult(MessagingSourceGroups.All.Select(g => new Choice(g.Label, g.Key)).ToList());
+
+    private static Task<List<Choice>> MessagingKindChoices(
+        IReadOnlyDictionary<string, string> _, AdminApiExecutor exec, CancellationToken ct) =>
+        Task.FromResult(new List<Choice>
+        {
+            new("Mensajes nuevos (primer contacto)", "outreach"),
+            new("Seguimiento (cadencia y re-enganches)", "followup"),
+            new("Respuestas del bot", "reply"),
+        });
 
     // ── 3. Onboarding: editar una pregunta del alta ─────────────────────────────
     private static MenuNode Onboarding() => new()

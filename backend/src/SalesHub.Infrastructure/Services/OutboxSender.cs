@@ -72,6 +72,13 @@ public class OutboxSender
             _log.LogWarning("Reclaimed {N} stale Sending outbox rows", stale.Count);
         }
 
+        // Qué se puede mandar hoy y a quién (por origen del lead). Se lee por tick: apagar
+        // un switch corta los envíos en el tick siguiente. Lo bloqueado queda Scheduled y
+        // sale solo cuando se vuelve a prender.
+        var policy = await _db.LoadMessagingPolicyAsync(ct);
+        var outreachSources = policy.OutreachSources;
+        var followupSources = policy.FollowupSources;
+
         // Cualquier usuario con SendingEnabled + WhatsApp conectado envía, sea Seller o Admin.
         // El Admin que conecta su WhatsApp y prende el switch debe poder mandar como un vendedor más.
         var sellers = await _db.Sellers
@@ -169,6 +176,14 @@ public class OutboxSender
                    // Con el cap de contactos nuevos agotado, sólo son elegibles los leads
                    // que YA recibieron algo (follow-up, no contacto nuevo).
                    && (!capReached || _db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent))
+                   // Política de mensajería por origen: un lead que nunca recibió nada es un
+                   // MENSAJE NUEVO; si ya recibió algo, es SEGUIMIENTO. Cada uno se prende/apaga
+                   // por separado y por origen (ej. cortar todo lo nuevo y seguir con Meta Lead Ads).
+                   && (o.Lead == null
+                       || (_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
+                           && followupSources.Contains(o.Lead.Source))
+                       || (!_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
+                           && outreachSources.Contains(o.Lead.Source)))
                    // Transporte gestionado por la app: estas filas las sirve GET /hub/outbound
                    // (las manda la app por su propia Evolution); sales-hub NO las manda por Evolution.
                    && !(o.Lead != null && _db.Products.Any(p => p.ProductKey == o.Lead.ProductKey && p.AppManagedTransport))

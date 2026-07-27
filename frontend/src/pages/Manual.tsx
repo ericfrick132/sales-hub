@@ -268,6 +268,17 @@ const SECTIONS: SectionDef[] = [
         ],
       },
       {
+        title: 'Mensajería (qué se manda y a quién)',
+        routes: ['/mensajeria'],
+        admin: true,
+        desc: 'Corte fino sobre los flags: matriz origen de lead × tipo de mensaje (nuevos / seguimiento / respuestas del bot). Ej: cortar todos los mensajes nuevos y seguir contestando sólo Meta Lead Ads. Lo apagado queda esperando en la cola, no se pierde; lo que mandás a mano nunca se frena.',
+        checks: [
+          { id: 'msg-matriz', label: <>Revisada la matriz: 6 orígenes (Meta Lead Ads, Click-to-WhatsApp, altas de apps, prospección fría, re-enganche B2B, inbound desconocido) × 3 tipos.</> },
+          { id: 'msg-cola', label: <>Mirado el contador "frenados" de cada celda apagada (mensajes esperando en cola).</> },
+          { id: 'msg-flags', label: <>Ojo con la precedencia: si el runner <Cmd>whatsapp</Cmd> está apagado no sale nada, aunque acá esté todo verde.</> },
+        ],
+      },
+      {
         title: 'Transcripción de audios',
         routes: ['/transcripcion'],
         admin: true,

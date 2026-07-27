@@ -54,6 +54,16 @@ public class SellerDailyStatsConfiguration : IEntityTypeConfiguration<SellerDail
     }
 }
 
+public class MessagingPolicyConfiguration : IEntityTypeConfiguration<MessagingPolicy>
+{
+    public void Configure(EntityTypeBuilder<MessagingPolicy> b)
+    {
+        b.ToTable("messaging_policies");
+        b.HasKey(x => x.SourceGroup);
+        b.Property(x => x.SourceGroup).HasMaxLength(40);
+    }
+}
+
 public class MessageStepRotationConfiguration : IEntityTypeConfiguration<MessageStepRotation>
 {
     public void Configure(EntityTypeBuilder<MessageStepRotation> b)

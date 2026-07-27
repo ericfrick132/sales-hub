@@ -130,9 +130,14 @@ public class ConversationAgentService
         // ("pasame el link", "cómo funciona") — no lo dejamos hablando solo. Fuera de la ventana
         // vuelve a quedar excluido.
         var postSignupGraceStart = DateTimeOffset.UtcNow.AddHours(-PostSignupGraceHours);
+        // Política de mensajería: orígenes cuyos mensajes el bot tiene permitido contestar.
+        // Apagado = ni genera la sugerencia (no gastamos IA en algo que no va a salir);
+        // el chat sigue entrando a Conversaciones para que lo tome un humano.
+        var replySources = (await _db.LoadMessagingPolicyAsync(ct)).ReplySources;
         var candidates = await (
             from l in _db.Leads
             where l.AiSuggestedReply == null && l.SellerId != null
+                && replySources.Contains(l.Source)
                 && l.BotMutedAt == null // takeover humano: el bot no toca esta conversación
                 && l.Status != LeadStatus.Lost
                 && (l.Status != LeadStatus.Closed
@@ -852,9 +857,14 @@ public class ConversationAgentService
         var now = DateTimeOffset.UtcNow;
         var cutoff = now.AddHours(-ReengageAfterHours);
 
+        // Re-enganche = seguimiento proactivo a un lead ya contactado: lo manda el mismo
+        // switch que los follow-ups de la cadencia.
+        var followupSources = (await _db.LoadMessagingPolicyAsync(ct)).FollowupSources;
+
         var candidates = await (
             from l in _db.Leads
             where l.SellerId != null
+                && followupSources.Contains(l.Source)
                 && l.BotMutedAt == null // takeover humano: tampoco re-enganchar
                 && l.FirstReplyAt != null
                 && (l.Status == LeadStatus.Replied || l.Status == LeadStatus.Interested)
@@ -881,6 +891,7 @@ public class ConversationAgentService
         var noReplyCandidates = await (
             from l in _db.Leads
             where l.SellerId != null
+                && followupSources.Contains(l.Source)
                 && l.BotMutedAt == null
                 && l.FirstReplyAt == null
                 && l.Status == LeadStatus.Sent
@@ -983,10 +994,14 @@ public class ConversationAgentService
         var discountCutoff = now.AddHours(-_config.GetValue("Reengage:DiscountAfterHours", 96));
         var tooOld = now.AddDays(-14); // altas viejas: no resucitar historia antigua
 
+        // Nudge post-alta = seguimiento proactivo: mismo switch que la cadencia.
+        var followupSources = (await _db.LoadMessagingPolicyAsync(ct)).FollowupSources;
+
         var rows = await (
             from ob in _db.Set<LeadOnboarding>()
             join l in _db.Leads on ob.LeadId equals l.Id
             where ob.ProvisionedAt != null && ob.ProvisionedAt > tooOld
+                && followupSources.Contains(l.Source)
                 && l.BotMutedAt == null && l.SellerId != null
                 && ((ob.CheckinSentAt == null && ob.ProvisionedAt < checkinCutoff)
                  || (ob.DiscountNudgeSentAt == null && ob.ProvisionedAt < discountCutoff))

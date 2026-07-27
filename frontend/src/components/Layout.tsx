@@ -62,6 +62,7 @@ export default function Layout() {
           { to: '/trends', label: 'Tendencias' },
         ] },
         { title: 'Configuración', items: [
+          { to: '/mensajeria', label: 'Mensajería' },
           { to: '/sellers', label: 'Vendedores' },
           { to: '/objetivos', label: 'Objetivos' },
           { to: '/products', label: 'Aplicaciones' },

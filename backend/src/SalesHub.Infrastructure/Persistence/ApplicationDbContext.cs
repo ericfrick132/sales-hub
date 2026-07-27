@@ -48,6 +48,10 @@ public class ApplicationDbContext : DbContext
     // Flags on/off de runners, toggleables desde la UI (override de Workers:*AutoStart).
     public DbSet<RuntimeFlag> RuntimeFlags => Set<RuntimeFlag>();
 
+    // Qué se manda y a quién: permisos por origen de lead (mensajes nuevos / seguimiento /
+    // respuestas del bot). Sin fila para un grupo = todo permitido.
+    public DbSet<MessagingPolicy> MessagingPolicies => Set<MessagingPolicy>();
+
     // Relay de transcripción de audios: allowlist de números + config global (on/off + línea).
     public DbSet<TranscriptionPhone> TranscriptionPhones => Set<TranscriptionPhone>();
     public DbSet<TranscriptionSettings> TranscriptionSettings => Set<TranscriptionSettings>();

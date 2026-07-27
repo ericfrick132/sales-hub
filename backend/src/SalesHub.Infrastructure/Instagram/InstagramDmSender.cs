@@ -62,12 +62,24 @@ public class InstagramDmSender
             _log.LogWarning("Reclaimed {N} stale Instagram DM rows", stale.Count);
         }
 
+        // Política de mensajería por origen (misma que WhatsApp): un lead que nunca recibió
+        // nada es MENSAJE NUEVO, si ya recibió algo es SEGUIMIENTO. Lo bloqueado queda
+        // Scheduled y sale cuando se vuelva a prender.
+        var policy = await _db.LoadMessagingPolicyAsync(ct);
+        var outreachSources = policy.OutreachSources;
+        var followupSources = policy.FollowupSources;
+
         // Tomar el DM de IG pendiente más viejo.
         var next = await _db.Outbox
             .Include(o => o.Lead)
             .Where(o => o.Channel == MessageChannel.Instagram
                      && o.Status == OutboxStatus.Scheduled
-                     && o.ScheduledAt <= now)
+                     && o.ScheduledAt <= now
+                     && (o.Lead == null
+                         || (_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
+                             && followupSources.Contains(o.Lead.Source))
+                         || (!_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
+                             && outreachSources.Contains(o.Lead.Source))))
             .OrderBy(o => o.ScheduledAt)
             .FirstOrDefaultAsync(ct);
 
