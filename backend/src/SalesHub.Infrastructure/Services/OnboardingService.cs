@@ -34,11 +34,29 @@ public class OnboardingService
     private readonly ApplicationDbContext _db;
     private readonly IOnboardingProvisionClient _provision;
     private readonly IEmailSender _email;
+    private readonly IAdminAlerter _alerter;
     private readonly ILogger<OnboardingService> _log;
 
-    public OnboardingService(ApplicationDbContext db, IOnboardingProvisionClient provision, IEmailSender email, ILogger<OnboardingService> log)
+    public OnboardingService(ApplicationDbContext db, IOnboardingProvisionClient provision, IEmailSender email,
+        IAdminAlerter alerter, ILogger<OnboardingService> log)
     {
-        _db = db; _provision = provision; _email = email; _log = log;
+        _db = db; _provision = provision; _email = email; _alerter = alerter; _log = log;
+    }
+
+    /// <summary>
+    /// Manda el link de acceso por MAIL (canal único para links: WhatsApp está restringido
+    /// para enviarlos). Un reintento porque los fallos SMTP suelen ser transitorios.
+    /// </summary>
+    public async Task<bool> SendAccessEmailAsync(string to, string appName, string url, CancellationToken ct)
+    {
+        if (!_email.IsConfigured) return false;
+        var subject = $"Tu acceso a {appName}";
+        var body =
+            $"<p>Hola! Tu cuenta de <b>{appName}</b> ya está lista.</p>" +
+            $"<p><a href=\"{url}\">Entrar a mi cuenta</a></p>" +
+            "<p>Es un acceso directo, sin usuario ni contraseña. Cualquier cosa respondé el WhatsApp.</p>";
+        return await _email.SendAsync(to, subject, body, ct)
+            || await _email.SendAsync(to, subject, body, ct);
     }
 
     private static readonly Regex KeywordRx = new(
@@ -262,16 +280,20 @@ public class OnboardingService
                     provisioned = true;
                     lead.Status = LeadStatus.Closed; // cuenta creada = venta cerrada
                     lead.ClosedAt ??= DateTimeOffset.UtcNow;
-                    // Anti-spam de links: con SMTP configurado el link viaja por MAIL y por
-                    // WhatsApp solo se avisa. Sin SMTP (o si el mail falla) sale como siempre.
+                    // El link viaja SOLO por mail: WhatsApp está restringido para links (ban
+                    // 2026-07-28). Si el mail no sale, el link NUNCA cae al chat — se avisa al
+                    // maestro para reenviarlo a mano (queda guardado en ob.AccessUrl).
                     var appName = lead.Product?.DisplayName ?? cfg.ProductKey;
-                    var mailed = _email.IsConfigured && await _email.SendAsync(ob.Email!,
-                        $"Tu acceso a {appName}",
-                        $"<p>Hola! Tu cuenta de <b>{appName}</b> ya está lista.</p>" +
-                        $"<p><a href=\"{url}\">Entrar a mi cuenta</a></p>" +
-                        $"<p>Es un acceso directo, sin usuario ni contraseña. Cualquier cosa respondé el WhatsApp.</p>", ct);
+                    var mailed = await SendAccessEmailAsync(ob.Email!, appName, url, ct);
+                    if (!mailed)
+                    {
+                        _log.LogError("Mail de acceso a {Email} falló (lead {Lead}, {Product}) — avisando al maestro", ob.Email, lead.Id, cfg.ProductKey);
+                        await _alerter.AlertAsync(
+                            $"fallo el mail con el acceso de {appName} para {ob.Email} (lead: {lead.Name}). reenvialo a mano: {url}", ct);
+                    }
                     reply = (successMessage ?? string.Empty).Replace("{accessUrl}",
-                        mailed ? "te acabo de mandar el link de acceso por mail (mirá también promociones/spam)" : url);
+                        mailed ? "te acabo de mandar el link de acceso por mail (mirá también promociones/spam)"
+                               : "en un ratito te llega el link de acceso por mail");
                     // {contacto} = " Rodri" (primer nombre presentable del CONTACTO — lead.Name ya
                     // es el negocio a esta altura) o vacío. "avisame{contacto} cuando estes adentro".
                     var contacto = MessageRenderer.FirstName(ob.ContactName);

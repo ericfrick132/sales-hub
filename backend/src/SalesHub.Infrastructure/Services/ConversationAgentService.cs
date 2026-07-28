@@ -52,6 +52,7 @@ public class ConversationAgentService
     private readonly IMessageRenderer _renderer;
     private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
     private readonly TakeoverSignal _takeover;
+    private readonly IAdminAlerter _alerter;
     private readonly ILogger<ConversationAgentService> _log;
 
     public ConversationAgentService(
@@ -59,12 +60,12 @@ public class ConversationAgentService
         AiSuggestionService suggestions, OnboardingService onboarding, ISendScheduler scheduler,
         VoiceNoteService voiceNotes, IMessageRenderer renderer,
         Microsoft.Extensions.Configuration.IConfiguration config,
-        TakeoverSignal takeover,
+        TakeoverSignal takeover, IAdminAlerter alerter,
         ILogger<ConversationAgentService> log)
     {
         _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding;
         _scheduler = scheduler; _voiceNotes = voiceNotes; _renderer = renderer; _config = config;
-        _takeover = takeover; _log = log;
+        _takeover = takeover; _alerter = alerter; _log = log;
     }
 
     /// <summary>Candidato a respuesta: Priority = reactivado con "+" (salta settle y esperas).</summary>
@@ -303,8 +304,24 @@ public class ConversationAgentService
                 var url = fresh ?? onb.AccessUrl;
                 if (!string.IsNullOrWhiteSpace(url))
                 {
-                    await OnboardingSendAsync(lead,
-                        $"entrá con este link, es acceso directo (sin usuario ni contraseña):[NUEVO_MENSAJE]{url}[NUEVO_MENSAJE]avisame si te abre bien, ¿dale?", ct);
+                    // WhatsApp está restringido para links: el acceso viaja por MAIL y por acá
+                    // solo se avisa. Sin mail posible → aviso al maestro para resolverlo a mano.
+                    var appName = lead.Product?.DisplayName ?? lead.ProductKey;
+                    var mailed = !string.IsNullOrWhiteSpace(onb.Email)
+                        && await _onboarding.SendAccessEmailAsync(onb.Email!, appName, url!, ct);
+                    if (mailed)
+                    {
+                        await OnboardingSendAsync(lead,
+                            "te acabo de mandar el acceso por mail, fijate también en promociones/spam[NUEVO_MENSAJE]es acceso directo, sin usuario ni contraseña[NUEVO_MENSAJE]avisame si te abre bien dale", ct);
+                    }
+                    else
+                    {
+                        _log.LogError("Acceso pedido por lead {Lead} pero el mail no salió (email={Email}) — avisando al maestro", lead.Id, onb.Email ?? "-");
+                        await _alerter.AlertAsync(
+                            $"un lead pidio su link de acceso de {appName} y el mail no salio (lead: {lead.Name}, mail: {onb.Email ?? "sin mail"}). mandaselo a mano: {url}", ct);
+                        await OnboardingSendAsync(lead,
+                            "dale, en un ratito te mando el acceso por mail", ct);
+                    }
                     await _db.SaveChangesAsync(ct);
                     done++;
                     continue;

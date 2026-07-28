@@ -133,7 +133,17 @@ public static class DependencyInjection
         services.AddHttpClient<OnboardingProvisionClient>();
         services.AddScoped<IOnboardingProvisionClient>(sp => sp.GetRequiredService<OnboardingProvisionClient>());
         services.AddScoped<OnboardingService>();
-        services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        // Email: con Email:RelayUrl configurado sale por el relay HTTPS (el droplet tiene
+        // SMTP saliente bloqueado por DO); si no, SMTP directo (entornos donde sí se puede).
+        services.AddHttpClient<RelayEmailSender>();
+        services.AddSingleton<SmtpEmailSender>();
+        services.AddTransient<IEmailSender>(sp =>
+        {
+            var cfg = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+            return string.IsNullOrWhiteSpace(cfg["Email:RelayUrl"])
+                ? sp.GetRequiredService<SmtpEmailSender>()
+                : sp.GetRequiredService<RelayEmailSender>();
+        });
         services.AddScoped<ConversationAgentService>();
         services.AddScoped<VoiceNoteService>();
         services.AddScoped<VoiceCalibrationRelay>();
