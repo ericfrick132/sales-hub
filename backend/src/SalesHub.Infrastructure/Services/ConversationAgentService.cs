@@ -1005,8 +1005,21 @@ public class ConversationAgentService
 
             // Una sola llamada a Claude: mensaje de re-enganche + score (0-100) del lead.
             var (msg, score) = await _suggestions.SuggestReengagementWithScoreAsync(
-                lead, lead.Product!, thread, now - c.LastAt, ct);
-            if (string.IsNullOrWhiteSpace(msg)) continue;
+                lead, lead.Product!, thread, now - c.LastAt, ct, neverReplied: c.NeverReplied);
+            if (string.IsNullOrWhiteSpace(msg))
+            {
+                // "(sin respuesta)" también consume el intento: sin persistir LastNudgeAt/NudgeCount
+                // el lead re-entraba al batch en CADA tick (20s) y se re-puntuaba con Claude para
+                // siempre (mismo zombie que ya se arregló en GenerateSuggestionsAsync).
+                lead.Score = score;
+                lead.NudgeCount++;
+                lead.LastNudgeAt = now;
+                lead.UpdatedAt = now;
+                await _db.SaveChangesAsync(ct);
+                _log.LogInformation("Re-enganche declinado por IA para lead {Lead} (score {Score}, nudge {N}/{Max})",
+                    lead.Id, score, lead.NudgeCount, MaxNudges);
+                continue;
+            }
             lead.Score = score; // el análisis ⇒ prioridad en la cola
 
             var instance = lead.Seller!.EvolutionInstance;
