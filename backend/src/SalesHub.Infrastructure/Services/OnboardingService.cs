@@ -55,8 +55,8 @@ public class OnboardingService
             $"<p>Hola! Tu cuenta de <b>{appName}</b> ya está lista.</p>" +
             $"<p><a href=\"{url}\">Entrar a mi cuenta</a></p>" +
             "<p>Es un acceso directo, sin usuario ni contraseña. Cualquier cosa respondé el WhatsApp.</p>";
-        return await _email.SendAsync(to, subject, body, ct)
-            || await _email.SendAsync(to, subject, body, ct);
+        return await _email.SendAsync(to, subject, body, appName, ct)
+            || await _email.SendAsync(to, subject, body, appName, ct);
     }
 
     private static readonly Regex KeywordRx = new(

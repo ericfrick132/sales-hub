@@ -26,14 +26,14 @@ public class RelayEmailSender : IEmailSender
         !string.IsNullOrWhiteSpace(_config["Email:RelayUrl"])
         && !string.IsNullOrWhiteSpace(_config["Email:RelayKey"]);
 
-    public async Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+    public async Task<bool> SendAsync(string to, string subject, string htmlBody, string? fromName = null, CancellationToken ct = default)
     {
         if (!IsConfigured) return false;
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Post, _config["Email:RelayUrl"]);
             req.Headers.Add("X-Bot-Key", _config["Email:RelayKey"]);
-            req.Content = JsonContent.Create(new { to, subject, html = htmlBody });
+            req.Content = JsonContent.Create(new { to, subject, html = htmlBody, fromName });
             using var res = await _http.SendAsync(req, ct);
             if (!res.IsSuccessStatusCode)
             {

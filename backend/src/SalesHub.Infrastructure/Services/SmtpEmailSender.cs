@@ -27,7 +27,7 @@ public class SmtpEmailSender : IEmailSender
         && !string.IsNullOrWhiteSpace(_config["Email:Password"])
         && !string.IsNullOrWhiteSpace(_config["Email:FromAddress"]);
 
-    public async Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+    public async Task<bool> SendAsync(string to, string subject, string htmlBody, string? fromName = null, CancellationToken ct = default)
     {
         if (!IsConfigured) return false;
         try
@@ -41,7 +41,7 @@ public class SmtpEmailSender : IEmailSender
             };
             using var message = new MailMessage
             {
-                From = new MailAddress(_config["Email:FromAddress"]!, _config["Email:FromName"] ?? "Equipo"),
+                From = new MailAddress(_config["Email:FromAddress"]!, fromName ?? _config["Email:FromName"] ?? "Equipo"),
                 Subject = subject,
                 Body = htmlBody,
                 IsBodyHtml = true,
