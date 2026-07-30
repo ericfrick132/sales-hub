@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using SalesHub.Core.Abstractions;
+using SalesHub.Infrastructure.Adb;
 using SalesHub.Infrastructure.Apify;
 using SalesHub.Infrastructure.Evolution;
 using SalesHub.Infrastructure.Instagram;
@@ -75,7 +76,24 @@ public static class DependencyInjection
         services.AddHttpClient<WebsiteContactExtractor>();
         services.AddScoped<IWebsiteContactExtractor>(sp => sp.GetRequiredService<WebsiteContactExtractor>());
 
-        services.AddScoped<IEvolutionClient>(sp => sp.GetRequiredService<EvolutionClient>());
+        // WhatsApp provider: "evolution" (default) o "adb" (dispositivo Android físico).
+        // Seteá WhatsApp:Provider=adb en appsettings o env y configurá WhatsAppAdb:DeviceSerial.
+        services.AddScoped<IEvolutionClient>(sp =>
+        {
+            var cfg = sp.GetRequiredService<IConfiguration>();
+            var provider = cfg.GetValue<string>("WhatsApp:Provider", "evolution");
+            return provider?.ToLowerInvariant() switch
+            {
+                "adb" => sp.GetRequiredService<WhatsAppAdbClient>(),
+                _ => sp.GetRequiredService<EvolutionClient>()
+            };
+        });
+
+        // Servicios adb (solo se usan cuando WhatsApp:Provider=adb, pero registramos siempre
+        // para no complicar el toggle — el costo es mínimo).
+        services.Configure<WhatsAppAdbOptions>(config.GetSection("WhatsAppAdb"));
+        services.AddSingleton<AdbShell>();
+        services.AddScoped<WhatsAppAdbClient>();
 
         // Aviso operativo al número maestro por WhatsApp (ej. Claude sin crédito).
         services.AddScoped<IAdminAlerter, AdminAlerter>();
