@@ -7,6 +7,7 @@ using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Api.Controllers;
 
@@ -198,7 +199,7 @@ public class HubController : ControllerBase
         // 1) Elegir el/los candidato(s) top del producto pedido (todavía sin reclamar).
         var claimCutoff = now.AddMinutes(-5);
         var candidates = await (
-            from o in _db.Outbox
+            from o in _db.Outbox.Include(x => x.Lead)
             where o.Status == OutboxStatus.Scheduled
                && o.Channel == MessageChannel.WhatsApp
                && o.ScheduledAt <= now
@@ -231,6 +232,40 @@ public class HubController : ControllerBase
                      && o.SentAt != null && o.SentAt >= dayStart)
             .Select(o => o.LeadId).Distinct().CountAsync(ct);
         if (lineContactedToday >= lineDailyCap) return Ok(Array.Empty<object>());
+
+        // Techo de tráfico FRÍO de la línea (post-ban 2026-07-30): mensajes del día a
+        // leads fríos (Source < 400) que nunca nos escribieron — mismo criterio que
+        // OutboxSender. Alcanzado el techo, esos candidatos no se sirven (quedan
+        // Scheduled para otro día); el tráfico caliente de la app (source >= 400),
+        // las charlas ya abiertas y el resto de una conversación de HOY siguen.
+        var coldCap = _config.GetValue("Hub:ColdDailyMessageCap", 15);
+        if (coldCap > 0)
+        {
+            var coldSentToday = await _db.Outbox
+                .Where(o => o.EvolutionInstance == line && o.Status == OutboxStatus.Sent
+                         && o.SentAt != null && o.SentAt >= dayStart
+                         && o.Lead != null && (int)o.Lead.Source < OutboxSender.HotSourceFloor
+                         && !_db.ConversationMessages.Any(m => m.LeadId == o.LeadId
+                               && m.Direction == MessageDirection.Inbound))
+                .CountAsync(ct);
+            if (coldSentToday >= coldCap)
+            {
+                var served = new List<MessageOutbox>();
+                foreach (var o in candidates)
+                {
+                    var coldNew = o.Lead is not null
+                        && (int)o.Lead.Source < OutboxSender.HotSourceFloor
+                        && !await _db.ConversationMessages.AnyAsync(m => m.LeadId == o.LeadId
+                               && m.Direction == MessageDirection.Inbound, ct)
+                        && !await _db.Outbox.AnyAsync(x => x.LeadId == o.LeadId
+                               && x.Status == OutboxStatus.Sent
+                               && x.SentAt != null && x.SentAt >= dayStart, ct);
+                    if (!coldNew) served.Add(o);
+                }
+                candidates = served;
+                if (candidates.Count == 0) return Ok(Array.Empty<object>());
+            }
+        }
 
         // 3) Reclamar y devolver (array plano; mismo shape que antes).
         foreach (var o in candidates) o.LockedAt = now; // re-servible tras 5 min si la app murió

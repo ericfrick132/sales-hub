@@ -25,6 +25,13 @@ public class OutboxSender
     /// </summary>
     public const int MaxMessagesPerSellerPerDay = 150;
 
+    /// <summary>
+    /// Piso de LeadSource que marca a un lead como CALIENTE (formulario/app: ya nos
+    /// dejó sus datos o nos conoce). Todo lo que está por debajo es tráfico FRÍO
+    /// (scrapeado) — el que causa bans. Misma convención que OutboxEnqueueHelper.
+    /// </summary>
+    public const int HotSourceFloor = 400;
+
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
     private readonly ISendScheduler _scheduler;
@@ -146,6 +153,32 @@ public class OutboxSender
                               && o.SentAt.Value < dayEnd, ct);
             if (messagesToday >= MaxMessagesPerSellerPerDay) continue;
 
+            // ─── Techo de tráfico FRÍO por día (post-ban 2026-07-30) ────────
+            // WhatsApp banea por mensajes a gente que no te tiene agendado y NO
+            // responde. Este techo cuenta MENSAJES del día a leads fríos
+            // (Source < 400) que nunca nos escribieron — cadencia, follow-ups y
+            // re-enganche incluidos. No cuenta: leads calientes (formulario/app)
+            // ni leads que ya respondieron alguna vez (charla real, riesgo bajo).
+            // Alcanzado el techo, lo frío queda Scheduled para otro día; solo
+            // siguen los calientes, los que ya hablaron, y las burbujas restantes
+            // de conversaciones frías abiertas HOY (no partimos saludo/pitch).
+            var coldCap = Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue(_config, "Outbox:ColdDailyMessageCap", 15);
+            var coldCapReached = false;
+            if (coldCap > 0)
+            {
+                var coldMessagesToday = await _db.Outbox
+                    .CountAsync(o => o.SellerId == seller.Id
+                                  && o.Channel == MessageChannel.WhatsApp
+                                  && o.Status == OutboxStatus.Sent
+                                  && o.SentAt != null
+                                  && o.SentAt.Value >= dayStart
+                                  && o.SentAt.Value < dayEnd
+                                  && o.Lead != null && (int)o.Lead.Source < HotSourceFloor
+                                  && !_db.ConversationMessages.Any(m => m.LeadId == o.LeadId
+                                        && m.Direction == MessageDirection.Inbound), ct);
+                coldCapReached = coldMessagesToday >= coldCap;
+            }
+
             // Gap mínimo por LÍNEA con jitter: el tick corre cada ~30s, y sin esto un backlog
             // vencido se drena en ráfaga sostenida de 2/min (patrón de bot, riesgo de ban).
             // Outbox:LineGapSeconds (default 90) ≈ techo de ~40 envíos/hora por línea; 0 = off.
@@ -158,6 +191,28 @@ public class OutboxSender
                              && o.Status == OutboxStatus.Sent && o.SentAt != null)
                     .MaxAsync(o => (DateTimeOffset?)o.SentAt, ct);
                 if (lastLineSend is not null && now - lastLineSend < jittered) continue;
+            }
+
+            // Espaciado entre CONTACTOS NUEVOS (post-ban 2026-07-30): abrir muchas
+            // conversaciones nuevas seguidas es la señal de spam más fuerte, aunque cada
+            // lead sea caliente (Meta forms en ráfaga). Entre el PRIMER mensaje a un lead
+            // y el primer mensaje al siguiente exigimos un gap con jitter — las burbujas
+            // y follow-ups de leads ya contactados fluyen al ritmo del line-gap normal.
+            // Outbox:NewContactGapSeconds (default 600 ≈ máx 6 aperturas/hora); 0 = off.
+            var newContactGapSeconds = Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue(_config, "Outbox:NewContactGapSeconds", 600);
+            DateTimeOffset? lastFirstContactAt = null;
+            TimeSpan newContactGap = TimeSpan.Zero;
+            if (newContactGapSeconds > 0)
+            {
+                newContactGap = TimeSpan.FromSeconds(Random.Shared.Next(newContactGapSeconds * 2 / 3, newContactGapSeconds * 4 / 3 + 1));
+                // Último "primer mensaje de la historia de un lead" enviado por esta línea.
+                lastFirstContactAt = await _db.Outbox
+                    .Where(o => o.EvolutionInstance == seller.EvolutionInstance!.InstanceName
+                             && o.Status == OutboxStatus.Sent && o.SentAt != null
+                             && !_db.Outbox.Any(x => x.LeadId == o.LeadId
+                                   && x.Status == OutboxStatus.Sent
+                                   && x.SentAt != null && x.SentAt < o.SentAt))
+                    .MaxAsync(o => o.SentAt, ct);
             }
 
             // Trae los próximos N candidatos y filtra por ventana de envío del PRODUCTO
@@ -196,6 +251,15 @@ public class OutboxSender
                    // el scraping frío ya consumió el cupo del día.
                    && (!capReached || o.Priority >= fastLanePriority
                        || _db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent))
+                   // Techo de tráfico frío alcanzado: solo calientes por ORIGEN (no por
+                   // Priority — el re-enganche hereda score alto y se colaría), leads que
+                   // ya nos escribieron, o el resto de una conversación fría abierta HOY.
+                   && (!coldCapReached
+                       || (o.Lead != null && (int)o.Lead.Source >= HotSourceFloor)
+                       || _db.ConversationMessages.Any(m => m.LeadId == o.LeadId
+                             && m.Direction == MessageDirection.Inbound)
+                       || _db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent
+                             && x.SentAt != null && x.SentAt.Value >= dayStart))
                    // Política de mensajería por origen: un lead que nunca recibió nada es un
                    // MENSAJE NUEVO; si ya recibió algo, es SEGUIMIENTO. Cada uno se prende/apaga
                    // por separado y por origen (ej. cortar todo lo nuevo y seguir con Meta Lead Ads).
@@ -223,6 +287,16 @@ public class OutboxSender
             MessageOutbox? next = null;
             foreach (var cand in candidates)
             {
+                // Gap entre contactos nuevos: si este candidato sería el PRIMER mensaje
+                // a su lead y todavía no pasó el gap desde la última apertura de la
+                // línea, lo salteamos (calientes incluidos — 5 forms juntos salen
+                // espaciados, no en ráfaga). Las continuaciones siguen elegibles.
+                if (lastFirstContactAt is not null && now - lastFirstContactAt < newContactGap)
+                {
+                    var isNewContact = !await _db.Outbox.AnyAsync(x =>
+                        x.LeadId == cand.LeadId && x.Status == OutboxStatus.Sent, ct);
+                    if (isNewContact) continue;
+                }
                 // Fast lane: los calientes tampoco esperan la ventana horaria del
                 // producto — el que llenó el formulario a la noche espera respuesta
                 // a la noche (el clamp 08-22 ya se aplicó arriba).
