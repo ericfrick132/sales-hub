@@ -41,6 +41,7 @@ export default function Devices() {
     try {
       const { data } = await api.post(`/devices/${id}/regenerate-token`);
       setCreated({ token: data.pairingToken, qrUrl: data.qrUrl });
+      setShowCreate(true);
     } catch { toast.error('Error'); }
   }
 
