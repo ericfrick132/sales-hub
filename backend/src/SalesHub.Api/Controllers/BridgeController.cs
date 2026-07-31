@@ -119,6 +119,44 @@ public class BridgeController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>
+    /// El relay reporta un mensaje entrante de WhatsApp (lead respondió).
+    /// </summary>
+    [HttpPost("incoming")]
+    public async Task<ActionResult> ReportIncoming([FromBody] BridgeIncomingBody body)
+    {
+        if (!IsAuthorized()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(body.Phone) || string.IsNullOrWhiteSpace(body.Text))
+            return BadRequest("phone and text required");
+
+        var lead = await _db.Leads
+            .FirstOrDefaultAsync(l => l.WhatsappPhone == body.Phone);
+
+        if (lead is null)
+            return Ok(new { ok = true, matched = false });
+
+        // Registrar mensaje entrante
+        var msg = new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            Direction = MessageDirection.Inbound,
+            Status = MessageDeliveryStatus.Received,
+            Text = body.Text,
+            Timestamp = DateTimeOffset.UtcNow,
+            IsRead = false
+        };
+        _db.ConversationMessages.Add(msg);
+
+        // Actualizar estado del lead
+        if (lead.Status == LeadStatus.Sent)
+            lead.Status = LeadStatus.Replied;
+
+        await _db.SaveChangesAsync();
+
+        return Ok(new { ok = true, matched = true, leadId = lead.Id });
+    }
+
     private bool IsAuthorized()
     {
         var expected = _cfg.GetValue<string>("Bridge:ApiKey");
@@ -136,6 +174,12 @@ public class BridgePendingResponse
     public string? Phone { get; set; }
     public string? Text { get; set; }
     public string? Message { get; set; }
+}
+
+public class BridgeIncomingBody
+{
+    public string? Phone { get; set; }
+    public string? Text { get; set; }
 }
 
 public class BridgeFailBody
