@@ -34,14 +34,10 @@ public class BridgeController : ControllerBase
 
         var now = DateTimeOffset.UtcNow;
 
-        // Buscar sellers activos con envío habilitado y WhatsApp "conectado".
-        // En modo adb, GetInstanceStatusAsync siempre devuelve "connected" si el
-        // device está online; usamos eso como gate.
+        // Modo adb: solo necesitamos que el seller esté activo y con envíos habilitados.
+        // La app Android maneja el envío real; no depende de Evolution.
         var activeSellers = await _db.Sellers
-            .Include(s => s.EvolutionInstance)
-            .Where(s => s.IsActive && s.SendingEnabled
-                     && s.EvolutionInstance != null
-                     && s.EvolutionInstance.Status == InstanceStatus.Connected)
+            .Where(s => s.IsActive && s.SendingEnabled)
             .Select(s => new { s.Id, s.DisplayName })
             .ToListAsync();
 
