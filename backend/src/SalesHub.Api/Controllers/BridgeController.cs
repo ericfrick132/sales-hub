@@ -158,6 +158,32 @@ public class BridgeController : ControllerBase
         return Ok(new { ok = true, matched = true, leadId = lead.Id });
     }
 
+    /// <summary>
+    /// Estadísticas de la cola para el dashboard del dispositivo.
+    /// </summary>
+    [HttpGet("stats")]
+    public async Task<ActionResult<BridgeStatsResponse>> GetStats()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
+
+        var queueSize = await _db.Outbox
+            .CountAsync(o => o.Status == OutboxStatus.Scheduled
+                          && o.Channel == MessageChannel.WhatsApp
+                          && o.StepIndex != null);
+
+        var sentToday = await _db.Outbox
+            .CountAsync(o => o.Status == OutboxStatus.Sent
+                          && o.SentAt >= todayStart
+                          && o.Channel == MessageChannel.WhatsApp);
+
+        return Ok(new BridgeStatsResponse
+        {
+            QueueSize = queueSize,
+            SentToday = sentToday
+        });
+    }
+
     private bool IsAuthorized()
     {
         var expected = _cfg.GetValue<string>("Bridge:ApiKey");
@@ -175,6 +201,12 @@ public class BridgePendingResponse
     public string? Phone { get; set; }
     public string? Text { get; set; }
     public string? Message { get; set; }
+}
+
+public class BridgeStatsResponse
+{
+    public int QueueSize { get; set; }
+    public int SentToday { get; set; }
 }
 
 public class BridgeIncomingBody
