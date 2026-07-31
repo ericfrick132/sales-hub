@@ -1,17 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 
 interface Device {
-  id: string;
-  name: string;
-  sellerName?: string;
-  tailscaleIp?: string;
-  status: string;
-  batteryLevel?: number;
-  lastHeartbeatAt?: string;
+  id: string; name: string; sellerName?: string; tailscaleIp?: string;
+  status: string; batteryLevel?: number; lastHeartbeatAt?: string;
 }
+interface Seller { id: string; displayName: string; email: string; }
 
 export default function Devices() {
   const qc = useQueryClient();
@@ -24,25 +20,29 @@ export default function Devices() {
     queryFn: async () => (await api.get<Device[]>('/devices')).data,
     refetchInterval: 10_000
   });
+  const { data: sellers } = useQuery({
+    queryKey: ['sellers'],
+    queryFn: async () => (await api.get<Seller[]>('/sellers')).data
+  });
 
   async function createDevice() {
     if (!newName.trim()) return;
-    try {
-      const { data } = await api.post('/devices', { name: newName });
-      setCreated({ token: data.pairingToken, qrUrl: data.qrUrl });
-      toast.success('Device creado');
-      qc.invalidateQueries({ queryKey: ['devices'] });
-    } catch (e: any) {
-      toast.error(e.response?.data ?? 'Error al crear device');
-    }
+    const { data } = await api.post('/devices', { name: newName });
+    setCreated({ token: data.pairingToken, qrUrl: data.qrUrl });
+    toast.success('Device creado');
+    qc.invalidateQueries({ queryKey: ['devices'] });
+  }
+
+  async function assignSeller(deviceId: string, sellerId: string) {
+    await api.put(`/devices/${deviceId}/assign`, { sellerId: sellerId || null });
+    toast.success('Asignado');
+    qc.invalidateQueries({ queryKey: ['devices'] });
   }
 
   async function regenerateToken(id: string) {
-    try {
-      const { data } = await api.post(`/devices/${id}/regenerate-token`);
-      setCreated({ token: data.pairingToken, qrUrl: data.qrUrl });
-      setShowCreate(true);
-    } catch { toast.error('Error'); }
+    const { data } = await api.post(`/devices/${id}/regenerate-token`);
+    setCreated({ token: data.pairingToken, qrUrl: data.qrUrl });
+    setShowCreate(true);
   }
 
   async function deleteDevice(id: string) {
@@ -78,8 +78,8 @@ export default function Devices() {
 
       <div className="card divide-y">
         {(devices ?? []).map(d => (
-          <div key={d.id} className="p-3 flex items-center justify-between">
-            <div>
+          <div key={d.id} className="p-3 flex items-center justify-between gap-2">
+            <div className="flex-1 min-w-0">
               <div className="font-medium">{d.name}</div>
               <div className="text-xs text-slate-500">
                 {d.sellerName ? `Vendedor: ${d.sellerName}` : 'Sin asignar'}
@@ -91,7 +91,15 @@ export default function Devices() {
                 </span>
               </div>
             </div>
-            <div className="flex gap-1">
+            <select className="text-xs border rounded px-1 py-0.5 w-32"
+              value={d.sellerName ?? ''}
+              onChange={e => assignSeller(d.id, e.target.value)}>
+              <option value="">Sin asignar</option>
+              {(sellers ?? []).map(s => (
+                <option key={s.id} value={s.id}>{s.displayName}</option>
+              ))}
+            </select>
+            <div className="flex gap-1 shrink-0">
               {d.status === 'Pairing' && (
                 <button className="btn-secondary text-xs" onClick={() => regenerateToken(d.id)}>Nuevo token</button>
               )}
