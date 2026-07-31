@@ -8,6 +8,7 @@ import LeadDetail from './pages/LeadDetail';
 import Pool from './pages/Pool';
 import MyDashboard from './pages/MyDashboard';
 import Connect from './pages/Connect';
+import Devices from './pages/Devices';
 import AdminDashboard from './pages/AdminDashboard';
 import Sellers from './pages/Sellers';
 import SellerDetail from './pages/SellerDetail';
@@ -72,6 +73,7 @@ export default function App() {
           <>
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/sellers" element={<Sellers />} />
+            <Route path="/devices" element={<Devices />} />
             <Route path="/objetivos" element={<Objetivos />} />
             <Route path="/reglas-ia" element={<ReglasIa />} />
             <Route path="/onboarding-apps" element={<OnboardingApps />} />

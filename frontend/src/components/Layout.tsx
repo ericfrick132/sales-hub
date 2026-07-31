@@ -64,6 +64,7 @@ export default function Layout() {
         { title: 'Configuración', items: [
           { to: '/mensajeria', label: 'Mensajería' },
           { to: '/sellers', label: 'Vendedores' },
+          { to: '/devices', label: 'Dispositivos' },
           { to: '/objetivos', label: 'Objetivos' },
           { to: '/products', label: 'Aplicaciones' },
           { to: '/reglas-ia', label: 'Reglas IA' },
