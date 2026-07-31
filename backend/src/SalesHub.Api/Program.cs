@@ -27,6 +27,10 @@ builder.Services.AddHttpClient(); // IHttpClientFactory para el LeadImportWorker
 builder.Services.AddHttpClient<SalesHub.Api.AdminMenu.AdminApiExecutor>();
 builder.Services.AddScoped<SalesHub.Api.AdminMenu.AdminMenuRelay>();
 
+// WebSocket hub para devices Android
+builder.Services.AddSingleton<DeviceHub>();
+builder.Services.AddSingleton<DeviceWebSocketMiddleware>();
+
 if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "true")
 {
     builder.Services.AddHostedService<InstanceMonitorService>();
