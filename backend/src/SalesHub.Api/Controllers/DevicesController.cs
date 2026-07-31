@@ -86,6 +86,18 @@ public class DevicesController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>Asignar device a un seller.</summary>
+    [HttpPut("{id:guid}/assign")]
+    public async Task<ActionResult> Assign(Guid id, [FromBody] AssignDeviceBody body)
+    {
+        var device = await _db.Devices.FindAsync(id);
+        if (device is null) return NotFound();
+
+        device.SellerId = body.SellerId;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     /// <summary>Regenerar token de pairing para un device existente.</summary>
     [HttpPost("{id:guid}/regenerate-token")]
     public async Task<ActionResult<DeviceCreatedDto>> RegenerateToken(Guid id)
@@ -128,6 +140,11 @@ public class DeviceCreatedDto
     public string PairingToken { get; set; } = string.Empty;
     public DateTimeOffset ExpiresAt { get; set; }
     public string QrUrl { get; set; } = string.Empty;
+}
+
+public class AssignDeviceBody
+{
+    public Guid? SellerId { get; set; }
 }
 
 public class CreateDeviceBody
