@@ -10,6 +10,7 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<Seller> Sellers => Set<Seller>();
     public DbSet<EvolutionInstance> EvolutionInstances => Set<EvolutionInstance>();
+    public DbSet<Device> Devices => Set<Device>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<CityQueue> Cities => Set<CityQueue>();

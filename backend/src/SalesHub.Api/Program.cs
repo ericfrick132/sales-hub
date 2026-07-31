@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SalesHub.Api.Auth;
 using SalesHub.Core.Domain.Enums;
+using SalesHub.Api.WebSockets;
 using SalesHub.Infrastructure;
 using SalesHub.Infrastructure.Options;
 using SalesHub.Infrastructure.Persistence;
@@ -124,6 +125,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseDeviceWebSockets();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
