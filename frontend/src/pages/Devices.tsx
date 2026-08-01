@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 
 interface Device {
-  id: string; name: string; sellerName?: string; tailscaleIp?: string;
+  id: string; name: string; sellerId?: string; sellerName?: string; tailscaleIp?: string;
   status: string; batteryLevel?: number; lastHeartbeatAt?: string;
 }
 interface Seller { id: string; displayName: string; email: string; }
