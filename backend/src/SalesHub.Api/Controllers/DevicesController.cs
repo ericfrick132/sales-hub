@@ -30,6 +30,7 @@ public class DevicesController : ControllerBase
             {
                 Id = d.Id,
                 Name = d.Name,
+                SellerId = d.SellerId,
                 SellerName = d.Seller != null ? d.Seller.DisplayName : null,
                 TailscaleIp = d.TailscaleIp,
                 Status = d.Status.ToString(),
