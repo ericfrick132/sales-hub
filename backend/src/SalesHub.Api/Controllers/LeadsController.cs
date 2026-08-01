@@ -134,6 +134,131 @@ public class LeadsController : ControllerBase
         return result;
     }
 
+    public record BulkReassignRequest(
+        Guid SellerId,
+        LeadSource[]? Source,
+        string? ProductKey,
+        LeadStatus? Status,
+        Guid? FromSellerId,
+        bool IncludeContacted = true,
+        bool AutoQueue = true,
+        bool DryRun = false);
+
+    public record BulkReassignResult(
+        int Matched, int AlreadyOnTarget, int MovedUncontacted, int MovedContacted,
+        int SkippedContacted, int Queued, int WaitingNoInstance, int OutboxCancelled, bool DryRun);
+
+    /// <summary>
+    /// Reasignación masiva por filtro: manda TODOS los leads que matchean (origen, app, estado,
+    /// vendedor actual) a UN vendedor elegido. Caso típico: "todos los Meta Lead Ads a tal vendedor".
+    /// Los leads sin contactar se re-renderizan y (con AutoQueue) se encolan en la línea nueva;
+    /// los que ya tienen conversación solo cambian de dueño y se les cancela cualquier envío
+    /// pendiente para que la línea vieja no les siga escribiendo. Con DryRun=true devuelve los
+    /// contadores sin tocar nada (preview del modal).
+    /// </summary>
+    [HttpPost("bulk-reassign")]
+    public async Task<ActionResult<BulkReassignResult>> BulkReassign([FromBody] BulkReassignRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        // Sin filtro moverías la base entera de un click — lo bloqueamos acá y no en la UI.
+        var hasFilter = req.Source is { Length: > 0 } || !string.IsNullOrWhiteSpace(req.ProductKey)
+                     || req.Status is not null || req.FromSellerId is not null;
+        if (!hasFilter) return BadRequest(new { error = "Elegí al menos un filtro (origen, app, estado o vendedor actual)" });
+
+        var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == req.SellerId, ct);
+        if (seller is null) return BadRequest(new { error = "Vendedor no encontrado" });
+        if (!seller.IsActive) return BadRequest(new { error = "Vendedor inactivo" });
+
+        var q = _db.Leads.Include(l => l.Product).AsQueryable();
+        if (req.Source is { Length: > 0 }) q = q.Where(l => req.Source.Contains(l.Source));
+        if (!string.IsNullOrWhiteSpace(req.ProductKey)) q = q.Where(l => l.ProductKey == req.ProductKey);
+        if (req.Status is not null) q = q.Where(l => l.Status == req.Status);
+        if (req.FromSellerId is not null) q = q.Where(l => l.SellerId == req.FromSellerId);
+        var leads = await q.ToListAsync(ct);
+
+        // Con conversación arrancada = ya salió algo o ya respondió: cambiar de dueño es solo
+        // bookkeeping (la charla sigue a mano); sin contactar = se puede re-encolar tranquilo.
+        static bool Contacted(Lead l) => l.SentAt != null || l.FirstReplyAt != null
+            || (l.Status != LeadStatus.New && l.Status != LeadStatus.Assigned && l.Status != LeadStatus.Queued);
+
+        var alreadyOnTarget = leads.Count(l => l.SellerId == seller.Id);
+        var candidates = leads.Where(l => l.SellerId != seller.Id).ToList();
+        var uncontacted = candidates.Where(l => !Contacted(l)).ToList();
+        var contacted = candidates.Where(Contacted).ToList();
+        var skippedContacted = req.IncludeContacted ? 0 : contacted.Count;
+        if (!req.IncludeContacted) contacted.Clear();
+
+        var canQueue = seller.EvolutionInstance is not null;
+        var queued = 0; var waiting = 0;
+
+        // Cancelar el outbox pendiente de todo lo que se mueve: los sin contactar se re-encolan
+        // en la línea nueva; a los contactados no les puede seguir escribiendo la línea vieja.
+        var affected = uncontacted.Select(l => l.Id).Concat(contacted.Select(l => l.Id)).ToList();
+        var outboxCancelled = 0;
+        for (var i = 0; i < affected.Count; i += 1000)
+        {
+            var slice = affected.Skip(i).Take(1000).ToList();
+            var pendingQ = _db.Outbox.Where(o => slice.Contains(o.LeadId)
+                && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending));
+            if (req.DryRun) { outboxCancelled += await pendingQ.CountAsync(ct); continue; }
+            var pending = await pendingQ.ToListAsync(ct);
+            foreach (var o in pending) o.Status = OutboxStatus.Cancelled;
+            outboxCancelled += pending.Count;
+        }
+
+        foreach (var lead in uncontacted)
+        {
+            var queueable = req.AutoQueue && canQueue && lead.Product is not null && !string.IsNullOrWhiteSpace(lead.WhatsappPhone);
+            if (queueable) queued++; else waiting++;
+            if (req.DryRun) continue;
+
+            lead.SellerId = seller.Id;
+            lead.AssignedAt = DateTimeOffset.UtcNow;
+            lead.QueuedAt = null;
+            if (lead.Product is not null)
+            {
+                lead.RenderedMessage = _renderer.Render(lead, lead.Product, seller);
+                lead.WhatsappLink = string.IsNullOrWhiteSpace(lead.WhatsappPhone)
+                    ? null
+                    : $"https://wa.me/{lead.WhatsappPhone}?text={Uri.EscapeDataString(lead.RenderedMessage ?? "")}";
+            }
+            if (queueable)
+            {
+                // Igual que el assign individual: encolamos aunque el seller esté desconectado;
+                // el OutboxSender chequea Connected + SendingEnabled al momento de mandar.
+                OutboxEnqueueHelper.EnqueueLeadMessages(
+                    _db, _renderer, lead, lead.Product!, seller,
+                    lead.WhatsappPhone!, seller.EvolutionInstance!.InstanceName);
+                lead.Status = LeadStatus.Queued;
+                lead.QueuedAt = DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                lead.Status = LeadStatus.Assigned;
+            }
+        }
+
+        if (!req.DryRun)
+        {
+            foreach (var lead in contacted)
+            {
+                // Solo cambia el dueño: estado y AssignedAt quedan como estaban para no
+                // reordenar el historial ni pisar métricas de la conversación.
+                lead.SellerId = seller.Id;
+            }
+            await _db.SaveChangesAsync(ct);
+            _log.LogWarning(
+                "bulk-reassign → {Seller}: {Uncontacted} sin contactar ({Queued} encolados), {Contacted} con conversación, {Cancelled} outbox cancelados (filtros: source={Source} product={Product} status={Status} from={From})",
+                seller.DisplayName, uncontacted.Count, queued, contacted.Count, outboxCancelled,
+                req.Source is { Length: > 0 } ? string.Join(",", req.Source) : "-", req.ProductKey ?? "-", req.Status?.ToString() ?? "-", req.FromSellerId?.ToString() ?? "-");
+        }
+
+        return new BulkReassignResult(
+            leads.Count, alreadyOnTarget, uncontacted.Count, contacted.Count,
+            skippedContacted, queued, waiting, outboxCancelled, req.DryRun);
+    }
+
     /// <summary>
     /// Limpieza puntual: leads WhatsAppInbound duplicados (mismo teléfono+producto) que dejó
     /// el bug del chat-sync (dedup post-creación → leads fantasma en serie). Borra SOLO los
