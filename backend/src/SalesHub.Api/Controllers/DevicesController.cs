@@ -127,6 +127,7 @@ public class DeviceDto
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public Guid? SellerId { get; set; }
     public string? SellerName { get; set; }
     public string? TailscaleIp { get; set; }
     public string Status { get; set; } = string.Empty;
