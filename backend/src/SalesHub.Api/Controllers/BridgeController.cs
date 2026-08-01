@@ -171,12 +171,14 @@ public class BridgeController : ControllerBase
         var queueSize = await _db.Outbox
             .CountAsync(o => o.Status == OutboxStatus.Scheduled
                           && o.Channel == MessageChannel.WhatsApp
-                          && o.StepIndex != null);
+                          && o.StepIndex != null
+                          && o.Lead.Source == LeadSource.MetaLeadAd);
 
         var sentToday = await _db.Outbox
             .CountAsync(o => o.Status == OutboxStatus.Sent
                           && o.SentAt >= todayStart
-                          && o.Channel == MessageChannel.WhatsApp);
+                          && o.Channel == MessageChannel.WhatsApp
+                          && o.Lead.Source == LeadSource.MetaLeadAd);
 
         return Ok(new BridgeStatsResponse
         {
