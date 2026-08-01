@@ -53,6 +53,7 @@ public class BridgeController : ControllerBase
             .Where(o => o.Status == OutboxStatus.Scheduled
                      && o.Channel == MessageChannel.WhatsApp
                      && sellerIds.Contains(o.SellerId)
+                     && o.Lead.Source == LeadSource.MetaLeadAd  // solo Meta Lead Ads
                      && o.StepIndex != null       // solo mensajes de cadencia (no chat)
                      && o.MediaAssetId == null    // solo texto (MVP)
                      && !string.IsNullOrWhiteSpace(o.Message))
