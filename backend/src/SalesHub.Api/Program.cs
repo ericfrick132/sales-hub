@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SalesHub.Api.Auth;
 using SalesHub.Core.Domain.Enums;
+using Microsoft.AspNetCore.StaticFiles;
 using SalesHub.Api.WebSockets;
 using SalesHub.Infrastructure;
 using SalesHub.Infrastructure.Options;
@@ -129,7 +130,13 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = new FileExtensionContentTypeProvider
+    {
+        Mappings = { [".apk"] = "application/vnd.android.package-archive" }
+    }
+});
 app.UseDeviceWebSockets();
 app.UseCors();
 app.UseAuthentication();
