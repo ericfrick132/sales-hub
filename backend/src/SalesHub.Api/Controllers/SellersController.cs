@@ -61,6 +61,10 @@ public class SellersController : ControllerBase
     public async Task<ActionResult<SellerDto>> Create([FromBody] CreateSellerRequest req, CancellationToken ct)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
+        // Sin key no hay nombre de instancia: un SellerKey vacío generaba la instancia
+        // huérfana "seller_" (caso real: rompió el selector de /transcripcion).
+        if (string.IsNullOrWhiteSpace(req.SellerKey))
+            return BadRequest(new { error = "seller_key es obligatorio" });
         if (await _db.Sellers.AnyAsync(s => s.Email == req.Email || s.SellerKey == req.SellerKey, ct))
             return Conflict(new { error = "email o seller_key ya existe" });
 
@@ -176,6 +180,8 @@ public class SellersController : ControllerBase
         var proxyUrl = line?.ProxyUrl;
         if (instanceName is null)
         {
+            if (string.IsNullOrWhiteSpace(sellerKey))
+                return BadRequest(new { error = "El vendedor no tiene seller_key: cargásela antes de conectar la línea" });
             instanceName = $"seller_{sellerKey}";
             _db.EvolutionInstances.Add(new EvolutionInstance
             {
@@ -256,6 +262,8 @@ public class SellersController : ControllerBase
         var instance = await _db.EvolutionInstances.FirstOrDefaultAsync(x => x.SellerId == id, ct);
         if (instance is null)
         {
+            if (string.IsNullOrWhiteSpace(sellerKey))
+                return BadRequest(new { error = "El vendedor no tiene seller_key: cargásela antes de configurar el proxy" });
             instance = new EvolutionInstance { Id = Guid.NewGuid(), SellerId = id, InstanceName = $"seller_{sellerKey}" };
             _db.EvolutionInstances.Add(instance);
         }
