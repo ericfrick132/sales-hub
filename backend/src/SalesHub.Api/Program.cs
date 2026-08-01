@@ -129,6 +129,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseStaticFiles();
 app.UseDeviceWebSockets();
 app.UseCors();
 app.UseAuthentication();
