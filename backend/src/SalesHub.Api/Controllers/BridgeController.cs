@@ -28,26 +28,31 @@ public class BridgeController : ControllerBase
     /// Solo devuelve si hay un seller con SendingEnabled y WhatsApp conectado.
     /// </summary>
     [HttpGet("pending")]
-    public async Task<ActionResult<BridgePendingResponse>> GetPending()
+    public async Task<ActionResult<BridgePendingResponse>> GetPending([FromQuery] Guid? deviceId = null)
     {
         if (!IsAuthorized()) return Unauthorized();
 
         var now = DateTimeOffset.UtcNow;
 
-        // Modo adb: solo necesitamos que el seller esté activo y con envíos habilitados.
-        // La app Android maneja el envío real; no depende de Evolution.
-        var activeSellers = await _db.Sellers
-            .Where(s => s.IsActive && s.SendingEnabled)
-            .Select(s => new { s.Id, s.DisplayName })
-            .ToListAsync();
+        // Ruteo por device: cada celu envía SOLO la cola de su seller asignado.
+        // Fail-closed: una app vieja sin deviceId no recibe nada — evita que un
+        // celu mande mensajes de otro seller por la línea equivocada.
+        if (deviceId is null)
+            return Ok(new BridgePendingResponse { Pending = false, Message = "App desactualizada: falta deviceId" });
 
-        if (activeSellers.Count == 0)
-            return Ok(new BridgePendingResponse { Pending = false, Message = "No active sellers" });
+        var device = await _db.Devices.FindAsync(deviceId.Value);
+        if (device?.SellerId is null)
+            return Ok(new BridgePendingResponse { Pending = false, Message = "Device sin seller asignado" });
 
-        var sellerIds = activeSellers.Select(s => s.Id).ToHashSet();
+        var sellerOk = await _db.Sellers
+            .AnyAsync(s => s.Id == device.SellerId && s.IsActive && s.SendingEnabled);
+        if (!sellerOk)
+            return Ok(new BridgePendingResponse { Pending = false, Message = "Seller inactivo o con envíos deshabilitados" });
 
-        // Pacing anti-ban (política post-ban 2026-07-30): techo diario + gap mínimo
-        // entre envíos. Sin esto el bridge drena toda la cola a velocidad de polling.
+        var sellerId = device.SellerId.Value;
+
+        // Pacing anti-ban POR LÍNEA (política post-ban 2026-07-30): techo diario
+        // + gap mínimo entre envíos del mismo seller.
         var dailyCap = _cfg.GetValue<int?>("Bridge:DailyCap") ?? 15;
         var minGapMinutes = _cfg.GetValue<int?>("Bridge:MinGapMinutes") ?? 10;
         var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
@@ -56,6 +61,7 @@ public class BridgeController : ControllerBase
             .CountAsync(o => o.Status == OutboxStatus.Sent
                           && o.SentAt >= todayStart
                           && o.Channel == MessageChannel.WhatsApp
+                          && o.SellerId == sellerId
                           && o.StepIndex != null
                           && o.Lead.Source == LeadSource.MetaLeadAd);
         if (sentToday >= dailyCap)
@@ -65,20 +71,21 @@ public class BridgeController : ControllerBase
             .Where(o => o.Status == OutboxStatus.Sent
                      && o.SentAt != null
                      && o.Channel == MessageChannel.WhatsApp
+                     && o.SellerId == sellerId
                      && o.StepIndex != null
                      && o.Lead.Source == LeadSource.MetaLeadAd)
             .MaxAsync(o => o.SentAt);
         if (lastSentAt != null && (now - lastSentAt.Value).TotalMinutes < minGapMinutes)
             return Ok(new BridgePendingResponse { Pending = false, Message = "Waiting min gap" });
 
-        // Próximo mensaje Scheduled, WhatsApp, prioridad más alta primero,
-        // que pertenezca a un seller activo. Solo mensajes cuyo horario ya llegó.
+        // Próximo mensaje Scheduled del seller del device, prioridad más alta
+        // primero. Solo mensajes cuyo horario ya llegó.
         var next = await _db.Outbox
             .Include(o => o.Lead)
             .Where(o => o.Status == OutboxStatus.Scheduled
                      && o.ScheduledAt <= now
                      && o.Channel == MessageChannel.WhatsApp
-                     && sellerIds.Contains(o.SellerId)
+                     && o.SellerId == sellerId
                      && o.Lead.Source == LeadSource.MetaLeadAd  // solo Meta Lead Ads
                      && o.StepIndex != null       // solo mensajes de cadencia (no chat)
                      && o.MediaAssetId == null    // solo texto (MVP)
