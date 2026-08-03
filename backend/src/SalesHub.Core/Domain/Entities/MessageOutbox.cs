@@ -12,6 +12,14 @@ public class MessageOutbox
     /// </summary>
     public const string BridgePulledError = "bridge:pulled";
 
+    /// <summary>
+    /// Priority de las filas encoladas por un "enviar ahora" manual cuando la línea del
+    /// vendedor sale por un dispositivo físico. El bridge pullea SOLO Meta Lead Ads o
+    /// filas con esta prioridad — nunca el backlog frío histórico (≥14k filas Scheduled
+    /// con priority ≤70 que drenarían solas y quemarían la línea). Mantener > 70.
+    /// </summary>
+    public const int BridgeManualPriority = 100;
+
     public Guid Id { get; set; }
 
     public Guid LeadId { get; set; }

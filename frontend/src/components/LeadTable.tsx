@@ -54,8 +54,8 @@ export default function LeadTable({ leads, showSeller, emptyText, onClaim }: Pro
     if (!confirm(`¿Mandar la cadencia ahora a ${l.name} (${l.whatsappPhone})?`)) return;
     setSendingId(l.id);
     try {
-      const { data } = await api.post<{ sent: number }>(`/leads/${l.id}/send-now`);
-      toast.success(`Mandados ${data.sent} mensaje${data.sent === 1 ? '' : 's'}`);
+      const { data } = await api.post<{ sent: number; queued?: number; message?: string }>(`/leads/${l.id}/send-now`);
+      toast.success(data.message ?? `Mandados ${data.sent} mensaje${data.sent === 1 ? '' : 's'}`, { duration: 6000 });
       qc.invalidateQueries({ queryKey: ['my-leads'] });
       qc.invalidateQueries({ queryKey: ['admin-dashboard'] });
       qc.invalidateQueries({ queryKey: ['my-dashboard'] });

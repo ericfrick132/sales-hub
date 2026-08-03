@@ -949,8 +949,19 @@ public class LeadsController : ControllerBase
             if (seller is null) return BadRequest(new { error = "El vendedor asignado al lead no existe" });
         }
 
+        // ─── Ruta por dispositivo físico (bridge) ───────────────────────────
+        // Si el vendedor tiene un celu vinculado, la línea vive ahí: encolamos la
+        // cadencia con prioridad manual y el device la pullea con el pacing
+        // anti-ban por línea (cap diario + gap). Evolution ni se consulta.
+        var device = await _db.Devices
+            .Where(d => d.SellerId == seller.Id)
+            .OrderByDescending(d => d.LastHeartbeatAt ?? DateTimeOffset.MinValue)
+            .FirstOrDefaultAsync(ct);
+        if (device is not null)
+            return await QueueSendNowForBridgeAsync(lead, seller, device, ct);
+
         if (seller.EvolutionInstance is null)
-            return BadRequest(new { error = $"El vendedor {seller.DisplayName} no tiene WhatsApp configurado." });
+            return BadRequest(new { error = $"El vendedor {seller.DisplayName} no tiene un dispositivo vinculado ni WhatsApp configurado. Vinculá un celu en /sellers." });
 
         // Si la DB dice no-Connected, re-verificamos live. Y si Evolution
         // también dice "close"/"disconnected", intentamos despertar la
@@ -1112,6 +1123,85 @@ public class LeadsController : ControllerBase
         }
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true, sent });
+    }
+
+    /// <summary>
+    /// "Enviar ahora" cuando la línea del vendedor sale por un celu físico: no se manda
+    /// nada sincrónico — se encolan los steps de TEXTO con <see cref="MessageOutbox.BridgeManualPriority"/>
+    /// y el bridge los pullea respetando cap diario + gap por línea. El celu no puede
+    /// mandar media, así que esos steps se saltean y se avisa en la respuesta.
+    /// </summary>
+    private async Task<IActionResult> QueueSendNowForBridgeAsync(Lead lead, Seller seller, Device device, CancellationToken ct)
+    {
+        var (steps, cadenceCategory) = OutboxEnqueueHelper.ResolveStepsForLead(lead, lead.Product!);
+        var instance = seller.EvolutionInstance?.InstanceName ?? string.Empty;
+
+        // Cancelamos los outbox rows pendientes del lead para no duplicar
+        // (mismo criterio que la ruta sincrónica).
+        var pending = await _db.Outbox
+            .Where(o => o.LeadId == lead.Id && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending))
+            .ToListAsync(ct);
+        foreach (var p in pending) p.Status = OutboxStatus.Cancelled;
+
+        var when = DateTimeOffset.UtcNow;
+        var queued = 0;
+        var skippedMedia = 0;
+
+        void Enqueue(string text, int stepIndex)
+        {
+            _db.Outbox.Add(new MessageOutbox
+            {
+                Id = Guid.NewGuid(),
+                LeadId = lead.Id,
+                SellerId = seller.Id,
+                Channel = MessageChannel.WhatsApp,
+                EvolutionInstance = instance,
+                WhatsappPhone = lead.WhatsappPhone!,
+                Message = text,
+                StepIndex = stepIndex,
+                CadenceCategory = cadenceCategory,
+                Priority = MessageOutbox.BridgeManualPriority,
+                ScheduledAt = when,
+                Status = OutboxStatus.Scheduled
+            });
+            queued++;
+            // +1s para orden estable entre steps; el pacing real lo pone el bridge.
+            when = when.AddSeconds(1);
+        }
+
+        for (var i = 0; i < steps.Count; i++)
+        {
+            var step = steps[i];
+            var hasMedia = step.MediaAssetId is not null || (step.MediaAssetIds is { Count: > 0 });
+            if (hasMedia) { skippedMedia++; continue; }
+            if (string.IsNullOrWhiteSpace(step.Text)) continue;
+            Enqueue(_renderer.RenderTemplate(step.Text, lead, lead.Product!, seller), i);
+        }
+
+        // Producto sin steps de texto utilizables: fallback al template legacy.
+        if (queued == 0)
+        {
+            var msg = !string.IsNullOrWhiteSpace(lead.RenderedMessage)
+                ? lead.RenderedMessage!
+                : _renderer.Render(lead, lead.Product!, seller);
+            if (string.IsNullOrWhiteSpace(msg))
+                return BadRequest(new { error = "La cadencia de este producto no tiene ningún step de texto que el celu pueda mandar." });
+            Enqueue(msg, 0);
+        }
+
+        lead.Status = lead.Status is LeadStatus.New or LeadStatus.Assigned ? LeadStatus.Queued : lead.Status;
+        await _db.SaveChangesAsync(ct);
+
+        var online = device.Status == DeviceStatus.Online
+                     && device.LastHeartbeatAt is not null
+                     && DateTimeOffset.UtcNow - device.LastHeartbeatAt.Value < TimeSpan.FromSeconds(60);
+        var note = online
+            ? $"Encolado al celu {device.Name}: {queued} mensaje(s) salen en los próximos minutos (pacing anti-ban de la línea)."
+            : $"Encolado al celu {device.Name} ({queued} mensaje(s)) — el celu está offline ahora, salen cuando vuelva.";
+        if (skippedMedia > 0)
+            note += $" {skippedMedia} paso(s) con audio/imagen no salen por el celu (solo texto).";
+
+        return Ok(new { ok = true, sent = 0, queued, via = "device", device = device.Name, deviceOnline = online, skippedMedia, message = note });
     }
 
     /// <summary>

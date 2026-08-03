@@ -57,13 +57,17 @@ public class BridgeController : ControllerBase
         var minGapMinutes = _cfg.GetValue<int?>("Bridge:MinGapMinutes") ?? 10;
         var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
 
+        // Qué manda el bridge: cadencia de Meta Lead Ads + "enviar ahora" manual
+        // (Priority >= BridgeManualPriority). NUNCA el backlog frío histórico
+        // (miles de filas Scheduled priority<=70) — drenarlas solas quema la línea.
         var sentToday = await _db.Outbox
             .CountAsync(o => o.Status == OutboxStatus.Sent
                           && o.SentAt >= todayStart
                           && o.Channel == MessageChannel.WhatsApp
                           && o.SellerId == sellerId
                           && o.StepIndex != null
-                          && o.Lead.Source == LeadSource.MetaLeadAd);
+                          && (o.Lead.Source == LeadSource.MetaLeadAd
+                              || o.Priority >= MessageOutbox.BridgeManualPriority));
         if (sentToday >= dailyCap)
             return Ok(new BridgePendingResponse { Pending = false, Message = $"Daily cap reached ({sentToday}/{dailyCap})" });
 
@@ -73,7 +77,8 @@ public class BridgeController : ControllerBase
                      && o.Channel == MessageChannel.WhatsApp
                      && o.SellerId == sellerId
                      && o.StepIndex != null
-                     && o.Lead.Source == LeadSource.MetaLeadAd)
+                     && (o.Lead.Source == LeadSource.MetaLeadAd
+                         || o.Priority >= MessageOutbox.BridgeManualPriority))
             .MaxAsync(o => o.SentAt);
         if (lastSentAt != null && (now - lastSentAt.Value).TotalMinutes < minGapMinutes)
             return Ok(new BridgePendingResponse { Pending = false, Message = "Waiting min gap" });
@@ -87,7 +92,8 @@ public class BridgeController : ControllerBase
                      && o.ScheduledAt <= now
                      && o.Channel == MessageChannel.WhatsApp
                      && o.SellerId == sellerId
-                     && o.Lead.Source == LeadSource.MetaLeadAd  // solo Meta Lead Ads
+                     && (o.Lead.Source == LeadSource.MetaLeadAd
+                         || o.Priority >= MessageOutbox.BridgeManualPriority)
                      && o.StepIndex != null       // solo mensajes de cadencia (no chat)
                      && o.MediaAssetId == null    // solo texto (MVP)
                      && !string.IsNullOrWhiteSpace(o.Message))
@@ -157,6 +163,16 @@ public class BridgeController : ControllerBase
         item.Status = OutboxStatus.Sent;
         item.SentAt = DateTimeOffset.UtcNow;
         if (item.Error == MessageOutbox.BridgePulledError) item.Error = null;
+
+        // Avanzar el lead como hace OutboxSender tras un envío — sin esto el lead queda
+        // en Assigned/Queued para siempre y los sweeps lo ven como "nunca contactado".
+        // Solo hacia adelante: no pisar Replied/Interested/Closed.
+        var deliveredLead = await _db.Leads.FindAsync(item.LeadId);
+        if (deliveredLead is not null && deliveredLead.Status is LeadStatus.New or LeadStatus.Assigned or LeadStatus.Queued)
+        {
+            deliveredLead.Status = LeadStatus.Sent;
+            deliveredLead.SentAt ??= DateTimeOffset.UtcNow;
+        }
 
         // Registrar el outbound en la conversación: el celu manda por SU WhatsApp (sin
         // Evolution) así que no hay eco de webhook que lo persista — sin esto el envío
@@ -253,13 +269,15 @@ public class BridgeController : ControllerBase
             .CountAsync(o => o.Status == OutboxStatus.Scheduled
                           && o.Channel == MessageChannel.WhatsApp
                           && o.StepIndex != null
-                          && o.Lead.Source == LeadSource.MetaLeadAd);
+                          && (o.Lead.Source == LeadSource.MetaLeadAd
+                              || o.Priority >= MessageOutbox.BridgeManualPriority));
 
         var sentToday = await _db.Outbox
             .CountAsync(o => o.Status == OutboxStatus.Sent
                           && o.SentAt >= todayStart
                           && o.Channel == MessageChannel.WhatsApp
-                          && o.Lead.Source == LeadSource.MetaLeadAd);
+                          && (o.Lead.Source == LeadSource.MetaLeadAd
+                              || o.Priority >= MessageOutbox.BridgeManualPriority));
 
         return Ok(new BridgeStatsResponse
         {

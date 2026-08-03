@@ -7,13 +7,11 @@ import toast from 'react-hot-toast';
 import type { Seller, Product } from '../lib/types';
 import GaugeEditor from '../components/GaugeEditor';
 import Switch from '../components/Switch';
-import QrConnectModal from '../components/QrConnectModal';
 
 export default function Sellers() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Seller | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [qrSellerId, setQrSellerId] = useState<string | null>(null);
   const [pairing, setPairing] = useState<{ token: string; qrUrl: string } | null>(null);
 
   const sellersQ = useQuery({
@@ -101,7 +99,7 @@ export default function Sellers() {
                       </span>
                     )}
                     {!dev && !connected && (
-                      <span className="text-slate-400">○ sin dispositivo ni QR</span>
+                      <span className="text-slate-400">○ sin dispositivo</span>
                     )}
                   </div>
                 </button>
@@ -109,7 +107,7 @@ export default function Sellers() {
                   <Switch
                     on={s.sendingEnabled}
                     onClick={() => toggleSending(s)}
-                    title={hasLine ? 'Prender/apagar el envío de este vendedor' : 'Vinculá un dispositivo o conectá WhatsApp para poder enviar'} />
+                    title={hasLine ? 'Prender/apagar el envío de este vendedor' : 'Vinculá un dispositivo para poder enviar'} />
                   <span className="text-[10px] text-slate-400">envío</span>
                 </div>
               </div>
@@ -161,29 +159,22 @@ export default function Sellers() {
                     📱 Vincular dispositivo
                   </button>
                 )}
-                {selected.instanceStatus === 'Connected' ? (
+                {selected.instanceStatus === 'Connected' && (
                   <button
                     className="btn-secondary text-xs"
-                    title={`WhatsApp conectado por QR (${selected.evolutionInstance ?? ''}). Clic para desconectar.`}
+                    title={`Instancia QR legacy todavía conectada (${selected.evolutionInstance ?? ''}). Clic para desconectarla.`}
                     onClick={async () => {
-                      if (!confirm('¿Desconectar el WhatsApp (QR) de este vendedor? Deja de poder enviar por Evolution hasta reconectar.')) return;
+                      if (!confirm('¿Desconectar la instancia QR (Evolution) de este vendedor?')) return;
                       try {
                         await api.post(`/sellers/${selected.id}/instance/logout`);
-                        toast.success('WhatsApp desconectado');
-                        setSelected({ ...selected, instanceStatus: 'Disconnected', sendingEnabled: false });
+                        toast.success('Instancia QR desconectada');
+                        setSelected({ ...selected, instanceStatus: 'Disconnected' });
                         qc.invalidateQueries({ queryKey: ['sellers'] });
                       } catch {
                         toast.error('No se pudo desconectar');
                       }
                     }}>
-                    🔗 QR conectado — desconectar
-                  </button>
-                ) : (
-                  <button
-                    className="text-xs text-slate-400 underline hover:text-brand-600"
-                    title="Alternativa sin celu físico: conectar la línea por QR de Evolution"
-                    onClick={() => setQrSellerId(selected.id)}>
-                    conectar por QR (Evolution)
+                    🔗 QR legacy conectado — desconectar
                   </button>
                 )}
                 <div className="flex items-center gap-2 px-1">
@@ -276,17 +267,6 @@ export default function Sellers() {
         </div>
       )}
 
-      {qrSellerId && (
-        <QrConnectModal
-          title="Conectar WhatsApp del vendedor"
-          fetchUrl={`/sellers/${qrSellerId}/instance/qr`}
-          onClose={() => setQrSellerId(null)}
-          onConnected={() => {
-            qc.invalidateQueries({ queryKey: ['sellers'] });
-            if (selected?.id === qrSellerId) setSelected({ ...selected, instanceStatus: 'Connected' });
-          }}
-        />
-      )}
     </div>
   );
 }

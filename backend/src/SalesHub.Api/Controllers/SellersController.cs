@@ -166,7 +166,7 @@ public class SellersController : ControllerBase
         {
             var hasDevice = await _db.Devices.AnyAsync(d => d.SellerId == id, ct);
             if (!hasDevice)
-                return BadRequest(new { error = "Vinculá un dispositivo o conectá WhatsApp por QR antes de activar el envío" });
+                return BadRequest(new { error = "Vinculá un dispositivo antes de activar el envío" });
         }
         seller.SendingEnabled = req.Enabled;
         if (req.Enabled && seller.WarmupStartedAt is null) seller.WarmupStartedAt = DateTimeOffset.UtcNow;
@@ -243,7 +243,10 @@ public class SellersController : ControllerBase
         if (seller?.EvolutionInstance is null) return NotFound();
         await _evo.LogoutInstanceAsync(seller.EvolutionInstance.InstanceName, ct);
         seller.EvolutionInstance.Status = InstanceStatus.Disconnected;
-        seller.SendingEnabled = false;
+        // Si la línea sigue saliendo por un celu (bridge), desconectar el QR legacy
+        // no debe pausar el envío del vendedor.
+        var hasDevice = await _db.Devices.AnyAsync(d => d.SellerId == id, ct);
+        if (!hasDevice) seller.SendingEnabled = false;
         await _db.SaveChangesAsync(ct);
         return NoContent();
     }
