@@ -29,24 +29,44 @@ public class DeviceWebSocketMiddleware
         if (context.Request.Path == "/ws/devices" && context.WebSockets.IsWebSocketRequest)
         {
             var token = context.Request.Query["token"].FirstOrDefault();
-            if (string.IsNullOrWhiteSpace(token))
+            var deviceIdParam = context.Request.Query["deviceId"].FirstOrDefault();
+
+            var db = context.RequestServices.GetRequiredService<ApplicationDbContext>();
+            Device? device;
+
+            if (Guid.TryParse(deviceIdParam, out var deviceGuid))
+            {
+                // Reconexión de un device ya pareado
+                device = await db.Devices
+                    .Include(d => d.Seller)
+                    .FirstOrDefaultAsync(d => d.Id == deviceGuid);
+
+                if (device is null)
+                {
+                    context.Response.StatusCode = 401;
+                    await context.Response.WriteAsync("Unknown device");
+                    return;
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(token))
+            {
+                // Pairing inicial por token
+                device = await db.Devices
+                    .Include(d => d.Seller)
+                    .FirstOrDefaultAsync(d => d.PairingToken == token
+                        && d.PairingTokenExpiresAt > DateTimeOffset.UtcNow
+                        && d.Status == DeviceStatus.Pairing);
+
+                if (device is null)
+                {
+                    context.Response.StatusCode = 401;
+                    await context.Response.WriteAsync("Invalid or expired pairing token");
+                    return;
+                }
+            }
+            else
             {
                 context.Response.StatusCode = 400;
-                return;
-            }
-
-            // Validar token contra DB
-            var db = context.RequestServices.GetRequiredService<ApplicationDbContext>();
-            var device = await db.Devices
-                .Include(d => d.Seller)
-                .FirstOrDefaultAsync(d => d.PairingToken == token
-                    && d.PairingTokenExpiresAt > DateTimeOffset.UtcNow
-                    && d.Status == DeviceStatus.Pairing);
-
-            if (device is null)
-            {
-                context.Response.StatusCode = 401;
-                await context.Response.WriteAsync("Invalid or expired pairing token");
                 return;
             }
 
@@ -62,6 +82,9 @@ public class DeviceWebSocketMiddleware
 
             var sellerName = device.Seller?.DisplayName;
             _hub.Register(device.Id, socket, sellerName);
+
+            // Confirmar pairing: el device guarda su deviceId para reconectar sin token
+            await _hub.SendAsync(device.Id, new { type = "paired", deviceId = device.Id });
 
             try
             {
