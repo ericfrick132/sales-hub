@@ -87,31 +87,9 @@ public class LeadIngestService : ILeadIngestService
                     // Meta Lead Ads = ya completaron un formulario (nos conocen). NO les mandamos el
                     // drip de venta con nota de voz: arrancamos DERECHO el onboarding (intro + 1ª
                     // pregunta) como primer mensaje. El resto del alta lo sigue el loop reply-driven
-                    // (fedToClose ya lo habilita). Solo si el producto tiene onboarding self-serve
-                    // habilitado y el flag prendido; si no, cae al drip normal.
-                    var startedOnboarding = false;
-                    if (lead.Source == LeadSource.MetaLeadAd
-                        && await _db.IsFlagOnAsync("onboarding", false, ct))
-                    {
-                        var onbCfg = await _db.OnboardingConfigs.FirstOrDefaultAsync(
-                            c => c.Enabled && c.SelfServe && c.ProductKey == product.ProductKey, ct);
-                        if (onbCfg is not null)
-                        {
-                            // Crea el LeadOnboarding (Step→1) y devuelve intro + 1ª pregunta; la
-                            // encolamos como texto por el mismo outbox del drip (mismo transporte, sin
-                            // audio). Al responder, el loop reply-driven sigue desde la 2ª pregunta.
-                            var ob = await _onboarding.ProcessAsync(lead, string.Empty, onbCfg, ct);
-                            if (!string.IsNullOrWhiteSpace(ob.Reply))
-                            {
-                                // Render de placeholders del guion ({seller}, {nombre}, {saludo}…):
-                                // este path encola directo al outbox, no pasa por OnboardingSendAsync.
-                                OutboxEnqueueHelper.EnqueueOnboardingText(
-                                    _db, lead, seller, phone, instanceName,
-                                    _renderer.RenderTemplate(ob.Reply!, lead, product, seller));
-                                startedOnboarding = true;
-                            }
-                        }
-                    }
+                    // (fedToClose ya lo habilita). Si no aplica (flag/config), cae al drip normal.
+                    var startedOnboarding = await _onboarding.TryKickoffAsync(
+                        lead, product, seller, phone, instanceName, _renderer, ct);
 
                     if (!startedOnboarding)
                     {

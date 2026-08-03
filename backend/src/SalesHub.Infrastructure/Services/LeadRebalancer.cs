@@ -35,6 +35,7 @@ public class LeadRebalancer
     private readonly ApplicationDbContext _db;
     private readonly ILeadAssigner _assigner;
     private readonly IMessageRenderer _renderer;
+    private readonly OnboardingService _onboarding;
     private readonly IConfiguration _config;
     private readonly ILogger<LeadRebalancer> _log;
 
@@ -44,9 +45,10 @@ public class LeadRebalancer
 
     public LeadRebalancer(
         ApplicationDbContext db, ILeadAssigner assigner, IMessageRenderer renderer,
-        IConfiguration config, ILogger<LeadRebalancer> log)
+        OnboardingService onboarding, IConfiguration config, ILogger<LeadRebalancer> log)
     {
-        _db = db; _assigner = assigner; _renderer = renderer; _config = config; _log = log;
+        _db = db; _assigner = assigner; _renderer = renderer; _onboarding = onboarding;
+        _config = config; _log = log;
     }
 
     public record RebalanceResult(int MismatchReleased, int Rescued, int OrphansAssigned, int Drained, int QueuedForReady);
@@ -138,9 +140,19 @@ public class LeadRebalancer
             var seller = capableById[lead.SellerId!.Value];
             if (seller.EvolutionInstance is null) continue;
 
-            OutboxEnqueueHelper.EnqueueLeadMessages(
-                _db, _renderer, lead, lead.Product, seller,
-                lead.WhatsappPhone!, seller.EvolutionInstance.InstanceName);
+            // Leads de Meta Lead Ads con onboarding self-serve: arrancan por el guion de
+            // alta, NUNCA por la cadencia (mismo camino que el ingest). Sin esto, un lead
+            // ingresado con la línea caída recibía acá la cadencia y al contestar el agente
+            // arrancaba el onboarding encima → doble opener (caso real 2026-08-03).
+            var startedOnboarding = await _onboarding.TryKickoffAsync(
+                lead, lead.Product, seller, lead.WhatsappPhone!,
+                seller.EvolutionInstance.InstanceName, _renderer, ct);
+            if (!startedOnboarding)
+            {
+                OutboxEnqueueHelper.EnqueueLeadMessages(
+                    _db, _renderer, lead, lead.Product, seller,
+                    lead.WhatsappPhone!, seller.EvolutionInstance.InstanceName);
+            }
             lead.Status = LeadStatus.Queued;
             lead.QueuedAt = DateTimeOffset.UtcNow;
             queued++;
@@ -262,7 +274,7 @@ public class LeadRebalancer
             if (sellerId is null) continue;
             var seller = capable.FirstOrDefault(s => s.Id == sellerId.Value);
             if (seller is null) continue;
-            MoveLeadTo(lead, seller);
+            await MoveLeadToAsync(lead, seller, ct);
             assigned++;
         }
         if (assigned > 0) await _db.SaveChangesAsync(ct);
@@ -372,7 +384,7 @@ public class LeadRebalancer
                     if (movable.Count == 0) continue;
 
                     await CancelPendingOutboxAsync(movable.Select(l => l.Id).ToList(), ct);
-                    foreach (var lead in movable) MoveLeadTo(lead, receiver);
+                    foreach (var lead in movable) await MoveLeadToAsync(lead, receiver, ct);
 
                     deficit -= movable.Count;
                     drained += movable.Count;
@@ -387,8 +399,10 @@ public class LeadRebalancer
         return drained;
     }
 
-    /// <summary>Asigna + re-renderiza + encola la cadencia en el seller destino (ya conectado).</summary>
-    private void MoveLeadTo(Lead lead, Seller seller)
+    /// <summary>Asigna + re-renderiza + encola en el seller destino (ya conectado). Leads de
+    /// Meta Lead Ads con onboarding self-serve arrancan por el guion de alta en vez de la
+    /// cadencia — mismo camino que el ingest (ver TryKickoffAsync).</summary>
+    private async Task MoveLeadToAsync(Lead lead, Seller seller, CancellationToken ct)
     {
         lead.SellerId = seller.Id;
         lead.AssignedAt = DateTimeOffset.UtcNow;
@@ -402,9 +416,15 @@ public class LeadRebalancer
 
         if (!string.IsNullOrWhiteSpace(lead.WhatsappPhone) && seller.EvolutionInstance is not null)
         {
-            OutboxEnqueueHelper.EnqueueLeadMessages(
-                _db, _renderer, lead, lead.Product, seller,
-                lead.WhatsappPhone, seller.EvolutionInstance.InstanceName);
+            var startedOnboarding = await _onboarding.TryKickoffAsync(
+                lead, lead.Product, seller, lead.WhatsappPhone!,
+                seller.EvolutionInstance.InstanceName, _renderer, ct);
+            if (!startedOnboarding)
+            {
+                OutboxEnqueueHelper.EnqueueLeadMessages(
+                    _db, _renderer, lead, lead.Product, seller,
+                    lead.WhatsappPhone, seller.EvolutionInstance.InstanceName);
+            }
             lead.Status = LeadStatus.Queued;
             lead.QueuedAt = DateTimeOffset.UtcNow;
         }

@@ -59,6 +59,45 @@ public class OnboardingService
             || await _email.SendAsync(to, subject, body, appName, ct);
     }
 
+    /// <summary>
+    /// Arranca el onboarding self-serve como PRIMER contacto de un lead de Meta Lead Ads:
+    /// crea el LeadOnboarding (Step→1) y encola intro + 1ª pregunta al outbox. Devuelve
+    /// false si no aplica (otro origen, flag apagado, config sin self-serve) — el caller
+    /// cae al drip normal.
+    ///
+    /// Es el ÚNICO camino válido para encolar el primer mensaje de estos leads, y lo
+    /// comparten ingest y rebalancer. Sin esto, el rebalancer (que solo conocía
+    /// EnqueueLeadMessages) les encolaba la CADENCIA, y al responder el lead el agente
+    /// arrancaba el onboarding igual → dos openers con pitch distinto al mismo lead.
+    /// </summary>
+    public async Task<bool> TryKickoffAsync(Lead lead, Product product, Seller seller,
+        string whatsappPhone, string instanceName, IMessageRenderer renderer, CancellationToken ct)
+    {
+        if (lead.Source != LeadSource.MetaLeadAd) return false;
+        if (!await _db.IsFlagOnAsync("onboarding", false, ct)) return false;
+        var cfg = await _db.OnboardingConfigs.FirstOrDefaultAsync(
+            c => c.Enabled && c.SelfServe && c.ProductKey == product.ProductKey, ct);
+        if (cfg is null) return false;
+
+        var ob = await ProcessAsync(lead, string.Empty, cfg, ct);
+        if (string.IsNullOrWhiteSpace(ob.Reply)) return false;
+
+        // El onboarding toma la conversación: la cadencia pendiente que haya dejado un
+        // path viejo muere acá — dos guiones no conviven en el mismo chat.
+        var pendingCadence = await _db.Outbox
+            .Where(o => o.LeadId == lead.Id && o.Status == OutboxStatus.Scheduled && o.StepIndex != null)
+            .ToListAsync(ct);
+        foreach (var row in pendingCadence)
+        {
+            row.Status = OutboxStatus.Cancelled;
+            row.Error = "Onboarding kickoff: la cadencia no convive con el guion de alta";
+        }
+
+        OutboxEnqueueHelper.EnqueueOnboardingText(_db, lead, seller, whatsappPhone, instanceName,
+            renderer.RenderTemplate(ob.Reply!, lead, product, seller));
+        return true;
+    }
+
     private static readonly Regex KeywordRx = new(
         @"\b(precio|costo|cuesta|cu[aá]nto sale|cu[aá]nto vale|valor|tarifa|presupuesto|info|informaci[oó]n|qu[eé] es|c[oó]mo funciona|para qu[eé] sirve|qu[eé] hace|demo|prueba|gratis|trial|probar|funcion(a|es)|features|caracter[ií]sticas|qu[eé] incluye)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -212,6 +251,21 @@ public class OnboardingService
                     MediaAssetIds: cfg.ReengageMediaAssetIds.Count > 0 ? cfg.ReengageMediaAssetIds : null,
                     PostMediaText: questions[0],
                     MediaCaptions: cfg.ReengageMediaCaptions.Count > 0 ? cfg.ReengageMediaCaptions : null);
+            }
+            // El lead YA tiene conversación abierta (la cadencia lo contactó y él contestó):
+            // blastear el intro completo acá re-saluda como si nada y PISA lo que acaba de
+            // decir (caso real 2026-08-03: "ya contraté un servicio" → "buenas! soy Eric de
+            // playcrew..." → "No gracias"). En cambio va off-script: la IA le contesta el
+            // mensaje real y el guion queda con la 1ª pregunta pendiente — el mismo
+            // mecanismo que las dudas durante el alta.
+            if (!string.IsNullOrWhiteSpace(msg) && await _db.ConversationMessages.AnyAsync(
+                    m => m.LeadId == lead.Id && m.Direction == MessageDirection.Outbound, ct))
+            {
+                ob.Step = 1;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult(null, OffScript: true, Provisioned: false,
+                    PendingQuestion: questions[0]);
             }
             reply = Join(intro, questions[0]);
             ob.Step = 1;

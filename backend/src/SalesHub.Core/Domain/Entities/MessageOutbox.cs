@@ -4,6 +4,14 @@ namespace SalesHub.Core.Domain.Entities;
 
 public class MessageOutbox
 {
+    /// <summary>
+    /// Marcador en Error mientras el bridge Android tiene la fila pulleada sin ack: si el
+    /// celu muere después de enviar pero antes de confirmar, el reclaim de filas Sending
+    /// viejas NO debe re-programarla (pudo haber salido → reintentar duplica). Se limpia
+    /// en /delivered; /failed lo pisa con el error real.
+    /// </summary>
+    public const string BridgePulledError = "bridge:pulled";
+
     public Guid Id { get; set; }
 
     public Guid LeadId { get; set; }

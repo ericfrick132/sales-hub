@@ -72,7 +72,13 @@ public class OutboxSender
         {
             foreach (var s in stale)
             {
-                s.Status = s.Attempts >= 3 ? OutboxStatus.Failed : OutboxStatus.Scheduled;
+                // Fila pulleada por el bridge Android sin ack: el celu pudo haber ENVIADO y
+                // morir antes de confirmar. Reintentar duplicaría (mismo criterio que
+                // sendAttempted) → Failed ambiguo, no vuelve a Scheduled.
+                if (s.Error == MessageOutbox.BridgePulledError)
+                    s.Status = OutboxStatus.Failed;
+                else
+                    s.Status = s.Attempts >= 3 ? OutboxStatus.Failed : OutboxStatus.Scheduled;
                 s.LockedAt = null;
             }
             await _db.SaveChangesAsync(ct);
@@ -393,6 +399,31 @@ public class OutboxSender
                     // Persistimos el snapshot actualizado AHORA, antes de mandar — si crashea
                     // a mitad del send, queda Sending con el contenido correcto para reintento.
                     await _db.SaveChangesAsync(ct);
+                }
+
+                // ─── Anti-duplicado textual ──────────────────────────────────
+                // El MISMO texto ya le salió a este lead hace poco — lo haya mandado este
+                // sender, el bridge, o una fila zombie re-despachada tras un crash o una
+                // reconexión (caso real 2026-08-03: intro de onboarding del 30-jul re-enviado
+                // ENTERO 4 días después al reconectar la línea). El guion repetido textual es
+                // olor a bot y riesgo de ban. Skipped, no Failed: el mensaje ya está dicho.
+                // Se excluyen los intentos Failed (retry legítimo de la misma fila).
+                if (next.MediaAssetId is null && !string.IsNullOrWhiteSpace(next.Message))
+                {
+                    var dupWindow = DateTimeOffset.UtcNow.AddDays(-7);
+                    var dup = await _db.ConversationMessages.AnyAsync(m =>
+                        m.LeadId == next.LeadId
+                        && m.Direction == MessageDirection.Outbound
+                        && m.Status != MessageDeliveryStatus.Failed
+                        && m.Timestamp >= dupWindow
+                        && m.Text == next.Message, ct);
+                    if (dup)
+                    {
+                        next.Status = OutboxStatus.Skipped;
+                        next.Error = "Duplicado: mismo texto ya enviado al lead en los últimos 7 días";
+                        await _db.SaveChangesAsync(ct);
+                        continue;
+                    }
                 }
 
                 if (seller.ReadIncomingFirst)

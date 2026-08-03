@@ -78,9 +78,10 @@ public class BridgeController : ControllerBase
         if (lastSentAt != null && (now - lastSentAt.Value).TotalMinutes < minGapMinutes)
             return Ok(new BridgePendingResponse { Pending = false, Message = "Waiting min gap" });
 
-        // Próximo mensaje Scheduled del seller del device, prioridad más alta
-        // primero. Solo mensajes cuyo horario ya llegó.
-        var next = await _db.Outbox
+        // Próximos mensajes Scheduled del seller del device, prioridad más alta
+        // primero. Solo mensajes cuyo horario ya llegó. Traemos varios para poder
+        // saltar (y marcar) los duplicados textuales sin devolver cola vacía.
+        var candidates = await _db.Outbox
             .Include(o => o.Lead)
             .Where(o => o.Status == OutboxStatus.Scheduled
                      && o.ScheduledAt <= now
@@ -92,15 +93,45 @@ public class BridgeController : ControllerBase
                      && !string.IsNullOrWhiteSpace(o.Message))
             .OrderByDescending(o => o.Priority)
             .ThenBy(o => o.ScheduledAt)
-            .FirstOrDefaultAsync();
+            .Take(5)
+            .ToListAsync();
+
+        // Anti-duplicado textual: si el mismo texto ya le salió a este lead hace poco
+        // (por Evolution, por el bridge o por una fila zombie), no lo repetimos —
+        // mismo criterio que OutboxSender.
+        MessageOutbox? next = null;
+        var dupWindow = DateTimeOffset.UtcNow.AddDays(-7);
+        foreach (var cand in candidates)
+        {
+            var dup = await _db.ConversationMessages.AnyAsync(m =>
+                m.LeadId == cand.LeadId
+                && m.Direction == MessageDirection.Outbound
+                && m.Status != MessageDeliveryStatus.Failed
+                && m.Timestamp >= dupWindow
+                && m.Text == cand.Message);
+            if (dup)
+            {
+                cand.Status = OutboxStatus.Skipped;
+                cand.Error = "Duplicado: mismo texto ya enviado al lead en los últimos 7 días";
+                continue;
+            }
+            next = cand;
+            break;
+        }
 
         if (next is null)
+        {
+            await _db.SaveChangesAsync(); // persistir los Skipped, si hubo
             return Ok(new BridgePendingResponse { Pending = false, Message = "Queue empty" });
+        }
 
-        // Lockear para que el OutboxSender no lo tome
+        // Lockear para que el OutboxSender no lo tome. El marcador en Error hace que,
+        // si el celu muere sin ack, el reclaim NO la re-programe (pudo haber enviado)
+        // — va a Failed ambiguo en vez de duplicar.
         next.Status = OutboxStatus.Sending;
         next.LockedAt = now;
         next.Attempts++;
+        next.Error = MessageOutbox.BridgePulledError;
         await _db.SaveChangesAsync();
 
         return Ok(new BridgePendingResponse
@@ -125,6 +156,23 @@ public class BridgeController : ControllerBase
 
         item.Status = OutboxStatus.Sent;
         item.SentAt = DateTimeOffset.UtcNow;
+        if (item.Error == MessageOutbox.BridgePulledError) item.Error = null;
+
+        // Registrar el outbound en la conversación: el celu manda por SU WhatsApp (sin
+        // Evolution) así que no hay eco de webhook que lo persista — sin esto el envío
+        // no aparece en /conversaciones y el guard anti-duplicado no lo ve.
+        _db.ConversationMessages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = item.LeadId,
+            SellerId = item.SellerId,
+            Direction = MessageDirection.Outbound,
+            Status = MessageDeliveryStatus.Sent,
+            Text = item.Message,
+            EvolutionInstance = item.EvolutionInstance,
+            Timestamp = DateTimeOffset.UtcNow,
+            IsRead = true
+        });
         await _db.SaveChangesAsync();
 
         return Ok(new { ok = true });

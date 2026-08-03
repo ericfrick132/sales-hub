@@ -33,6 +33,13 @@ public static class OutboxEnqueueHelper
         DateTimeOffset? scheduledAt = null,
         MessageChannel channel = MessageChannel.WhatsApp)
     {
+        // Lead con onboarding arrancado (hay LeadOnboarding): el guion de alta es dueño de
+        // la conversación — encolarle la cadencia lo pisa con un SEGUNDO opener de pitch
+        // distinto (caso real 2026-08-01: lead a mitad del alta de playcrew recibió además
+        // el opener de la cadencia por un sweep del rebalancer). Requeues/resyncs sobre
+        // estos leads son no-op; su seguimiento lo lleva el agente conversacional.
+        if (db.Set<LeadOnboarding>().Any(o => o.LeadId == lead.Id)) return 0;
+
         var when = scheduledAt ?? DateTimeOffset.UtcNow;
         var count = 0;
 
