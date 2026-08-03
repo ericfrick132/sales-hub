@@ -46,11 +46,37 @@ public class BridgeController : ControllerBase
 
         var sellerIds = activeSellers.Select(s => s.Id).ToHashSet();
 
+        // Pacing anti-ban (política post-ban 2026-07-30): techo diario + gap mínimo
+        // entre envíos. Sin esto el bridge drena toda la cola a velocidad de polling.
+        var dailyCap = _cfg.GetValue<int?>("Bridge:DailyCap") ?? 15;
+        var minGapMinutes = _cfg.GetValue<int?>("Bridge:MinGapMinutes") ?? 10;
+        var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
+
+        var sentToday = await _db.Outbox
+            .CountAsync(o => o.Status == OutboxStatus.Sent
+                          && o.SentAt >= todayStart
+                          && o.Channel == MessageChannel.WhatsApp
+                          && o.StepIndex != null
+                          && o.Lead.Source == LeadSource.MetaLeadAd);
+        if (sentToday >= dailyCap)
+            return Ok(new BridgePendingResponse { Pending = false, Message = $"Daily cap reached ({sentToday}/{dailyCap})" });
+
+        var lastSentAt = await _db.Outbox
+            .Where(o => o.Status == OutboxStatus.Sent
+                     && o.SentAt != null
+                     && o.Channel == MessageChannel.WhatsApp
+                     && o.StepIndex != null
+                     && o.Lead.Source == LeadSource.MetaLeadAd)
+            .MaxAsync(o => o.SentAt);
+        if (lastSentAt != null && (now - lastSentAt.Value).TotalMinutes < minGapMinutes)
+            return Ok(new BridgePendingResponse { Pending = false, Message = "Waiting min gap" });
+
         // Próximo mensaje Scheduled, WhatsApp, prioridad más alta primero,
-        // que pertenezca a un seller activo.
+        // que pertenezca a un seller activo. Solo mensajes cuyo horario ya llegó.
         var next = await _db.Outbox
             .Include(o => o.Lead)
             .Where(o => o.Status == OutboxStatus.Scheduled
+                     && o.ScheduledAt <= now
                      && o.Channel == MessageChannel.WhatsApp
                      && sellerIds.Contains(o.SellerId)
                      && o.Lead.Source == LeadSource.MetaLeadAd  // solo Meta Lead Ads
