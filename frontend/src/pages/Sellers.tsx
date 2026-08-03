@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import type { Seller, Product } from '../lib/types';
@@ -13,6 +14,7 @@ export default function Sellers() {
   const [selected, setSelected] = useState<Seller | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [qrSellerId, setQrSellerId] = useState<string | null>(null);
+  const [pairing, setPairing] = useState<{ token: string; qrUrl: string } | null>(null);
 
   const sellersQ = useQuery({
     queryKey: ['sellers'],
@@ -28,6 +30,24 @@ export default function Sellers() {
     await api.put(`/sellers/${selected.id}`, patch);
     toast.success('Guardado');
     qc.invalidateQueries({ queryKey: ['sellers'] });
+  }
+
+  // Crea el device ya asignado al vendedor y muestra el QR de instalación + token.
+  async function pairDevice(s: Seller) {
+    try {
+      const { data } = await api.post('/devices', { name: `Celu de ${s.displayName}`, sellerId: s.id });
+      setPairing({ token: data.pairingToken, qrUrl: data.qrUrl });
+      if (selected?.id === s.id) {
+        setSelected({
+          ...selected,
+          device: { id: data.id, name: data.name, status: 'Pairing', online: false }
+        });
+      }
+      qc.invalidateQueries({ queryKey: ['sellers'] });
+      qc.invalidateQueries({ queryKey: ['devices'] });
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo crear el dispositivo');
+    }
   }
 
   async function toggleSending(s: Seller) {
@@ -57,6 +77,8 @@ export default function Sellers() {
         <div className="card divide-y divide-slate-100">
           {(sellersQ.data ?? []).map((s) => {
             const connected = s.instanceStatus === 'Connected';
+            const dev = s.device;
+            const hasLine = connected || !!dev;
             return (
               <div
                 key={s.id}
@@ -64,19 +86,30 @@ export default function Sellers() {
                 <button onClick={() => setSelected(s)} className="flex-1 text-left min-w-0">
                   <div className="font-medium truncate">{s.displayName}</div>
                   <div className="text-xs text-slate-500 truncate">{s.email} — {s.role}</div>
-                  <div className="text-[11px] mt-0.5">
-                    <span className={connected ? 'text-emerald-600' : 'text-slate-400'}>
-                      {connected
-                        ? `● WhatsApp conectado${s.connectedPhoneNumber ? ` · +${s.connectedPhoneNumber}` : ''}`
-                        : `○ WhatsApp ${(s.instanceStatus ?? 'sin instancia').toLowerCase()}`}
-                    </span>
+                  <div className="text-[11px] mt-0.5 truncate">
+                    {dev && (
+                      <span className={dev.online ? 'text-emerald-600' : 'text-slate-400'}>
+                        {dev.online
+                          ? `● ${dev.name}`
+                          : `○ ${dev.name} ${dev.status === 'Pairing' ? '(esperando pairing)' : '(offline)'}`}
+                      </span>
+                    )}
+                    {dev && connected && <span className="text-slate-300"> · </span>}
+                    {connected && (
+                      <span className="text-emerald-600">
+                        {`● QR${s.connectedPhoneNumber ? ` · +${s.connectedPhoneNumber}` : ''}`}
+                      </span>
+                    )}
+                    {!dev && !connected && (
+                      <span className="text-slate-400">○ sin dispositivo ni QR</span>
+                    )}
                   </div>
                 </button>
                 <div className="flex flex-col items-center gap-0.5 shrink-0">
                   <Switch
                     on={s.sendingEnabled}
                     onClick={() => toggleSending(s)}
-                    title={connected ? 'Prender/apagar el envío de este vendedor' : 'Conectá WhatsApp para poder enviar'} />
+                    title={hasLine ? 'Prender/apagar el envío de este vendedor' : 'Vinculá un dispositivo o conectá WhatsApp para poder enviar'} />
                   <span className="text-[10px] text-slate-400">envío</span>
                 </div>
               </div>
@@ -107,12 +140,33 @@ export default function Sellers() {
                 <p className="text-sm text-slate-500 break-all">{selected.email}</p>
               </div>
               <div className="flex gap-2 flex-wrap items-center">
+                {selected.device ? (
+                  <Link
+                    to="/devices"
+                    className={`text-xs px-2 py-1 rounded border ${
+                      selected.device.online
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        : 'border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100'
+                    }`}
+                    title="La línea de este vendedor sale por este celu (bridge). Clic para administrar dispositivos.">
+                    📱 {selected.device.name} — {selected.device.online
+                      ? `online${selected.device.batteryLevel != null ? ` 🔋${selected.device.batteryLevel}%` : ''}`
+                      : selected.device.status === 'Pairing' ? 'esperando pairing' : 'offline'}
+                  </Link>
+                ) : (
+                  <button
+                    className="text-xs px-2 py-1 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    title="Crea el dispositivo asignado a este vendedor y muestra el QR para instalar la app bridge en el celu"
+                    onClick={() => pairDevice(selected)}>
+                    📱 Vincular dispositivo
+                  </button>
+                )}
                 {selected.instanceStatus === 'Connected' ? (
                   <button
                     className="btn-secondary text-xs"
-                    title={`WhatsApp conectado (${selected.evolutionInstance ?? ''}). Clic para desconectar.`}
+                    title={`WhatsApp conectado por QR (${selected.evolutionInstance ?? ''}). Clic para desconectar.`}
                     onClick={async () => {
-                      if (!confirm('¿Desconectar el WhatsApp de este vendedor? Deja de poder enviar hasta reconectar.')) return;
+                      if (!confirm('¿Desconectar el WhatsApp (QR) de este vendedor? Deja de poder enviar por Evolution hasta reconectar.')) return;
                       try {
                         await api.post(`/sellers/${selected.id}/instance/logout`);
                         toast.success('WhatsApp desconectado');
@@ -122,13 +176,14 @@ export default function Sellers() {
                         toast.error('No se pudo desconectar');
                       }
                     }}>
-                    📱 conectado — desconectar
+                    🔗 QR conectado — desconectar
                   </button>
                 ) : (
                   <button
-                    className="text-xs px-2 py-1 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    className="text-xs text-slate-400 underline hover:text-brand-600"
+                    title="Alternativa sin celu físico: conectar la línea por QR de Evolution"
                     onClick={() => setQrSellerId(selected.id)}>
-                    📱 Conectar WhatsApp
+                    conectar por QR (Evolution)
                   </button>
                 )}
                 <div className="flex items-center gap-2 px-1">
@@ -198,6 +253,28 @@ export default function Sellers() {
         products={products.data ?? []}
         onClose={() => setShowCreate(false)}
         onDone={() => { qc.invalidateQueries({ queryKey: ['sellers'] }); setShowCreate(false); }} />}
+
+      {pairing && (
+        <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4" onClick={() => setPairing(null)}>
+          <div className="card p-6 w-full max-w-sm space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold">Vincular dispositivo</h3>
+            <div className="flex flex-col items-center">
+              <QRCodeSVG value={pairing.qrUrl} size={180} marginSize={2} className="bg-white rounded" />
+              <div className="text-xs text-slate-500 text-center mt-2">
+                1. Escaneá el QR con el celu → descarga e instala la app
+              </div>
+              <div className="font-mono text-2xl tracking-widest mt-2">{pairing.token}</div>
+              <div className="text-xs text-slate-500 text-center mt-1">
+                2. Abrí la app e ingresá este código (válido 10 min)
+              </div>
+              <div className="text-xs text-slate-400 text-center mt-1 truncate max-w-full">{pairing.qrUrl}</div>
+            </div>
+            <div className="flex justify-end">
+              <button className="btn-secondary" onClick={() => setPairing(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {qrSellerId && (
         <QrConnectModal

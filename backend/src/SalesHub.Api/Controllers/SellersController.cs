@@ -43,7 +43,8 @@ public class SellersController : ControllerBase
             }
         }
         if (dirty) await _db.SaveChangesAsync(ct);
-        return sellers.Select(ToDto).ToList();
+        var devices = await LoadDevicesAsync(sellers.Select(s => s.Id), ct);
+        return sellers.Select(s => ToDto(s, devices.GetValueOrDefault(s.Id))).ToList();
     }
 
     /// <summary>Devuelve el seller logueado (para que él mismo lea sus gauges sin admin).</summary>
@@ -54,7 +55,8 @@ public class SellersController : ControllerBase
         if (id == Guid.Empty) return Forbid();
         var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == id, ct);
         if (seller is null) return NotFound();
-        return ToDto(seller);
+        var devices = await LoadDevicesAsync(new[] { seller.Id }, ct);
+        return ToDto(seller, devices.GetValueOrDefault(seller.Id));
     }
 
     [HttpPost]
@@ -135,7 +137,8 @@ public class SellersController : ControllerBase
 
         seller.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return ToDto(seller);
+        var devices = await LoadDevicesAsync(new[] { seller.Id }, ct);
+        return ToDto(seller, devices.GetValueOrDefault(seller.Id));
     }
 
     [HttpDelete("{id:guid}")]
@@ -157,8 +160,14 @@ public class SellersController : ControllerBase
         if (!CurrentUser.IsAdmin(User) && callerId != id) return Forbid();
         var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == id, ct);
         if (seller is null) return NotFound();
+        // Una línea puede salir por Evolution (QR) o por un dispositivo físico (bridge):
+        // cualquiera de las dos habilita el envío.
         if (req.Enabled && (seller.EvolutionInstance is null || seller.EvolutionInstance.Status != InstanceStatus.Connected))
-            return BadRequest(new { error = "Conectá WhatsApp antes de activar el envío" });
+        {
+            var hasDevice = await _db.Devices.AnyAsync(d => d.SellerId == id, ct);
+            if (!hasDevice)
+                return BadRequest(new { error = "Vinculá un dispositivo o conectá WhatsApp por QR antes de activar el envío" });
+        }
         seller.SendingEnabled = req.Enabled;
         if (req.Enabled && seller.WarmupStartedAt is null) seller.WarmupStartedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
@@ -298,7 +307,28 @@ public class SellersController : ControllerBase
         }
     }
 
-    private static SellerDto ToDto(Seller s) => new(
+    /// <summary>Device asignado por seller (si tiene más de uno, el de heartbeat más reciente).</summary>
+    private async Task<Dictionary<Guid, Device>> LoadDevicesAsync(IEnumerable<Guid> sellerIds, CancellationToken ct)
+    {
+        var ids = sellerIds.ToList();
+        var devices = await _db.Devices.AsNoTracking()
+            .Where(d => d.SellerId != null && ids.Contains(d.SellerId.Value))
+            .ToListAsync(ct);
+        return devices
+            .GroupBy(d => d.SellerId!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(d => d.LastHeartbeatAt ?? DateTimeOffset.MinValue).First());
+    }
+
+    private static SellerDeviceDto? ToDeviceDto(Device? d)
+    {
+        if (d is null) return null;
+        var online = d.Status == DeviceStatus.Online
+                     && d.LastHeartbeatAt is not null
+                     && DateTimeOffset.UtcNow - d.LastHeartbeatAt.Value < TimeSpan.FromSeconds(60);
+        return new SellerDeviceDto(d.Id, d.Name, d.Status.ToString(), online, d.BatteryLevel, d.LastHeartbeatAt);
+    }
+
+    private static SellerDto ToDto(Seller s, Device? device = null) => new(
         s.Id, s.SellerKey, s.DisplayName, s.Email, s.Role.ToString(), s.IsActive, s.SendingEnabled,
         s.WhatsappPhone, s.EvolutionInstance?.InstanceName, s.EvolutionInstance?.Status,
         s.VerticalsWhitelist, s.RegionsAssigned, s.KeywordRules, s.SendMode, s.DailyCap, s.DailyVariancePct, s.WarmupDays, s.WarmupStartedAt,
@@ -306,5 +336,5 @@ public class SellersController : ControllerBase
         s.DelayMinSeconds, s.DelayMaxSeconds, s.BurstSize, s.BurstPauseMinSeconds, s.BurstPauseMaxSeconds,
         s.PreSendTypingMinSeconds, s.PreSendTypingMaxSeconds, s.ReadIncomingFirst,
         s.SkipDayProbabilityPct, s.TypoProbabilityPct, s.EvolutionInstance?.ConnectedPhoneNumber,
-        s.AutoArchiveChats);
+        s.AutoArchiveChats, ToDeviceDto(device));
 }

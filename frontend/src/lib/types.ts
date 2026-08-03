@@ -228,6 +228,16 @@ export interface MediaAsset {
 export type InstanceStatus = 'Disconnected' | 'Connecting' | 'Connected' | 'Banned' | 'Unknown' | null;
 export type SendMode = 'Conservative' | 'Balanced' | 'Aggressive' | 'Custom';
 
+/** Dispositivo Android (bridge) asignado a un vendedor. */
+export interface SellerDevice {
+  id: string;
+  name: string;
+  status: 'Offline' | 'Online' | 'Pairing' | 'Error';
+  online: boolean;
+  batteryLevel?: number | null;
+  lastHeartbeatAt?: string | null;
+}
+
 export interface Seller {
   id: string;
   sellerKey: string;
@@ -241,6 +251,8 @@ export interface Seller {
   instanceStatus?: InstanceStatus;
   /** Numero de WhatsApp vinculado a la instancia (backfill lazy desde Evolution). */
   connectedPhoneNumber?: string | null;
+  /** Dispositivo Android (bridge) asignado — la linea sale por el celu, sin QR de Evolution. */
+  device?: SellerDevice | null;
   /** Archivar el chat de cada lead (linea que comparte telefono con el uso personal). */
   autoArchiveChats?: boolean;
   verticalsWhitelist: string[];

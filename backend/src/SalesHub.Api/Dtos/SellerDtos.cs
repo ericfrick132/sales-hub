@@ -35,7 +35,17 @@ public record SellerDto(
     int SkipDayProbabilityPct,
     int TypoProbabilityPct,
     string? ConnectedPhoneNumber = null,
-    bool AutoArchiveChats = false);
+    bool AutoArchiveChats = false,
+    SellerDeviceDto? Device = null);
+
+/// <summary>Dispositivo Android (bridge) asignado al vendedor — la línea sale por el celu, sin QR de Evolution.</summary>
+public record SellerDeviceDto(
+    Guid Id,
+    string Name,
+    string Status,
+    bool Online,
+    int? BatteryLevel,
+    DateTimeOffset? LastHeartbeatAt);
 
 public record CreateSellerRequest(
     string SellerKey,
