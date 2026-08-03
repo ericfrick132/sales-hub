@@ -16,11 +16,14 @@ public class BridgeController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IConfiguration _cfg;
+    private readonly SalesHub.Api.WebSockets.BridgeTestSendService _testSends;
 
-    public BridgeController(ApplicationDbContext db, IConfiguration cfg)
+    public BridgeController(ApplicationDbContext db, IConfiguration cfg,
+        SalesHub.Api.WebSockets.BridgeTestSendService testSends)
     {
         _db = db;
         _cfg = cfg;
+        _testSends = testSends;
     }
 
     /// <summary>
@@ -41,7 +44,24 @@ public class BridgeController : ControllerBase
             return Ok(new BridgePendingResponse { Pending = false, Message = "App desactualizada: falta deviceId" });
 
         var device = await _db.Devices.FindAsync(deviceId.Value);
-        if (device?.SellerId is null)
+        if (device is null)
+            return Ok(new BridgePendingResponse { Pending = false, Message = "Device desconocido" });
+
+        // "Enviar YA" de prueba: se sirve ANTES que la cola real y saltea todos los
+        // gates (seller, caps, gap, dup) — es un humano probando el fierro.
+        var test = _testSends.TryTakePending(device.Id);
+        if (test is not null)
+        {
+            return Ok(new BridgePendingResponse
+            {
+                Pending = true,
+                OutboxId = test.TestId,
+                Phone = test.Phone,
+                Text = test.Text
+            });
+        }
+
+        if (device.SellerId is null)
             return Ok(new BridgePendingResponse { Pending = false, Message = "Device sin seller asignado" });
 
         var sellerOk = await _db.Sellers
@@ -157,6 +177,10 @@ public class BridgeController : ControllerBase
     {
         if (!IsAuthorized()) return Unauthorized();
 
+        // Ack de un "enviar YA" de prueba: vive en memoria, no en el outbox.
+        if (_testSends.TryComplete(id, ok: true, error: null))
+            return Ok(new { ok = true, test = true });
+
         var item = await _db.Outbox.FindAsync(id);
         if (item is null) return NotFound();
 
@@ -202,6 +226,10 @@ public class BridgeController : ControllerBase
     public async Task<ActionResult> MarkFailed(Guid id, [FromBody] BridgeFailBody? body)
     {
         if (!IsAuthorized()) return Unauthorized();
+
+        // Fallo de un "enviar YA" de prueba: vive en memoria, no en el outbox.
+        if (_testSends.TryComplete(id, ok: false, error: body?.Error ?? "fallo sin detalle"))
+            return Ok(new { ok = true, test = true });
 
         var item = await _db.Outbox.FindAsync(id);
         if (item is null) return NotFound();

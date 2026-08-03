@@ -55,6 +55,8 @@ export default function Devices() {
   const isOnline = (d: Device) => d.status === 'Online' && d.lastHeartbeatAt &&
     (Date.now() - new Date(d.lastHeartbeatAt).getTime()) < 60_000;
 
+  const [testingId, setTestingId] = useState<string | null>(null);
+
   return (
     <div className="max-w-4xl mx-auto p-4">
       <div className="flex items-center justify-between mb-4">
@@ -85,39 +87,108 @@ export default function Devices() {
 
       <div className="card divide-y">
         {(devices ?? []).map(d => (
-          <div key={d.id} className="p-3 flex items-center justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <div className="font-medium">{d.name}</div>
-              <div className="text-xs text-slate-500">
-                {d.sellerName ? `Vendedor: ${d.sellerName}` : 'Sin asignar'}
-                {d.tailscaleIp && ` · ${d.tailscaleIp}`}
+          <div key={d.id} className="p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">{d.name}</div>
+                <div className="text-xs text-slate-500">
+                  {d.sellerName ? `Vendedor: ${d.sellerName}` : 'Sin asignar'}
+                  {d.tailscaleIp && ` · ${d.tailscaleIp}`}
+                </div>
+                <div className="text-xs mt-0.5">
+                  <span className={isOnline(d) ? 'text-emerald-600' : 'text-slate-400'}>
+                    {isOnline(d) ? `● Online ${d.batteryLevel != null ? `🔋${d.batteryLevel}%` : ''}` : `○ ${d.status}`}
+                  </span>
+                </div>
               </div>
-              <div className="text-xs mt-0.5">
-                <span className={isOnline(d) ? 'text-emerald-600' : 'text-slate-400'}>
-                  {isOnline(d) ? `● Online ${d.batteryLevel != null ? `🔋${d.batteryLevel}%` : ''}` : `○ ${d.status}`}
-                </span>
+              <select className="text-xs border rounded px-1 py-0.5 w-32"
+                value={d.sellerId ?? ''}
+                onChange={e => assignSeller(d.id, e.target.value)}>
+                <option value="">Sin asignar</option>
+                {(sellers ?? []).map(s => (
+                  <option key={s.id} value={s.id}>{s.displayName}</option>
+                ))}
+              </select>
+              <div className="flex gap-1 shrink-0">
+                <button className="btn-secondary text-xs"
+                  onClick={() => setTestingId(testingId === d.id ? null : d.id)}>
+                  Probar envío
+                </button>
+                {d.status === 'Pairing' && (
+                  <button className="btn-secondary text-xs" onClick={() => regenerateToken(d.id)}>Nuevo token</button>
+                )}
+                <button className="btn-danger text-xs" onClick={() => deleteDevice(d.id)}>Eliminar</button>
               </div>
             </div>
-            <select className="text-xs border rounded px-1 py-0.5 w-32"
-              value={d.sellerId ?? ''}
-              onChange={e => assignSeller(d.id, e.target.value)}>
-              <option value="">Sin asignar</option>
-              {(sellers ?? []).map(s => (
-                <option key={s.id} value={s.id}>{s.displayName}</option>
-              ))}
-            </select>
-            <div className="flex gap-1 shrink-0">
-              {d.status === 'Pairing' && (
-                <button className="btn-secondary text-xs" onClick={() => regenerateToken(d.id)}>Nuevo token</button>
-              )}
-              <button className="btn-danger text-xs" onClick={() => deleteDevice(d.id)}>Eliminar</button>
-            </div>
+            {testingId === d.id && <TestSendPanel deviceId={d.id} />}
           </div>
         ))}
         {(!devices || devices.length === 0) && (
           <div className="p-4 text-slate-400 text-center">No hay dispositivos</div>
         )}
       </div>
+    </div>
+  );
+}
+
+interface TestStatus {
+  state: 'none' | 'queued' | 'sending' | 'sent' | 'failed';
+  error?: string | null;
+  phone?: string;
+}
+
+/**
+ * "Enviar YA" de prueba: el celu manda este texto en su próximo poll (≤30s),
+ * salteando cola, caps y pacing. Para verificar el fierro end-to-end.
+ */
+function TestSendPanel({ deviceId }: { deviceId: string }) {
+  const [phone, setPhone] = useState('');
+  const [text, setText] = useState('prueba saleshub bridge');
+  const [status, setStatus] = useState<TestStatus | null>(null);
+  const [polling, setPolling] = useState(false);
+
+  useEffect(() => {
+    if (!polling) return;
+    const iv = setInterval(async () => {
+      const { data } = await api.get<TestStatus>(`/devices/${deviceId}/test-send`);
+      setStatus(data);
+      if (data.state === 'sent' || data.state === 'failed') setPolling(false);
+    }, 3000);
+    return () => clearInterval(iv);
+  }, [polling, deviceId]);
+
+  async function fire() {
+    try {
+      await api.post(`/devices/${deviceId}/test-send`, { phone, text });
+      setStatus({ state: 'queued' });
+      setPolling(true);
+      toast.success('Encolado: el celu lo manda en su próximo poll (menos de 30s)');
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo encolar la prueba');
+    }
+  }
+
+  const statusLine = status && status.state !== 'none' && (
+    status.state === 'sent' ? <span className="text-emerald-600">✅ Enviado</span>
+    : status.state === 'failed' ? <span className="text-red-600">❌ Falló: {status.error}</span>
+    : <span className="text-amber-600">⏳ {status.state === 'queued' ? 'Esperando el poll del celu…' : 'El celu lo está mandando…'}</span>
+  );
+
+  return (
+    <div className="mt-2 p-3 bg-slate-50 rounded space-y-2">
+      <div className="text-xs text-slate-500">
+        Manda YA (salteando cola y pacing) desde este celu. Número completo con código de país, sin +.
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <input className="input text-sm flex-1 min-w-40" placeholder="549341xxxxxxx"
+          value={phone} onChange={e => setPhone(e.target.value)} />
+        <input className="input text-sm flex-[2] min-w-52" placeholder="Texto"
+          value={text} onChange={e => setText(e.target.value)} />
+        <button className="btn-primary text-xs" onClick={fire} disabled={polling}>
+          Enviar YA
+        </button>
+      </div>
+      {statusLine && <div className="text-sm">{statusLine}</div>}
     </div>
   );
 }

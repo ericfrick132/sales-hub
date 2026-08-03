@@ -16,8 +16,13 @@ namespace SalesHub.Api.Controllers;
 public class DevicesController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    private readonly SalesHub.Api.WebSockets.BridgeTestSendService _testSends;
 
-    public DevicesController(ApplicationDbContext db) => _db = db;
+    public DevicesController(ApplicationDbContext db, SalesHub.Api.WebSockets.BridgeTestSendService testSends)
+    {
+        _db = db;
+        _testSends = testSends;
+    }
 
     /// <summary>Lista todos los devices (admin).</summary>
     [HttpGet]
@@ -99,6 +104,36 @@ public class DevicesController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>
+    /// "Enviar YA" de prueba: el device manda este texto a este número en su próximo
+    /// poll (≤30s), salteando cola, caps y pacing. Para testear el fierro end-to-end.
+    /// </summary>
+    [HttpPost("{id:guid}/test-send")]
+    public async Task<ActionResult> TestSend(Guid id, [FromBody] TestSendBody body)
+    {
+        var device = await _db.Devices.FindAsync(id);
+        if (device is null) return NotFound();
+
+        var phone = new string((body.Phone ?? "").Where(char.IsDigit).ToArray());
+        if (phone.Length < 8)
+            return BadRequest(new { error = "Número inválido: poné el número completo con código de país (ej 549341...)" });
+        var text = (body.Text ?? "").Trim();
+        if (text.Length == 0)
+            return BadRequest(new { error = "El texto no puede estar vacío" });
+
+        var t = _testSends.Queue(id, phone, text);
+        return Ok(new { testId = t.TestId, state = t.State, phone, text });
+    }
+
+    /// <summary>Estado del último "enviar YA" de este device (queued/sending/sent/failed).</summary>
+    [HttpGet("{id:guid}/test-send")]
+    public ActionResult TestSendStatus(Guid id)
+    {
+        var t = _testSends.Status(id);
+        if (t is null) return Ok(new { state = "none" });
+        return Ok(new { testId = t.TestId, state = t.State, error = t.Error, phone = t.Phone, createdAt = t.CreatedAt, finishedAt = t.FinishedAt });
+    }
+
     /// <summary>Regenerar token de pairing para un device existente.</summary>
     [HttpPost("{id:guid}/regenerate-token")]
     public async Task<ActionResult<DeviceCreatedDto>> RegenerateToken(Guid id)
@@ -147,6 +182,12 @@ public class DeviceCreatedDto
 public class AssignDeviceBody
 {
     public Guid? SellerId { get; set; }
+}
+
+public class TestSendBody
+{
+    public string? Phone { get; set; }
+    public string? Text { get; set; }
 }
 
 public class CreateDeviceBody

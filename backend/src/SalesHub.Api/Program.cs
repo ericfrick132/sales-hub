@@ -31,6 +31,7 @@ builder.Services.AddScoped<SalesHub.Api.AdminMenu.AdminMenuRelay>();
 // WebSocket hub para devices Android
 builder.Services.AddSingleton<DeviceHub>();
 builder.Services.AddSingleton<DeviceWebSocketMiddleware>();
+builder.Services.AddSingleton<SalesHub.Api.WebSockets.BridgeTestSendService>();
 
 if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "true")
 {
