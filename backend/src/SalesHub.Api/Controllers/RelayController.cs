@@ -31,8 +31,9 @@ public class RelayController : ControllerBase
     }
 
     /// <summary>
-    /// El relay reporta su estado actual (polling).
+    /// El relay reporta su estado actual (polling). Sin auth — usa IP interna.
     /// </summary>
+    [AllowAnonymous]
     [HttpPut("state")]
     public ActionResult UpdateState([FromBody] RelayState state)
     {

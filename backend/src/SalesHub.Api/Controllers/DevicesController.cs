@@ -64,7 +64,7 @@ public class DevicesController : ControllerBase
         _db.Devices.Add(device);
         await _db.SaveChangesAsync();
 
-        var qrUrl = $"wss://api.sales.efcloud.tech/ws/devices?token={token}";
+        var qrUrl = $"https://api.sales.efcloud.tech/downloads/saleshub-bridge.apk?t={token}";
 
         return Ok(new DeviceCreatedDto
         {
@@ -118,7 +118,7 @@ public class DevicesController : ControllerBase
             Name = device.Name,
             PairingToken = token,
             ExpiresAt = device.PairingTokenExpiresAt!.Value,
-            QrUrl = $"wss://api.sales.efcloud.tech/ws/devices?token={token}"
+            QrUrl = $"https://api.sales.efcloud.tech/downloads/saleshub-bridge.apk?t={token}"
         });
     }
 }

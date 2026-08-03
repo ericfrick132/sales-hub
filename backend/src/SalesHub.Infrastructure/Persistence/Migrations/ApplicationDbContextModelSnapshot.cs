@@ -526,6 +526,67 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("conversation_messages", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.Device", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AdbPort")
+                        .HasColumnType("integer")
+                        .HasColumnName("adb_port");
+
+                    b.Property<int?>("BatteryLevel")
+                        .HasColumnType("integer")
+                        .HasColumnName("battery_level");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("LastHeartbeatAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_heartbeat_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("PairingToken")
+                        .HasColumnType("text")
+                        .HasColumnName("pairing_token");
+
+                    b.Property<DateTimeOffset?>("PairingTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pairing_token_expires_at");
+
+                    b.Property<Guid?>("SellerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("seller_id");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TailscaleIp")
+                        .HasColumnType("text")
+                        .HasColumnName("tailscale_ip");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_devices");
+
+                    b.HasIndex("SellerId")
+                        .HasDatabaseName("ix_devices_seller_id");
+
+                    b.ToTable("devices", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.EvolutionInstance", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3810,6 +3871,16 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_conversation_messages_sellers_seller_id");
 
                     b.Navigation("Lead");
+
+                    b.Navigation("Seller");
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.Device", b =>
+                {
+                    b.HasOne("SalesHub.Core.Domain.Entities.Seller", "Seller")
+                        .WithMany()
+                        .HasForeignKey("SellerId")
+                        .HasConstraintName("fk_devices_sellers_seller_id");
 
                     b.Navigation("Seller");
                 });

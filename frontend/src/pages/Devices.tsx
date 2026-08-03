@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 
@@ -67,10 +68,16 @@ export default function Devices() {
             onChange={e => setNewName(e.target.value)} />
           <button className="btn-primary mt-2" onClick={createDevice}>Crear</button>
           {created && (
-            <div className="mt-3 p-3 bg-emerald-50 rounded">
-              <div className="font-mono text-2xl text-center tracking-widest">{created.token}</div>
-              <div className="text-xs text-slate-500 text-center mt-1">Código de pairing (válido 10 min)</div>
-              <div className="text-xs text-slate-400 text-center mt-1 truncate">{created.qrUrl}</div>
+            <div className="mt-3 p-3 bg-emerald-50 rounded flex flex-col items-center">
+              <QRCodeSVG value={created.qrUrl} size={180} marginSize={2} className="bg-white rounded" />
+              <div className="text-xs text-slate-500 text-center mt-2">
+                1. Escaneá el QR con el teléfono → descarga e instala la app
+              </div>
+              <div className="font-mono text-2xl text-center tracking-widest mt-2">{created.token}</div>
+              <div className="text-xs text-slate-500 text-center mt-1">
+                2. Abrí la app e ingresá este código (válido 10 min)
+              </div>
+              <div className="text-xs text-slate-400 text-center mt-1 truncate max-w-full">{created.qrUrl}</div>
             </div>
           )}
         </div>
@@ -92,7 +99,7 @@ export default function Devices() {
               </div>
             </div>
             <select className="text-xs border rounded px-1 py-0.5 w-32"
-              value={d.sellerName ?? ''}
+              value={d.sellerId ?? ''}
               onChange={e => assignSeller(d.id, e.target.value)}>
               <option value="">Sin asignar</option>
               {(sellers ?? []).map(s => (
