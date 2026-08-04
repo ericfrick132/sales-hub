@@ -94,9 +94,14 @@ public class BridgeController : ControllerBase
         // solo al primer mensaje de un lead. Los pasos siguientes de una charla ya abierta
         // salen con un gap corto y no consumen cupo — si no, el lead se queda colgado con
         // el saludo mientras la línea atiende a otros.
-        var dailyCap = _cfg.GetValue<int?>("Bridge:DailyCap") ?? 15;
-        var minGapMinutes = _cfg.GetValue<int?>("Bridge:MinGapMinutes") ?? 10;
-        var continuationGapSeconds = _cfg.GetValue<int?>("Bridge:ContinuationGapSeconds") ?? 90;
+        // Números de vendedor con hambre (2026-08-04): la línea es un celu real con la app
+        // nativa, no una sesión de Baileys, así que el techo puede parecerse al de una
+        // persona que se pasa el día escribiendo. El jitter es lo que lo hace humano: sin
+        // variación, un mensaje cada exactamente N minutos es un patrón de bot.
+        var dailyCap = _cfg.GetValue<int?>("Bridge:DailyCap") ?? 40;
+        var minGapSeconds = _cfg.GetValue<int?>("Bridge:NewChatGapSeconds")
+                            ?? (_cfg.GetValue<int?>("Bridge:MinGapMinutes") * 60) ?? 210;
+        var continuationGapSeconds = _cfg.GetValue<int?>("Bridge:ContinuationGapSeconds") ?? 45;
         var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
 
         // Qué manda el bridge: cadencia de Meta Lead Ads + "enviar ahora" manual
@@ -178,9 +183,11 @@ public class BridgeController : ControllerBase
         {
             var elapsed = now - lastSentAt.Value;
             var nextIsContinuation = IsContinuation(candidates[0]);
-            var required = nextIsContinuation
-                ? TimeSpan.FromSeconds(continuationGapSeconds)
-                : TimeSpan.FromMinutes(minGapMinutes);
+            // ±35% de variación sobre el gap: se evalúa en cada poll, así el momento real
+            // del envío cae en cualquier punto de la ventana en vez de en el minuto exacto.
+            var baseGap = nextIsContinuation ? continuationGapSeconds : minGapSeconds;
+            var jittered = baseGap * (0.65 + Random.Shared.NextDouble() * 0.7);
+            var required = TimeSpan.FromSeconds(jittered);
             if (elapsed < required)
                 return Ok(new BridgePendingResponse { Pending = false, Sweep = sweep, Message = "Waiting min gap" });
         }
