@@ -75,42 +75,41 @@ public class BridgeController : ControllerBase
 
         var sellerId = device.SellerId.Value;
 
-        // Pacing anti-ban POR LÍNEA (política post-ban 2026-07-30): techo diario
-        // + gap mínimo entre envíos del mismo seller.
+        // Pacing anti-ban POR LÍNEA (política post-ban 2026-07-30). El riesgo de ban está
+        // en ABRIR conversaciones nuevas, no en terminar una empezada: el techo diario
+        // cuenta CONVERSACIONES (leads distintos tocados hoy) y el gap largo se le aplica
+        // solo al primer mensaje de un lead. Los pasos siguientes de una charla ya abierta
+        // salen con un gap corto y no consumen cupo — si no, el lead se queda colgado con
+        // el saludo mientras la línea atiende a otros.
         var dailyCap = _cfg.GetValue<int?>("Bridge:DailyCap") ?? 15;
         var minGapMinutes = _cfg.GetValue<int?>("Bridge:MinGapMinutes") ?? 10;
+        var continuationGapSeconds = _cfg.GetValue<int?>("Bridge:ContinuationGapSeconds") ?? 90;
         var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
 
         // Qué manda el bridge: cadencia de Meta Lead Ads + "enviar ahora" manual
         // (Priority >= BridgeManualPriority). NUNCA el backlog frío histórico
         // (miles de filas Scheduled priority<=70) — drenarlas solas quema la línea.
-        var sentToday = await _db.Outbox
-            .CountAsync(o => o.Status == OutboxStatus.Sent
-                          && o.SentAt >= todayStart
-                          && o.Channel == MessageChannel.WhatsApp
-                          && o.SellerId == sellerId
-                          && o.StepIndex != null
-                          && (o.Lead.Source == LeadSource.MetaLeadAd
-                              || o.Priority >= MessageOutbox.BridgeManualPriority));
-        if (sentToday >= dailyCap)
-            return Ok(new BridgePendingResponse { Pending = false, Message = $"Daily cap reached ({sentToday}/{dailyCap})" });
-
-        var lastSentAt = await _db.Outbox
+        var sentQuery = _db.Outbox
             .Where(o => o.Status == OutboxStatus.Sent
-                     && o.SentAt != null
                      && o.Channel == MessageChannel.WhatsApp
                      && o.SellerId == sellerId
                      && o.StepIndex != null
                      && (o.Lead.Source == LeadSource.MetaLeadAd
-                         || o.Priority >= MessageOutbox.BridgeManualPriority))
-            .MaxAsync(o => o.SentAt);
-        if (lastSentAt != null && (now - lastSentAt.Value).TotalMinutes < minGapMinutes)
-            return Ok(new BridgePendingResponse { Pending = false, Message = "Waiting min gap" });
+                         || o.Priority >= MessageOutbox.BridgeManualPriority));
 
-        // Próximos mensajes Scheduled del seller del device, prioridad más alta
-        // primero. Solo mensajes cuyo horario ya llegó. Traemos varios para poder
-        // saltar (y marcar) los duplicados textuales sin devolver cola vacía.
-        var candidates = await _db.Outbox
+        var leadsToday = await sentQuery
+            .Where(o => o.SentAt >= todayStart)
+            .Select(o => o.LeadId)
+            .Distinct()
+            .ToListAsync();
+        var capReached = leadsToday.Count >= dailyCap;
+
+        var lastSentAt = await sentQuery.MaxAsync(o => o.SentAt);
+
+        // Próximos mensajes Scheduled del seller del device. Traemos varios para poder
+        // saltar (y marcar) los duplicados textuales sin devolver cola vacía, y para
+        // poder elegir una continuación por sobre una conversación nueva.
+        var pool = await _db.Outbox
             .Include(o => o.Lead)
             .Where(o => o.Status == OutboxStatus.Scheduled
                      && o.ScheduledAt <= now
@@ -123,8 +122,54 @@ public class BridgeController : ControllerBase
                      && !string.IsNullOrWhiteSpace(o.Message))
             .OrderByDescending(o => o.Priority)
             .ThenBy(o => o.ScheduledAt)
-            .Take(5)
+            .Take(30)
             .ToListAsync();
+
+        // Un lead ya contactado alguna vez = la conversación está abierta; lo que queda
+        // de su cadencia es continuación.
+        var poolLeadIds = pool.Select(o => o.LeadId).Distinct().ToList();
+        var alreadyContacted = await sentQuery
+            .Where(o => poolLeadIds.Contains(o.LeadId))
+            .Select(o => o.LeadId)
+            .Distinct()
+            .ToListAsync();
+
+        bool IsContinuation(MessageOutbox o) => alreadyContacted.Contains(o.LeadId);
+
+        // Con el cupo del día lleno no se abren conversaciones nuevas, pero las que ya
+        // están abiertas se terminan igual.
+        var allowed = capReached ? pool.Where(IsContinuation).ToList() : pool;
+        if (allowed.Count == 0)
+        {
+            return Ok(new BridgePendingResponse
+            {
+                Pending = false,
+                Message = capReached
+                    ? $"Daily cap reached ({leadsToday.Count}/{dailyCap})"
+                    : "Queue empty"
+            });
+        }
+
+        // Continuaciones primero: terminar la charla empezada vale más que abrir otra.
+        var candidates = allowed
+            .OrderByDescending(IsContinuation)
+            .ThenByDescending(o => o.Priority)
+            .ThenBy(o => o.ScheduledAt)
+            .Take(5)
+            .ToList();
+
+        // El gap depende de qué vamos a mandar: corto si es continuación, largo si abre
+        // una conversación nueva.
+        if (lastSentAt != null)
+        {
+            var elapsed = now - lastSentAt.Value;
+            var nextIsContinuation = IsContinuation(candidates[0]);
+            var required = nextIsContinuation
+                ? TimeSpan.FromSeconds(continuationGapSeconds)
+                : TimeSpan.FromMinutes(minGapMinutes);
+            if (elapsed < required)
+                return Ok(new BridgePendingResponse { Pending = false, Message = "Waiting min gap" });
+        }
 
         // Anti-duplicado textual: si el mismo texto ya le salió a este lead hace poco
         // (por Evolution, por el bridge o por una fila zombie), no lo repetimos —
