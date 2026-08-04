@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SalesHub.Core.Abstractions;
+using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Infrastructure.Services;
@@ -27,6 +28,14 @@ public class SellerLineSender
         BridgeDirectSendService direct, ILogger<SellerLineSender> log)
     {
         _db = db; _evo = evo; _direct = direct; _log = log;
+    }
+
+    /// <summary>¿La línea de este vendedor puede mandar texto? (celu vinculado o Evolution viva)</summary>
+    public async Task<bool> CanSendAsync(Guid? sellerId, string? instanceName, InstanceStatus? instanceStatus, CancellationToken ct)
+    {
+        if (instanceStatus == InstanceStatus.Connected && !string.IsNullOrWhiteSpace(instanceName)) return true;
+        if (sellerId is null) return false;
+        return await _db.Devices.AnyAsync(d => d.SellerId == sellerId, ct);
     }
 
     public async Task<bool> SendTextAsync(Guid? sellerId, string? instanceName, string phone, string text, CancellationToken ct)

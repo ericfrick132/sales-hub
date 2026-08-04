@@ -704,8 +704,11 @@ public class ConversationAgentService
         if (lead.Product?.AppManagedTransport == true) { EnqueueRelay(lead, parts); return; }
 
         var instance = lead.Seller?.EvolutionInstance;
-        var canSend = instance is not null && instance.Status == InstanceStatus.Connected
-            && !string.IsNullOrWhiteSpace(lead.WhatsappPhone);
+        // El texto puede salir por el celu del vendedor aunque Evolution esté muerta: sin
+        // esto el agente guardaba la respuesta como "sugerencia" y la charla se cortaba
+        // después del primer mensaje (ver [[feedback-no-evolution]]).
+        var canSend = !string.IsNullOrWhiteSpace(lead.WhatsappPhone)
+            && await _lineSender.CanSendAsync(lead.SellerId, instance?.InstanceName, instance?.Status, ct);
 
         if (!canSend)
         {
@@ -725,7 +728,8 @@ public class ConversationAgentService
                 // "de a poco": pausa proporcional al largo del mensaje (como alguien tipeando
                 // de verdad). Antes 2-5s: una pared de 5 burbujas caia en 15 segundos.
                 var pause = Math.Clamp(p.Length / 15, 4, 10);
-                try { await _evo.SetPresenceTypingAsync(instance!.InstanceName, lead.WhatsappPhone!, pause, ct); } catch { }
+                if (instance is not null)
+                    try { await _evo.SetPresenceTypingAsync(instance.InstanceName, lead.WhatsappPhone!, pause, ct); } catch { }
                 await Task.Delay(TimeSpan.FromSeconds(pause), ct);
             }
             firstPart = false;
@@ -739,7 +743,7 @@ public class ConversationAgentService
                 Direction = MessageDirection.Outbound,
                 Status = MessageDeliveryStatus.Sent,
                 Text = p,
-                EvolutionInstance = instance!.InstanceName,
+                EvolutionInstance = instance?.InstanceName ?? string.Empty,
                 Timestamp = DateTimeOffset.UtcNow,
                 IsRead = true,
             };
@@ -1234,8 +1238,9 @@ public class ConversationAgentService
     private async Task<bool> AutoSendAsync(Lead lead, string text, CancellationToken ct)
     {
         var instance = lead.Seller?.EvolutionInstance;
-        if (instance is null || instance.Status != InstanceStatus.Connected) return false;
         if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return false;
+        // Sale por el celu si el vendedor tiene uno; Evolution es el fallback.
+        if (!await _lineSender.CanSendAsync(lead.SellerId, instance?.InstanceName, instance?.Status, ct)) return false;
 
         // El outbound se persiste ANTES de mandar: el eco fromMe del webhook llega en ~1s
         // y HandleOwnMessageAsync lo matchea contra estos registros — si todavía no está
@@ -1248,7 +1253,7 @@ public class ConversationAgentService
             Direction = MessageDirection.Outbound,
             Status = MessageDeliveryStatus.Sent,
             Text = text,
-            EvolutionInstance = instance.InstanceName,
+            EvolutionInstance = instance?.InstanceName ?? string.Empty,
             Timestamp = DateTimeOffset.UtcNow,
             IsRead = true
         };
@@ -1258,7 +1263,7 @@ public class ConversationAgentService
         lead.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
 
-        var ok = await _lineSender.SendTextAsync(lead.SellerId, instance.InstanceName, lead.WhatsappPhone, text, ct);
+        var ok = await _lineSender.SendTextAsync(lead.SellerId, instance?.InstanceName, lead.WhatsappPhone, text, ct);
         if (!ok)
         {
             msg.Status = MessageDeliveryStatus.Failed;
