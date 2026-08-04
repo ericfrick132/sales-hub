@@ -44,7 +44,7 @@ public class BridgeController : ControllerBase
     /// Solo devuelve si hay un seller con SendingEnabled y WhatsApp conectado.
     /// </summary>
     [HttpGet("pending")]
-    public async Task<ActionResult<BridgePendingResponse>> GetPending([FromQuery] Guid? deviceId = null)
+    public async Task<ActionResult<BridgePendingResponse>> GetPending([FromQuery] Guid? deviceId = null, [FromQuery] bool peek = false)
     {
         if (!IsAuthorized()) return Unauthorized();
 
@@ -65,7 +65,7 @@ public class BridgeController : ControllerBase
 
         // "Enviar YA" de prueba: se sirve ANTES que la cola real y saltea todos los
         // gates (seller, caps, gap, dup) — es un humano probando el fierro.
-        var test = _testSends.TryTakePending(device.Id);
+        var test = peek ? null : _testSends.TryTakePending(device.Id);
         if (test is not null)
         {
             return Ok(new BridgePendingResponse
@@ -212,6 +212,15 @@ public class BridgeController : ControllerBase
         {
             await _db.SaveChangesAsync(); // persistir los Skipped, si hubo
             return Ok(new BridgePendingResponse { Pending = false, Sweep = sweep, Message = "Queue empty" });
+        }
+
+        // peek: el celu solo quiere saber si hay algo que salga AHORA (respeta caps y gap)
+        // para decidir si puede ponerse a leer chats. No lockeamos ni devolvemos el texto:
+        // consumir la fila acá la dejaría tomada y sin enviar.
+        if (peek)
+        {
+            await _db.SaveChangesAsync();   // persistir los Skipped del dup-guard, si hubo
+            return Ok(new BridgePendingResponse { Pending = true, Message = "peek" });
         }
 
         // Lockear para que el OutboxSender no lo tome. El marcador en Error hace que,
