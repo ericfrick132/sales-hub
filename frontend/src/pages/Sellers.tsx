@@ -1,18 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import type { Seller, Product } from '../lib/types';
 import GaugeEditor from '../components/GaugeEditor';
 import Switch from '../components/Switch';
 
+/** Dispositivo tal como lo lista /devices (para el selector de asignación). */
+interface DeviceOption {
+  id: string;
+  name: string;
+  sellerId?: string | null;
+  sellerName?: string | null;
+}
+
 export default function Sellers() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Seller | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [pairing, setPairing] = useState<{ token: string; qrUrl: string } | null>(null);
 
   const sellersQ = useQuery({
     queryKey: ['sellers'],
@@ -22,6 +28,10 @@ export default function Sellers() {
     queryKey: ['products-min'],
     queryFn: async () => (await api.get<Product[]>('/products')).data
   });
+  const devicesQ = useQuery({
+    queryKey: ['devices'],
+    queryFn: async () => (await api.get<DeviceOption[]>('/devices')).data
+  });
 
   async function save(patch: Partial<Seller>) {
     if (!selected) return;
@@ -30,21 +40,33 @@ export default function Sellers() {
     qc.invalidateQueries({ queryKey: ['sellers'] });
   }
 
-  // Crea el device ya asignado al vendedor y muestra el QR de instalación + token.
-  async function pairDevice(s: Seller) {
+  /**
+   * Asigna un dispositivo ya existente al vendedor (o lo deja sin ninguno). Si el
+   * vendedor tenía otro, lo libera primero: dos celus sobre la misma línea se pisan
+   * pulleando la misma cola.
+   */
+  async function assignDevice(s: Seller, deviceId: string) {
+    const current = s.device?.id ?? null;
+    if (deviceId === (current ?? '')) return;
     try {
-      const { data } = await api.post('/devices', { name: `Celu de ${s.displayName}`, sellerId: s.id });
-      setPairing({ token: data.pairingToken, qrUrl: data.qrUrl });
-      if (selected?.id === s.id) {
-        setSelected({
-          ...selected,
-          device: { id: data.id, name: data.name, status: 'Pairing', online: false }
-        });
+      if (current && current !== deviceId) {
+        await api.put(`/devices/${current}/assign`, { sellerId: null });
       }
+      if (deviceId) {
+        await api.put(`/devices/${deviceId}/assign`, { sellerId: s.id });
+      }
+      toast.success(deviceId ? 'Dispositivo asignado' : 'Dispositivo desvinculado');
       qc.invalidateQueries({ queryKey: ['sellers'] });
       qc.invalidateQueries({ queryKey: ['devices'] });
+      if (selected?.id === s.id) {
+        const dev = (devicesQ.data ?? []).find((d) => d.id === deviceId);
+        setSelected({
+          ...selected,
+          device: dev ? { id: dev.id, name: dev.name, status: 'Offline', online: false } : null
+        });
+      }
     } catch (e: any) {
-      toast.error(e.response?.data?.error ?? 'No se pudo crear el dispositivo');
+      toast.error(e.response?.data?.error ?? 'No se pudo asignar el dispositivo');
     }
   }
 
@@ -138,27 +160,38 @@ export default function Sellers() {
                 <p className="text-sm text-slate-500 break-all">{selected.email}</p>
               </div>
               <div className="flex gap-2 flex-wrap items-center">
-                {selected.device ? (
-                  <Link
-                    to="/devices"
-                    className={`text-xs px-2 py-1 rounded border ${
-                      selected.device.online
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        : 'border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100'
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-slate-500">📱</span>
+                  <select
+                    className={`text-xs border rounded px-1 py-1 max-w-48 ${
+                      selected.device?.online
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                        : selected.device
+                          ? 'border-slate-300 bg-slate-50 text-slate-600'
+                          : 'border-slate-300'
                     }`}
-                    title="La línea de este vendedor sale por este celu (bridge). Clic para administrar dispositivos.">
-                    📱 {selected.device.name} — {selected.device.online
-                      ? `online${selected.device.batteryLevel != null ? ` 🔋${selected.device.batteryLevel}%` : ''}`
-                      : selected.device.status === 'Pairing' ? 'esperando pairing' : 'offline'}
+                    title="Dispositivo por el que sale la línea de este vendedor"
+                    value={selected.device?.id ?? ''}
+                    onChange={(e) => assignDevice(selected, e.target.value)}>
+                    <option value="">Sin dispositivo</option>
+                    {(devicesQ.data ?? []).map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                        {d.sellerId && d.sellerId !== selected.id ? ` (usado por ${d.sellerName})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {selected.device && (
+                    <span className={`text-[11px] ${selected.device.online ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {selected.device.online
+                        ? `online${selected.device.batteryLevel != null ? ` 🔋${selected.device.batteryLevel}%` : ''}`
+                        : selected.device.status === 'Pairing' ? 'esperando pairing' : 'offline'}
+                    </span>
+                  )}
+                  <Link to="/devices" className="text-[11px] text-slate-400 underline hover:text-brand-600">
+                    administrar
                   </Link>
-                ) : (
-                  <button
-                    className="text-xs px-2 py-1 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                    title="Crea el dispositivo asignado a este vendedor y muestra el QR para instalar la app bridge en el celu"
-                    onClick={() => pairDevice(selected)}>
-                    📱 Vincular dispositivo
-                  </button>
-                )}
+                </div>
                 {selected.instanceStatus === 'Connected' && (
                   <button
                     className="btn-secondary text-xs"
@@ -244,28 +277,6 @@ export default function Sellers() {
         products={products.data ?? []}
         onClose={() => setShowCreate(false)}
         onDone={() => { qc.invalidateQueries({ queryKey: ['sellers'] }); setShowCreate(false); }} />}
-
-      {pairing && (
-        <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4" onClick={() => setPairing(null)}>
-          <div className="card p-6 w-full max-w-sm space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-semibold">Vincular dispositivo</h3>
-            <div className="flex flex-col items-center">
-              <QRCodeSVG value={pairing.qrUrl} size={180} marginSize={2} className="bg-white rounded" />
-              <div className="text-xs text-slate-500 text-center mt-2">
-                1. Escaneá el QR con el celu → descarga e instala la app
-              </div>
-              <div className="font-mono text-2xl tracking-widest mt-2">{pairing.token}</div>
-              <div className="text-xs text-slate-500 text-center mt-1">
-                2. Abrí la app e ingresá este código (válido 10 min)
-              </div>
-              <div className="text-xs text-slate-400 text-center mt-1 truncate max-w-full">{pairing.qrUrl}</div>
-            </div>
-            <div className="flex justify-end">
-              <button className="btn-secondary" onClick={() => setPairing(null)}>Cerrar</button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );
