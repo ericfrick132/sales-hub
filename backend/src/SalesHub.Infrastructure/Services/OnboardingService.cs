@@ -107,6 +107,13 @@ public class OnboardingService
     private static readonly Regex DoubtRx = new(
         @"(\?|no s[eé]\b|no estoy segur|no entiend|(duda|consulta|pregunta)s?\b|y si\b|se puede|puedo\b|es seguro|no me convence|desconf[ií])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // El lead se fue del guion sin preguntar un precio: objeción, excusa, o simplemente
+    // otro tema. Si no lo detectamos, el bot le pasa por arriba con la siguiente pregunta
+    // del script y queda contestando a algo que el lead nunca dijo.
+    private static readonly Regex OffTopicRx = new(
+        @"(ya (tengo|uso|tenemos|usamos|estoy usando|trabajo con|contrat)|otro sistema|no me interesa|no gracias|mas adelante|m[aá]s adelante|otro momento|estoy (de viaje|ocupad|en)|ahora no|despu[eé]s te (escribo|hablo|aviso)|te aviso|qui[eé]n (sos|habla|es)|de d[oó]nde (sos|hablan)|sos un bot|es un bot|c[oó]mo conseguiste|de donde sacaste)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private const string NL = "[NUEVO_MENSAJE]";
 
     // Typos clásicos de dominio tipeados a mano en WhatsApp. Se corrigen en silencio antes de
@@ -227,9 +234,14 @@ public class OnboardingService
         // preguntar en 2-3 mensajes y cerrar con un "es así" corto; mirando solo el último,
         // las preguntas se ignoraban y el bot re-pedía el mail (caso real 2026-07-07).
         var burstLower = burst.ToLowerInvariant();
+        // En las preguntas alcanzaba con detectar precio/info, así que cualquier otra cosa
+        // que dijera el lead (una objeción, una pregunta suya, "quién sos") se ignoraba y el
+        // bot seguía con el script. Ahora también son off-script las dudas (incluye cualquier
+        // signo de pregunta) y los temas ajenos: la IA contesta ESO y el guion queda esperando
+        // con su pregunta pendiente, que se reenvía después.
         var isDoubt = atEmailStep
             ? (!EmailRx.IsMatch(burst) && (KeywordRx.IsMatch(burstLower) || DoubtRx.IsMatch(burst)))
-            : KeywordRx.IsMatch(burstLower);
+            : (KeywordRx.IsMatch(burstLower) || DoubtRx.IsMatch(burst) || OffTopicRx.IsMatch(burstLower));
         if (inCollect && isDoubt)
             return new OnboardingResult(null, OffScript: true, Provisioned: false,
                 PendingQuestion: atEmailStep ? null : PendingQuestion(ob.Step, n, questions, emailPrompt));
