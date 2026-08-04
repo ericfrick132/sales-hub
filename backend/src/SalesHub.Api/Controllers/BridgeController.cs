@@ -17,6 +17,10 @@ public class BridgeController : ControllerBase
     /// <summary>Motivos que reporta el APK cuando el número no puede recibir WhatsApp.</summary>
     public const string NoWhatsAppError = "no_whatsapp";
     public const string InvalidNumberError = "invalid_number";
+    /// <summary>Una mano humana alteró el texto mientras el celu tipeaba: NO se envió.</summary>
+    public const string InputAlteredError = "input_alterado";
+    /// <summary>Se apretó enviar pero no se pudo confirmar: reintentar duplicaría.</summary>
+    public const string SendNotConfirmedError = "send_not_confirmed";
 
     private readonly ApplicationDbContext _db;
     private readonly IConfiguration _cfg;
@@ -341,6 +345,30 @@ public class BridgeController : ControllerBase
 
             await _db.SaveChangesAsync();
             return Ok(new { ok = true, noWhatsApp = true, cancelled = rest.Count });
+        }
+
+        // Alguien tocó el teléfono mientras el celu tipeaba: el texto quedó alterado y NO
+        // se apretó enviar, así que el mensaje no salió y reintentar es seguro. Lo corremos
+        // unos minutos: si la persona sigue usando el celu, volver enseguida falla de nuevo.
+        if (body?.Error == InputAlteredError)
+        {
+            item.Status = item.Attempts >= 5 ? OutboxStatus.Failed : OutboxStatus.Scheduled;
+            item.ScheduledAt = DateTimeOffset.UtcNow.AddMinutes(Random.Shared.Next(4, 9));
+            item.Error = "Alguien estaba usando el teléfono: se reintenta más tarde";
+            item.LockedAt = null;
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, retryAt = item.ScheduledAt });
+        }
+
+        // Ambiguo: tipeamos y apretamos enviar, pero no pudimos confirmar que saliera.
+        // Reintentar puede duplicarle el mensaje al lead, así que no reintentamos.
+        if (body?.Error == SendNotConfirmedError)
+        {
+            item.Status = OutboxStatus.Failed;
+            item.Error = "No se pudo confirmar el envío (no se reintenta para no duplicar)";
+            item.LockedAt = null;
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, ambiguous = true });
         }
 
         if (item.Attempts >= 3)
