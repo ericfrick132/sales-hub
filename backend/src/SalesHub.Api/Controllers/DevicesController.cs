@@ -16,9 +16,9 @@ namespace SalesHub.Api.Controllers;
 public class DevicesController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
-    private readonly SalesHub.Api.WebSockets.BridgeTestSendService _testSends;
+    private readonly SalesHub.Infrastructure.Services.BridgeDirectSendService _testSends;
 
-    public DevicesController(ApplicationDbContext db, SalesHub.Api.WebSockets.BridgeTestSendService testSends)
+    public DevicesController(ApplicationDbContext db, SalesHub.Infrastructure.Services.BridgeDirectSendService testSends)
     {
         _db = db;
         _testSends = testSends;

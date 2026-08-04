@@ -44,6 +44,7 @@ public class ConversationAgentService
 
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
+    private readonly SellerLineSender _lineSender;
     private readonly GroqWhisperClient _whisper;
     private readonly AiSuggestionService _suggestions;
     private readonly OnboardingService _onboarding;
@@ -60,12 +61,12 @@ public class ConversationAgentService
         AiSuggestionService suggestions, OnboardingService onboarding, ISendScheduler scheduler,
         VoiceNoteService voiceNotes, IMessageRenderer renderer,
         Microsoft.Extensions.Configuration.IConfiguration config,
-        TakeoverSignal takeover, IAdminAlerter alerter,
+        TakeoverSignal takeover, IAdminAlerter alerter, SellerLineSender lineSender,
         ILogger<ConversationAgentService> log)
     {
         _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding;
         _scheduler = scheduler; _voiceNotes = voiceNotes; _renderer = renderer; _config = config;
-        _takeover = takeover; _alerter = alerter; _log = log;
+        _takeover = takeover; _alerter = alerter; _lineSender = lineSender; _log = log;
     }
 
     /// <summary>Candidato a respuesta: Priority = reactivado con "+" (salta settle y esperas).</summary>
@@ -744,7 +745,7 @@ public class ConversationAgentService
             };
             _db.ConversationMessages.Add(msg);
             await _db.SaveChangesAsync(ct);
-            var ok = await _evo.SendTextAsync(instance!.InstanceName, lead.WhatsappPhone!, p, ct);
+            var ok = await _lineSender.SendTextAsync(lead.SellerId, instance?.InstanceName, lead.WhatsappPhone!, p, ct);
             if (!ok) msg.Status = MessageDeliveryStatus.Failed;
         }
         lead.AiSuggestedReply = null;
@@ -1257,7 +1258,7 @@ public class ConversationAgentService
         lead.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
 
-        var ok = await _evo.SendTextAsync(instance.InstanceName, lead.WhatsappPhone, text, ct);
+        var ok = await _lineSender.SendTextAsync(lead.SellerId, instance.InstanceName, lead.WhatsappPhone, text, ct);
         if (!ok)
         {
             msg.Status = MessageDeliveryStatus.Failed;

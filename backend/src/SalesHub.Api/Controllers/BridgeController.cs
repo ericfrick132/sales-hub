@@ -20,14 +20,23 @@ public class BridgeController : ControllerBase
 
     private readonly ApplicationDbContext _db;
     private readonly IConfiguration _cfg;
-    private readonly SalesHub.Api.WebSockets.BridgeTestSendService _testSends;
+    private readonly SalesHub.Infrastructure.Services.BridgeDirectSendService _testSends;
+    private readonly SalesHub.Infrastructure.Services.GroqWhisperClient _whisper;
+    private readonly SalesHub.Infrastructure.Services.ConversationService _conversations;
+    private readonly ILogger<BridgeController> _log;
 
     public BridgeController(ApplicationDbContext db, IConfiguration cfg,
-        SalesHub.Api.WebSockets.BridgeTestSendService testSends)
+        SalesHub.Infrastructure.Services.BridgeDirectSendService testSends,
+        SalesHub.Infrastructure.Services.GroqWhisperClient whisper,
+        SalesHub.Infrastructure.Services.ConversationService conversations,
+        ILogger<BridgeController> log)
     {
         _db = db;
         _cfg = cfg;
         _testSends = testSends;
+        _whisper = whisper;
+        _conversations = conversations;
+        _log = log;
     }
 
     /// <summary>
@@ -61,7 +70,8 @@ public class BridgeController : ControllerBase
                 Pending = true,
                 OutboxId = test.TestId,
                 Phone = test.Phone,
-                Text = test.Text
+                Text = test.Text,
+                Fast = test.Fast
             });
         }
 
@@ -326,41 +336,94 @@ public class BridgeController : ControllerBase
     }
 
     /// <summary>
-    /// El relay reporta un mensaje entrante de WhatsApp (lead respondió).
+    /// El celu reporta un mensaje entrante de WhatsApp (leído de la notificación).
+    /// Entra por el MISMO motor que usaba el webhook de Evolution, así el lead pasa a
+    /// Replied, la charla aparece en /conversaciones y el agente decide si responde.
     /// </summary>
     [HttpPost("incoming")]
-    public async Task<ActionResult> ReportIncoming([FromBody] BridgeIncomingBody body)
+    public async Task<ActionResult> ReportIncoming([FromBody] BridgeIncomingBody body, CancellationToken ct)
     {
         if (!IsAuthorized()) return Unauthorized();
-        if (string.IsNullOrWhiteSpace(body.Phone) || string.IsNullOrWhiteSpace(body.Text))
-            return BadRequest("phone and text required");
+        var text = (body.Text ?? "").Trim();
+        if (text.Length == 0) return BadRequest(new { error = "Falta el texto" });
 
-        var lead = await _db.Leads
-            .FirstOrDefaultAsync(l => l.WhatsappPhone == body.Phone);
+        // El remitente sale del título de la notificación: si el número NO está agendado
+        // WhatsApp muestra el número (lo que queremos). Si es un contacto guardado o un
+        // grupo, no hay dígitos para matchear y lo ignoramos en vez de inventar un lead.
+        var sender = body.Sender ?? body.Phone ?? "";
+        var digits = new string(sender.Where(char.IsDigit).ToArray());
+        if (digits.Length < 8)
+            return Ok(new { ok = true, matched = false, reason = "remitente sin número (contacto agendado o grupo)" });
 
-        if (lead is null)
-            return Ok(new { ok = true, matched = false });
+        var device = await _db.Devices.Include(d => d.Seller).ThenInclude(s => s!.EvolutionInstance)
+            .FirstOrDefaultAsync(d => d.Id == body.DeviceId, ct);
+        var instanceName = device?.Seller?.EvolutionInstance?.InstanceName;
+        if (instanceName is null)
+            return Ok(new { ok = true, matched = false, reason = "device sin seller/línea" });
 
-        // Registrar mensaje entrante
-        var msg = new ConversationMessage
-        {
-            Id = Guid.NewGuid(),
-            LeadId = lead.Id,
-            Direction = MessageDirection.Inbound,
-            Status = MessageDeliveryStatus.Received,
-            Text = body.Text,
-            Timestamp = DateTimeOffset.UtcNow,
-            IsRead = false
-        };
-        _db.ConversationMessages.Add(msg);
+        var handled = await _conversations.HandleIncomingAsync(new SalesHub.Infrastructure.Services.ConversationService.IncomingMessage(
+            InstanceName: instanceName,
+            FromJid: $"{digits}@s.whatsapp.net",
+            FromPhone: digits,
+            MessageId: null,
+            Text: text,
+            Timestamp: DateTimeOffset.UtcNow,
+            RawJson: "{}"), ct);
 
-        // Actualizar estado del lead
-        if (lead.Status == LeadStatus.Sent)
-            lead.Status = LeadStatus.Replied;
+        _log.LogInformation("Entrante por bridge: device={Device} de={Phone} manejado={Handled}",
+            device!.Name, digits, handled);
+        return Ok(new { ok = true, matched = handled });
+    }
 
-        await _db.SaveChangesAsync();
+    /// <summary>
+    /// El celu subió una nota de voz que le llegó por WhatsApp: la transcribimos y
+    /// encolamos el texto de vuelta al número autorizado (el de /transcripcion). Reemplaza
+    /// al relay por Evolution, que ya no se usa.
+    /// </summary>
+    [HttpPost("transcribe")]
+    public async Task<ActionResult> Transcribe([FromBody] BridgeTranscribeBody body, CancellationToken ct)
+    {
+        if (!IsAuthorized()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(body.AudioBase64))
+            return BadRequest(new { error = "Falta audioBase64" });
 
-        return Ok(new { ok = true, matched = true, leadId = lead.Id });
+        var device = await _db.Devices.FindAsync(new object[] { body.DeviceId }, ct);
+        if (device is null) return NotFound(new { error = "Device desconocido" });
+
+        // Mismo interruptor que la página /transcripcion.
+        var settings = await _db.TranscriptionSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        if (settings is not null && !settings.Enabled)
+            return Ok(new { ok = false, error = "Transcripción apagada" });
+
+        if (!_whisper.IsConfigured)
+            return Ok(new { ok = false, error = "Groq sin API key" });
+
+        byte[] audio;
+        try { audio = Convert.FromBase64String(body.AudioBase64.Trim()); }
+        catch (FormatException) { return BadRequest(new { error = "audioBase64 inválido" }); }
+        if (audio.Length == 0) return BadRequest(new { error = "Audio vacío" });
+
+        // A quién le contestamos: el número autorizado cargado en /transcripcion. El celu
+        // no puede saber quién mandó el audio (WhatsApp no lo expone en el archivo), así
+        // que la respuesta siempre va al dueño configurado.
+        var owner = await _db.TranscriptionPhones.AsNoTracking()
+            .OrderBy(p => p.CreatedAt)
+            .Select(p => p.Phone)
+            .FirstOrDefaultAsync(ct);
+        var ownerDigits = new string((owner ?? "").Where(char.IsDigit).ToArray());
+        if (ownerDigits.Length < 8)
+            return Ok(new { ok = false, error = "No hay número autorizado cargado en /transcripcion" });
+
+        var transcript = await _whisper.TranscribeAsync(audio, body.FileName ?? "voice.opus", ct);
+        var reply = string.IsNullOrWhiteSpace(transcript)
+            ? "No pude transcribir ese audio. Probá reenviarlo de nuevo."
+            : transcript!;
+
+        _testSends.Queue(device.Id, ownerDigits, reply, SalesHub.Infrastructure.Services.BridgeDirectSendService.KindTranscription);
+        _log.LogInformation("Transcripción por bridge: device={Device} bytes={Bytes} ok={Ok} chars={Chars}",
+            device.Name, audio.Length, !string.IsNullOrWhiteSpace(transcript), reply.Length);
+
+        return Ok(new { ok = true, transcribed = !string.IsNullOrWhiteSpace(transcript), chars = reply.Length });
     }
 
     /// <summary>
@@ -410,6 +473,15 @@ public class BridgePendingResponse
     public string? Phone { get; set; }
     public string? Text { get; set; }
     public string? Message { get; set; }
+    /// <summary>Tipear sin ritmo humano (respuestas al propio dueño, no outreach a leads).</summary>
+    public bool Fast { get; set; }
+}
+
+public class BridgeTranscribeBody
+{
+    public Guid DeviceId { get; set; }
+    public string? FileName { get; set; }
+    public string? AudioBase64 { get; set; }
 }
 
 public class BridgeStatsResponse
@@ -420,6 +492,9 @@ public class BridgeStatsResponse
 
 public class BridgeIncomingBody
 {
+    public Guid DeviceId { get; set; }
+    /// <summary>Título de la notificación de WhatsApp: número si no está agendado.</summary>
+    public string? Sender { get; set; }
     public string? Phone { get; set; }
     public string? Text { get; set; }
 }

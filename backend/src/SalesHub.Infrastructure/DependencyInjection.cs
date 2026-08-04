@@ -162,6 +162,7 @@ public static class DependencyInjection
                 ? sp.GetRequiredService<SmtpEmailSender>()
                 : sp.GetRequiredService<RelayEmailSender>();
         });
+        services.AddScoped<SellerLineSender>();
         services.AddScoped<ConversationAgentService>();
         services.AddScoped<VoiceNoteService>();
         services.AddScoped<VoiceCalibrationRelay>();
