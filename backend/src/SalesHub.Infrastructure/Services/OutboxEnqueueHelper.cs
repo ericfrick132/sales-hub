@@ -40,6 +40,11 @@ public static class OutboxEnqueueHelper
         // estos leads son no-op; su seguimiento lo lleva el agente conversacional.
         if (db.Set<LeadOnboarding>().Any(o => o.LeadId == lead.Id)) return 0;
 
+        // Número sin WhatsApp (lo detecta el bridge al ver la pantalla de "invitar"):
+        // encolarle cadencia es tirar cupo de envío a la basura — cada intento gasta un
+        // slot del techo diario de la línea y nunca va a entregar.
+        if (lead.Status == LeadStatus.NoWhatsApp) return 0;
+
         var when = scheduledAt ?? DateTimeOffset.UtcNow;
         var count = 0;
 

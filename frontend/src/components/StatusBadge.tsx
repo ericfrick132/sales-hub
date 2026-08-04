@@ -11,7 +11,8 @@ const styles: Record<LeadStatus, string> = {
   DemoScheduled: 'bg-teal-100 text-teal-700',
   Closed: 'bg-green-100 text-green-800',
   Lost: 'bg-rose-100 text-rose-700',
-  Blocked: 'bg-zinc-200 text-zinc-700'
+  Blocked: 'bg-zinc-200 text-zinc-700',
+  NoWhatsApp: 'bg-orange-100 text-orange-700'
 };
 
 export default function StatusBadge({ status }: { status: LeadStatus }) {

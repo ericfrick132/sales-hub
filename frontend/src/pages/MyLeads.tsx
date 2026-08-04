@@ -17,7 +17,7 @@ import LeadTable from '../components/LeadTable';
 
 type TabKey = 'mine' | 'pool';
 
-const STATUSES: LeadStatus[] = ['Assigned', 'Queued', 'Sent', 'Replied', 'Interested', 'DemoScheduled', 'Closed', 'Lost'];
+const STATUSES: LeadStatus[] = ['Assigned', 'Queued', 'Sent', 'Replied', 'Interested', 'DemoScheduled', 'Closed', 'Lost', 'NoWhatsApp'];
 
 const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Todos' },

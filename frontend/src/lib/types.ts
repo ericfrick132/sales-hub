@@ -1,6 +1,6 @@
 export type LeadStatus =
   | 'New' | 'Assigned' | 'Queued' | 'Sent' | 'Replied'
-  | 'Interested' | 'DemoScheduled' | 'Closed' | 'Lost' | 'Blocked';
+  | 'Interested' | 'DemoScheduled' | 'Closed' | 'Lost' | 'Blocked' | 'NoWhatsApp';
 
 // ---------------------------------------------------------------- SEO / GEO
 
@@ -104,7 +104,8 @@ export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
   DemoScheduled: 'Demo agendada',
   Closed: 'Cerrado',
   Lost: 'Perdido',
-  Blocked: 'Bloqueado'
+  Blocked: 'Bloqueado',
+  NoWhatsApp: 'WhatsApp inexistente'
 };
 
 export type LeadSource =

@@ -14,6 +14,10 @@ namespace SalesHub.Api.Controllers;
 [Route("api/bridge")]
 public class BridgeController : ControllerBase
 {
+    /// <summary>Motivos que reporta el APK cuando el número no puede recibir WhatsApp.</summary>
+    public const string NoWhatsAppError = "no_whatsapp";
+    public const string InvalidNumberError = "invalid_number";
+
     private readonly ApplicationDbContext _db;
     private readonly IConfiguration _cfg;
     private readonly SalesHub.Api.WebSockets.BridgeTestSendService _testSends;
@@ -233,6 +237,36 @@ public class BridgeController : ControllerBase
 
         var item = await _db.Outbox.FindAsync(id);
         if (item is null) return NotFound();
+
+        // El número no tiene WhatsApp: reintentar es imposible por definición. Marcamos
+        // el lead (estado terminal) y cancelamos lo que le quedaba encolado, así deja de
+        // consumir cupo de la línea y sale de los sweeps de contacto.
+        if (body?.Error is NoWhatsAppError or InvalidNumberError)
+        {
+            var motivo = body.Error == InvalidNumberError
+                ? "Número inválido para WhatsApp"
+                : "El número no tiene WhatsApp";
+            item.Status = OutboxStatus.Skipped;
+            item.Error = motivo;
+            item.LockedAt = null;
+
+            var lead = await _db.Leads.FindAsync(item.LeadId);
+            if (lead is not null) lead.Status = LeadStatus.NoWhatsApp;
+
+            var rest = await _db.Outbox
+                .Where(o => o.LeadId == item.LeadId
+                         && o.Id != item.Id
+                         && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending))
+                .ToListAsync();
+            foreach (var r in rest)
+            {
+                r.Status = OutboxStatus.Cancelled;
+                r.Error = motivo;
+            }
+
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, noWhatsApp = true, cancelled = rest.Count });
+        }
 
         if (item.Attempts >= 3)
             item.Status = OutboxStatus.Failed;

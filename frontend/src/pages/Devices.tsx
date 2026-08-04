@@ -137,6 +137,17 @@ interface TestStatus {
   phone?: string;
 }
 
+/** Traduce los motivos que reporta el APK a algo que se entienda de un vistazo. */
+function friendlyError(error?: string | null): string {
+  if (!error) return 'sin detalle';
+  if (error === 'no_whatsapp') return 'el número no tiene WhatsApp';
+  if (error === 'invalid_number') return 'número inválido para WhatsApp';
+  if (error === 'send_button_not_found') return 'no encontró el botón de enviar (pantalla bloqueada o WhatsApp no abrió)';
+  if (error === 'send_not_confirmed') return 'tipeó el mensaje pero no salió';
+  if (error.startsWith('open:')) return `no pudo abrir WhatsApp por adb — ${error.slice(5).trim()}`;
+  return error;
+}
+
 /**
  * "Enviar YA" de prueba: el celu manda este texto en su próximo poll (≤30s),
  * salteando cola, caps y pacing. Para verificar el fierro end-to-end.
@@ -170,7 +181,7 @@ function TestSendPanel({ deviceId }: { deviceId: string }) {
 
   const statusLine = status && status.state !== 'none' && (
     status.state === 'sent' ? <span className="text-emerald-600">✅ Enviado</span>
-    : status.state === 'failed' ? <span className="text-red-600">❌ Falló: {status.error}</span>
+    : status.state === 'failed' ? <span className="text-red-600">❌ Falló: {friendlyError(status.error)}</span>
     : <span className="text-amber-600">⏳ {status.state === 'queued' ? 'Esperando el poll del celu…' : 'El celu lo está mandando…'}</span>
   );
 

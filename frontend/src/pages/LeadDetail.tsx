@@ -8,7 +8,7 @@ import { cadenceLabel } from '../lib/origins';
 import StatusBadge from '../components/StatusBadge';
 import { isAdmin, useAuthStore } from '../lib/auth';
 
-const STATUSES: LeadStatus[] = ['Assigned', 'Queued', 'Sent', 'Replied', 'Interested', 'DemoScheduled', 'Closed', 'Lost', 'Blocked'];
+const STATUSES: LeadStatus[] = ['Assigned', 'Queued', 'Sent', 'Replied', 'Interested', 'DemoScheduled', 'Closed', 'Lost', 'Blocked', 'NoWhatsApp'];
 
 export default function LeadDetail() {
   const { id } = useParams();
