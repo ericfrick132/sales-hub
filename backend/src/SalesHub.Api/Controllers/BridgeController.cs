@@ -22,6 +22,10 @@ public class BridgeController : ControllerBase
     /// <summary>Se apretó enviar pero no se pudo confirmar: reintentar duplicaría.</summary>
     public const string SendNotConfirmedError = "send_not_confirmed";
 
+    private static readonly System.Text.RegularExpressions.Regex NotAMessage = new(
+        @"^(\d+ (mensajes|messages)( nuevos| new)?|mensaje|message|escribiendo\.\.\.|en l[ií]nea|online|\d{1,2}:\d{2}( ?[ap]\.? ?m\.?)?|hoy|ayer|today|yesterday)$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private readonly ApplicationDbContext _db;
     private readonly IConfiguration _cfg;
     private readonly SalesHub.Infrastructure.Services.BridgeDirectSendService _testSends;
@@ -392,8 +396,21 @@ public class BridgeController : ControllerBase
     public async Task<ActionResult> ReportIncoming([FromBody] BridgeIncomingBody body, CancellationToken ct)
     {
         if (!IsAuthorized()) return Unauthorized();
-        var text = (body.Text ?? "").Trim();
+
+        // El celu saca el texto de dumpsys/uiautomator, que lo escriben ESCAPADO: los emojis
+        // y saltos de línea llegan como &#128522; / &#10;. Guardarlo así le mete ruido al
+        // agente. Se decodifica también acá (no solo en el APK) porque un celu con una
+        // versión vieja sigue mandando el texto crudo.
+        var text = System.Net.WebUtility.HtmlDecode(body.Text ?? "")
+            .Replace("\u200E", "").Replace("\u200F", "")
+            .Trim();
         if (text.Length == 0) return BadRequest(new { error = "Falta el texto" });
+
+        // Restos de la UI de WhatsApp que un APK viejo puede reportar como si fueran
+        // mensajes del lead: el placeholder del cajón, una hora suelta, el separador de
+        // no leídos. No son contenido y ensucian la conversación que lee el agente.
+        if (NotAMessage.IsMatch(text))
+            return Ok(new { ok = true, matched = false, reason = "no es un mensaje" });
 
         // El remitente sale del título de la notificación: si el número NO está agendado
         // WhatsApp muestra el número (lo que queremos). Si es un contacto guardado o un
