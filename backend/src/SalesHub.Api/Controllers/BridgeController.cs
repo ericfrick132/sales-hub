@@ -60,6 +60,9 @@ public class BridgeController : ControllerBase
         if (device is null)
             return Ok(new BridgePendingResponse { Pending = false, Message = "Device desconocido" });
 
+        // Pedido manual de "levantar chats": viaja en la misma respuesta del poll.
+        var sweep = _testSends.ConsumeSweep(device.Id);
+
         // "Enviar YA" de prueba: se sirve ANTES que la cola real y saltea todos los
         // gates (seller, caps, gap, dup) — es un humano probando el fierro.
         var test = _testSends.TryTakePending(device.Id);
@@ -76,12 +79,12 @@ public class BridgeController : ControllerBase
         }
 
         if (device.SellerId is null)
-            return Ok(new BridgePendingResponse { Pending = false, Message = "Device sin seller asignado" });
+            return Ok(new BridgePendingResponse { Pending = false, Sweep = sweep, Message = "Device sin seller asignado" });
 
         var sellerOk = await _db.Sellers
             .AnyAsync(s => s.Id == device.SellerId && s.IsActive && s.SendingEnabled);
         if (!sellerOk)
-            return Ok(new BridgePendingResponse { Pending = false, Message = "Seller inactivo o con envíos deshabilitados" });
+            return Ok(new BridgePendingResponse { Pending = false, Sweep = sweep, Message = "Seller inactivo o con envíos deshabilitados" });
 
         var sellerId = device.SellerId.Value;
 
@@ -154,6 +157,7 @@ public class BridgeController : ControllerBase
             return Ok(new BridgePendingResponse
             {
                 Pending = false,
+                Sweep = sweep,
                 Message = capReached
                     ? $"Daily cap reached ({leadsToday.Count}/{dailyCap})"
                     : "Queue empty"
@@ -178,7 +182,7 @@ public class BridgeController : ControllerBase
                 ? TimeSpan.FromSeconds(continuationGapSeconds)
                 : TimeSpan.FromMinutes(minGapMinutes);
             if (elapsed < required)
-                return Ok(new BridgePendingResponse { Pending = false, Message = "Waiting min gap" });
+                return Ok(new BridgePendingResponse { Pending = false, Sweep = sweep, Message = "Waiting min gap" });
         }
 
         // Anti-duplicado textual: si el mismo texto ya le salió a este lead hace poco
@@ -207,7 +211,7 @@ public class BridgeController : ControllerBase
         if (next is null)
         {
             await _db.SaveChangesAsync(); // persistir los Skipped, si hubo
-            return Ok(new BridgePendingResponse { Pending = false, Message = "Queue empty" });
+            return Ok(new BridgePendingResponse { Pending = false, Sweep = sweep, Message = "Queue empty" });
         }
 
         // Lockear para que el OutboxSender no lo tome. El marcador en Error hace que,
@@ -361,6 +365,20 @@ public class BridgeController : ControllerBase
         if (instanceName is null)
             return Ok(new { ok = true, matched = false, reason = "device sin seller/línea" });
 
+        // El barrido de chats vuelve a leer las mismas burbujas cada vez que corre: si ya
+        // tenemos ese texto de ese número, no lo registramos de nuevo (ni despertamos al
+        // agente por algo viejo). El webhook traía un id de mensaje para esto; acá no hay.
+        var suffix = digits.Length >= 8 ? digits[^8..] : digits;
+        var dupWindow = DateTimeOffset.UtcNow.AddDays(-30);
+        var already = await _db.ConversationMessages
+            .AnyAsync(m => m.Direction == MessageDirection.Inbound
+                        && m.Text == text
+                        && m.Timestamp >= dupWindow
+                        && m.Lead!.WhatsappPhone != null
+                        && m.Lead.WhatsappPhone.EndsWith(suffix), ct);
+        if (already)
+            return Ok(new { ok = true, matched = true, duplicate = true });
+
         var handled = await _conversations.HandleIncomingAsync(new SalesHub.Infrastructure.Services.ConversationService.IncomingMessage(
             InstanceName: instanceName,
             FromJid: $"{digits}@s.whatsapp.net",
@@ -475,6 +493,8 @@ public class BridgePendingResponse
     public string? Message { get; set; }
     /// <summary>Tipear sin ritmo humano (respuestas al propio dueño, no outreach a leads).</summary>
     public bool Fast { get; set; }
+    /// <summary>Pedido de recorrer los chats y reportar lo que respondieron los leads.</summary>
+    public bool Sweep { get; set; }
 }
 
 public class BridgeTranscribeBody

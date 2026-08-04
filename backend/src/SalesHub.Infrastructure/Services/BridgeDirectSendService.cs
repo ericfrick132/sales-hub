@@ -64,4 +64,13 @@ public class BridgeDirectSendService
     }
 
     public TestSend? Status(Guid deviceId) => _lastTestByDevice.GetValueOrDefault(deviceId);
+
+    // Pedido de barrido de chats: el celu recorre WhatsApp y reporta lo que los leads
+    // respondieron antes de que existiera la lectura de notificaciones.
+    private readonly ConcurrentDictionary<Guid, byte> _sweeps = new();
+
+    public void RequestSweep(Guid deviceId) => _sweeps[deviceId] = 1;
+
+    /// <summary>True una sola vez por pedido: el celu ya se lo lleva en esta respuesta.</summary>
+    public bool ConsumeSweep(Guid deviceId) => _sweeps.TryRemove(deviceId, out _);
 }

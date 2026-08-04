@@ -125,6 +125,20 @@ public class DevicesController : ControllerBase
         return Ok(new { testId = t.TestId, state = t.State, phone, text });
     }
 
+    /// <summary>
+    /// Pide al celu que recorra los chats de WhatsApp y reporte lo que los leads
+    /// respondieron. Sirve para recuperar las charlas que quedaron en el teléfono desde
+    /// antes (las notificaciones solo cubren lo que llega de ahora en más).
+    /// </summary>
+    [HttpPost("{id:guid}/sweep-chats")]
+    public async Task<ActionResult> SweepChats(Guid id)
+    {
+        var device = await _db.Devices.FindAsync(id);
+        if (device is null) return NotFound();
+        _testSends.RequestSweep(id);
+        return Ok(new { ok = true, message = "El celu va a recorrer los chats en su próximo chequeo (menos de 30s)" });
+    }
+
     /// <summary>Estado del último "enviar YA" de este device (queued/sending/sent/failed).</summary>
     [HttpGet("{id:guid}/test-send")]
     public ActionResult TestSendStatus(Guid id)

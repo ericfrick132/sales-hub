@@ -111,6 +111,18 @@ export default function Devices() {
               </select>
               <div className="flex gap-1 shrink-0">
                 <button className="btn-secondary text-xs"
+                  title="El celu recorre los chats de WhatsApp y reporta lo que respondieron los leads (para recuperar charlas viejas)"
+                  onClick={async () => {
+                    try {
+                      const { data } = await api.post(`/devices/${d.id}/sweep-chats`);
+                      toast.success(data.message ?? 'Pedido enviado', { duration: 6000 });
+                    } catch {
+                      toast.error('No se pudo pedir el barrido');
+                    }
+                  }}>
+                  Levantar chats
+                </button>
+                <button className="btn-secondary text-xs"
                   onClick={() => setTestingId(testingId === d.id ? null : d.id)}>
                   Probar envío
                 </button>
