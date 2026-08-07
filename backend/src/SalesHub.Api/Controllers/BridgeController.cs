@@ -19,6 +19,8 @@ public class BridgeController : ControllerBase
     public const string InvalidNumberError = "invalid_number";
     /// <summary>Una mano humana alteró el texto mientras el celu tipeaba: NO se envió.</summary>
     public const string InputAlteredError = "input_alterado";
+    /// <summary>El APK detectó input humano real (getevent) y frenó sin enviar.</summary>
+    public const string HumanOnPhoneError = "humano_en_el_celu";
     /// <summary>Se apretó enviar pero no se pudo confirmar: reintentar duplicaría.</summary>
     public const string SendNotConfirmedError = "send_not_confirmed";
 
@@ -359,19 +361,19 @@ public class BridgeController : ControllerBase
             return Ok(new { ok = true, noWhatsApp = true, cancelled = rest.Count });
         }
 
-        // Alguien tocó el teléfono mientras el celu tipeaba: el texto quedó alterado y NO
-        // se apretó enviar, así que el mensaje no salió y reintentar es seguro. Lo corremos
-        // unos minutos: si la persona sigue usando el celu, volver enseguida falla de nuevo.
-        if (body?.Error != null && body.Error.StartsWith(InputAlteredError, StringComparison.Ordinal))
+        // Alguien agarró el teléfono mientras el celu trabajaba: el APK lo detecta en el
+        // input real (getevent solo ve la mano humana, no lo que inyecta el bridge) y frena
+        // en el acto. NO se envió nada, así que esto no es un fallo: es una tarea cancelada
+        // que vuelve a la cola. El borrador queda en WhatsApp y el próximo intento lo retoma.
+        if (body?.Error != null && (body.Error.StartsWith(HumanOnPhoneError, StringComparison.Ordinal)
+                                    || body.Error.StartsWith(InputAlteredError, StringComparison.Ordinal)))
         {
-            item.Status = item.Attempts >= 5 ? OutboxStatus.Failed : OutboxStatus.Scheduled;
-            item.ScheduledAt = DateTimeOffset.UtcNow.AddMinutes(Random.Shared.Next(4, 9));
-            // Guardamos lo que el celu leyó del cajón para poder diagnosticar sin adivinar.
-            var leido = body.Error.Contains('|') ? " (" + body.Error.Split('|')[1] + ")" : "";
-            item.Error = "Alguien estaba usando el teléfono: se reintenta más tarde" + leido;
+            item.Status = item.Attempts >= 8 ? OutboxStatus.Failed : OutboxStatus.Scheduled;
+            item.ScheduledAt = DateTimeOffset.UtcNow.AddMinutes(Random.Shared.Next(3, 8));
+            item.Error = "Cancelado: alguien estaba usando el teléfono. Vuelve a la cola";
             item.LockedAt = null;
             await _db.SaveChangesAsync();
-            return Ok(new { ok = true, retryAt = item.ScheduledAt });
+            return Ok(new { ok = true, requeued = true, retryAt = item.ScheduledAt });
         }
 
         // Ambiguo: tipeamos y apretamos enviar, pero no pudimos confirmar que saliera.

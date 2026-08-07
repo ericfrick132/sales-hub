@@ -154,7 +154,10 @@ function friendlyError(error?: string | null): string {
   if (!error) return 'sin detalle';
   if (error === 'no_whatsapp') return 'el número no tiene WhatsApp';
   if (error === 'invalid_number') return 'número inválido para WhatsApp';
-  if (error === 'input_alterado') return 'alguien estaba usando el teléfono: no se envió, se reintenta más tarde';
+  if (error.startsWith('humano_en_el_celu')) return 'alguien agarró el teléfono: se cancel\u00f3 y vuelve a la cola';
+  if (error === 'no_se_tipeo_nada') return 'no lleg\u00f3 a escribir el mensaje';
+  if (error === 'no_pude_limpiar_el_cajon') return 'no pudo limpiar el borrador de WhatsApp';
+  if (error.startsWith('input_alterado')) return 'alguien estaba usando el teléfono: no se envió, se reintenta más tarde';
   if (error === 'chat_no_abrio') return 'WhatsApp no abrió la conversación (reintenta solo)';
   if (error === 'send_button_not_found') return 'no encontró el botón de enviar (pantalla bloqueada o WhatsApp no abrió)';
   if (error === 'send_not_confirmed') return 'tipeó el mensaje pero no salió';
