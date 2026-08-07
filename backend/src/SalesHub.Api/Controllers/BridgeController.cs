@@ -362,11 +362,13 @@ public class BridgeController : ControllerBase
         // Alguien tocó el teléfono mientras el celu tipeaba: el texto quedó alterado y NO
         // se apretó enviar, así que el mensaje no salió y reintentar es seguro. Lo corremos
         // unos minutos: si la persona sigue usando el celu, volver enseguida falla de nuevo.
-        if (body?.Error == InputAlteredError)
+        if (body?.Error != null && body.Error.StartsWith(InputAlteredError, StringComparison.Ordinal))
         {
             item.Status = item.Attempts >= 5 ? OutboxStatus.Failed : OutboxStatus.Scheduled;
             item.ScheduledAt = DateTimeOffset.UtcNow.AddMinutes(Random.Shared.Next(4, 9));
-            item.Error = "Alguien estaba usando el teléfono: se reintenta más tarde";
+            // Guardamos lo que el celu leyó del cajón para poder diagnosticar sin adivinar.
+            var leido = body.Error.Contains('|') ? " (" + body.Error.Split('|')[1] + ")" : "";
+            item.Error = "Alguien estaba usando el teléfono: se reintenta más tarde" + leido;
             item.LockedAt = null;
             await _db.SaveChangesAsync();
             return Ok(new { ok = true, retryAt = item.ScheduledAt });
