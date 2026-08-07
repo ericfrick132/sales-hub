@@ -35,6 +35,9 @@ public class Device
     /// <summary>Último heartbeat recibido del device</summary>
     public DateTimeOffset? LastHeartbeatAt { get; set; }
 
+    /// <summary>Versión del APK que reporta el celu en cada poll (ej. "1.21").</summary>
+    public string? AppVersion { get; set; }
+
     /// <summary>Batería reportada (0-100)</summary>
     public int? BatteryLevel { get; set; }
 

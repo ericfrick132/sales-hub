@@ -40,6 +40,7 @@ public class DevicesController : ControllerBase
                 TailscaleIp = d.TailscaleIp,
                 Status = d.Status.ToString(),
                 BatteryLevel = d.BatteryLevel,
+                AppVersion = d.AppVersion,
                 LastHeartbeatAt = d.LastHeartbeatAt
             })
             .ToListAsync();
@@ -181,6 +182,7 @@ public class DeviceDto
     public string? TailscaleIp { get; set; }
     public string Status { get; set; } = string.Empty;
     public int? BatteryLevel { get; set; }
+    public string? AppVersion { get; set; }
     public DateTimeOffset? LastHeartbeatAt { get; set; }
 }
 

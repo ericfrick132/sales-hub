@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 
 interface Device {
   id: string; name: string; sellerId?: string; sellerName?: string; tailscaleIp?: string;
-  status: string; batteryLevel?: number; lastHeartbeatAt?: string;
+  status: string; batteryLevel?: number; appVersion?: string; lastHeartbeatAt?: string;
 }
 interface Seller { id: string; displayName: string; email: string; }
 
@@ -97,7 +97,7 @@ export default function Devices() {
                 </div>
                 <div className="text-xs mt-0.5">
                   <span className={isOnline(d) ? 'text-emerald-600' : 'text-slate-400'}>
-                    {isOnline(d) ? `● Online ${d.batteryLevel != null ? `🔋${d.batteryLevel}%` : ''}` : `○ ${d.status}`}
+                    {isOnline(d) ? `● Online ${d.batteryLevel != null ? `🔋${d.batteryLevel}%` : ''}` : `○ ${d.status}`}{d.appVersion ? ` · v${d.appVersion}` : ''}
                   </span>
                 </div>
               </div>

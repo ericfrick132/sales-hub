@@ -52,7 +52,7 @@ public class BridgeController : ControllerBase
     /// Solo devuelve si hay un seller con SendingEnabled y WhatsApp conectado.
     /// </summary>
     [HttpGet("pending")]
-    public async Task<ActionResult<BridgePendingResponse>> GetPending([FromQuery] Guid? deviceId = null, [FromQuery] bool peek = false)
+    public async Task<ActionResult<BridgePendingResponse>> GetPending([FromQuery] Guid? deviceId = null, [FromQuery] bool peek = false, [FromQuery] string? v = null)
     {
         if (!IsAuthorized()) return Unauthorized();
 
@@ -67,6 +67,14 @@ public class BridgeController : ControllerBase
         var device = await _db.Devices.FindAsync(deviceId.Value);
         if (device is null)
             return Ok(new BridgePendingResponse { Pending = false, Message = "Device desconocido" });
+
+        // El celu reporta su versión en cada poll: sin esto no hay forma de saber qué corre
+        // cada teléfono (pasó dos veces tener que adivinar si un fix ya había llegado).
+        if (!string.IsNullOrWhiteSpace(v) && device.AppVersion != v)
+        {
+            device.AppVersion = v;
+            await _db.SaveChangesAsync();
+        }
 
         // Pedido manual de "levantar chats": viaja en la misma respuesta del poll.
         var sweep = _testSends.ConsumeSweep(device.Id);
