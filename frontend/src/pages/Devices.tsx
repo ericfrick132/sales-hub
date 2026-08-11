@@ -200,6 +200,11 @@ function friendlyError(error?: string | null): string {
   if (error === 'chat_no_abrio') return 'WhatsApp no abrió la conversación (reintenta solo)';
   if (error === 'send_button_not_found') return 'no encontró el botón de enviar (pantalla bloqueada o WhatsApp no abrió)';
   if (error === 'send_not_confirmed') return 'tipeó el mensaje pero no salió';
+  // El celu se maneja a sí mismo hablándole a SU PROPIO adbd por loopback (127.0.0.1:5555).
+  // Refused = adbd no está en modo TCP en ese teléfono: se apaga en cada reinicio y hay que
+  // volver a prenderlo con "adb tcpip 5555" (una vez, por USB o por la misma WiFi).
+  if (error.includes('ECONNREFUSED') || error.includes('Connection refused'))
+    return 'el ADB del celu no está escuchando en el 5555 (se apaga en cada reinicio): enchufalo por USB una vez y corré "adb tcpip 5555". No hace falta que quede cerca: el celu se habla a sí mismo';
   if (error.startsWith('open:')) return `no pudo abrir WhatsApp por adb — ${error.slice(5).trim()}`;
   return error;
 }
