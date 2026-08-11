@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -279,8 +280,17 @@ public class FalVideoGenerator : ISocialAssetGenerator
     }
 
     /// <summary>
-    /// Pega la narración (mp3) sobre el video (mp4) con ffmpeg. El video corta al
-    /// terminar el más corto de los dos (-shortest) y el audio se re-encodea a AAC.
+    /// Pega la narración (mp3) sobre el video (mp4) con ffmpeg.
+    ///
+    /// Antes esto usaba <c>-shortest</c>, que corta al más corto de los dos: si la
+    /// narración duraba más que el video la frase quedaba cortada a mitad de palabra,
+    /// y si duraba menos se recortaba el video. Los dos casos se veían como "el video
+    /// termina mal" (verificado 11-ago-2026: los mp4 salían con voz a -7.7 dB de pico
+    /// en el último cuarto de segundo).
+    ///
+    /// Ahora el resultado dura lo que dure el MÁS LARGO: si sobra narración se congela
+    /// el último frame (tpad) hasta que termine de hablar, y si sobra video se rellena
+    /// el audio con silencio (apad). Siempre queda una cola corta para que no corte seco.
     /// Usa archivos temporales porque ffmpeg no muxea bien dos streams por stdin.
     /// </summary>
     private async Task<byte[]?> MuxAudioAsync(byte[] video, byte[] audio, CancellationToken ct)
@@ -294,19 +304,48 @@ public class FalVideoGenerator : ISocialAssetGenerator
             await File.WriteAllBytesAsync(vin, video, ct);
             await File.WriteAllBytesAsync(ain, audio, ct);
 
+            var vdur = await ProbeDurationAsync(vin, ct);
+            var adur = await ProbeDurationAsync(ain, ct);
+            // Cola de respiro para que la última sílaba no quede pegada al corte.
+            const double tail = 0.4;
+            // A partir de acá el frame congelado se nota feo: no lo recortamos (cortar
+            // sería volver al bug), pero lo avisamos para ajustar el largo de la narración.
+            const double padRuidoso = 8.0;
+
+            var args = new List<string> { "-y", "-i", vin, "-i", ain, "-map", "0:v:0", "-map", "1:a:0" };
+            var pad = (adur > 0 && vdur > 0) ? adur + tail - vdur : 0;
+            if (pad > 0.05)
+            {
+                // Congelamos el último frame hasta cubrir TODA la narración: obliga a
+                // re-encodear el video (no hay copy). Nunca acotamos por debajo del audio,
+                // porque un video más corto que su audio vuelve a cortar la frase.
+                args.AddRange(new[] { "-vf", $"tpad=stop_mode=clone:stop_duration={pad.ToString("0.###", CultureInfo.InvariantCulture)}" });
+                args.AddRange(new[] { "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p" });
+                if (pad > padRuidoso)
+                    _log.LogWarning("Narración {A:0.#}s contra un video de {V:0.#}s → {Pad:0.#}s de frame congelado; conviene acortar el guion o subir Fal__DurationSeconds", adur, vdur, pad);
+            }
+            else if (vdur > 0)
+            {
+                // El video manda: se copia tal cual y el audio se rellena con silencio
+                // hasta esa duración. whole_dur va SIEMPRE acotado: un apad pelado genera
+                // audio infinito y, sin -shortest, ffmpeg no termina nunca.
+                args.AddRange(new[] { "-c:v", "copy", "-af",
+                    $"apad=whole_dur={vdur.ToString("0.###", CultureInfo.InvariantCulture)}" });
+            }
+            else
+            {
+                // Sin duración de video no podemos acotar el pad: volvemos al corte simple.
+                args.AddRange(new[] { "-c:v", "copy", "-shortest" });
+            }
+            args.AddRange(new[] { "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", vout });
+
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "ffmpeg",
                 RedirectStandardError = true,
                 UseShellExecute = false,
             };
-            foreach (var arg in new[]
-            {
-                "-y", "-i", vin, "-i", ain,
-                "-map", "0:v:0", "-map", "1:a:0",
-                "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
-                "-shortest", vout,
-            }) psi.ArgumentList.Add(arg);
+            foreach (var arg in args) psi.ArgumentList.Add(arg);
 
             using var proc = System.Diagnostics.Process.Start(psi);
             if (proc is null) return null;
@@ -317,6 +356,7 @@ public class FalVideoGenerator : ISocialAssetGenerator
                 _log.LogWarning("ffmpeg mux exit {Code}: {Err}", proc.ExitCode, Trunc(stderr, 400));
                 return null;
             }
+            _log.LogInformation("Mux ok: video {V:0.#}s + narración {A:0.#}s → +{Pad:0.#}s de cola", vdur, adur, Math.Max(pad, 0));
             return await File.ReadAllBytesAsync(vout, ct);
         }
         catch (Exception ex)
@@ -328,6 +368,36 @@ public class FalVideoGenerator : ISocialAssetGenerator
         {
             foreach (var f in new[] { vin, ain, vout })
                 try { if (File.Exists(f)) File.Delete(f); } catch { /* no-op */ }
+        }
+    }
+
+    /// <summary>Duración en segundos de un archivo con ffprobe. 0 si no se puede leer.</summary>
+    private async Task<double> ProbeDurationAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "ffprobe",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            foreach (var a in new[] { "-v", "error", "-show_entries", "format=duration",
+                                      "-of", "default=noprint_wrappers=1:nokey=1", path })
+                psi.ArgumentList.Add(a);
+
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc is null) return 0;
+            var outp = await proc.StandardOutput.ReadToEndAsync(ct);
+            await proc.WaitForExitAsync(ct);
+            return double.TryParse(outp.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0;
+        }
+        catch (Exception ex)
+        {
+            // Sin duración caemos al camino "el video manda", que es el de antes.
+            _log.LogWarning(ex, "ffprobe falló para {Path}", path);
+            return 0;
         }
     }
 }

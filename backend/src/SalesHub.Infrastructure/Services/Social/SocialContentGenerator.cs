@@ -84,7 +84,9 @@ public class SocialContentGenerator
     /// <summary>Guion de voz en off para los videos (se sintetiza con ElevenLabs).</summary>
     private const string NarrationRule =
         "NARRACIÓN — si el assetKind es 'video', agregá el campo 'narration': un guion de VOZ EN OFF en español rioplatense (voseo), " +
-        "de 22 a 28 palabras (entra en ~10 segundos hablados), que cuente la misma micro-historia del video sin describir lo que se ve. " +
+        // 22-28 palabras se pasaban de los 10s del video: ElevenLabs mete pausas y la voz
+        // quedaba cortada a mitad de frase (medido 11-ago-2026). Con 16-20 entra con aire.
+        "de 16 a 20 palabras (tiene que entrar holgado en 10 segundos hablados, contando pausas), que cuente la misma micro-historia del video sin describir lo que se ve. " +
         "Tono de la marca, cálido y natural como un amigo que te cuenta algo, NO como publicidad gritada. Cerrá con una idea que deje pensando (no un CTA explícito tipo 'comprá ya'). " +
         "Sin emojis, sin hashtags, sin URLs — es para leer en voz alta. Si el assetKind es 'image', devolvé narration = \"\".";
 

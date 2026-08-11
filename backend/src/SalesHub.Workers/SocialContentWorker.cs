@@ -257,6 +257,21 @@ public class SocialContentWorker : BackgroundService
             }
         }
 
+        // Sin asset no hay posteo posible. Antes esto seguía como DraftReady y el push a
+        // Buffer se salteaba en silencio (el if de abajo pide AssetUrl y no tenía else):
+        // el posteo quedaba varado para siempre — sin log, sin Error y fuera del barrido
+        // de re-push, que exige AssetUrl. Desde la UI parecía sano. Lo dejamos en Error
+        // con el motivo para que se vea y se pueda reintentar.
+        if (string.IsNullOrWhiteSpace(post.AssetUrl))
+        {
+            post.Status = SocialPostStatus.Error;
+            post.Error = $"No se pudo generar el asset ({gen.AssetKind}) — revisá el proveedor de imagen/video.";
+            await db.SaveChangesAsync(ct);
+            _log.LogWarning("Posteo sin asset para {Product}/{Net}: {Concept}",
+                profile.ProductKey, channel.Platform, post.Concept);
+            return;
+        }
+
         post.Status = SocialPostStatus.DraftReady;
         await db.SaveChangesAsync(ct);
 

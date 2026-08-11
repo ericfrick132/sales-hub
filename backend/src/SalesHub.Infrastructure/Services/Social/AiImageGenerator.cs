@@ -21,14 +21,16 @@ namespace SalesHub.Infrastructure.Services.Social;
 public class AiImageGenerator : ISocialAssetGenerator
 {
     private readonly HttpClient _http;
+    private readonly IHttpClientFactory _clients;
     private readonly ImageGenOptions _opts;
     private readonly ApplicationDbContext _db;
     private readonly BrandLogoService _logos;
     private readonly ILogger<AiImageGenerator> _log;
 
-    public AiImageGenerator(HttpClient http, IOptions<ImageGenOptions> opts, ApplicationDbContext db, BrandLogoService logos, ILogger<AiImageGenerator> log)
+    public AiImageGenerator(HttpClient http, IHttpClientFactory clients, IOptions<ImageGenOptions> opts, ApplicationDbContext db, BrandLogoService logos, ILogger<AiImageGenerator> log)
     {
         _http = http;
+        _clients = clients;
         _opts = opts.Value;
         _db = db;
         _logos = logos;
@@ -225,6 +227,19 @@ public class AiImageGenerator : ISocialAssetGenerator
         // Pollinations: gratis, sin API key, texto→imagen por GET. Dimensiones según formato.
         if (IsPollinations) return await GeneratePollinationsAsync(prompt, format, ct);
 
+        var bytes = await GenerateWithProviderAsync(prompt, format, ct);
+        if (bytes != null) return bytes;
+
+        // Red de contención: que el proveedor pago se quede sin saldo o esté caído no
+        // puede dejar al posteo sin imagen (antes se iba en silencio y no se publicaba nada).
+        if (!_opts.FallbackToPollinations) return null;
+        _log.LogWarning("ImageGen {Provider} no devolvió imagen — probando con Pollinations", _opts.Provider);
+        return await GeneratePollinationsAsync(prompt, format, ct);
+    }
+
+    /// <summary>Llamada al proveedor configurado (OpenAI / Grok, ambos OpenAI-compatibles).</summary>
+    private async Task<byte[]?> GenerateWithProviderAsync(string prompt, SocialPostFormat? format, CancellationToken ct)
+    {
         if (string.IsNullOrWhiteSpace(_opts.ApiKey)) { _log.LogWarning("ImageGen ApiKey no configurada — no se genera imagen"); return null; }
 
         var provider = _opts.Provider.Trim().ToLowerInvariant();
@@ -297,7 +312,11 @@ public class AiImageGenerator : ISocialAssetGenerator
             + $"?width={w}&height={h}&seed={seed}&nologo=true&enhance=true&model=flux";
         try
         {
-            var bytes = await _http.GetByteArrayAsync(url, ct);
+            // Cliente aparte a propósito: _http lleva el header Authorization con la key
+            // del proveedor pago, y como fallback esto le mandaría esa key a pollinations.ai.
+            var http = _clients.CreateClient(nameof(AiImageGenerator) + ".Pollinations");
+            http.Timeout = TimeSpan.FromSeconds(_opts.TimeoutSeconds);
+            var bytes = await http.GetByteArrayAsync(url, ct);
             if (bytes is { Length: > 0 }) return bytes;
             _log.LogWarning("Pollinations devolvió 0 bytes");
             return null;

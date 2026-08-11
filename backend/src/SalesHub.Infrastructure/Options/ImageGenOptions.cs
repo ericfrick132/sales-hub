@@ -18,6 +18,14 @@ public class ImageGenOptions
     public int TimeoutSeconds { get; set; } = 180;
 
     /// <summary>
+    /// Si el proveedor principal no devuelve imagen (sin saldo, rate-limit, caída),
+    /// reintenta con Pollinations, que es gratis y sin API key. La calidad es menor,
+    /// pero evita que una cuenta sin crédito frene la generación entera: el 11-ago-2026
+    /// OpenAI devolvió credit_balance_exhausted y 16 posteos quedaron sin imagen.
+    /// </summary>
+    public bool FallbackToPollinations { get; set; } = true;
+
+    /// <summary>
     /// Base pública de la API (donde vive /api/posteos/assets/{id}.png) para armar
     /// la URL absoluta del asset — el worker no tiene HTTP context. El front está en
     /// sales.efcloud.tech (GitHub Pages) pero la API está en api.sales.efcloud.tech.
