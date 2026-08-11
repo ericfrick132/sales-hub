@@ -325,10 +325,10 @@ public class SellersController : ControllerBase
     private static SellerDeviceDto? ToDeviceDto(Device? d)
     {
         if (d is null) return null;
-        // 2 min: el latido llega por el WebSocket (20s) o por el poll de envío (30s + lo que
-        // dure el envío en curso). Con 60s un celu sano figuraba caído mientras mandaba.
-        var online = d.Status == DeviceStatus.Online
-                     && d.LastHeartbeatAt is not null
+        // Manda el latido, no el enum: llega por el WebSocket (20s) o por el poll de envío
+        // (30s + lo que dure el envío en curso). Con 60s un celu sano figuraba caído mientras
+        // mandaba, y atado a Status quedaba caído si solo se le moría el socket de estado.
+        var online = d.LastHeartbeatAt is not null
                      && DateTimeOffset.UtcNow - d.LastHeartbeatAt.Value < TimeSpan.FromSeconds(120);
         return new SellerDeviceDto(d.Id, d.Name, d.Status.ToString(), online, d.BatteryLevel, d.LastHeartbeatAt);
     }

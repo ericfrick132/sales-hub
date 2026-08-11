@@ -1192,8 +1192,7 @@ public class LeadsController : ControllerBase
         lead.Status = lead.Status is LeadStatus.New or LeadStatus.Assigned ? LeadStatus.Queued : lead.Status;
         await _db.SaveChangesAsync(ct);
 
-        var online = device.Status == DeviceStatus.Online
-                     && device.LastHeartbeatAt is not null
+        var online = device.LastHeartbeatAt is not null
                      && DateTimeOffset.UtcNow - device.LastHeartbeatAt.Value < TimeSpan.FromSeconds(120);
         var note = online
             ? $"Encolado al celu {device.Name}: {queued} mensaje(s) salen en los próximos minutos (pacing anti-ban de la línea)."

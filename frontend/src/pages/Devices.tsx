@@ -73,9 +73,10 @@ export default function Devices() {
     qc.invalidateQueries({ queryKey: ['devices'] });
   }
 
-  // 2 min de gracia: el latido puede venir del WebSocket (cada 20s) o del poll de envío
-  // (cada 30s, más lo que tarde un envío en curso). Con 60s parpadeaba mientras mandaba.
-  const isOnline = (d: Device) => d.status === 'Online' && d.lastHeartbeatAt &&
+  // El latido manda, no el enum: viene del WebSocket (cada 20s) o del poll de envío (cada
+  // 30s + lo que dure un envío), así que un celu con token nuevo pendiente igual figura vivo
+  // si sigue laburando. 2 min de gracia — con 60s parpadeaba en medio de un envío.
+  const isOnline = (d: Device) => !!d.lastHeartbeatAt &&
     (Date.now() - new Date(d.lastHeartbeatAt).getTime()) < 120_000;
 
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -109,6 +110,7 @@ export default function Devices() {
                 <div className="text-xs mt-0.5">
                   <span className={isOnline(d) ? 'text-emerald-600' : 'text-slate-400'}>
                     {isOnline(d) ? `● Online ${d.batteryLevel != null ? `🔋${d.batteryLevel}%` : ''}` : `○ ${d.status}`}{d.appVersion ? ` · v${d.appVersion}` : ''}
+                    {d.status === 'Pairing' && ' · esperando el código'}
                     {!isOnline(d) && ` · último latido ${hace(d.lastHeartbeatAt)}`}
                   </span>
                 </div>
