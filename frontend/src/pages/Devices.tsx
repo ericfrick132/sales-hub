@@ -10,11 +10,23 @@ interface Device {
 }
 interface Seller { id: string; displayName: string; email: string; }
 
+/** "hace 3 min" / "hace 2 h" / "hace 4 d" — para saber de cuándo es el último latido. */
+function hace(iso?: string): string {
+  if (!iso) return 'nunca';
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return 'recién';
+  if (mins < 60) return `hace ${mins} min`;
+  if (mins < 60 * 24) return `hace ${Math.floor(mins / 60)} h`;
+  return `hace ${Math.floor(mins / 1440)} d`;
+}
+
 export default function Devices() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [created, setCreated] = useState<{ token: string; qrUrl: string } | null>(null);
+  /** Panel de re-pairing abierto para un device ya existente (token nuevo + QR). */
+  const [pairing, setPairing] = useState<{ deviceId: string; token: string; qrUrl: string } | null>(null);
 
   const { data: devices } = useQuery({
     queryKey: ['devices'],
@@ -40,10 +52,19 @@ export default function Devices() {
     qc.invalidateQueries({ queryKey: ['devices'] });
   }
 
-  async function regenerateToken(id: string) {
-    const { data } = await api.post(`/devices/${id}/regenerate-token`);
-    setCreated({ token: data.pairingToken, qrUrl: data.qrUrl });
-    setShowCreate(true);
+  /**
+   * Reconectar un celu que se cayó: token nuevo de 6 dígitos + QR, sin borrar el device
+   * (conserva su vendedor y su historial). El celu vuelve solo si la app sigue viva; esto
+   * es para cuando hay que reengancharlo a mano desde el teléfono.
+   */
+  async function reconnect(id: string) {
+    try {
+      const { data } = await api.post(`/devices/${id}/regenerate-token`);
+      setPairing({ deviceId: id, token: data.pairingToken, qrUrl: data.qrUrl });
+      qc.invalidateQueries({ queryKey: ['devices'] });
+    } catch {
+      toast.error('No se pudo generar el código');
+    }
   }
 
   async function deleteDevice(id: string) {
@@ -52,8 +73,10 @@ export default function Devices() {
     qc.invalidateQueries({ queryKey: ['devices'] });
   }
 
+  // 2 min de gracia: el latido puede venir del WebSocket (cada 20s) o del poll de envío
+  // (cada 30s, más lo que tarde un envío en curso). Con 60s parpadeaba mientras mandaba.
   const isOnline = (d: Device) => d.status === 'Online' && d.lastHeartbeatAt &&
-    (Date.now() - new Date(d.lastHeartbeatAt).getTime()) < 60_000;
+    (Date.now() - new Date(d.lastHeartbeatAt).getTime()) < 120_000;
 
   const [testingId, setTestingId] = useState<string | null>(null);
 
@@ -69,19 +92,7 @@ export default function Devices() {
           <input className="input" placeholder="Nombre (ej: Moto E14 - Martu)" value={newName}
             onChange={e => setNewName(e.target.value)} />
           <button className="btn-primary mt-2" onClick={createDevice}>Crear</button>
-          {created && (
-            <div className="mt-3 p-3 bg-emerald-50 rounded flex flex-col items-center">
-              <QRCodeSVG value={created.qrUrl} size={180} marginSize={2} className="bg-white rounded" />
-              <div className="text-xs text-slate-500 text-center mt-2">
-                1. Escaneá el QR con el teléfono → descarga e instala la app
-              </div>
-              <div className="font-mono text-2xl text-center tracking-widest mt-2">{created.token}</div>
-              <div className="text-xs text-slate-500 text-center mt-1">
-                2. Abrí la app e ingresá este código (válido 10 min)
-              </div>
-              <div className="text-xs text-slate-400 text-center mt-1 truncate max-w-full">{created.qrUrl}</div>
-            </div>
-          )}
+          {created && <PairingPanel token={created.token} qrUrl={created.qrUrl} withApk />}
         </div>
       )}
 
@@ -98,6 +109,7 @@ export default function Devices() {
                 <div className="text-xs mt-0.5">
                   <span className={isOnline(d) ? 'text-emerald-600' : 'text-slate-400'}>
                     {isOnline(d) ? `● Online ${d.batteryLevel != null ? `🔋${d.batteryLevel}%` : ''}` : `○ ${d.status}`}{d.appVersion ? ` · v${d.appVersion}` : ''}
+                    {!isOnline(d) && ` · último latido ${hace(d.lastHeartbeatAt)}`}
                   </span>
                 </div>
               </div>
@@ -126,12 +138,15 @@ export default function Devices() {
                   onClick={() => setTestingId(testingId === d.id ? null : d.id)}>
                   Probar envío
                 </button>
-                {d.status === 'Pairing' && (
-                  <button className="btn-secondary text-xs" onClick={() => regenerateToken(d.id)}>Nuevo token</button>
-                )}
+                <button className={isOnline(d) ? 'btn-secondary text-xs' : 'btn-primary text-xs'}
+                  title="Genera un código nuevo para volver a enganchar este celu, sin perder el vendedor asignado"
+                  onClick={() => pairing?.deviceId === d.id ? setPairing(null) : reconnect(d.id)}>
+                  {d.status === 'Pairing' ? 'Nuevo código' : 'Reconectar'}
+                </button>
                 <button className="btn-danger text-xs" onClick={() => deleteDevice(d.id)}>Eliminar</button>
               </div>
             </div>
+            {pairing?.deviceId === d.id && <PairingPanel token={pairing.token} qrUrl={pairing.qrUrl} />}
             {testingId === d.id && <TestSendPanel deviceId={d.id} />}
           </div>
         ))}
@@ -139,6 +154,28 @@ export default function Devices() {
           <div className="p-4 text-slate-400 text-center">No hay dispositivos</div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Código de pairing + QR. En alta (`withApk`) el QR sirve para bajar el APK; al reconectar
+ * un celu que ya tiene la app, lo único que hace falta es el código de 6 dígitos.
+ */
+function PairingPanel({ token, qrUrl, withApk = false }: { token: string; qrUrl: string; withApk?: boolean }) {
+  return (
+    <div className="mt-3 p-3 bg-emerald-50 rounded flex flex-col items-center">
+      <QRCodeSVG value={qrUrl} size={180} marginSize={2} className="bg-white rounded" />
+      <div className="text-xs text-slate-500 text-center mt-2">
+        {withApk
+          ? '1. Escaneá el QR con el teléfono → descarga e instala la app'
+          : '1. Si la app no está instalada, escaneá el QR para bajarla'}
+      </div>
+      <div className="font-mono text-2xl text-center tracking-widest mt-2">{token}</div>
+      <div className="text-xs text-slate-500 text-center mt-1">
+        2. Abrí la app en el celu, ingresá este código y tocá Conectar (válido 10 min)
+      </div>
+      <div className="text-xs text-slate-400 text-center mt-1 truncate max-w-full">{qrUrl}</div>
     </div>
   );
 }

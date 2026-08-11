@@ -1194,7 +1194,7 @@ public class LeadsController : ControllerBase
 
         var online = device.Status == DeviceStatus.Online
                      && device.LastHeartbeatAt is not null
-                     && DateTimeOffset.UtcNow - device.LastHeartbeatAt.Value < TimeSpan.FromSeconds(60);
+                     && DateTimeOffset.UtcNow - device.LastHeartbeatAt.Value < TimeSpan.FromSeconds(120);
         var note = online
             ? $"Encolado al celu {device.Name}: {queued} mensaje(s) salen en los próximos minutos (pacing anti-ban de la línea)."
             : $"Encolado al celu {device.Name} ({queued} mensaje(s)) — el celu está offline ahora, salen cuando vuelva.";

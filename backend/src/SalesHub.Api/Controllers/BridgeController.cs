@@ -73,10 +73,15 @@ public class BridgeController : ControllerBase
         // El celu reporta su versión en cada poll: sin esto no hay forma de saber qué corre
         // cada teléfono (pasó dos veces tener que adivinar si un fix ya había llegado).
         if (!string.IsNullOrWhiteSpace(v) && device.AppVersion != v)
-        {
             device.AppVersion = v;
-            await _db.SaveChangesAsync();
-        }
+
+        // El poll ES señal de vida. Antes el estado colgaba SOLO del WebSocket de estado, así
+        // que un celu que seguía mandando perfecto figuraba "Offline" apenas se le caía el
+        // socket. Nunca pisamos Pairing: ahí el celu está esperando entrar con token nuevo.
+        device.LastHeartbeatAt = now;
+        if (device.Status is DeviceStatus.Offline or DeviceStatus.Error)
+            device.Status = DeviceStatus.Online;
+        await _db.SaveChangesAsync();
 
         // Pedido manual de "levantar chats": viaja en la misma respuesta del poll.
         var sweep = _testSends.ConsumeSweep(device.Id);
