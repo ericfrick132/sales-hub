@@ -123,6 +123,8 @@ public class SocialContentGenerator
         sys.AppendLine($"Tono/voz de marca: {p.BrandVoice}");
         sys.AppendLine($"Guía de marca: {p.BrandGuidelines}");
         sys.AppendLine($"Paleta (no la cambies): {p.BrandColorsJson}. Fuentes: {p.BrandFonts}.");
+        if (!string.IsNullOrWhiteSpace(p.ImageStyle))
+            sys.AppendLine($"Dirección de arte del visual (para el campo 'prompt' — seguila estrictamente, pesa más que cualquier otra indicación de estilo): {p.ImageStyle.Trim()}");
         if (p.ContentPillars.Count > 0)
             sys.AppendLine($"Pilares de contenido: {string.Join(" | ", p.ContentPillars)}.");
         sys.AppendLine();
@@ -195,6 +197,8 @@ public class SocialContentGenerator
         sys.AppendLine($"Tono/voz de marca: {p.BrandVoice}");
         sys.AppendLine($"Guía de marca: {p.BrandGuidelines}");
         sys.AppendLine($"Paleta (no la cambies): {p.BrandColorsJson}. Fuentes: {p.BrandFonts}.");
+        if (!string.IsNullOrWhiteSpace(p.ImageStyle))
+            sys.AppendLine($"Dirección de arte del visual (para el campo 'prompt' — seguila estrictamente, pesa más que cualquier otra indicación de estilo): {p.ImageStyle.Trim()}");
         if (p.ContentPillars.Count > 0)
             sys.AppendLine($"Pilares de contenido: {string.Join(" | ", p.ContentPillars)}.");
         if (!string.IsNullOrWhiteSpace(p.LandingKnowledge))
@@ -422,6 +426,8 @@ public class SocialContentGenerator
         sys.AppendLine($"Tono/voz de marca: {p.BrandVoice}");
         sys.AppendLine($"Guía de marca: {p.BrandGuidelines}");
         sys.AppendLine($"Paleta (no la cambies): {p.BrandColorsJson}. Fuentes: {p.BrandFonts}.");
+        if (!string.IsNullOrWhiteSpace(p.ImageStyle))
+            sys.AppendLine($"Dirección de arte del visual (para el campo 'prompt' — seguila estrictamente, pesa más que cualquier otra indicación de estilo): {p.ImageStyle.Trim()}");
         if (p.ContentPillars.Count > 0)
             sys.AppendLine($"Pilares de contenido: {string.Join(" | ", p.ContentPillars)}.");
         if (ch != null && !string.IsNullOrWhiteSpace(ch.PromptTemplate))
