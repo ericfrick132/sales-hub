@@ -121,63 +121,67 @@ public class CrmController : ControllerBase
                 break;
         }
 
-        // Una sola pasada por lead: el tablero se arma en memoria porque el conjunto ya
-        // viene filtrado y acotado por etapa.
-        var rows = await leadQ
-            .Select(l => new
-            {
-                l.Id, l.Name, l.City, l.ProductKey,
-                ProductName = l.Product != null ? l.Product.DisplayName : null,
-                l.WhatsappPhone, l.Status, l.Source, l.SellerId,
-                SellerName = l.Seller != null ? l.Seller.DisplayName : null,
-                l.NextActionAt, l.NextActionNote, l.Score, l.CreatedAt, l.UpdatedAt,
-                LastMessageAt = _db.ConversationMessages.Where(m => m.LeadId == l.Id)
-                    .OrderByDescending(m => m.Timestamp).Select(m => (DateTimeOffset?)m.Timestamp).FirstOrDefault(),
-                Unread = _db.ConversationMessages.Count(m => m.LeadId == l.Id
-                    && m.Direction == MessageDirection.Inbound && !m.IsRead),
-                NoteCount = _db.LeadNotes.Count(n => n.LeadId == l.Id),
-                LastNote = _db.LeadNotes.Where(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Note)
-                    .OrderByDescending(n => n.CreatedAt).Select(n => n.Text).FirstOrDefault(),
-            })
-            .ToListAsync(ct);
+        // Los totales salen de un GROUP BY sobre columnas reales — nada de traer los 12k
+        // leads a memoria para después quedarse con 50 por columna.
+        var counts = await leadQ
+            .GroupBy(l => l.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Status, x => x.Count, ct);
+
+        var overdue = await leadQ.CountAsync(l => l.NextActionAt != null && l.NextActionAt < now, ct);
 
         var deviceBySeller = devices.Where(d => d.SellerId != null)
             .GroupBy(d => d.SellerId!.Value)
             .ToDictionary(g => g.Key, g => g.OrderBy(x => x.Name).First());
 
-        var stageOf = Stages
-            .SelectMany(s => s.Statuses.Select(st => (st, s.Key)))
-            .ToDictionary(x => x.st, x => x.Key);
-
-        var cards = rows.Select(r =>
+        // Una query por etapa, ya ordenada y cortada en SQL: sólo bajan las tarjetas visibles.
+        // El orden va por columnas indexables (vencimiento y última actualización); el dato
+        // del chat se resuelve sólo para esas pocas filas.
+        var columns = new List<StageColumn>();
+        foreach (var s in Stages)
         {
-            deviceBySeller.TryGetValue(r.SellerId ?? Guid.Empty, out var dev);
-            return new CrmCard(
-                r.Id, r.Name, r.City, r.ProductKey, r.ProductName, r.WhatsappPhone,
-                r.Status.ToString(),
-                stageOf.TryGetValue(r.Status, out var sk) ? sk : "nuevo",
-                r.Source.ToString(),
-                r.SellerId, r.SellerName, dev?.Id, dev?.Name,
-                r.LastMessageAt ?? r.UpdatedAt,
-                r.NextActionAt, r.NextActionNote,
-                r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt);
-        }).ToList();
+            var top = await leadQ
+                .Where(l => s.Statuses.Contains(l.Status))
+                .OrderBy(l => l.NextActionAt ?? DateTimeOffset.MaxValue)
+                .ThenByDescending(l => l.UpdatedAt)
+                .Take(perStage)
+                .Select(l => new
+                {
+                    l.Id, l.Name, l.City, l.ProductKey,
+                    ProductName = l.Product != null ? l.Product.DisplayName : null,
+                    l.WhatsappPhone, l.Status, l.Source, l.SellerId,
+                    SellerName = l.Seller != null ? l.Seller.DisplayName : null,
+                    l.NextActionAt, l.NextActionNote, l.Score, l.CreatedAt, l.UpdatedAt,
+                    LastMessageAt = _db.ConversationMessages.Where(m => m.LeadId == l.Id)
+                        .OrderByDescending(m => m.Timestamp).Select(m => (DateTimeOffset?)m.Timestamp).FirstOrDefault(),
+                    Unread = _db.ConversationMessages.Count(m => m.LeadId == l.Id
+                        && m.Direction == MessageDirection.Inbound && !m.IsRead),
+                    NoteCount = _db.LeadNotes.Count(n => n.LeadId == l.Id),
+                    LastNote = _db.LeadNotes.Where(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Note)
+                        .OrderByDescending(n => n.CreatedAt).Select(n => n.Text).FirstOrDefault(),
+                })
+                .ToListAsync(ct);
 
-        var columns = Stages.Select(s =>
-        {
-            var mine = cards.Where(c => c.StageKey == s.Key)
-                // Primero lo que vence antes; después, lo de movimiento más reciente.
-                .OrderBy(c => c.NextActionAt ?? DateTimeOffset.MaxValue)
-                .ThenByDescending(c => c.LastActivityAt ?? c.CreatedAt)
-                .ToList();
-            return new StageColumn(s.Key, s.Label, mine.Count, mine.Take(perStage).ToList());
-        }).ToList();
+            var cards = top.Select(r =>
+            {
+                deviceBySeller.TryGetValue(r.SellerId ?? Guid.Empty, out var dev);
+                return new CrmCard(
+                    r.Id, r.Name, r.City, r.ProductKey, r.ProductName, r.WhatsappPhone,
+                    r.Status.ToString(), s.Key, r.Source.ToString(),
+                    r.SellerId, r.SellerName, dev?.Id, dev?.Name,
+                    r.LastMessageAt ?? r.UpdatedAt,
+                    r.NextActionAt, r.NextActionNote,
+                    r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt);
+            }).ToList();
+
+            columns.Add(new StageColumn(s.Key, s.Label, s.Statuses.Sum(st => counts.GetValueOrDefault(st)), cards));
+        }
 
         return Ok(new
         {
             stages = columns,
-            total = cards.Count,
-            overdue = cards.Count(c => c.NextActionAt != null && c.NextActionAt < now),
+            total = counts.Values.Sum(),
+            overdue,
             perStage,
         });
     }
