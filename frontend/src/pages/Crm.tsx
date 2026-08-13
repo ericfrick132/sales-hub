@@ -43,6 +43,17 @@ const SOURCES = [
   { value: 'InstagramScraper', label: 'Instagram' },
 ];
 
+/** Mismo agrupamiento que usa el backend (CrmController.Stages). */
+const STATUS_TO_STAGE: Record<string, string> = {
+  New: 'nuevo', Assigned: 'nuevo', Queued: 'nuevo',
+  Sent: 'contactado',
+  Replied: 'respondio',
+  Interested: 'interesado',
+  DemoScheduled: 'demo',
+  Closed: 'ganado',
+  Lost: 'perdido', Blocked: 'perdido', NoWhatsApp: 'perdido',
+};
+
 const hace = (iso?: string) => {
   if (!iso) return 'sin actividad';
   const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -223,7 +234,14 @@ export default function Crm() {
         </div>
       )}
 
-      {openLead && <LeadDrawer leadId={openLead} onClose={() => setOpenLead(null)} />}
+      {openLead && (
+        <LeadDrawer
+          leadId={openLead}
+          stages={cols.map((c) => ({ key: c.key, label: c.label }))}
+          onClose={() => setOpenLead(null)}
+          onMove={move}
+        />
+      )}
     </div>
   );
 }
@@ -289,8 +307,13 @@ function CrmCard({ card, onOpen, onDragStart, onDragEnd }: {
   );
 }
 
-/** Ficha lateral: datos, próxima acción y la bitácora de notas. */
-function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () => void }) {
+/** Ficha lateral: datos, etapa, próxima acción y la bitácora de notas. */
+function LeadDrawer({ leadId, stages, onClose, onMove }: {
+  leadId: string;
+  stages: { key: string; label: string }[];
+  onClose: () => void;
+  onMove: (leadId: string, stage: string) => Promise<void>;
+}) {
   const qc = useQueryClient();
   const [noteText, setNoteText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -301,6 +324,8 @@ function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () => void }
   });
 
   const d = detail.data;
+  /** Etapa actual derivada del status, para preseleccionar el combo. */
+  const currentStage = STATUS_TO_STAGE[d?.status ?? ''] ?? '';
 
   async function addNote() {
     const text = noteText.trim();
@@ -359,6 +384,22 @@ function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () => void }
               )}
               <Link to={`/conversations?lead=${d.id}`} className="btn-secondary text-xs">Ver chat</Link>
               <Link to={`/leads/${d.id}`} className="btn-secondary text-xs">Ficha completa</Link>
+            </div>
+
+            {/* ── Etapa (alternativa al arrastre: en el celular no se puede arrastrar) ── */}
+            <div className="card p-3 space-y-1">
+              <div className="text-sm font-semibold">Etapa</div>
+              <select
+                className="input text-sm w-full"
+                value={currentStage}
+                onChange={async (e) => {
+                  await onMove(leadId, e.target.value);
+                  qc.invalidateQueries({ queryKey: ['crm-lead', leadId] });
+                }}>
+                {stages.map((s) => (
+                  <option key={s.key} value={s.key}>{s.label}</option>
+                ))}
+              </select>
             </div>
 
             {/* ── Próxima acción ── */}
