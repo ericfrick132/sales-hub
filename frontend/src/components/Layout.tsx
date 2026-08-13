@@ -36,6 +36,7 @@ export default function Layout() {
     ? [
         { items: [{ to: '/admin', label: 'Hoy' }] },
         { title: 'Leads', items: [
+          { to: '/crm', label: 'CRM' },
           { to: '/leads', label: 'Leads' },
           { to: '/conversations', label: 'Conversaciones', badge: unread.data },
           { to: '/atencion', label: 'Atención' },
@@ -80,6 +81,7 @@ export default function Layout() {
     : [
         { items: [{ to: '/dashboard', label: 'Hoy' }] },
         { title: 'Leads', items: [
+          { to: '/crm', label: 'CRM' },
           { to: '/leads', label: 'Mis leads' },
           { to: '/conversations', label: 'Conversaciones', badge: unread.data },
         ] },

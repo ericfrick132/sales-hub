@@ -11,6 +11,7 @@ import Connect from './pages/Connect';
 import Devices from './pages/Devices';
 import AdminDashboard from './pages/AdminDashboard';
 import Atencion from './pages/Atencion';
+import Crm from './pages/Crm';
 import Sellers from './pages/Sellers';
 import SellerDetail from './pages/SellerDetail';
 import SellerZones from './pages/SellerZones';
@@ -62,6 +63,7 @@ export default function App() {
         <Route path="/" element={<Navigate to={isAdmin(user) ? '/admin' : '/dashboard'} replace />} />
         <Route path="/dashboard" element={<MyDashboard />} />
         <Route path="/leads" element={<MyLeads />} />
+        <Route path="/crm" element={<Crm />} />
         <Route path="/leads/import" element={<LeadsImport />} />
         <Route path="/leads/search" element={<SearchLeads />} />
         <Route path="/leads/:id" element={<LeadDetail />} />

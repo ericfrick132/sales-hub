@@ -92,6 +92,15 @@ public class Lead
     /// </summary>
     public DateTimeOffset? SlaAlertedAt { get; set; }
 
+    /// <summary>
+    /// CRM: próxima acción comprometida ("llamarlo el martes"). Es lo que ordena el día
+    /// del que vende — sin esto un lead avanza de etapa y después nadie se acuerda de él.
+    /// </summary>
+    public DateTimeOffset? NextActionAt { get; set; }
+
+    /// <summary>Qué hay que hacer en esa próxima acción (texto libre y corto).</summary>
+    public string? NextActionNote { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

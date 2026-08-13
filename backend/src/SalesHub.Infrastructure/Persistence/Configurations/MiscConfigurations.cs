@@ -73,3 +73,26 @@ public class MessageStepRotationConfiguration : IEntityTypeConfiguration<Message
         b.HasKey(x => new { x.ProductId, x.Category, x.StepIndex });
     }
 }
+
+public class LeadNoteConfiguration : IEntityTypeConfiguration<LeadNote>
+{
+    public void Configure(EntityTypeBuilder<LeadNote> b)
+    {
+        b.ToTable("lead_notes");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Text).HasColumnType("text").IsRequired();
+        b.Property(x => x.Kind).HasConversion<int>();
+        // El timeline de un lead se lee siempre del más nuevo al más viejo.
+        b.HasIndex(x => new { x.LeadId, x.CreatedAt });
+
+        b.HasOne(x => x.Lead)
+            .WithMany()
+            .HasForeignKey(x => x.LeadId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        b.HasOne(x => x.Seller)
+            .WithMany()
+            .HasForeignKey(x => x.SellerId)
+            .OnDelete(DeleteBehavior.SetNull);
+    }
+}

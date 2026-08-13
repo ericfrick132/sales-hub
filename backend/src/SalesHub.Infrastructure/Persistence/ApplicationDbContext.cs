@@ -13,6 +13,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Lead> Leads => Set<Lead>();
+    public DbSet<LeadNote> LeadNotes => Set<LeadNote>();
     public DbSet<CityQueue> Cities => Set<CityQueue>();
     public DbSet<ScrapeLog> ScrapeLogs => Set<ScrapeLog>();
     public DbSet<Competitor> Competitors => Set<Competitor>();
