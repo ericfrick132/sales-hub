@@ -111,9 +111,38 @@ public class ResponseTimeService : IResponseTimeService
         JOIN leads l ON l.id = w.lead_id
         WHERE (@seller_id IS NULL OR l.seller_id = @seller_id)
           AND (@max_age <= 0 OR w.waiting_since >= NOW() - make_interval(hours => @max_age))
-        ORDER BY w.waiting_since
+        -- DESC + LIMIT a propósito: si hay que recortar, se recorta la deuda vieja, nunca
+        -- lo que acaba de entrar (que es lo accionable). El consumidor reordena para mostrar.
+        ORDER BY w.waiting_since DESC
         LIMIT @lim
         """;
+
+    private const string CountWaitingSql = """
+        WITH lo AS (
+            SELECT lead_id, MAX("timestamp") AS out_ts
+            FROM conversation_messages WHERE direction = 0 GROUP BY lead_id
+        ),
+        w AS (
+            SELECT c.lead_id, MIN(c."timestamp") AS waiting_since
+            FROM conversation_messages c
+            LEFT JOIN lo ON lo.lead_id = c.lead_id
+            WHERE c.direction = 1 AND (lo.out_ts IS NULL OR c."timestamp" > lo.out_ts)
+            GROUP BY c.lead_id
+        )
+        SELECT COUNT(*)
+        FROM w
+        JOIN leads l ON l.id = w.lead_id
+        WHERE (@seller_id IS NULL OR l.seller_id = @seller_id)
+          AND (@max_age <= 0 OR w.waiting_since >= NOW() - make_interval(hours => @max_age))
+        """;
+
+    public async Task<int> CountWaitingAsync(Guid? sellerId = null, int maxAgeHours = 0, CancellationToken ct = default)
+    {
+        await using var cmd = await CommandAsync(CountWaitingSql, ct);
+        cmd.Parameters.Add(UuidParam("seller_id", sellerId));
+        cmd.Parameters.Add(new NpgsqlParameter("max_age", NpgsqlDbType.Integer) { Value = maxAgeHours });
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct) ?? 0);
+    }
 
     public async Task<IReadOnlyList<WaitingChat>> GetWaitingAsync(
         Guid? sellerId = null, int maxAgeHours = 0, int limit = 200, CancellationToken ct = default)

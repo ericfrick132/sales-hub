@@ -64,7 +64,7 @@ export default function AdminDashboard() {
   const products = useQuery({ queryKey: ['products-min'], queryFn: async () => (await api.get<Product[]>('/products')).data });
   // Comparte queryKey con la página de Atención → react-query dedupe, sin doble fetch.
   const waiting = useQuery({
-    queryKey: ['attention-waiting'],
+    queryKey: ['attention-waiting', false],
     queryFn: async () => (await api.get<{ breached: boolean }[]>('/attention/waiting', { params: { limit: 100 } })).data,
     refetchInterval: 30000,
   });

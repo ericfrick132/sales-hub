@@ -43,7 +43,7 @@ interface Summary {
   byMode: GroupRow[];
   byHour: HourRow[];
   ads: { newConversations: number; byProduct: AdProductRow[] };
-  waitingNow: { total: number; breached: number; oldestMinutes: number };
+  waitingNow: { total: number; recent: number; backlogOlder: number; recentDays: number; breached: number; oldestMinutes: number };
 }
 
 const WINDOWS = [7, 30, 90];
@@ -68,6 +68,7 @@ const tone = (pct: number) =>
 
 export default function Atencion() {
   const [days, setDays] = useState(30);
+  const [showBacklog, setShowBacklog] = useState(false);
 
   const summary = useQuery({
     queryKey: ['attention-summary', days],
@@ -76,8 +77,11 @@ export default function Atencion() {
   });
 
   const waiting = useQuery({
-    queryKey: ['attention-waiting'],
-    queryFn: async () => (await api.get<WaitingRow[]>('/attention/waiting', { params: { limit: 100 } })).data,
+    queryKey: ['attention-waiting', showBacklog],
+    queryFn: async () =>
+      (await api.get<WaitingRow[]>('/attention/waiting', {
+        params: showBacklog ? { limit: 300, maxAgeHours: 0 } : { limit: 100 },
+      })).data,
     refetchInterval: 30000,
   });
 
@@ -85,7 +89,6 @@ export default function Atencion() {
   const s = summary.data;
   const sla = s.slaMinutes;
   const queue = waiting.data ?? [];
-  const breached = queue.filter((q) => q.breached);
 
   return (
     <div className="space-y-5">
@@ -114,10 +117,10 @@ export default function Atencion() {
       {/* ══ Los cuatro números que importan ══ */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Tile
-          label="Esperando ahora"
-          value={queue.length}
-          sub={breached.length > 0 ? `${breached.length} pasados de ${sla} min` : 'ninguno pasado del límite'}
-          alert={breached.length > 0}
+          label={`Esperando · ${s.waitingNow.recentDays} días`}
+          value={s.waitingNow.recent}
+          sub={s.waitingNow.breached > 0 ? `${s.waitingNow.breached} pasados de ${sla} min` : 'ninguno pasado del límite'}
+          alert={s.waitingNow.breached > 0}
         />
         <Tile
           label={`Respondidos en ${sla} min · hoy`}
@@ -140,12 +143,34 @@ export default function Atencion() {
 
       {/* ══ Cola en vivo ══ */}
       <div className="card p-4 md:p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">Esperando respuesta ahora</h2>
-          <span className="text-xs text-slate-400">se actualiza cada 30 s</span>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div>
+            <h2 className="text-lg font-semibold">Esperando respuesta</h2>
+            <p className="text-xs text-slate-500">
+              {showBacklog
+                ? 'Toda la deuda, del que más espera al que menos.'
+                : `Últimos ${s.waitingNow.recentDays} días. El que más espera, primero.`}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {s.waitingNow.backlogOlder > 0 && (
+              <button
+                onClick={() => setShowBacklog((v) => !v)}
+                className="text-xs text-brand-700 hover:underline"
+              >
+                {showBacklog
+                  ? `Ver solo los últimos ${s.waitingNow.recentDays} días`
+                  : `Ver ${s.waitingNow.backlogOlder} chats viejos sin responder`}
+              </button>
+            )}
+            <span className="text-xs text-slate-400">cada 30 s</span>
+          </div>
         </div>
         {queue.length === 0 ? (
-          <p className="text-sm text-slate-500">Nadie esperando. Todos los chats están contestados.</p>
+          <p className="text-sm text-slate-500">
+            Nadie esperando en esta ventana.
+            {s.waitingNow.backlogOlder > 0 && ` Quedan ${s.waitingNow.backlogOlder} chats viejos sin responder.`}
+          </p>
         ) : (
           <div className="overflow-x-auto -mx-4 md:mx-0">
             <table className="min-w-full text-sm">

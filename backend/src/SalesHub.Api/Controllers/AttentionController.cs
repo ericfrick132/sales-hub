@@ -31,6 +31,13 @@ public class AttentionController : ControllerBase
 
     private int SlaMinutes => _config.GetValue<int?>("Sla:ThresholdMinutes") ?? 10;
 
+    /// <summary>
+    /// Ventana por defecto de la cola en vivo. Sin esto la pantalla arranca con meses de
+    /// chats colgados viejos y tapa lo que hay que contestar hoy; la deuda vieja se
+    /// muestra como un número aparte que se puede desplegar.
+    /// </summary>
+    private const int RecentWaitingHours = 24 * 7;
+
     public record SlaStats(
         int Turns, int Answered, int Unanswered,
         double? MedianMin, double? P90Min, double? AvgMin,
@@ -59,7 +66,8 @@ public class AttentionController : ControllerBase
         var since = now.AddDays(-days);
 
         var turns = await _rt.GetTurnsAsync(since, null, ct);
-        var waiting = await _rt.GetWaitingAsync(null, 0, 500, ct);
+        var waiting = await _rt.GetWaitingAsync(null, RecentWaitingHours, 500, ct);
+        var waitingTotal = await _rt.CountWaitingAsync(null, 0, ct);
 
         var sellers = await _db.Sellers.AsNoTracking()
             .Select(s => new { s.Id, s.DisplayName }).ToDictionaryAsync(s => s.Id, s => s.DisplayName, ct);
@@ -145,7 +153,10 @@ public class AttentionController : ControllerBase
             },
             waitingNow = new
             {
-                total = waiting.Count,
+                total = waitingTotal,
+                recent = waiting.Count,
+                backlogOlder = Math.Max(0, waitingTotal - waiting.Count),
+                recentDays = RecentWaitingHours / 24,
                 breached,
                 oldestMinutes = waiting.Count > 0 ? (int)waiting.Max(w => w.MinutesWaiting) : 0,
             },
@@ -153,14 +164,19 @@ public class AttentionController : ControllerBase
     }
 
     /// <summary>Cola en vivo: quién está esperando respuesta, del que más espera al que menos.</summary>
+    /// <param name="maxAgeHours">
+    /// Antigüedad máxima. Por defecto una semana: la deuda vieja se pide explícitamente
+    /// con 0 (= sin tope), si no tapa lo que hay que contestar hoy.
+    /// </param>
     [HttpGet("waiting")]
     public async Task<IActionResult> Waiting(
-        [FromQuery] int limit = 100, [FromQuery] int maxAgeHours = 0, CancellationToken ct = default)
+        [FromQuery] int limit = 100, [FromQuery] int? maxAgeHours = null, CancellationToken ct = default)
     {
         var isAdmin = CurrentUser.IsAdmin(User);
         var sellerId = isAdmin ? (Guid?)null : CurrentUser.Id(User);
-        var rows = await _rt.GetWaitingAsync(sellerId, maxAgeHours, limit, ct);
-        return Ok(await ToRowsAsync(rows, ct));
+        var rows = await _rt.GetWaitingAsync(sellerId, maxAgeHours ?? RecentWaitingHours, limit, ct);
+        // El SQL corta por lo más reciente; para mostrar, primero el que más espera.
+        return Ok(await ToRowsAsync(rows.OrderBy(r => r.WaitingSince).ToList(), ct));
     }
 
     /// <summary>Lo que ve el que atiende: su SLA de hoy y de la semana + su cola.</summary>
@@ -175,15 +191,17 @@ public class AttentionController : ControllerBase
         var todayStart = new DateTimeOffset(nowAr.Year, nowAr.Month, nowAr.Day, 0, 0, 0, nowAr.Offset);
 
         var turns = await _rt.GetTurnsAsync(now.AddDays(-7), id, ct);
-        var waiting = await _rt.GetWaitingAsync(id, 0, 100, ct);
+        var waiting = await _rt.GetWaitingAsync(id, RecentWaitingHours, 100, ct);
+        var waitingTotal = await _rt.CountWaitingAsync(id, 0, ct);
 
         return Ok(new
         {
             slaMinutes = sla,
             today = Stats(turns.Where(t => t.InAt >= todayStart).ToList(), sla),
             last7d = Stats(turns, sla),
-            waiting = await ToRowsAsync(waiting, ct),
+            waiting = await ToRowsAsync(waiting.OrderBy(w => w.WaitingSince).ToList(), ct),
             waitingBreached = waiting.Count(w => w.MinutesWaiting > sla),
+            backlogOlder = Math.Max(0, waitingTotal - waiting.Count),
         });
     }
 

@@ -23,6 +23,7 @@ interface MyAttention {
   last7d: SlaStats;
   waiting: WaitingRow[];
   waitingBreached: number;
+  backlogOlder: number;
 }
 
 const fmtMin = (m: number | null) => {
@@ -95,6 +96,11 @@ export default function MySla() {
             ))}
           </div>
           {queue.length > 8 && <p className="text-xs text-slate-400 mt-2">y {queue.length - 8} más.</p>}
+          {data.backlogOlder > 0 && (
+            <p className="text-xs text-slate-400 mt-2">
+              Además hay {data.backlogOlder} chats viejos sin responder (más de una semana).
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -53,4 +53,7 @@ public interface IResponseTimeService
     /// <paramref name="maxAgeHours"/> acota la deuda vieja (0 = sin tope).
     /// </summary>
     Task<IReadOnlyList<WaitingChat>> GetWaitingAsync(Guid? sellerId = null, int maxAgeHours = 0, int limit = 200, CancellationToken ct = default);
+
+    /// <summary>Cuántos chats esperan respuesta, sin traer las filas (para contadores).</summary>
+    Task<int> CountWaitingAsync(Guid? sellerId = null, int maxAgeHours = 0, CancellationToken ct = default);
 }
