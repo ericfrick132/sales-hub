@@ -278,28 +278,53 @@ export default function Atencion() {
   );
 }
 
+/** Días sin un solo mensaje: si no se rellenan, el eje se ve continuo y miente. */
+function fillGaps(daily: DailyPoint[]): (DailyPoint | { date: string; empty: true })[] {
+  if (daily.length === 0) return [];
+  const out: (DailyPoint | { date: string; empty: true })[] = [];
+  const byDate = new Map(daily.map((d) => [d.date, d]));
+  const cursor = new Date(`${daily[0].date}T00:00:00Z`);
+  const end = new Date(`${daily[daily.length - 1].date}T00:00:00Z`);
+  while (cursor <= end) {
+    const iso = cursor.toISOString().slice(0, 10);
+    out.push(byDate.get(iso) ?? { date: iso, empty: true });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return out;
+}
+
 /** Serie única de % de cumplimiento por día: barra por día, color por estado. */
 function DailyStrip({ daily }: { daily: DailyPoint[] }) {
   if (daily.length === 0) return <p className="text-sm text-slate-500">Sin datos en la ventana.</p>;
-  const shown = daily.slice(-45);
+  const shown = fillGaps(daily).slice(-60);
   return (
     <div>
-      <div className="flex items-end gap-[2px] h-28">
-        {shown.map((d) => {
-          const t = tone(d.pctWithinSla);
-          return (
-            <div key={d.date} className="flex-1 min-w-[6px] flex flex-col justify-end h-full group relative">
-              <div
-                className={`${t.bar} rounded-t w-full transition-all`}
-                style={{ height: `${Math.max(3, d.pctWithinSla)}%` }}
-                title={`${fmtDay(d.date)} · ${d.pctWithinSla}% a tiempo · ${d.turns} mensajes · ${d.unanswered} sin responder · típico ${fmtMin(d.medianMin)}`}
-              />
-            </div>
-          );
-        })}
+      <div className="relative h-28">
+        {/* Referencia de la meta: 90% de cumplimiento. */}
+        <div className="absolute inset-x-0 border-t border-dashed border-slate-300 z-10" style={{ bottom: '90%' }}>
+          <span className="absolute -top-4 right-0 text-[10px] text-slate-400">meta 90%</span>
+        </div>
+        <div className="flex items-end gap-[2px] h-full">
+          {shown.map((d) =>
+            'empty' in d ? (
+              <div key={d.date} className="flex-1 min-w-[6px] h-full flex items-end" title={`${fmtDay(d.date)} · sin mensajes`}>
+                <div className="w-full h-[2px] bg-slate-200 rounded" />
+              </div>
+            ) : (
+              <div key={d.date} className="flex-1 min-w-[6px] flex flex-col justify-end h-full">
+                <div
+                  className={`${tone(d.pctWithinSla).bar} rounded-t w-full transition-all`}
+                  style={{ height: `${Math.max(3, d.pctWithinSla)}%` }}
+                  title={`${fmtDay(d.date)} · ${d.pctWithinSla}% a tiempo · ${d.turns} mensajes · ${d.unanswered} sin responder · típico ${fmtMin(d.medianMin)}`}
+                />
+              </div>
+            )
+          )}
+        </div>
       </div>
       <div className="flex justify-between text-[10px] text-slate-400 mt-1">
         <span>{fmtDay(shown[0].date)}</span>
+        <span className="text-slate-300">gris = día sin mensajes</span>
         <span>{fmtDay(shown[shown.length - 1].date)}</span>
       </div>
     </div>

@@ -122,7 +122,7 @@ export default function AdminDashboard() {
       {/* ══ KPIs medibles ══ */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         <Kpi
-          label="Esperando respuesta"
+          label="Esperando"
           value={waiting.data?.length ?? 0}
           sub={waitingBreached > 0 ? `${waitingBreached} pasados de 10 min` : 'nadie colgado'}
           to="/atencion"
