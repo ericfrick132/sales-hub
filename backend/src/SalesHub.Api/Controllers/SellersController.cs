@@ -30,15 +30,17 @@ public class SellersController : ControllerBase
         // Backfill del numero vinculado: las instancias conectadas viejas no lo tienen guardado
         // (solo el flujo de QR de apps lo estampaba). Una consulta a Evolution por instancia,
         // una sola vez (??=), y queda persistido.
+        // No se exige que la instancia esté conectada: el número vinculado no deja de existir
+        // porque se cayó la sesión, y Evolution lo sigue reportando. Con el filtro anterior
+        // (sólo Connected) las líneas caídas nunca guardaban su número y quedaban anónimas.
         var dirty = false;
-        if (sellers.Any(s => s.EvolutionInstance is { Status: InstanceStatus.Connected } i && string.IsNullOrWhiteSpace(i.ConnectedPhoneNumber)))
+        if (sellers.Any(s => s.EvolutionInstance is { } i && string.IsNullOrWhiteSpace(i.ConnectedPhoneNumber)))
         {
             var owners = await _evo.GetInstanceOwnersAsync(ct); // 1 solo call para todas
             foreach (var s in sellers)
             {
                 var inst = s.EvolutionInstance;
-                if (inst is null || inst.Status != InstanceStatus.Connected || !string.IsNullOrWhiteSpace(inst.ConnectedPhoneNumber))
-                    continue;
+                if (inst is null || !string.IsNullOrWhiteSpace(inst.ConnectedPhoneNumber)) continue;
                 if (owners.TryGetValue(inst.InstanceName, out var num)) { inst.ConnectedPhoneNumber = num; dirty = true; }
             }
         }

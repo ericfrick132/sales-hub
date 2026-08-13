@@ -28,7 +28,14 @@ type Detail = {
   score: number; sellerName?: string; createdAt: string; sentAt?: string; firstReplyAt?: string;
   demoScheduledAt?: string; closedAt?: string; nextActionAt?: string; nextActionNote?: string;
   legacyNotes?: string; notes: Note[];
-  messages: { direction: string; text: string; timestamp: string }[];
+  messages: {
+    direction: string; text: string; timestamp: string;
+    /** Instancia o celular por el que viajó el mensaje. */
+    line?: string;
+    /** Número real de esa línea, cuando lo tenemos guardado. */
+    linePhone?: string;
+    isDevice: boolean;
+  }[];
 };
 type Device = { id: string; name: string };
 
@@ -52,6 +59,17 @@ const STATUS_TO_STAGE: Record<string, string> = {
   DemoScheduled: 'demo',
   Closed: 'ganado',
   Lost: 'perdido', Blocked: 'perdido', NoWhatsApp: 'perdido',
+};
+
+/**
+ * Por dónde viajó un mensaje: el número real de la línea si lo tenemos, si no el
+ * nombre del celular o de la instancia. Los mensajes viejos no traen línea.
+ */
+const lineLabel = (m: { line?: string; linePhone?: string; isDevice: boolean; direction: string }) => {
+  const via = m.direction === 'Inbound' ? 'entró por' : 'salió por';
+  if (m.linePhone) return `${via} +${m.linePhone}`;
+  if (m.line) return `${via} ${m.isDevice ? `celu ${m.line}` : m.line}`;
+  return '';
 };
 
 const hace = (iso?: string) => {
@@ -470,16 +488,25 @@ function LeadDrawer({ leadId, stages, onClose, onMove }: {
             {/* ── Últimos mensajes ── */}
             {d.messages.length > 0 && (
               <div className="space-y-1">
-                <div className="text-sm font-semibold">Últimos mensajes</div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="text-sm font-semibold">Últimos mensajes</div>
+                  {d.phone && <div className="text-[11px] text-slate-500">chat con +{d.phone.replace(/\D/g, '')}</div>}
+                </div>
                 {d.messages.map((m, i) => (
                   <div key={i} className={clsx(
                     'text-xs rounded p-1.5',
                     m.direction === 'Inbound' ? 'bg-slate-100' : 'bg-brand-50 text-brand-900'
                   )}>
-                    <span className="text-[10px] text-slate-400 block">{fmtDateTime(m.timestamp)}</span>
+                    <div className="text-[10px] text-slate-400 flex justify-between gap-2">
+                      <span>{fmtDateTime(m.timestamp)}</span>
+                      <span className="truncate" title={m.line ?? ''}>{lineLabel(m)}</span>
+                    </div>
                     {m.text.slice(0, 200)}
                   </div>
                 ))}
+                <p className="text-[10px] text-slate-400">
+                  A la derecha, el número (o el celular) por el que viajó cada mensaje.
+                </p>
               </div>
             )}
 

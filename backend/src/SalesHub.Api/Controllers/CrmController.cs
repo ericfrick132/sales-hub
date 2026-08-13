@@ -208,12 +208,34 @@ public class CrmController : ControllerBase
             .Take(100)
             .ToListAsync(ct);
 
-        var messages = await _db.ConversationMessages.AsNoTracking()
+        var raw = await _db.ConversationMessages.AsNoTracking()
             .Where(m => m.LeadId == id)
             .OrderByDescending(m => m.Timestamp)
             .Take(10)
-            .Select(m => new { m.Direction, m.Text, m.Timestamp })
+            .Select(m => new { m.Direction, m.Text, m.Timestamp, m.EvolutionInstance })
             .ToListAsync(ct);
+
+        // Por qué línea viajó cada mensaje. El nombre de la instancia (seller_ventas,
+        // moto-e14) no le dice nada a nadie: lo que importa es el número.
+        var lineNames = raw.Where(m => !string.IsNullOrWhiteSpace(m.EvolutionInstance))
+            .Select(m => m.EvolutionInstance!).Distinct().ToList();
+        var linePhones = await _db.EvolutionInstances.AsNoTracking()
+            .Where(i => lineNames.Contains(i.InstanceName) && i.ConnectedPhoneNumber != null)
+            .ToDictionaryAsync(i => i.InstanceName, i => i.ConnectedPhoneNumber!, ct);
+        // Las que no son instancias de Evolution son celulares del bridge (van por nombre).
+        var deviceNames = await _db.Devices.AsNoTracking()
+            .Where(d => lineNames.Contains(d.Name))
+            .Select(d => d.Name).ToListAsync(ct);
+
+        var messages = raw.Select(m => new
+        {
+            direction = m.Direction,
+            text = m.Text,
+            timestamp = m.Timestamp,
+            line = m.EvolutionInstance,
+            linePhone = m.EvolutionInstance != null ? linePhones.GetValueOrDefault(m.EvolutionInstance) : null,
+            isDevice = m.EvolutionInstance != null && deviceNames.Contains(m.EvolutionInstance),
+        }).ToList();
 
         return Ok(new
         {
@@ -240,7 +262,7 @@ public class CrmController : ControllerBase
             nextActionNote = lead.NextActionNote,
             legacyNotes = lead.Notes,
             notes,
-            messages = messages.OrderBy(m => m.Timestamp).ToList(),
+            messages = messages.OrderBy(m => m.timestamp).ToList(),
         });
     }
 
