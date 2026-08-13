@@ -499,9 +499,8 @@ public class ConversationService
     {
         if (!AdIntentRx.IsMatch(incoming.Text)) return null;
 
-        var product = await DetectProductAsync(incoming.Text, ct)
-            // Línea de APP: si el texto no nombra la app, la línea misma ya la define.
-            ?? await ProductForInstanceAsync(instance, ct);
+        // Resuelve entre las apps que atiende ESTA línea (puede ser más de una).
+        var product = await DetectProductForLineAsync(incoming.Text, instance, ct);
         if (product is null) return null; // no sabemos de qué app → no creamos un lead mal taggeado
 
         var lead = new Lead
@@ -535,8 +534,7 @@ public class ConversationService
     /// </summary>
     private async Task<Lead?> TryCreateInboundLeadAsync(IncomingMessage incoming, string phone, EvolutionInstance instance, CancellationToken ct)
     {
-        var product = await DetectProductAsync(incoming.Text, ct)
-            ?? await ProductForInstanceAsync(instance, ct);
+        var product = await DetectProductForLineAsync(incoming.Text, instance, ct);
         if (product is null && instance.Seller?.VerticalsWhitelist is { Count: > 0 } wl)
         {
             var key = wl[0];
@@ -569,9 +567,45 @@ public class ConversationService
     /// <summary>Producto activo mencionado en el texto (por ProductKey o DisplayName), o null.</summary>
     private async Task<Product?> DetectProductAsync(string text, CancellationToken ct)
     {
-        var lower = text.ToLowerInvariant();
-        var compact = lower.Replace(" ", "");
         var products = await _db.Products.Where(p => p.Active).ToListAsync(ct);
+        return MatchProduct(products, text);
+    }
+
+    /// <summary>
+    /// A qué app pertenece un chat que entra por una línea. Un mismo número suele atender
+    /// varias apps, así que primero se busca entre LAS DE ESA LÍNEA (si el mensaje nombra
+    /// una, esa gana), después entre todas, y recién al final cae a la app principal de la
+    /// línea. El orden importa: sin el primer paso, un celu de gymhero+turnospro taggeaba
+    /// como playcrew un mensaje que mencionara playcrew de pasada.
+    /// </summary>
+    private async Task<Product?> DetectProductForLineAsync(string text, EvolutionInstance instance, CancellationToken ct)
+    {
+        var products = await _db.Products.Where(p => p.Active).ToListAsync(ct);
+        var lineKeys = LineProductKeys(instance);
+
+        if (lineKeys.Count > 0)
+        {
+            var ofLine = products.Where(p => lineKeys.Contains(p.ProductKey, StringComparer.OrdinalIgnoreCase)).ToList();
+            var hit = MatchProduct(ofLine, text);
+            if (hit is not null) return hit;
+        }
+
+        return MatchProduct(products, text) ?? await ProductForInstanceAsync(instance, ct);
+    }
+
+    /// <summary>App principal + las otras que atiende el mismo número.</summary>
+    private static List<string> LineProductKeys(EvolutionInstance instance)
+    {
+        var keys = new List<string>();
+        if (!string.IsNullOrWhiteSpace(instance.ProductKey)) keys.Add(instance.ProductKey!);
+        keys.AddRange(instance.ExtraProductKeys.Where(k => !string.IsNullOrWhiteSpace(k)));
+        return keys.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static Product? MatchProduct(IEnumerable<Product> products, string text)
+    {
+        var lower = (text ?? "").ToLowerInvariant();
+        var compact = lower.Replace(" ", "");
         // OJO: guardas de longitud mínima. Un producto con ProductKey vacío hace que
         // compact.Contains("") sea SIEMPRE true → matchearía primero y dejaría el lead sin
         // producto (rompía el onboarding). Exigimos key/displayname con largo real.
@@ -580,7 +614,7 @@ public class ConversationService
             || (p.DisplayName.Length >= 3 && lower.Contains(p.DisplayName.ToLowerInvariant())));
     }
 
-    /// <summary>Producto de una línea de APP (instance.ProductKey), o null si es línea de seller.</summary>
+    /// <summary>App principal de la línea (fallback), o null si es línea de seller.</summary>
     private async Task<Product?> ProductForInstanceAsync(EvolutionInstance instance, CancellationToken ct)
         => string.IsNullOrWhiteSpace(instance.ProductKey)
             ? null

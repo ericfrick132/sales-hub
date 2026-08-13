@@ -10,9 +10,16 @@ public class EvolutionInstance
     public Guid? SellerId { get; set; }
     public Seller? Seller { get; set; }
 
-    /// <summary>Línea de una APP (ej. "gymhero"): un número de WhatsApp propio por producto,
-    /// conectable por QR desde /products. null si es una línea de vendedor.</summary>
+    /// <summary>App PRINCIPAL de la línea (ej. "gymhero"). Es el fallback: con qué producto
+    /// se taggea un chat cuando el texto no delata de cuál viene. null si es línea de vendedor.</summary>
     public string? ProductKey { get; set; }
+
+    /// <summary>
+    /// Las OTRAS apps que atiende este mismo número. Un celu suele recibir consultas de
+    /// varios productos: si el mensaje nombra alguna de estas, el chat se taggea con esa;
+    /// si no nombra ninguna, cae a <see cref="ProductKey"/>.
+    /// </summary>
+    public List<string> ExtraProductKeys { get; set; } = new();
 
     public string InstanceName { get; set; } = string.Empty;
     public string? ConnectedPhoneNumber { get; set; }

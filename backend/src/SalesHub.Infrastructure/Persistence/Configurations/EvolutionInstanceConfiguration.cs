@@ -15,6 +15,10 @@ public class EvolutionInstanceConfiguration : IEntityTypeConfiguration<Evolution
         b.HasIndex(x => x.SellerId).IsUnique();
         b.Property(x => x.ProductKey).HasMaxLength(64);
         b.HasIndex(x => x.ProductKey).IsUnique();
+        // Las otras apps que atiende el mismo número (un celu recibe consultas de varias).
+        b.Property(x => x.ExtraProductKeys)
+            .HasColumnType("text[]")
+            .HasDefaultValueSql("'{}'::text[]");
         b.Property(x => x.ConnectedPhoneNumber).HasMaxLength(32);
         b.Property(x => x.Status).HasConversion<int>();
         b.Property(x => x.LastQrCodeBase64).HasColumnType("text");

@@ -19,6 +19,8 @@ interface AppLine {
   productKey: string; instanceName: string; connectedPhoneNumber?: string | null; status: string;
   /** Candado: entra todo, no sale nada por esta línea. */
   listenOnly: boolean;
+  /** Otras apps que atiende el MISMO número (además de productKey). */
+  extraProductKeys: string[];
 }
 
 /** "hace 3 min" / "hace 2 h" / "hace 4 d" — para saber de cuándo es el último latido. */
@@ -89,6 +91,19 @@ export default function Devices() {
       qc.invalidateQueries({ queryKey: ['devices'] });
     } catch {
       toast.error('No se pudo generar el código');
+    }
+  }
+
+  /** Suma o saca una app de las que atiende ese número. */
+  async function toggleLineApp(line: AppLine, appKey: string, on: boolean) {
+    const next = on
+      ? [...line.extraProductKeys, appKey]
+      : line.extraProductKeys.filter(k => k !== appKey);
+    try {
+      await api.post(`/products/${line.productKey}/whatsapp/apps`, { productKeys: next });
+      qc.invalidateQueries({ queryKey: ['wa-app-lines'] });
+    } catch {
+      toast.error('No se pudo cambiar las apps de la línea');
     }
   }
 
@@ -167,34 +182,68 @@ export default function Devices() {
             const connected = line?.status === 'Connected';
             // Hay productos sin displayName cargado: mostrar la key antes que una fila muda.
             const label = p.displayName?.trim() || p.productKey;
+            // Si otra línea ya declara atender esta app, no hace falta escanear un número
+            // aparte: se avisa acá para no terminar con dos líneas para el mismo celu.
+            const coveredBy = !line
+              ? (appLines ?? []).find(l => l.extraProductKeys?.includes(p.productKey))
+              : undefined;
+            const coveredByLabel = coveredBy
+              ? ((products ?? []).find(o => o.productKey === coveredBy.productKey)?.displayName || coveredBy.productKey)
+              : null;
             return (
               <div key={p.productKey} className="py-2 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-medium truncate">{label}</div>
                   <div className="text-xs text-slate-500 truncate">
-                    <span className={connected ? 'text-emerald-600' : 'text-slate-400'}>
-                      {connected ? '● Escuchando' : line ? `○ ${line.status}` : '○ sin línea propia'}
+                    <span className={connected ? 'text-emerald-600' : coveredBy ? 'text-emerald-600' : 'text-slate-400'}>
+                      {connected ? '● Escuchando'
+                        : line ? `○ ${line.status}`
+                        : coveredBy ? `● Ya la atiende la línea de ${coveredByLabel}`
+                        : '○ sin línea propia'}
                     </span>
                     {line?.connectedPhoneNumber && ` · +${line.connectedPhoneNumber}`}
+                    {!line && coveredBy?.connectedPhoneNumber && ` · +${coveredBy.connectedPhoneNumber}`}
                   </div>
                   {line && (
-                    <label className="text-[11px] text-slate-600 flex items-center gap-1.5 mt-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={line.listenOnly}
-                        onChange={e => toggleListenOnly(p.productKey, e.target.checked)}
-                      />
-                      <span className={line.listenOnly ? 'text-emerald-700 font-medium' : ''}>
-                        {line.listenOnly ? 'Solo escuchar (no puede enviar nada)' : 'Solo escuchar'}
-                      </span>
-                    </label>
+                    <>
+                      <label className="text-[11px] text-slate-600 flex items-center gap-1.5 mt-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={line.listenOnly}
+                          onChange={e => toggleListenOnly(p.productKey, e.target.checked)}
+                        />
+                        <span className={line.listenOnly ? 'text-emerald-700 font-medium' : ''}>
+                          {line.listenOnly ? 'Solo escuchar (no puede enviar nada)' : 'Solo escuchar'}
+                        </span>
+                      </label>
+                      {/* Un mismo celu suele atender varias apps. */}
+                      <div className="mt-1.5">
+                        <div className="text-[11px] text-slate-500">
+                          Este número también atiende:
+                          {line.extraProductKeys.length === 0 && <span className="text-slate-400"> solo {label}</span>}
+                        </div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
+                          {(products ?? []).filter(o => o.productKey !== p.productKey).map(o => (
+                            <label key={o.productKey} className="text-[11px] text-slate-600 flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={line.extraProductKeys.includes(o.productKey)}
+                                onChange={e => toggleLineApp(line, o.productKey, e.target.checked)}
+                              />
+                              {o.displayName?.trim() || o.productKey}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button
-                    className={connected ? 'btn-secondary text-xs' : 'btn-primary text-xs'}
+                    className={connected || coveredBy ? 'btn-secondary text-xs' : 'btn-primary text-xs'}
+                    title={coveredBy ? `Ya entra por la línea de ${coveredByLabel}. Escaneá sólo si querés un número aparte para esta app.` : undefined}
                     onClick={() => setAppQrFor({ key: p.productKey, name: label })}>
-                    {connected ? 'Ver QR' : 'Escanear QR'}
+                    {connected ? 'Ver QR' : coveredBy ? 'Número aparte' : 'Escanear QR'}
                   </button>
                   {connected && (
                     <button className="btn-danger text-xs" onClick={() => unlinkApp(p.productKey)}>Desvincular</button>

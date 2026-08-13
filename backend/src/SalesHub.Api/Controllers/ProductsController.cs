@@ -31,7 +31,7 @@ public class ProductsController : ControllerBase
     {
         var lines = await _db.EvolutionInstances.AsNoTracking()
             .Where(i => i.ProductKey != null)
-            .Select(i => new { i.ProductKey, i.InstanceName, i.ConnectedPhoneNumber, Status = i.Status.ToString(), i.ConnectedAt, i.ListenOnly })
+            .Select(i => new { i.ProductKey, i.InstanceName, i.ConnectedPhoneNumber, Status = i.Status.ToString(), i.ConnectedAt, i.ListenOnly, i.ExtraProductKeys })
             .ToListAsync(ct);
         return Ok(lines);
     }
@@ -87,6 +87,37 @@ public class ProductsController : ControllerBase
         await _db.SaveChangesAsync(ct);
 
         return new QrCodeResponse(qr, info.Status);
+    }
+
+    public record LineAppsRequest(List<string> ProductKeys);
+
+    /// <summary>
+    /// Qué OTRAS apps atiende el mismo número. Un celu suele recibir consultas de varios
+    /// productos: si el mensaje nombra alguna de estas, el chat se taggea con esa; si no
+    /// nombra ninguna, cae a la app principal de la línea (<paramref name="productKey"/>).
+    /// </summary>
+    [HttpPost("{productKey}/whatsapp/apps")]
+    public async Task<IActionResult> SetLineApps(string productKey, [FromBody] LineAppsRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var key = productKey.Trim().ToLowerInvariant();
+        var instance = await _db.EvolutionInstances.FirstOrDefaultAsync(i => i.ProductKey == key, ct);
+        if (instance is null) return NotFound(new { error = "Esta app no tiene línea propia." });
+
+        var wanted = (req.ProductKeys ?? new List<string>())
+            .Select(k => (k ?? "").Trim().ToLowerInvariant())
+            .Where(k => k.Length > 0 && k != key)   // la principal no se repite en la lista
+            .Distinct()
+            .ToList();
+
+        // Solo apps que existan de verdad: una key inventada dejaría chats sin clasificar.
+        var valid = await _db.Products.Where(p => wanted.Contains(p.ProductKey))
+            .Select(p => p.ProductKey).ToListAsync(ct);
+
+        instance.ExtraProductKeys = valid;
+        instance.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { productKey = key, extraProductKeys = instance.ExtraProductKeys });
     }
 
     public record ListenOnlyRequest(bool Enabled);
