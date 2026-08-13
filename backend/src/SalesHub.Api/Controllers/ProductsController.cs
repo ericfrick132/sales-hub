@@ -31,7 +31,7 @@ public class ProductsController : ControllerBase
     {
         var lines = await _db.EvolutionInstances.AsNoTracking()
             .Where(i => i.ProductKey != null)
-            .Select(i => new { i.ProductKey, i.InstanceName, i.ConnectedPhoneNumber, Status = i.Status.ToString(), i.ConnectedAt })
+            .Select(i => new { i.ProductKey, i.InstanceName, i.ConnectedPhoneNumber, Status = i.Status.ToString(), i.ConnectedAt, i.ListenOnly })
             .ToListAsync(ct);
         return Ok(lines);
     }
@@ -87,6 +87,29 @@ public class ProductsController : ControllerBase
         await _db.SaveChangesAsync(ct);
 
         return new QrCodeResponse(qr, info.Status);
+    }
+
+    public record ListenOnlyRequest(bool Enabled);
+
+    /// <summary>
+    /// Candado de SOLO ESCUCHA de la línea de una app: sigue entrando todo lo que recibe,
+    /// pero no sale nada por ella (ni cadencia, ni bot, ni respuesta manual). Para vincular
+    /// un número y trackear conversaciones sin riesgo de que algo escriba.
+    /// </summary>
+    [HttpPost("{productKey}/whatsapp/listen-only")]
+    public async Task<IActionResult> SetListenOnly(string productKey, [FromBody] ListenOnlyRequest req,
+        [FromServices] SalesHub.Infrastructure.Services.ListenOnlyLines cache, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var key = productKey.Trim().ToLowerInvariant();
+        var instance = await _db.EvolutionInstances.FirstOrDefaultAsync(i => i.ProductKey == key, ct);
+        if (instance is null) return NotFound(new { error = "Esta app no tiene línea propia." });
+
+        instance.ListenOnly = req.Enabled;
+        instance.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        cache.Invalidate();
+        return Ok(new { productKey = key, listenOnly = instance.ListenOnly });
     }
 
     /// <summary>

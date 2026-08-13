@@ -15,7 +15,11 @@ interface Seller {
 }
 interface Product { productKey: string; displayName: string }
 /** Línea propia de una app: instancia sin vendedor (app_&lt;key&gt;). */
-interface AppLine { productKey: string; instanceName: string; connectedPhoneNumber?: string | null; status: string }
+interface AppLine {
+  productKey: string; instanceName: string; connectedPhoneNumber?: string | null; status: string;
+  /** Candado: entra todo, no sale nada por esta línea. */
+  listenOnly: boolean;
+}
 
 /** "hace 3 min" / "hace 2 h" / "hace 4 d" — para saber de cuándo es el último latido. */
 function hace(iso?: string): string {
@@ -85,6 +89,17 @@ export default function Devices() {
       qc.invalidateQueries({ queryKey: ['devices'] });
     } catch {
       toast.error('No se pudo generar el código');
+    }
+  }
+
+  /** Candado de solo escucha: bloquea CUALQUIER envío por esa línea (bot, cadencia o manual). */
+  async function toggleListenOnly(productKey: string, enabled: boolean) {
+    try {
+      await api.post(`/products/${productKey}/whatsapp/listen-only`, { enabled });
+      toast.success(enabled ? 'Línea en modo solo escuchar' : 'La línea puede volver a enviar');
+      qc.invalidateQueries({ queryKey: ['wa-app-lines'] });
+    } catch {
+      toast.error('No se pudo cambiar el modo');
     }
   }
 
@@ -160,6 +175,18 @@ export default function Devices() {
                     </span>
                     {line?.connectedPhoneNumber && ` · +${line.connectedPhoneNumber}`}
                   </div>
+                  {line && (
+                    <label className="text-[11px] text-slate-600 flex items-center gap-1.5 mt-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={line.listenOnly}
+                        onChange={e => toggleListenOnly(p.productKey, e.target.checked)}
+                      />
+                      <span className={line.listenOnly ? 'text-emerald-700 font-medium' : ''}>
+                        {line.listenOnly ? 'Solo escuchar (no puede enviar nada)' : 'Solo escuchar'}
+                      </span>
+                    </label>
+                  )}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button

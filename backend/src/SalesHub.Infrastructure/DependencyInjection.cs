@@ -78,6 +78,9 @@ public static class DependencyInjection
 
         // WhatsApp provider: "evolution" (default) o "adb" (dispositivo Android físico).
         // Seteá WhatsApp:Provider=adb en appsettings o env y configurá WhatsAppAdb:DeviceSerial.
+        // Candado de las líneas de solo escucha. Singleton con cache: lo consulta cada envío.
+        services.AddSingleton<ListenOnlyLines>();
+
         services.AddScoped<IEvolutionClient>(sp =>
         {
             var cfg = sp.GetRequiredService<IConfiguration>();

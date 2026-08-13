@@ -15,12 +15,15 @@ public class EvolutionClient : IEvolutionClient
     private readonly HttpClient _http;
     private readonly EvolutionOptions _opts;
     private readonly ILogger<EvolutionClient> _log;
+    private readonly Services.ListenOnlyLines _listenOnly;
 
-    public EvolutionClient(HttpClient http, IOptions<EvolutionOptions> opts, ILogger<EvolutionClient> log)
+    public EvolutionClient(HttpClient http, IOptions<EvolutionOptions> opts, ILogger<EvolutionClient> log,
+        Services.ListenOnlyLines listenOnly)
     {
         _http = http;
         _opts = opts.Value;
         _log = log;
+        _listenOnly = listenOnly;
         _http.BaseAddress = new Uri(_opts.BaseUrl.TrimEnd('/') + "/");
         _http.DefaultRequestHeaders.Remove("apikey");
         _http.DefaultRequestHeaders.Add("apikey", _opts.ApiKey);
@@ -229,6 +232,7 @@ public class EvolutionClient : IEvolutionClient
 
     public async Task SetPresenceTypingAsync(string instanceName, string jid, int durationSeconds, CancellationToken ct = default)
     {
+        if (await _listenOnly.IsListenOnlyAsync(instanceName, ct)) return;
         try
         {
             await _http.PostAsJsonAsync($"chat/sendPresence/{Uri.EscapeDataString(instanceName)}",
@@ -239,6 +243,7 @@ public class EvolutionClient : IEvolutionClient
 
     public async Task SetPresenceRecordingAsync(string instanceName, string jid, int durationSeconds, CancellationToken ct = default)
     {
+        if (await _listenOnly.IsListenOnlyAsync(instanceName, ct)) return;
         try
         {
             await _http.PostAsJsonAsync($"chat/sendPresence/{Uri.EscapeDataString(instanceName)}",
@@ -266,6 +271,11 @@ public class EvolutionClient : IEvolutionClient
 
     public async Task<bool> SendTextAsync(string instanceName, string jid, string message, CancellationToken ct = default)
     {
+        if (await _listenOnly.IsListenOnlyAsync(instanceName, ct))
+        {
+            _log.LogWarning("Envío bloqueado: la línea {I} está marcada como solo escuchar", instanceName);
+            return false;
+        }
         var body = new
         {
             number = jid,
@@ -315,6 +325,11 @@ public class EvolutionClient : IEvolutionClient
 
     public async Task<bool> SendVoiceNoteAsync(string instanceName, string jid, byte[] audio, CancellationToken ct = default)
     {
+        if (await _listenOnly.IsListenOnlyAsync(instanceName, ct))
+        {
+            _log.LogWarning("Envío bloqueado: la línea {I} está marcada como solo escuchar", instanceName);
+            return false;
+        }
         var prepared = await PrepareVoiceNoteAsync(audio, ct);
         return await SendPreparedVoiceNoteAsync(instanceName, jid, prepared.OggBytes, ct);
     }
@@ -351,6 +366,11 @@ public class EvolutionClient : IEvolutionClient
 
     public async Task<bool> SendPreparedVoiceNoteAsync(string instanceName, string jid, byte[] ogg, CancellationToken ct = default)
     {
+        if (await _listenOnly.IsListenOnlyAsync(instanceName, ct))
+        {
+            _log.LogWarning("Envío bloqueado: la línea {I} está marcada como solo escuchar", instanceName);
+            return false;
+        }
         // /message/sendWhatsAppAudio fuerza envío como PTT.
         var body = new
         {
@@ -507,6 +527,11 @@ public class EvolutionClient : IEvolutionClient
 
     public async Task<bool> SendMediaAsync(string instanceName, string jid, byte[] content, string mimeType, string fileName, string? caption, CancellationToken ct = default)
     {
+        if (await _listenOnly.IsListenOnlyAsync(instanceName, ct))
+        {
+            _log.LogWarning("Envío bloqueado: la línea {I} está marcada como solo escuchar", instanceName);
+            return false;
+        }
         // Evolution acepta el archivo en base64 vía /message/sendMedia/{instance}.
         // mediatype: "image" | "document" | "video" | "audio". Acá solo
         // distinguimos imagen vs document (PDF y demás).

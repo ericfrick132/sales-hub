@@ -18,6 +18,14 @@ public class EvolutionInstance
     public string? ConnectedPhoneNumber { get; set; }
 
     /// <summary>
+    /// Línea de SOLO ESCUCHA: entra todo lo que recibe (queda centralizado en
+    /// Conversaciones) pero no sale NADA por ella — ni cadencia, ni bot, ni respuesta
+    /// manual. Es un candado a nivel del cliente de WhatsApp, no una convención: existe
+    /// para poder vincular un número y trackear sin arriesgar un ban por envío.
+    /// </summary>
+    public bool ListenOnly { get; set; }
+
+    /// <summary>
     /// Proxy de salida de ESTA línea (1 IP por número). Formato: <c>scheme://user:pass@host:port</c>
     /// o <c>host:port:user:pass</c>. null = usa el proxy global (Evolution:ProxyUrl) o ninguno.
     /// Se aplica al crear/asegurar la instancia (Evolution POST /proxy/set).
