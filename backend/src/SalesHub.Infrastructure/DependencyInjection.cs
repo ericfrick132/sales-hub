@@ -126,6 +126,7 @@ public static class DependencyInjection
         services.AddScoped<ILeadAssigner, LeadAssigner>();
         services.AddScoped<ILeadIngestService, LeadIngestService>();
         services.AddScoped<ISendScheduler, SendScheduler>();
+        services.AddScoped<IResponseTimeService, ResponseTimeService>();
 
         services.AddScoped<PipelineService>();
         services.AddScoped<OutboxSender>();

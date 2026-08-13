@@ -10,6 +10,7 @@ import ConversationsList from '../components/ConversationsList';
 import MyZonesMap from '../components/MyZonesMap';
 import UpcomingSends from '../components/UpcomingSends';
 import GoalsProgress from '../components/GoalsProgress';
+import MySla from '../components/MySla';
 
 export default function MyDashboard() {
   const user = useAuthStore((s) => s.user);
@@ -49,6 +50,8 @@ export default function MyDashboard() {
         { label: 'Cerrados', value: `${m.leadsClosed} (${(m.closeRate*100).toFixed(0)}%)` },
         { label: 'En cola', value: data.queuedCount, hint: 'Mensajes programados' }
       ]} />
+
+      <MySla />
 
       <GoalsProgress />
 

@@ -10,6 +10,7 @@ import MyDashboard from './pages/MyDashboard';
 import Connect from './pages/Connect';
 import Devices from './pages/Devices';
 import AdminDashboard from './pages/AdminDashboard';
+import Atencion from './pages/Atencion';
 import Sellers from './pages/Sellers';
 import SellerDetail from './pages/SellerDetail';
 import SellerZones from './pages/SellerZones';
@@ -72,6 +73,7 @@ export default function App() {
         {isAdmin(user) && (
           <>
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/atencion" element={<Atencion />} />
             <Route path="/sellers" element={<Sellers />} />
             <Route path="/devices" element={<Devices />} />
             <Route path="/objetivos" element={<Objetivos />} />

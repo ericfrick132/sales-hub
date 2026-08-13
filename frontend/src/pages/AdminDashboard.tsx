@@ -62,6 +62,12 @@ export default function AdminDashboard() {
   const aiCost = useQuery({ queryKey: ['ai-cost'], queryFn: async () => (await api.get<AiCost>('/dashboard/ai-cost')).data, refetchInterval: 60000 });
   const adLeads = useQuery({ queryKey: ['ad-leads'], queryFn: async () => (await api.get<AdLeads[]>('/dashboard/ad-leads')).data, refetchInterval: 30000 });
   const products = useQuery({ queryKey: ['products-min'], queryFn: async () => (await api.get<Product[]>('/products')).data });
+  // Comparte queryKey con la página de Atención → react-query dedupe, sin doble fetch.
+  const waiting = useQuery({
+    queryKey: ['attention-waiting'],
+    queryFn: async () => (await api.get<{ breached: boolean }[]>('/attention/waiting', { params: { limit: 100 } })).data,
+    refetchInterval: 30000,
+  });
 
   if (isLoading || !data) return <div>Cargando…</div>;
 
@@ -80,6 +86,7 @@ export default function AdminDashboard() {
   // ── KPIs ──
   const adTotal = (adLeads.data ?? []).reduce((s, r) => s + r.total, 0);
   const adLast7d = (adLeads.data ?? []).reduce((s, r) => s + r.last7d, 0);
+  const waitingBreached = (waiting.data ?? []).filter((w) => w.breached).length;
 
   return (
     <div className="space-y-5">
@@ -113,7 +120,14 @@ export default function AdminDashboard() {
       </div>
 
       {/* ══ KPIs medibles ══ */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+        <Kpi
+          label="Esperando respuesta"
+          value={waiting.data?.length ?? 0}
+          sub={waitingBreached > 0 ? `${waitingBreached} pasados de 10 min` : 'nadie colgado'}
+          to="/atencion"
+          tone={waitingBreached > 0 ? 'red' : 'emerald'}
+        />
         <Kpi label="Leads hoy" value={data.leadsToday} sub={`${data.totalLeads.toLocaleString('es-AR')} en total`} to="/leads" />
         <Kpi label="Enviados · 7d" value={data.leadsSent7d} sub="mensajes iniciales" />
         <Kpi label="Respondieron · 7d" value={data.leadsReplied7d} sub={`${pct(data.leadsReplied7d, data.leadsSent7d)} de respuesta`} tone="sky" />
@@ -323,6 +337,7 @@ const KPI_TONE: Record<string, string> = {
   sky: 'text-sky-600',
   emerald: 'text-emerald-600',
   violet: 'text-violet-600',
+  red: 'text-red-600',
 };
 
 function Kpi({ label, value, sub, to, tone = 'slate' }: { label: string; value: number | string; sub?: string; to?: string; tone?: string }) {

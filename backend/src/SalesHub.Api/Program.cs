@@ -49,6 +49,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<LeadImportWorker>();                 // re-engagement: import de leads de TurnosPro/GymHero
     builder.Services.AddHostedService<LeadStateGuardWorker>();             // pull-guard: corta el follow-up de leads que ya convirtieron en su producto
     builder.Services.AddHostedService<EvolutionChatSyncWorker>();          // TODOS los chats de cada línea vinculada → Conversaciones (backfill + baches de webhook; flag 'chat-sync')
+    builder.Services.AddHostedService<SlaAlertWorker>();                   // avisa al maestro cuando un chat pasa el SLA sin respuesta (flag 'sla-alerts')
 
     // Workers de Instagram. Corren acá (no en un contenedor aparte) porque la imagen
     // ya trae Playwright/Chromium y el droplet tiene RAM de sobra. Sin esto, las

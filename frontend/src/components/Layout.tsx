@@ -38,6 +38,7 @@ export default function Layout() {
         { title: 'Leads', items: [
           { to: '/leads', label: 'Leads' },
           { to: '/conversations', label: 'Conversaciones', badge: unread.data },
+          { to: '/atencion', label: 'Atención' },
         ] },
         { title: 'Captación', items: [
           { to: '/leads/search', label: 'Capturar de Maps' },

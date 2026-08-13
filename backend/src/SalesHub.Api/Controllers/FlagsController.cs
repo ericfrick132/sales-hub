@@ -32,6 +32,7 @@ public class FlagsController : ControllerBase
         ("reengage", "LeadImport:AutoStart", "Importar leads B2B (TurnosPro/GymHero)"),
         ("voicenote", "Workers:VoiceNoteAutoStart", "Notas de voz IA (respuestas en audio en momentos decisivos)"),
         ("chat-sync", "Workers:ChatSyncAutoStart", "Sync de chats de Evolution (todos los chats → Conversaciones)"),
+        ("sla-alerts", "Workers:SlaAlertsAutoStart", "Aviso de chats colgados (SLA de respuesta sin cumplir)"),
         // Marca interna del backfill inicial: APAGARLA fuerza un re-barrido completo de
         // Sync:ChatSyncBootstrapDays (default 30 días) en el próximo tick del sync.
         ("chat-sync-bootstrapped", "Workers:ChatSyncBootstrapped", "Chat sync: backfill hecho (apagar = re-barrer 30 días)"),

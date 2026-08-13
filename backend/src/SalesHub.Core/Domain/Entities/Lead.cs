@@ -85,6 +85,13 @@ public class Lead
     /// </summary>
     public DateTimeOffset? HotAlertedAt { get; set; }
 
+    /// <summary>
+    /// Cuándo avisamos que este chat se pasó del SLA de respuesta (el lead escribió y
+    /// nadie contestó a tiempo). Dedup: guarda el momento del mensaje sin responder que
+    /// disparó el aviso, así una ráfaga nueva vuelve a alertar pero la misma no repite.
+    /// </summary>
+    public DateTimeOffset? SlaAlertedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
