@@ -165,10 +165,12 @@ export default function Devices() {
           {(products ?? []).map(p => {
             const line = (appLines ?? []).find(l => l.productKey === p.productKey);
             const connected = line?.status === 'Connected';
+            // Hay productos sin displayName cargado: mostrar la key antes que una fila muda.
+            const label = p.displayName?.trim() || p.productKey;
             return (
               <div key={p.productKey} className="py-2 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-medium truncate">{p.displayName}</div>
+                  <div className="font-medium truncate">{label}</div>
                   <div className="text-xs text-slate-500 truncate">
                     <span className={connected ? 'text-emerald-600' : 'text-slate-400'}>
                       {connected ? '● Escuchando' : line ? `○ ${line.status}` : '○ sin línea propia'}
@@ -191,7 +193,7 @@ export default function Devices() {
                 <div className="flex gap-1 shrink-0">
                   <button
                     className={connected ? 'btn-secondary text-xs' : 'btn-primary text-xs'}
-                    onClick={() => setAppQrFor({ key: p.productKey, name: p.displayName })}>
+                    onClick={() => setAppQrFor({ key: p.productKey, name: label })}>
                     {connected ? 'Ver QR' : 'Escanear QR'}
                   </button>
                   {connected && (
@@ -209,7 +211,9 @@ export default function Devices() {
           title={`Escuchar ${appQrFor.name}`}
           fetchUrl={`/products/${appQrFor.key}/whatsapp/qr`}
           onClose={() => setAppQrFor(null)}
-          onConnected={() => qc.invalidateQueries({ queryKey: ['wa-app-lines'] })}
+          // Se vincula ya candada: si dependiera de que después te acuerdes de tildar el
+          // checkbox, una línea recién escaneada podría mandar algo sin querer.
+          onConnected={() => toggleListenOnly(appQrFor.key, true)}
         />
       )}
 
