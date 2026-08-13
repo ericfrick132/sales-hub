@@ -13,6 +13,9 @@ interface Seller {
   id: string; displayName: string; email: string; sellerKey?: string; isActive?: boolean;
   instanceStatus?: string; connectedPhoneNumber?: string | null;
 }
+interface Product { productKey: string; displayName: string }
+/** Línea propia de una app: instancia sin vendedor (app_&lt;key&gt;). */
+interface AppLine { productKey: string; instanceName: string; connectedPhoneNumber?: string | null; status: string }
 
 /** "hace 3 min" / "hace 2 h" / "hace 4 d" — para saber de cuándo es el último latido. */
 function hace(iso?: string): string {
@@ -31,8 +34,10 @@ export default function Devices() {
   const [created, setCreated] = useState<{ token: string; qrUrl: string } | null>(null);
   /** Panel de re-pairing abierto para un device ya existente (token nuevo + QR). */
   const [pairing, setPairing] = useState<{ deviceId: string; token: string; qrUrl: string } | null>(null);
-  /** Línea para la que está abierto el QR de WhatsApp Web. */
+  /** Línea de vendedor para la que está abierto el QR. */
   const [qrFor, setQrFor] = useState<{ id: string; name: string } | null>(null);
+  /** App para la que está abierto el QR de la línea de escucha (sin vendedor). */
+  const [appQrFor, setAppQrFor] = useState<{ key: string; name: string } | null>(null);
 
   const { data: devices } = useQuery({
     queryKey: ['devices'],
@@ -42,6 +47,16 @@ export default function Devices() {
   const { data: sellers } = useQuery({
     queryKey: ['sellers'],
     queryFn: async () => (await api.get<Seller[]>('/sellers')).data
+  });
+  const { data: products } = useQuery({
+    queryKey: ['products-min'],
+    queryFn: async () => (await api.get<Product[]>('/products')).data,
+    staleTime: 5 * 60_000
+  });
+  const { data: appLines } = useQuery({
+    queryKey: ['wa-app-lines'],
+    queryFn: async () => (await api.get<AppLine[]>('/products/whatsapp-lines')).data,
+    refetchInterval: 15_000
   });
 
   async function createDevice() {
@@ -70,6 +85,18 @@ export default function Devices() {
       qc.invalidateQueries({ queryKey: ['devices'] });
     } catch {
       toast.error('No se pudo generar el código');
+    }
+  }
+
+  /** Corta la línea de escucha de una app (deja de recibir; se reconecta con otro QR). */
+  async function unlinkApp(productKey: string) {
+    if (!confirm('Desvincular esta línea de escucha? Deja de recibir chats hasta que escanees de nuevo.')) return;
+    try {
+      await api.post(`/products/${productKey}/whatsapp/logout`);
+      toast.success('Línea desvinculada');
+      qc.invalidateQueries({ queryKey: ['wa-app-lines'] });
+    } catch {
+      toast.error('No se pudo desvincular');
     }
   }
 
@@ -109,13 +136,63 @@ export default function Devices() {
         </p>
       </div>
 
-      {/* ══ Líneas por QR ══ */}
+      {/* ══ Líneas de SOLO ESCUCHA (sin vendedor) ══ */}
       <div className="card p-4 mb-5">
         <div className="mb-3">
-          <h3 className="font-semibold">Escanear QR (WhatsApp Web)</h3>
+          <h3 className="font-semibold">Escanear QR para escuchar (sin vendedor)</h3>
           <p className="text-xs text-slate-500">
-            Vinculás la línea como un dispositivo más de WhatsApp. Sirve para leer y centralizar todos los
-            chats sin instalar nada en el teléfono.
+            Vinculás el número como un dispositivo más de WhatsApp y sus chats entran a Conversaciones y al
+            CRM. <b>No se le asigna ningún vendedor y no manda mensajes</b>: sólo trackea. Cada línea queda
+            atada a una app para saber de qué producto es el que escribe.
+          </p>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {(products ?? []).map(p => {
+            const line = (appLines ?? []).find(l => l.productKey === p.productKey);
+            const connected = line?.status === 'Connected';
+            return (
+              <div key={p.productKey} className="py-2 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{p.displayName}</div>
+                  <div className="text-xs text-slate-500 truncate">
+                    <span className={connected ? 'text-emerald-600' : 'text-slate-400'}>
+                      {connected ? '● Escuchando' : line ? `○ ${line.status}` : '○ sin línea propia'}
+                    </span>
+                    {line?.connectedPhoneNumber && ` · +${line.connectedPhoneNumber}`}
+                  </div>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button
+                    className={connected ? 'btn-secondary text-xs' : 'btn-primary text-xs'}
+                    onClick={() => setAppQrFor({ key: p.productKey, name: p.displayName })}>
+                    {connected ? 'Ver QR' : 'Escanear QR'}
+                  </button>
+                  {connected && (
+                    <button className="btn-danger text-xs" onClick={() => unlinkApp(p.productKey)}>Desvincular</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {appQrFor && (
+        <QrConnectModal
+          title={`Escuchar ${appQrFor.name}`}
+          fetchUrl={`/products/${appQrFor.key}/whatsapp/qr`}
+          onClose={() => setAppQrFor(null)}
+          onConnected={() => qc.invalidateQueries({ queryKey: ['wa-app-lines'] })}
+        />
+      )}
+
+      {/* ══ Líneas de VENDEDOR (las que además mandan) ══ */}
+      <div className="card p-4 mb-5">
+        <div className="mb-3">
+          <h3 className="font-semibold">Líneas de vendedor (escuchan y mandan)</h3>
+          <p className="text-xs text-slate-500">
+            Estas sí quedan asignadas a una persona y se usan para enviar. Si sólo querés trackear
+            conversaciones, usá las de arriba.
           </p>
         </div>
         <div className="divide-y divide-slate-100">
