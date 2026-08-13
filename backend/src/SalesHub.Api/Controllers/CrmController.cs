@@ -142,7 +142,10 @@ public class CrmController : ControllerBase
         {
             var top = await leadQ
                 .Where(l => s.Statuses.Contains(l.Status))
-                .OrderBy(l => l.NextActionAt ?? DateTimeOffset.MaxValue)
+                // OrderBy sobre la columna cruda, sin COALESCE: en Postgres un ASC ya manda
+                // los NULL al final (los que no tienen recordatorio van después), y así el
+                // sort puede apoyarse en el índice (status, next_action_at, updated_at).
+                .OrderBy(l => l.NextActionAt)
                 .ThenByDescending(l => l.UpdatedAt)
                 .Take(perStage)
                 .Select(l => new

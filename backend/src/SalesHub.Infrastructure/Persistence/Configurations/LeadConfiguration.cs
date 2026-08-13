@@ -47,6 +47,9 @@ public class LeadConfiguration : IEntityTypeConfiguration<Lead>
         b.HasIndex(x => new { x.SellerId, x.Status });
         b.HasIndex(x => x.Status);
         b.HasIndex(x => x.CreatedAt);
+        // Orden del tablero del CRM: por etapa, primero lo que vence antes y después lo
+        // de movimiento más reciente. Sin este índice cada columna ordenaba miles de filas.
+        b.HasIndex(x => new { x.Status, x.NextActionAt, x.UpdatedAt });
         b.HasIndex(x => new { x.Latitude, x.Longitude });
 
         b.HasOne(x => x.Product)
