@@ -42,7 +42,15 @@ public class ConversationsController : ControllerBase
         Guid? SellerId, string? SellerName, string Status,
         string? LastMessageText, MessageDirection? LastDirection,
         DateTimeOffset? LastTimestamp, int UnreadCount,
-        DateTimeOffset? FirstReplyAt, DateTimeOffset? SentAt);
+        DateTimeOffset? FirstReplyAt, DateTimeOffset? SentAt)
+    {
+        /// <summary>
+        /// Celular que atiende esta conversación (el device del bridge asignado a la línea).
+        /// Se llena después de la query: los devices son pocos y se resuelven en memoria.
+        /// </summary>
+        public string? DeviceName { get; set; }
+        public Guid? DeviceId { get; set; }
+    }
 
     public record ConversationMessageDto(
         Guid Id, MessageDirection Direction, string Text, DateTimeOffset Timestamp,
@@ -62,6 +70,7 @@ public class ConversationsController : ControllerBase
     public async Task<ActionResult<IEnumerable<ConversationListItem>>> List(
         [FromQuery] string? productKey,
         [FromQuery] Guid? sellerId,
+        [FromQuery] Guid? deviceId,
         [FromQuery] string? status,
         [FromQuery(Name = "from")] DateTimeOffset? fromTs,
         [FromQuery(Name = "to")] DateTimeOffset? toTs,
@@ -73,12 +82,21 @@ public class ConversationsController : ControllerBase
         [FromQuery] int limit = 200,
         CancellationToken ct = default)
     {
-        var callerId = CurrentUser.Id(User);
-        var isAdmin = CurrentUser.IsAdmin(User);
-
+        // TODOS ven TODOS los chats. La atención dejó de ser "cada vendedor con sus leads":
+        // hay una línea compartida y quien atiende necesita la bandeja completa.
         var leadQ = _db.Leads.AsNoTracking().Include(l => l.Product).Include(l => l.Seller).AsQueryable();
-        if (!isAdmin) leadQ = leadQ.Where(l => l.SellerId == callerId);
-        else if (sellerId is not null) leadQ = leadQ.Where(l => l.SellerId == sellerId);
+        if (sellerId is not null) leadQ = leadQ.Where(l => l.SellerId == sellerId);
+
+        // Filtrar por celular = filtrar por la línea a la que ese celular está asignado.
+        var devices = await _db.Devices.AsNoTracking()
+            .Select(d => new { d.Id, d.Name, d.SellerId })
+            .ToListAsync(ct);
+        if (deviceId is not null)
+        {
+            var dev = devices.FirstOrDefault(d => d.Id == deviceId);
+            if (dev?.SellerId is null) return new List<ConversationListItem>();
+            leadQ = leadQ.Where(l => l.SellerId == dev.SellerId);
+        }
         if (!string.IsNullOrWhiteSpace(productKey)) leadQ = leadQ.Where(l => l.ProductKey == productKey);
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<LeadStatus>(status, ignoreCase: true, out var st))
             leadQ = leadQ.Where(l => l.Status == st);
@@ -120,6 +138,20 @@ public class ConversationsController : ControllerBase
                                l.FirstReplyAt, l.SentAt))
                        .Take(Math.Min(limit, 500)).ToListAsync(ct);
 
+        // Un seller puede tener más de un celu; se muestra el primero por nombre.
+        var deviceBySeller = devices
+            .Where(d => d.SellerId != null)
+            .GroupBy(d => d.SellerId!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderBy(x => x.Name).First());
+        foreach (var it in items)
+        {
+            if (it.SellerId is { } sid && deviceBySeller.TryGetValue(sid, out var dev))
+            {
+                it.DeviceName = dev.Name;
+                it.DeviceId = dev.Id;
+            }
+        }
+
         return items;
     }
 
@@ -132,7 +164,6 @@ public class ConversationsController : ControllerBase
             .Include(l => l.Seller)
             .FirstOrDefaultAsync(l => l.Id == leadId, ct);
         if (lead is null) return NotFound();
-        if (!isAdmin && lead.SellerId != sellerId) return Forbid();
 
         var messages = await _db.ConversationMessages.AsNoTracking()
             .Where(m => m.LeadId == leadId)
@@ -140,8 +171,8 @@ public class ConversationsController : ControllerBase
             .Select(m => new ConversationMessageDto(m.Id, m.Direction, m.Text, m.Timestamp, m.Status, m.IsRead))
             .ToListAsync(ct);
 
-        // Mark inbound as read on view.
-        if (!isAdmin) await _conv.MarkReadAsync(sellerId, leadId, ct);
+        // Bandeja compartida: abrir el chat lo marca leído para todos, mire quien mire.
+        await _conv.MarkReadAsync(sellerId, leadId, ct);
 
         return new ConversationThreadDto(lead.Id, lead.Name, lead.WhatsappPhone, lead.RenderedMessage,
             lead.ProductKey, lead.Status.ToString(),
@@ -160,7 +191,6 @@ public class ConversationsController : ControllerBase
         var isAdmin = CurrentUser.IsAdmin(User);
         var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
         if (lead is null) return NotFound();
-        if (!isAdmin && lead.SellerId != sellerId) return Forbid();
 
         lead.BotMutedAt = req.Enabled ? null : DateTimeOffset.UtcNow;
         if (!req.Enabled) { lead.AiSuggestedReply = null; lead.AiSuggestedReplyAt = null; }
@@ -191,10 +221,9 @@ public class ConversationsController : ControllerBase
     [HttpGet("unread-count")]
     public async Task<IActionResult> UnreadCount(CancellationToken ct)
     {
-        var sellerId = CurrentUser.Id(User);
+        // Sin filtrar por vendedor: el badge cuenta la bandeja completa, igual que la lista.
         var count = await _db.ConversationMessages
-            .CountAsync(m => m.SellerId == sellerId
-                          && m.Direction == MessageDirection.Inbound && !m.IsRead, ct);
+            .CountAsync(m => m.Direction == MessageDirection.Inbound && !m.IsRead, ct);
         return Ok(new { count });
     }
 }

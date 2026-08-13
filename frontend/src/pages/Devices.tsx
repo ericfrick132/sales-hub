@@ -3,12 +3,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
+import QrConnectModal from '../components/QrConnectModal';
 
 interface Device {
   id: string; name: string; sellerId?: string; sellerName?: string; tailscaleIp?: string;
   status: string; batteryLevel?: number; appVersion?: string; lastHeartbeatAt?: string;
 }
-interface Seller { id: string; displayName: string; email: string; }
+interface Seller {
+  id: string; displayName: string; email: string; sellerKey?: string; isActive?: boolean;
+  instanceStatus?: string; connectedPhoneNumber?: string | null;
+}
 
 /** "hace 3 min" / "hace 2 h" / "hace 4 d" — para saber de cuándo es el último latido. */
 function hace(iso?: string): string {
@@ -27,6 +31,8 @@ export default function Devices() {
   const [created, setCreated] = useState<{ token: string; qrUrl: string } | null>(null);
   /** Panel de re-pairing abierto para un device ya existente (token nuevo + QR). */
   const [pairing, setPairing] = useState<{ deviceId: string; token: string; qrUrl: string } | null>(null);
+  /** Línea para la que está abierto el QR de WhatsApp Web. */
+  const [qrFor, setQrFor] = useState<{ id: string; name: string } | null>(null);
 
   const { data: devices } = useQuery({
     queryKey: ['devices'],
@@ -67,6 +73,18 @@ export default function Devices() {
     }
   }
 
+  /** Cierra la sesión de WhatsApp Web de esa línea (hay que volver a escanear). */
+  async function unlink(sellerId: string) {
+    if (!confirm('Desvincular WhatsApp de esta línea? Vas a tener que escanear el QR de nuevo.')) return;
+    try {
+      await api.post(`/sellers/${sellerId}/instance/logout`);
+      toast.success('Línea desvinculada');
+      qc.invalidateQueries({ queryKey: ['sellers'] });
+    } catch {
+      toast.error('No se pudo desvincular');
+    }
+  }
+
   async function deleteDevice(id: string) {
     if (!confirm('Eliminar este device?')) return;
     await api.delete(`/devices/${id}`);
@@ -83,8 +101,71 @@ export default function Devices() {
 
   return (
     <div className="max-w-4xl mx-auto p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold">Dispositivos Android</h2>
+      <div className="mb-4">
+        <h2 className="text-xl font-bold">Dispositivos y líneas</h2>
+        <p className="text-sm text-slate-500">
+          Dos formas de tener una línea de WhatsApp funcionando: un celular con la app instalada, o
+          escaneando un QR desde el WhatsApp del teléfono.
+        </p>
+      </div>
+
+      {/* ══ Líneas por QR ══ */}
+      <div className="card p-4 mb-5">
+        <div className="mb-3">
+          <h3 className="font-semibold">Escanear QR (WhatsApp Web)</h3>
+          <p className="text-xs text-slate-500">
+            Vinculás la línea como un dispositivo más de WhatsApp. Sirve para leer y centralizar todos los
+            chats sin instalar nada en el teléfono.
+          </p>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {(sellers ?? []).filter(s => s.isActive !== false).map(s => {
+            const connected = s.instanceStatus === 'Connected';
+            return (
+              <div key={s.id} className="py-2 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{s.displayName}</div>
+                  <div className="text-xs text-slate-500 truncate">
+                    <span className={connected ? 'text-emerald-600' : 'text-slate-400'}>
+                      {connected ? '● Conectada' : `○ ${s.instanceStatus ?? 'sin línea'}`}
+                    </span>
+                    {s.connectedPhoneNumber && ` · ${s.connectedPhoneNumber}`}
+                  </div>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button
+                    className={connected ? 'btn-secondary text-xs' : 'btn-primary text-xs'}
+                    onClick={() => setQrFor({ id: s.id, name: s.displayName })}>
+                    {connected ? 'Ver QR' : 'Escanear QR'}
+                  </button>
+                  {connected && (
+                    <button className="btn-danger text-xs" onClick={() => unlink(s.id)}>Desvincular</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {(!sellers || sellers.length === 0) && (
+            <div className="py-3 text-slate-400 text-sm text-center">No hay líneas cargadas</div>
+          )}
+        </div>
+      </div>
+
+      {qrFor && (
+        <QrConnectModal
+          title={`Línea de ${qrFor.name}`}
+          fetchUrl={`/sellers/${qrFor.id}/instance/qr`}
+          onClose={() => setQrFor(null)}
+          onConnected={() => qc.invalidateQueries({ queryKey: ['sellers'] })}
+        />
+      )}
+
+      {/* ══ Celulares con la app ══ */}
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h3 className="font-semibold">Celulares con la app (APK)</h3>
+          <p className="text-xs text-slate-500">El celu manda los mensajes desde el WhatsApp real del teléfono.</p>
+        </div>
         <button className="btn-primary text-xs" onClick={() => { setShowCreate(true); setCreated(null); }}>+ Nuevo</button>
       </div>
 

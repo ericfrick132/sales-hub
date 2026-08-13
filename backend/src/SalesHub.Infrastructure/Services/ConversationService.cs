@@ -383,15 +383,21 @@ public class ConversationService
             .FirstOrDefaultAsync(ct);
     }
 
-    /// <summary>Called when the UI sends a reply manually. Does NOT go through the humanized outbox.</summary>
+    /// <summary>
+    /// Called when the UI sends a reply manually. Does NOT go through the humanized outbox.
+    /// <paramref name="sellerId"/> es sólo quién apretó "enviar": la bandeja es compartida,
+    /// así que cualquiera puede contestar cualquier chat y el mensaje SIEMPRE sale por la
+    /// línea donde vive la conversación, nunca por la del que escribe.
+    /// </summary>
     public async Task<ConversationMessage?> SendReplyAsync(Guid sellerId, Guid leadId, string text, CancellationToken ct)
     {
         var lead = await _db.Leads
             .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
             .FirstOrDefaultAsync(l => l.Id == leadId, ct);
         if (lead is null) return null;
-        if (lead.SellerId != sellerId) return null;
         if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return null;
+        if (lead.Seller is null)
+            throw new InvalidOperationException("El lead no tiene línea asignada: asignale un vendedor para poder contestarle.");
 
         var seller = lead.Seller!;
 

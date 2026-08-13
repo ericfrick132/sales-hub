@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
-import type { Product, Seller } from '../lib/types';
+import type { Product } from '../lib/types';
 import { isAdmin, useAuthStore } from '../lib/auth';
 
 type ListItem = {
@@ -15,11 +15,15 @@ type ListItem = {
   status: string;
   sellerId?: string;
   sellerName?: string;
+  deviceId?: string;
+  deviceName?: string;
   lastMessageText?: string;
   lastDirection?: 'Outbound' | 'Inbound';
   lastTimestamp?: string;
   unreadCount: number;
 };
+
+type Device = { id: string; name: string; sellerId?: string; sellerName?: string; status: string };
 
 type Message = {
   id: string;
@@ -57,7 +61,7 @@ export default function Conversations() {
   const endRef = useRef<HTMLDivElement>(null);
 
   const [productFilter, setProductFilter] = useState('');
-  const [sellerFilter, setSellerFilter] = useState('');
+  const [deviceFilter, setDeviceFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [days, setDays] = useState(30);
   const fromTs = useMemo(() => {
@@ -66,11 +70,11 @@ export default function Conversations() {
   }, [days]);
 
   const list = useQuery({
-    queryKey: ['conversations', productFilter, sellerFilter, statusFilter, days],
+    queryKey: ['conversations', productFilter, deviceFilter, statusFilter, days],
     queryFn: async () => (await api.get<ListItem[]>('/conversations', {
       params: {
         productKey: productFilter || undefined,
-        sellerId: sellerFilter || undefined,
+        deviceId: deviceFilter || undefined,
         status: statusFilter || undefined,
         from: fromTs
       }
@@ -84,11 +88,10 @@ export default function Conversations() {
     staleTime: 5 * 60_000
   });
 
-  const sellersQ = useQuery({
-    queryKey: ['sellers-for-conv-filter'],
-    enabled: admin,
-    queryFn: async () => (await api.get<Seller[]>('/sellers')).data,
-    staleTime: 5 * 60_000
+  const devicesQ = useQuery({
+    queryKey: ['devices-for-conv-filter'],
+    queryFn: async () => (await api.get<Device[]>('/devices')).data,
+    staleTime: 60_000
   });
 
   const thread = useQuery({
@@ -97,6 +100,14 @@ export default function Conversations() {
     queryFn: async () => (await api.get<Thread>(`/conversations/${selected}`)).data,
     refetchInterval: 10000
   });
+
+  /** Celular que atiende el chat abierto (por la línea a la que está asignado). */
+  const threadDevice = useMemo(() => {
+    const sid = thread.data?.sellerId;
+    if (!sid) return null;
+    const dev = (devicesQ.data ?? []).find((d) => d.sellerId === sid);
+    return dev?.name ?? (thread.data?.sellerName ? `${thread.data.sellerName} (sin celu)` : null);
+  }, [thread.data?.sellerId, thread.data?.sellerName, devicesQ.data]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -140,20 +151,18 @@ export default function Conversations() {
                 ))}
               </select>
             </div>
-            {admin && (
-              <div className="flex-1 min-w-[120px]">
-                <label className="text-[11px] text-slate-500 block">Vendedor</label>
-                <select
-                  className="input text-sm w-full"
-                  value={sellerFilter}
-                  onChange={(e) => setSellerFilter(e.target.value)}>
-                  <option value="">Todos</option>
-                  {(sellersQ.data ?? []).filter((s) => s.isActive).map((s) => (
-                    <option key={s.id} value={s.id}>{s.displayName}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div className="flex-1 min-w-[120px]">
+              <label className="text-[11px] text-slate-500 block">Celular</label>
+              <select
+                className="input text-sm w-full"
+                value={deviceFilter}
+                onChange={(e) => setDeviceFilter(e.target.value)}>
+                <option value="">Todos</option>
+                {(devicesQ.data ?? []).map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="flex-1 min-w-[120px]">
               <label className="text-[11px] text-slate-500 block">Estado</label>
               <select
@@ -202,9 +211,11 @@ export default function Conversations() {
             <div className="flex justify-between items-start gap-2">
               <div className="font-medium truncate flex-1 min-w-0">{c.leadName}</div>
               <StatusPill status={c.status} />
-              {admin && c.sellerName && (
-                <span className="text-[11px] bg-brand-100 text-brand-700 rounded px-1.5 py-0.5 font-medium shrink-0">
-                  {c.sellerName}
+              {(c.deviceName || c.sellerName) && (
+                <span
+                  className="text-[11px] bg-brand-100 text-brand-700 rounded px-1.5 py-0.5 font-medium shrink-0"
+                  title={c.deviceName ? `Celular: ${c.deviceName}` : `Sin celular asignado — línea de ${c.sellerName}`}>
+                  {c.deviceName ?? `${c.sellerName} (sin celu)`}
                 </span>
               )}
               {c.unreadCount > 0 && (
@@ -212,9 +223,7 @@ export default function Conversations() {
               )}
             </div>
             <div className="text-xs text-slate-500 truncate">
-              {c.lastDirection === 'Outbound'
-                ? (admin && c.sellerName ? `${c.sellerName}: ` : 'Vos: ')
-                : ''}
+              {c.lastDirection === 'Outbound' ? (c.deviceName ? `${c.deviceName}: ` : 'Nosotros: ') : ''}
               {c.lastMessageText?.slice(0, 80) ?? '(sin mensajes)'}
             </div>
             <div className="text-xs text-slate-400 mt-0.5 flex gap-2 flex-wrap">
@@ -251,7 +260,7 @@ export default function Conversations() {
                 </div>
                 <div className="text-xs text-slate-500 truncate">
                   {thread.data.productKey} · {thread.data.whatsappPhone ?? '—'}
-                  {admin && thread.data.sellerName && <> · <span className="font-medium">{thread.data.sellerName}</span></>}
+                  {threadDevice && <> · <span className="font-medium">{threadDevice}</span></>}
                 </div>
               </div>
               <button
