@@ -123,6 +123,8 @@ export default function Crm() {
     queryKey: ['products-min'],
     queryFn: async () => (await api.get<Product[]>('/products')).data,
     staleTime: 5 * 60_000,
+    // Sin la fila de producto vacío, que no es una app real (ver Devices.tsx).
+    select: (rows) => rows.filter((p) => p.productKey?.trim()),
   });
   const devices = useQuery({
     queryKey: ['devices-for-conv-filter'],

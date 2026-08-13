@@ -57,7 +57,10 @@ export default function Devices() {
   const { data: products } = useQuery({
     queryKey: ['products-min'],
     queryFn: async () => (await api.get<Product[]>('/products')).data,
-    staleTime: 5 * 60_000
+    staleTime: 5 * 60_000,
+    // Hay una fila de producto con key y nombre vacíos (941 leads viejos cuelgan de ella):
+    // no es una app real y ensucia todas las listas.
+    select: (rows) => rows.filter(p => p.productKey?.trim())
   });
   const { data: appLines } = useQuery({
     queryKey: ['wa-app-lines'],
