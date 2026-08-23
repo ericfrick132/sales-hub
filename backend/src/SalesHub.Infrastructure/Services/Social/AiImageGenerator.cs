@@ -230,9 +230,14 @@ public class AiImageGenerator : ISocialAssetGenerator
         var bytes = await GenerateWithProviderAsync(prompt, format, ct);
         if (bytes != null) return bytes;
 
-        // Red de contención: que el proveedor pago se quede sin saldo o esté caído no
-        // puede dejar al posteo sin imagen (antes se iba en silencio y no se publicaba nada).
-        if (!_opts.FallbackToPollinations) return null;
+        // Sin imagen del proveedor configurado → sin imagen (el worker deja el posteo en
+        // Error con el motivo). El fallback a Pollinations es opt-in por config: por
+        // default, quedarse sin crédito en OpenAI NO tiene que publicar nada con otro modelo.
+        if (!_opts.FallbackToPollinations)
+        {
+            _log.LogWarning("ImageGen {Provider} no devolvió imagen — sin fallback (FallbackToPollinations=false), el posteo queda sin asset", _opts.Provider);
+            return null;
+        }
         _log.LogWarning("ImageGen {Provider} no devolvió imagen — probando con Pollinations", _opts.Provider);
         return await GeneratePollinationsAsync(prompt, format, ct);
     }

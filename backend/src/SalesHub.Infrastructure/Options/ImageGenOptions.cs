@@ -19,11 +19,13 @@ public class ImageGenOptions
 
     /// <summary>
     /// Si el proveedor principal no devuelve imagen (sin saldo, rate-limit, caída),
-    /// reintenta con Pollinations, que es gratis y sin API key. La calidad es menor,
-    /// pero evita que una cuenta sin crédito frene la generación entera: el 11-ago-2026
-    /// OpenAI devolvió credit_balance_exhausted y 16 posteos quedaron sin imagen.
+    /// reintentar con Pollinations (gratis, sin API key, flux). APAGADO por default
+    /// (pedido 2026-08-22): si OpenAI se queda sin crédito, el posteo queda en Error
+    /// y NO se publica nada con otro modelo — la calidad de Pollinations no da para
+    /// salir al aire. Se había prendido el 11-ago-2026 cuando credit_balance_exhausted
+    /// dejó 16 posteos sin imagen. Opt-in explícito: ImageGen__FallbackToPollinations=true.
     /// </summary>
-    public bool FallbackToPollinations { get; set; } = true;
+    public bool FallbackToPollinations { get; set; } = false;
 
     /// <summary>
     /// Base pública de la API (donde vive /api/posteos/assets/{id}.png) para armar
