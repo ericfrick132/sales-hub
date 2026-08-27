@@ -42,8 +42,13 @@ public class ConversationsController : ControllerBase
         Guid? SellerId, string? SellerName, string Status,
         string? LastMessageText, MessageDirection? LastDirection,
         DateTimeOffset? LastTimestamp, int UnreadCount,
-        DateTimeOffset? FirstReplyAt, DateTimeOffset? SentAt)
+        DateTimeOffset? FirstReplyAt, DateTimeOffset? SentAt,
+        string Source, List<string> Tags, string? AdTitle,
+        DateTimeOffset? LastInboundAt, DateTimeOffset? ClosedAt, DateTimeOffset? BotMutedAt,
+        string? PitchName, int? PitchStep, int? PitchSteps, bool PitchActive)
     {
+        /// <summary>Cuándo vence la ventana de 24 h para responder (desde el último inbound).</summary>
+        public DateTimeOffset? WindowExpiresAt => LastInboundAt?.AddHours(24);
         /// <summary>
         /// Celular que atiende esta conversación (el device del bridge asignado a la línea).
         /// Se llena después de la query: los devices son pocos y se resuelven en memoria.
@@ -62,7 +67,16 @@ public class ConversationsController : ControllerBase
         Guid? SellerId, string? SellerName,
         string? AiSuggestedReply,
         DateTimeOffset? BotMutedAt,
-        IReadOnlyList<ConversationMessageDto> Messages);
+        IReadOnlyList<ConversationMessageDto> Messages,
+        // Panel "Info del lead"
+        string Source, List<string> Tags, string? AdId, string? AdTitle, string? AdSourceUrl,
+        DateTimeOffset? LastInboundAt, DateTimeOffset? WindowExpiresAt, DateTimeOffset? ClosedAt,
+        DateTimeOffset CreatedAt, DateTimeOffset? FirstMessageAt, int MessagesCount, DateTimeOffset? LastActiveAt,
+        PitchInfoDto? Pitch, IReadOnlyList<FeedbackDto> Feedback, string? City, int Score);
+    public record PitchInfoDto(Guid PitchId, string Name, int StepIndex, int StepsTotal, int FollowupsSent, bool Completed, bool GaveUp, DateTimeOffset? NextStepDueAt);
+    public record FeedbackDto(Guid Id, int Rating, string? Note, string? RatedMessage, string? SellerName, DateTimeOffset CreatedAt);
+    public record SetTagsRequest(List<string> Tags);
+    public record FeedbackRequest(int Rating, string? Note);
 
     public record SendReplyRequest(string Text);
 
@@ -78,6 +92,11 @@ public class ConversationsController : ControllerBase
         //         "waiting" (mandamos último, esperando),
         //         "cold" (sin respuesta + > coldDays sin actividad), "all" (default).
         [FromQuery] string? bucket,
+        // window: "12h+" | "6-12h" | "<6h" | "expired" | "new" (ventana de 24 h desde el último inbound)
+        [FromQuery] string? window,
+        [FromQuery] string? tag,
+        [FromQuery] string? source,
+        [FromQuery] bool includeClosed = false,
         [FromQuery] int coldDays = 3,
         [FromQuery] int limit = 200,
         CancellationToken ct = default)
@@ -100,6 +119,20 @@ public class ConversationsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(productKey)) leadQ = leadQ.Where(l => l.ProductKey == productKey);
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<LeadStatus>(status, ignoreCase: true, out var st))
             leadQ = leadQ.Where(l => l.Status == st);
+        if (!includeClosed) leadQ = leadQ.Where(l => l.ConversationClosedAt == null);
+        if (!string.IsNullOrWhiteSpace(tag)) leadQ = leadQ.Where(l => l.Tags.Contains(tag));
+        if (!string.IsNullOrWhiteSpace(source) && Enum.TryParse<LeadSource>(source, ignoreCase: true, out var src))
+            leadQ = leadQ.Where(l => l.Source == src);
+        // Ventana de respuesta (estilo Meta: 24 h desde el último mensaje del lead).
+        var nowW = DateTimeOffset.UtcNow;
+        switch ((window ?? string.Empty).Trim().ToLowerInvariant())
+        {
+            case "12h+": leadQ = leadQ.Where(l => l.LastInboundAt != null && l.LastInboundAt > nowW.AddHours(-12)); break;
+            case "6-12h": leadQ = leadQ.Where(l => l.LastInboundAt != null && l.LastInboundAt <= nowW.AddHours(-12) && l.LastInboundAt > nowW.AddHours(-18)); break;
+            case "<6h": leadQ = leadQ.Where(l => l.LastInboundAt != null && l.LastInboundAt <= nowW.AddHours(-18) && l.LastInboundAt > nowW.AddHours(-24)); break;
+            case "expired": leadQ = leadQ.Where(l => l.LastInboundAt == null || l.LastInboundAt <= nowW.AddHours(-24)); break;
+            case "new": leadQ = leadQ.Where(l => l.CreatedAt > nowW.AddHours(-24)); break;
+        }
 
         // Los buckets filtran EN SQL, antes del Take: si fueran post-Take, "sin leer"
         // solo vería los N hilos más recientes y se perdería el backlog viejo.
@@ -128,6 +161,7 @@ public class ConversationsController : ControllerBase
                            // conversación de HOY quedaba enterrada bajo cientos de hilos viejos
                            // con no-leídos acumulados (el caso "escribió y no lo veo en la lista").
                            orderby latest.Timestamp descending
+                           let ps = _db.LeadPitchStates.Where(x => x.LeadId == l.Id).Select(x => new { x.StepIndex, x.CompletedAt, x.GaveUpAt, Name = x.Pitch!.Name, Total = x.Pitch.Steps.Count }).FirstOrDefault()
                            select new ConversationListItem(
                                l.Id, l.Name, l.City, l.ProductKey,
                                l.Product != null ? l.Product.DisplayName : null,
@@ -135,7 +169,13 @@ public class ConversationsController : ControllerBase
                                l.Seller != null ? l.Seller.DisplayName : null,
                                l.Status.ToString(),
                                latest.Text, latest.Direction, latest.Timestamp, unread,
-                               l.FirstReplyAt, l.SentAt))
+                               l.FirstReplyAt, l.SentAt,
+                               l.Source.ToString(), l.Tags, l.AdTitle,
+                               l.LastInboundAt, l.ConversationClosedAt, l.BotMutedAt,
+                               ps != null ? ps.Name : null,
+                               ps != null ? ps.StepIndex + 1 : (int?)null,
+                               ps != null ? ps.Total : (int?)null,
+                               ps != null && ps.CompletedAt == null && ps.GaveUpAt == null))
                        .Take(Math.Min(limit, 500)).ToListAsync(ct);
 
         // Un seller puede tener más de un celu; se muestra el primero por nombre.
@@ -174,12 +214,27 @@ public class ConversationsController : ControllerBase
         // Bandeja compartida: abrir el chat lo marca leído para todos, mire quien mire.
         await _conv.MarkReadAsync(sellerId, leadId, ct);
 
+        var ps = await _db.LeadPitchStates.AsNoTracking().Include(x => x.Pitch)
+            .FirstOrDefaultAsync(x => x.LeadId == leadId, ct);
+        var feedback = await _db.ConversationFeedbacks.AsNoTracking()
+            .Where(f => f.LeadId == leadId)
+            .OrderByDescending(f => f.CreatedAt)
+            .Take(5)
+            .Select(f => new FeedbackDto(f.Id, f.Rating, f.Note, f.RatedMessage, f.Seller != null ? f.Seller.DisplayName : null, f.CreatedAt))
+            .ToListAsync(ct);
+        var pitchInfo = ps is null ? null : new PitchInfoDto(ps.PitchId, ps.Pitch!.Name, ps.StepIndex + 1, ps.Pitch.Steps.Count,
+            ps.FollowupsSent, ps.CompletedAt != null, ps.GaveUpAt != null, ps.NextStepDueAt);
         return new ConversationThreadDto(lead.Id, lead.Name, lead.WhatsappPhone, lead.RenderedMessage,
             lead.ProductKey, lead.Status.ToString(),
             lead.SellerId, lead.Seller?.DisplayName,
             lead.AiSuggestedReply,
             lead.BotMutedAt,
-            messages);
+            messages,
+            lead.Source.ToString(), lead.Tags, lead.AdId, lead.AdTitle, lead.AdSourceUrl,
+            lead.LastInboundAt, lead.LastInboundAt?.AddHours(24), lead.ConversationClosedAt,
+            lead.CreatedAt, messages.Count > 0 ? messages[0].Timestamp : null, messages.Count,
+            messages.Count > 0 ? messages[^1].Timestamp : null,
+            pitchInfo, feedback, lead.City, lead.Score);
     }
 
     /// <summary>Takeover humano desde la UI: bot ON/OFF para esta conversación
@@ -216,6 +271,83 @@ public class ConversationsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    /// <summary>Tags del inbox (reemplaza la lista completa).</summary>
+    [HttpPost("{leadId:guid}/tags")]
+    public async Task<IActionResult> SetTags(Guid leadId, [FromBody] SetTagsRequest req, CancellationToken ct)
+    {
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        if (lead is null) return NotFound();
+        lead.Tags = (req.Tags ?? new()).Select(t => t.Trim().ToLowerInvariant()).Where(t => t.Length > 0 && t.Length <= 40).Distinct().ToList();
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { leadId, tags = lead.Tags });
+    }
+
+    /// <summary>Cierra la conversación (se oculta del inbox hasta que el lead vuelva a escribir).</summary>
+    [HttpPost("{leadId:guid}/close")]
+    public async Task<IActionResult> Close(Guid leadId, CancellationToken ct)
+    {
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        if (lead is null) return NotFound();
+        lead.ConversationClosedAt = DateTimeOffset.UtcNow;
+        lead.AiSuggestedReply = null; lead.AiSuggestedReplyAt = null;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        // Cortar el pitch si estaba en curso.
+        var ps = await _db.LeadPitchStates.FirstOrDefaultAsync(x => x.LeadId == leadId, ct);
+        if (ps is not null && ps.CompletedAt is null && ps.GaveUpAt is null) { ps.CompletedAt = DateTimeOffset.UtcNow; ps.NextStepDueAt = null; }
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { leadId, closedAt = lead.ConversationClosedAt });
+    }
+
+    [HttpPost("{leadId:guid}/reopen")]
+    public async Task<IActionResult> Reopen(Guid leadId, CancellationToken ct)
+    {
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        if (lead is null) return NotFound();
+        lead.ConversationClosedAt = null;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { leadId, closedAt = (DateTimeOffset?)null });
+    }
+
+    /// <summary>
+    /// Califica la conversación (👍 = 1, 👎 = -1, 0 = solo nota). Guarda como contexto el último
+    /// mensaje nuestro; las notas alimentan el prompt del agente para ese producto.
+    /// </summary>
+    [HttpPost("{leadId:guid}/feedback")]
+    public async Task<IActionResult> Feedback(Guid leadId, [FromBody] FeedbackRequest req, CancellationToken ct)
+    {
+        var lead = await _db.Leads.AsNoTracking().FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        if (lead is null) return NotFound();
+        if (req.Rating is < -1 or > 1) return BadRequest(new { error = "Rating debe ser -1, 0 o 1" });
+        if (req.Rating == 0 && string.IsNullOrWhiteSpace(req.Note)) return BadRequest(new { error = "Poné una nota o un pulgar" });
+        var lastOurs = await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.LeadId == leadId && m.Direction == MessageDirection.Outbound)
+            .OrderByDescending(m => m.Timestamp).Select(m => m.Text).FirstOrDefaultAsync(ct);
+        var fb = new ConversationFeedback
+        {
+            LeadId = leadId, ProductKey = lead.ProductKey, SellerId = CurrentUser.Id(User),
+            Rating = req.Rating, Note = string.IsNullOrWhiteSpace(req.Note) ? null : req.Note.Trim(),
+            RatedMessage = lastOurs,
+        };
+        _db.ConversationFeedbacks.Add(fb);
+        await _db.SaveChangesAsync(ct);
+        ConversationFeedbackProvider.Invalidate(lead.ProductKey);
+        return Ok(new FeedbackDto(fb.Id, fb.Rating, fb.Note, fb.RatedMessage, null, fb.CreatedAt));
+    }
+
+    /// <summary>Tags en uso (para autocompletar en el inbox).</summary>
+    [HttpGet("tags")]
+    public async Task<IActionResult> Tags(CancellationToken ct)
+    {
+        var tags = await _db.Leads.AsNoTracking()
+            .Where(l => l.Tags.Count > 0)
+            .Select(l => l.Tags)
+            .Take(2000)
+            .ToListAsync(ct);
+        return Ok(tags.SelectMany(t => t).GroupBy(t => t).OrderByDescending(g => g.Count()).Select(g => new { tag = g.Key, count = g.Count() }).Take(60));
     }
 
     [HttpGet("unread-count")]

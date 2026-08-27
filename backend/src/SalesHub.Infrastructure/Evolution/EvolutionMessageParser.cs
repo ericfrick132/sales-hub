@@ -88,9 +88,43 @@ public static class EvolutionMessageParser
         if (msg.TryGetProperty("messageTimestamp", out var tsEl) && tsEl.ValueKind == JsonValueKind.Number) ts = tsEl.GetInt64();
         var timestamp = ts > 0 ? DateTimeOffset.FromUnixTimeSeconds(ts) : DateTimeOffset.UtcNow;
 
+        var ad = ExtractAdReferral(msg);
         return new ConversationService.IncomingMessage(
             instance, remoteJid, phoneOverride, messageId, text!, timestamp, msg.GetRawText(), fromMe,
-            topSender, fromSync);
+            topSender, fromSync, ad);
+    }
+
+    /// <summary>
+    /// Atribución de anuncio: en un click-to-WhatsApp el primer mensaje del lead trae
+    /// <c>message.extendedTextMessage.contextInfo.externalAdReply</c> con sourceId (id del ad),
+    /// title/body del anuncio, sourceUrl y ctwaClid. Baileys/Evolution lo reenvían tal cual.
+    /// También se busca en el contextInfo de imagen/video por si el ad era de esa forma.
+    /// </summary>
+    public static ConversationService.AdReferral? ExtractAdReferral(JsonElement msg)
+    {
+        if (!msg.TryGetProperty("message", out var body) || body.ValueKind != JsonValueKind.Object) return null;
+        foreach (var container in new[] { "extendedTextMessage", "imageMessage", "videoMessage", "conversation" })
+        {
+            if (!body.TryGetProperty(container, out var inner) || inner.ValueKind != JsonValueKind.Object) continue;
+            if (!inner.TryGetProperty("contextInfo", out var ctx) || ctx.ValueKind != JsonValueKind.Object) continue;
+            if (!ctx.TryGetProperty("externalAdReply", out var ad) || ad.ValueKind != JsonValueKind.Object) continue;
+            var sourceId = TryGetString(ad, "sourceId");
+            var ctwa = TryGetString(ad, "ctwaClid");
+            var title = TryGetString(ad, "title");
+            var adBody = TryGetString(ad, "body");
+            var url = TryGetString(ad, "sourceUrl");
+            if (sourceId is null && ctwa is null && title is null) continue;
+            return new ConversationService.AdReferral(sourceId, title, adBody, url, ctwa);
+        }
+        // Algunas versiones lo cuelgan a nivel del message (contextInfo directo).
+        if (body.TryGetProperty("contextInfo", out var ctx2) && ctx2.ValueKind == JsonValueKind.Object
+            && ctx2.TryGetProperty("externalAdReply", out var ad2) && ad2.ValueKind == JsonValueKind.Object)
+        {
+            return new ConversationService.AdReferral(
+                TryGetString(ad2, "sourceId"), TryGetString(ad2, "title"), TryGetString(ad2, "body"),
+                TryGetString(ad2, "sourceUrl"), TryGetString(ad2, "ctwaClid"));
+        }
+        return null;
     }
 
     private static string? TryGetString(JsonElement el, string prop) =>

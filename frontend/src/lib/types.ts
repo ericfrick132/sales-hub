@@ -420,3 +420,36 @@ export interface OnboardingAudioVariant {
   durationMs: number;
   createdAt: string;
 }
+
+/** ───── Pitches por anuncio (Smart Setter / GHL) ───── */
+export interface PitchMessage { text: string; mediaAssetId?: string | null; voiceText?: string | null; delaySeconds: number }
+export interface PitchFollowUp { afterHours: number; text: string; mediaAssetId?: string | null }
+export interface PitchStep { title?: string | null; messages: PitchMessage[]; followUps: PitchFollowUp[] }
+export interface PitchStats { enrolled: number; active: number; replied: number; completed: number; gaveUp: number; converted: number }
+export interface Pitch {
+  id: string;
+  productKey: string;
+  name: string;
+  active: boolean;
+  sortOrder: number;
+  adIds: string[];
+  triggerText?: string | null;
+  isDefault: boolean;
+  steps: PitchStep[];
+  autoTagOnReply?: string | null;
+  statusOnReply?: string | null;
+  aiAfterPitch: boolean;
+  replyDelayMinSec: number;
+  replyDelayMaxSec: number;
+  updatedAt: string;
+  stats: PitchStats;
+}
+export interface AdSeen {
+  productKey: string; adId: string; title?: string | null; leads: number; replied: number; closed: number; lastSeen: string;
+  pitch?: { id: string; name: string } | null;
+}
+export interface PitchEnrollment {
+  leadId: string; leadName: string; phone?: string; status: string; adTitle?: string | null;
+  stepIndex: number; stepSentAt?: string | null; nextStepDueAt?: string | null; followupsSent: number; replies: number;
+  firstReplyAfterPitchAt?: string | null; completedAt?: string | null; gaveUpAt?: string | null; enrolledAt: string;
+}

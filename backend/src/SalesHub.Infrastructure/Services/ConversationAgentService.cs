@@ -53,6 +53,8 @@ public class ConversationAgentService
     private readonly IMessageRenderer _renderer;
     private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
     private readonly TakeoverSignal _takeover;
+    private readonly PitchEngine _pitch;
+    private readonly ConversationFeedbackProvider _feedback;
     private readonly IAdminAlerter _alerter;
     private readonly ILogger<ConversationAgentService> _log;
 
@@ -62,11 +64,13 @@ public class ConversationAgentService
         VoiceNoteService voiceNotes, IMessageRenderer renderer,
         Microsoft.Extensions.Configuration.IConfiguration config,
         TakeoverSignal takeover, IAdminAlerter alerter, SellerLineSender lineSender,
-        ILogger<ConversationAgentService> log)
+        ILogger<ConversationAgentService> log,
+        PitchEngine pitch, ConversationFeedbackProvider feedback)
     {
         _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding;
         _scheduler = scheduler; _voiceNotes = voiceNotes; _renderer = renderer; _config = config;
         _takeover = takeover; _alerter = alerter; _lineSender = lineSender; _log = log;
+        _pitch = pitch; _feedback = feedback;
     }
 
     /// <summary>Candidato a respuesta: Priority = reactivado con "+" (salta settle y esperas).</summary>
@@ -75,10 +79,15 @@ public class ConversationAgentService
     public async Task<int> TickAsync(CancellationToken ct)
     {
         var transcribed = await TranscribeAudiosAsync(ct);
+        // Pitch por anuncio: pasos pendientes + follow-ups. Corre ANTES de la IA (mientras el
+        // pitch está activo la IA no toca esos leads).
+        var pitched = 0;
+        try { pitched = await _pitch.TickAsync(ct); }
+        catch (Exception ex) { _log.LogError(ex, "Pitch tick falló"); }
         var replied = await GenerateSuggestionsAsync(ct);
         var reengaged = await GenerateReengagementsAsync(ct);
         var postSignup = await GeneratePostSignupNudgesAsync(ct);
-        return transcribed + replied + reengaged + postSignup;
+        return transcribed + pitched + replied + reengaged + postSignup;
     }
 
     /// <summary>Transcribe las notas de voz inbound que el webhook dejó como "[audio]".</summary>
@@ -161,6 +170,8 @@ public class ConversationAgentService
             where l.AiSuggestedReply == null && l.AiSuggestedReplyAt == null && l.SellerId != null
                 && replySources.Contains(l.Source)
                 && l.BotMutedAt == null // takeover humano: el bot no toca esta conversación
+                // Pitch por anuncio en curso: el guion es dueño de la charla hasta terminar.
+                && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
                 && l.Status != LeadStatus.Lost
                 && (l.Status != LeadStatus.Closed
                     || _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
@@ -483,7 +494,8 @@ public class ConversationAgentService
 
             // ── Charla real: UNA sola llamada que clasifica el estado Y genera la respuesta.
             if (!_suggestions.IsConfigured) continue;
-            var (intent, shouldReply, reply) = await _suggestions.SuggestReplyWithIntentAsync(lead, lead.Product!, thread, ct);
+            var feedbackBlock = await _feedback.BuildBlockAsync(lead.ProductKey, ct);
+            var (intent, shouldReply, reply) = await _suggestions.SuggestReplyWithIntentAsync(lead, lead.Product!, thread, ct, feedbackBlock);
 
             // El clasificador detectó un problema de PRODUCTO (no de venta) → abre un case
             // y lo toma el pipeline de soporte desde este mismo mensaje.
@@ -961,6 +973,7 @@ public class ConversationAgentService
             where l.SellerId != null
                 && followupSources.Contains(l.Source)
                 && l.BotMutedAt == null // takeover humano: tampoco re-enganchar
+                && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
                 && l.FirstReplyAt != null
                 && (l.Status == LeadStatus.Replied || l.Status == LeadStatus.Interested)
                 && l.AiSuggestedReply == null
@@ -988,6 +1001,7 @@ public class ConversationAgentService
             where l.SellerId != null
                 && followupSources.Contains(l.Source)
                 && l.BotMutedAt == null
+                && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
                 && l.FirstReplyAt == null
                 && l.Status == LeadStatus.Sent
                 // Solo leads CALIENTES (anuncios/forms/app-fed, source >= 400): a los scrapeados

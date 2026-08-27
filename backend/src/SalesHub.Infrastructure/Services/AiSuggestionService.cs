@@ -181,13 +181,13 @@ public class AiSuggestionService
     /// la respuesta (ya con guardrail de precio). Es el camino para la charla real.
     /// </summary>
     public async Task<(LeadIntent intent, bool shouldReply, string? reply)> SuggestReplyWithIntentAsync(
-        Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, CancellationToken ct)
+        Lead lead, Product product, IReadOnlyList<ConversationMessage> thread, CancellationToken ct, string? extraContext = null)
     {
         if (!_claude.IsConfigured || thread.Count == 0) return (LeadIntent.Unknown, false, null);
 
         var rulesBlock = await _rules.GetBlockAsync(product.ProductKey, ct);
         var tone = await _tone.GetToneAsync(product.ProductKey, ct);
-        var system = BuildSystemPrompt(product, rulesBlock, tone) + MergedTaskInstruction;
+        var system = BuildSystemPrompt(product, rulesBlock, tone) + (extraContext ?? string.Empty) + MergedTaskInstruction;
         var conversation = BuildConversation(lead, thread, instruction: null);
 
         var raw = await _claude.CompleteAsync(system, conversation, "conversacion", ct);

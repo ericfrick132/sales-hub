@@ -85,6 +85,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<OnboardingConfig> OnboardingConfigs => Set<OnboardingConfig>();
     public DbSet<OnboardingPersona> OnboardingPersonas => Set<OnboardingPersona>();
     public DbSet<OnboardingAudio> OnboardingAudios => Set<OnboardingAudio>();
+    public DbSet<Pitch> Pitches => Set<Pitch>();
+    public DbSet<LeadPitchState> LeadPitchStates => Set<LeadPitchState>();
+    public DbSet<ConversationFeedback> ConversationFeedbacks => Set<ConversationFeedback>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

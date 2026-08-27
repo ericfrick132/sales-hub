@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
@@ -21,6 +21,17 @@ type ListItem = {
   lastDirection?: 'Outbound' | 'Inbound';
   lastTimestamp?: string;
   unreadCount: number;
+  source: string;
+  tags: string[];
+  adTitle?: string | null;
+  lastInboundAt?: string | null;
+  windowExpiresAt?: string | null;
+  closedAt?: string | null;
+  botMutedAt?: string | null;
+  pitchName?: string | null;
+  pitchStep?: number | null;
+  pitchSteps?: number | null;
+  pitchActive: boolean;
 };
 
 type Device = { id: string; name: string; sellerId?: string; sellerName?: string; status: string };
@@ -46,7 +57,51 @@ type Thread = {
   aiSuggestedReply?: string;
   botMutedAt?: string | null;
   messages: Message[];
+  source: string;
+  tags: string[];
+  adId?: string | null;
+  adTitle?: string | null;
+  adSourceUrl?: string | null;
+  lastInboundAt?: string | null;
+  windowExpiresAt?: string | null;
+  closedAt?: string | null;
+  createdAt: string;
+  firstMessageAt?: string | null;
+  messagesCount: number;
+  lastActiveAt?: string | null;
+  pitch?: { pitchId: string; name: string; stepIndex: number; stepsTotal: number; followupsSent: number; completed: boolean; gaveUp: boolean; nextStepDueAt?: string | null } | null;
+  feedback: { id: string; rating: number; note?: string | null; ratedMessage?: string | null; sellerName?: string | null; createdAt: string }[];
+  city?: string | null;
+  score: number;
 };
+
+type WindowFilter = '' | '12h+' | '6-12h' | '<6h' | 'expired' | 'new';
+const WINDOW_CHIPS: { key: WindowFilter; label: string; dot?: string }[] = [
+  { key: '', label: 'Todas' },
+  { key: '12h+', label: '12h+', dot: 'bg-emerald-500' },
+  { key: '6-12h', label: '6-12h', dot: 'bg-amber-400' },
+  { key: '<6h', label: '<6h', dot: 'bg-rose-500' },
+  { key: 'expired', label: 'Vencidas', dot: 'bg-slate-300' },
+  { key: 'new', label: 'Nuevas' }
+];
+
+const SOURCE_LABEL: Record<string, string> = {
+  WhatsAppAd: 'Anuncio WhatsApp', WhatsAppInbound: 'Escribió solo', MetaLeadAd: 'Form de Meta', DemoSignup: 'Se registró en la app',
+  ProductReengage: 'Re-enganche', ProductOnboarding: 'Onboarding app', GooglePlaces: 'Google Maps', ApifyGoogleMaps: 'Google Maps',
+  InstagramScraper: 'Instagram', ManualWhatsApp: 'Manual'
+};
+
+/** Cuánto queda de la ventana de 24 h. */
+function windowInfo(lastInboundAt?: string | null): { label: string; dot: string; cls: string } {
+  if (!lastInboundAt) return { label: 'sin mensajes del lead', dot: 'bg-slate-300', cls: 'text-slate-400' };
+  const left = new Date(lastInboundAt).getTime() + 24 * 3600_000 - Date.now();
+  if (left <= 0) return { label: 'ventana vencida', dot: 'bg-slate-300', cls: 'text-slate-400' };
+  const h = Math.floor(left / 3600_000); const m = Math.floor((left % 3600_000) / 60_000);
+  const label = `${h}h ${m.toString().padStart(2, '0')}m`;
+  if (h >= 12) return { label, dot: 'bg-emerald-500', cls: 'text-emerald-700' };
+  if (h >= 6) return { label, dot: 'bg-amber-400', cls: 'text-amber-700' };
+  return { label, dot: 'bg-rose-500', cls: 'text-rose-700' };
+}
 
 export default function Conversations() {
   const qc = useQueryClient();
@@ -64,19 +119,26 @@ export default function Conversations() {
   const [deviceFilter, setDeviceFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [days, setDays] = useState(30);
+  const [windowFilter, setWindowFilter] = useState<WindowFilter>('');
+  const [includeClosed, setIncludeClosed] = useState(false);
+  const [tagFilter, setTagFilter] = useState('');
+  const [showInfo, setShowInfo] = useState(true);
   const fromTs = useMemo(() => {
     if (!days) return undefined;
     return new Date(Date.now() - days * 86400_000).toISOString();
   }, [days]);
 
   const list = useQuery({
-    queryKey: ['conversations', productFilter, deviceFilter, statusFilter, days],
+    queryKey: ['conversations', productFilter, deviceFilter, statusFilter, days, windowFilter, includeClosed, tagFilter],
     queryFn: async () => (await api.get<ListItem[]>('/conversations', {
       params: {
         productKey: productFilter || undefined,
         deviceId: deviceFilter || undefined,
         status: statusFilter || undefined,
-        from: fromTs
+        from: fromTs,
+        window: windowFilter || undefined,
+        includeClosed: includeClosed || undefined,
+        tag: tagFilter || undefined
       }
     })).data,
     refetchInterval: 15000
@@ -131,6 +193,7 @@ export default function Conversations() {
       <div
         className={clsx(
           'md:col-span-4 card overflow-y-auto min-h-0',
+          selected && showInfo ? 'lg:col-span-3' : '',
           selected ? 'hidden md:block' : 'flex-1 md:flex-none'
         )}>
         <div className="p-3 border-b border-slate-100 space-y-2">
@@ -193,6 +256,23 @@ export default function Conversations() {
               </select>
             </div>
           </div>
+          <div className="flex flex-wrap items-center gap-1">
+            {WINDOW_CHIPS.map((c) => (
+              <button key={c.key} type="button"
+                onClick={() => setWindowFilter(c.key)}
+                title={c.key === '' ? 'Todas' : c.key === 'new' ? 'Leads creados en las últimas 24 h' : 'Tiempo que queda de la ventana de 24 h para responder'}
+                className={clsx('text-[11px] px-2 py-0.5 rounded-full border flex items-center gap-1',
+                  windowFilter === c.key ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50')}>
+                {c.dot && <span className={clsx('inline-block w-1.5 h-1.5 rounded-full', c.dot)} />}{c.label}
+              </button>
+            ))}
+            <label className="ml-auto text-[11px] text-slate-500 flex items-center gap-1">
+              <input type="checkbox" checked={includeClosed} onChange={(e) => setIncludeClosed(e.target.checked)} /> ver cerradas
+            </label>
+          </div>
+          {tagFilter && (
+            <div className="text-[11px] text-slate-500">Filtrando por tag <b>#{tagFilter}</b> <button className="underline" onClick={() => setTagFilter('')}>quitar</button></div>
+          )}
         </div>
         {list.isLoading && <div className="p-4 text-sm text-slate-500">Cargando…</div>}
         {list.data?.length === 0 && (
@@ -209,6 +289,7 @@ export default function Conversations() {
               selected === c.leadId && 'bg-brand-50'
             )}>
             <div className="flex justify-between items-start gap-2">
+              <span className={clsx('inline-block w-2 h-2 rounded-full mt-1.5 shrink-0', windowInfo(c.lastInboundAt).dot)} title={`Ventana: ${windowInfo(c.lastInboundAt).label}`} />
               <div className="font-medium truncate flex-1 min-w-0">{c.leadName}</div>
               <StatusPill status={c.status} />
               {(c.deviceName || c.sellerName) && (
@@ -226,9 +307,17 @@ export default function Conversations() {
               {c.lastDirection === 'Outbound' ? (c.deviceName ? `${c.deviceName}: ` : 'Nosotros: ') : ''}
               {c.lastMessageText?.slice(0, 80) ?? '(sin mensajes)'}
             </div>
-            <div className="text-xs text-slate-400 mt-0.5 flex gap-2 flex-wrap">
+            <div className="text-xs text-slate-400 mt-0.5 flex gap-2 flex-wrap items-center">
               <span>{c.productKey}</span>
               {c.city && <span>· {c.city}</span>}
+              {c.source === 'WhatsAppAd' && <span title={c.adTitle ?? 'Lead de anuncio'} className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 rounded px-1">📣 ad</span>}
+              {c.pitchName && (
+                <span title={c.pitchName} className={clsx('text-[10px] rounded px-1 border', c.pitchActive ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-slate-50 text-slate-500 border-slate-200')}>
+                  Pitch {c.pitchStep}/{c.pitchSteps}
+                </span>
+              )}
+              {c.closedAt && <span className="text-[10px] bg-slate-100 text-slate-500 rounded px-1">cerrada</span>}
+              {c.tags?.slice(0, 3).map((t) => <span key={t} className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 rounded px-1">#{t}</span>)}
               <span className="ml-auto">{c.lastTimestamp ? new Date(c.lastTimestamp).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : ''}</span>
             </div>
           </button>
@@ -238,6 +327,7 @@ export default function Conversations() {
       <div
         className={clsx(
           'md:col-span-8 card flex flex-col overflow-hidden min-h-0',
+          selected && showInfo ? 'lg:col-span-6' : '',
           selected ? 'flex-1 md:flex-none' : 'hidden md:flex'
         )}>
         {!selected ? (
@@ -276,6 +366,22 @@ export default function Conversations() {
                   ? 'border-amber-300 bg-amber-50 text-amber-700'
                   : 'border-emerald-300 bg-emerald-50 text-emerald-700'}`}>
                 {thread.data.botMutedAt ? '🤖 pausado' : '🤖 activo'}
+              </button>
+              <button
+                type="button"
+                title={thread.data.closedAt ? 'Reabrir conversación' : 'Cerrar conversación (se oculta del inbox hasta que el lead vuelva a escribir)'}
+                onClick={async () => {
+                  await api.post(`/conversations/${thread.data!.leadId}/${thread.data!.closedAt ? 'reopen' : 'close'}`);
+                  qc.invalidateQueries({ queryKey: ['conv-thread', selected] });
+                  qc.invalidateQueries({ queryKey: ['conversations'] });
+                  toast.success(thread.data!.closedAt ? 'Conversación reabierta' : 'Conversación cerrada');
+                }}
+                className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0">
+                {thread.data.closedAt ? '↺ Reabrir' : '✕ Cerrar'}
+              </button>
+              <button type="button" onClick={() => setShowInfo((v) => !v)}
+                className="hidden lg:block text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0">
+                {showInfo ? 'Ocultar info' : 'Info del lead'}
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2 bg-slate-50">
@@ -387,9 +493,141 @@ export default function Conversations() {
         ) : null}
       </div>
 
+      {selected && showInfo && thread.data && (
+        <div className="hidden lg:block lg:col-span-3 card overflow-y-auto min-h-0">
+          <LeadInfoPanel thread={thread.data} onTagClick={(t) => setTagFilter(t)} onChanged={() => {
+            qc.invalidateQueries({ queryKey: ['conv-thread', selected] });
+            qc.invalidateQueries({ queryKey: ['conversations'] });
+          }} />
+        </div>
+      )}
+
       {promoteDraft && (
         <PromoteFaqModal draft={promoteDraft} onClose={() => setPromoteDraft(null)} />
       )}
+    </div>
+  );
+}
+
+/// Panel derecho estilo "Info del Lead": ventana de 24 h, tags, origen/anuncio, pitch,
+/// actividad, rating 👍👎 + feedback (que entrena al agente) y accesos al CRM.
+function LeadInfoPanel({ thread, onTagClick, onChanged }: { thread: Thread; onTagClick: (t: string) => void; onChanged: () => void }) {
+  const [tagInput, setTagInput] = useState('');
+  const [note, setNote] = useState('');
+  const [rating, setRating] = useState<number>(0);
+  const [saving, setSaving] = useState(false);
+  const [, setTick] = useState(0);
+  useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 30_000); return () => clearInterval(id); }, []);
+  const win = windowInfo(thread.lastInboundAt);
+  const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
+
+  async function saveTags(tags: string[]) {
+    try { await api.post(`/conversations/${thread.leadId}/tags`, { tags }); onChanged(); }
+    catch (e: any) { toast.error(e.response?.data?.error ?? 'No se pudo guardar el tag'); }
+  }
+  async function sendFeedback(r: number) {
+    if (r === 0 && !note.trim()) { toast.error('Poné un comentario o un pulgar'); return; }
+    setSaving(true);
+    try {
+      await api.post(`/conversations/${thread.leadId}/feedback`, { rating: r, note: note.trim() || null });
+      toast.success(note.trim() ? 'Feedback guardado — el agente lo va a tener en cuenta' : 'Calificación guardada');
+      setNote(''); setRating(0); onChanged();
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'No se pudo guardar'); }
+    finally { setSaving(false); }
+  }
+  async function stopPitch() {
+    try { await api.post(`/pitches/enrollments/${thread.leadId}/stop`); toast.success('Lead sacado del pitch'); onChanged(); }
+    catch (e: any) { toast.error(e.response?.data?.error ?? 'No se pudo'); }
+  }
+
+  return (
+    <div className="p-3 space-y-4 text-sm">
+      <div>
+        <div className="text-[11px] uppercase tracking-wide text-slate-400">Info del lead</div>
+        <div className="font-semibold text-base truncate">{thread.leadName}</div>
+        <div className="text-xs text-slate-500">{thread.whatsappPhone ?? '—'}{thread.city ? ` · ${thread.city}` : ''}</div>
+        <Link to={`/leads/${thread.leadId}`} className="text-xs text-brand-700 hover:underline">Ver en CRM →</Link>
+      </div>
+
+      <div>
+        <div className="text-[11px] uppercase tracking-wide text-slate-400">Ventana de respuesta</div>
+        <div className={clsx('flex items-center gap-2 font-medium', win.cls)}>
+          <span className={clsx('inline-block w-2 h-2 rounded-full', win.dot)} />{win.label}
+        </div>
+        <div className="text-[11px] text-slate-400">24 h desde el último mensaje del lead ({fmt(thread.lastInboundAt)})</div>
+      </div>
+
+      <div>
+        <div className="text-[11px] uppercase tracking-wide text-slate-400">Tags</div>
+        <div className="flex flex-wrap gap-1 mt-1">
+          {thread.tags.length === 0 && <span className="text-xs text-slate-400">Sin tags</span>}
+          {thread.tags.map((t) => (
+            <span key={t} className="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5 flex items-center gap-1">
+              <button type="button" onClick={() => onTagClick(t)} title="Filtrar por este tag">#{t}</button>
+              <button type="button" onClick={() => saveTags(thread.tags.filter((x) => x !== t))} title="Quitar">×</button>
+            </span>
+          ))}
+        </div>
+        <form className="flex gap-1 mt-1" onSubmit={(e) => { e.preventDefault(); if (tagInput.trim()) { saveTags([...thread.tags, tagInput.trim()]); setTagInput(''); } }}>
+          <input className="input text-xs py-1 flex-1" placeholder="Agregar tag…" value={tagInput} onChange={(e) => setTagInput(e.target.value)} />
+          <button className="btn-secondary text-xs" disabled={!tagInput.trim()}>+</button>
+        </form>
+      </div>
+
+      <div className="space-y-1">
+        <div className="text-[11px] uppercase tracking-wide text-slate-400">Origen</div>
+        <div>{SOURCE_LABEL[thread.source] ?? thread.source}</div>
+        {thread.adTitle && (
+          <div className="text-xs text-slate-600">📣 {thread.adSourceUrl ? <a className="hover:underline" href={thread.adSourceUrl} target="_blank" rel="noreferrer">{thread.adTitle}</a> : thread.adTitle}</div>
+        )}
+        {thread.adId && !thread.adTitle && <div className="text-xs text-slate-500 font-mono">ad {thread.adId}</div>}
+      </div>
+
+      {thread.pitch && (
+        <div className="space-y-1 bg-violet-50 border border-violet-200 rounded p-2">
+          <div className="text-[11px] uppercase tracking-wide text-violet-600">Pitch</div>
+          <div className="font-medium text-violet-800 truncate" title={thread.pitch.name}>{thread.pitch.name}</div>
+          <div className="text-xs text-violet-700">
+            Paso {thread.pitch.stepIndex}/{thread.pitch.stepsTotal} · {thread.pitch.followupsSent} follow-ups ·{' '}
+            {thread.pitch.completed ? 'terminado' : thread.pitch.gaveUp ? 'sin respuesta' : thread.pitch.nextStepDueAt ? `próximo paso ${fmt(thread.pitch.nextStepDueAt)}` : 'esperando respuesta'}
+          </div>
+          {!thread.pitch.completed && !thread.pitch.gaveUp && (
+            <button type="button" className="text-xs text-rose-600 hover:underline" onClick={stopPitch}>Sacar del pitch</button>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div><div className="text-[11px] uppercase tracking-wide text-slate-400">Primer mensaje</div>{fmt(thread.firstMessageAt)}</div>
+        <div><div className="text-[11px] uppercase tracking-wide text-slate-400">Mensajes</div>{thread.messagesCount}</div>
+        <div><div className="text-[11px] uppercase tracking-wide text-slate-400">Última actividad</div>{fmt(thread.lastActiveAt)}</div>
+        <div><div className="text-[11px] uppercase tracking-wide text-slate-400">Lead creado</div>{fmt(thread.createdAt)}</div>
+      </div>
+
+      <div className="space-y-2 border-t border-slate-100 pt-3">
+        <div className="text-[11px] uppercase tracking-wide text-slate-400">Calificar conversación</div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setRating(rating === 1 ? 0 : 1)}
+            className={clsx('px-3 py-1 rounded border text-lg', rating === 1 ? 'bg-emerald-50 border-emerald-300' : 'border-slate-200 hover:bg-slate-50')}>👍</button>
+          <button type="button" onClick={() => setRating(rating === -1 ? 0 : -1)}
+            className={clsx('px-3 py-1 rounded border text-lg', rating === -1 ? 'bg-rose-50 border-rose-300' : 'border-slate-200 hover:bg-slate-50')}>👎</button>
+        </div>
+        <textarea className="input text-xs min-h-[64px]" placeholder="Feedback… (ej: 'no mandes el precio antes de preguntar cuántos clientes tiene'). El agente lo usa en las próximas respuestas de este producto."
+          value={note} onChange={(e) => setNote(e.target.value)} />
+        <button type="button" className="btn-primary text-xs w-full" disabled={saving || (rating === 0 && !note.trim())} onClick={() => sendFeedback(rating)}>
+          {saving ? 'Guardando…' : '💾 Guardar feedback'}
+        </button>
+        {thread.feedback.length > 0 && (
+          <div className="space-y-1">
+            {thread.feedback.map((f) => (
+              <div key={f.id} className="text-xs bg-slate-50 border border-slate-100 rounded p-1.5">
+                <span>{f.rating > 0 ? '👍' : f.rating < 0 ? '👎' : '📝'}</span> {f.note ?? <span className="text-slate-400">sin nota</span>}
+                <div className="text-[10px] text-slate-400">{f.sellerName ?? ''} · {fmt(f.createdAt)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

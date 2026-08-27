@@ -136,6 +136,8 @@ public static class DependencyInjection
         services.AddScoped<InstanceMonitor>();
         services.AddScoped<LeadRebalancer>();
         services.AddScoped<ConversationService>();
+        services.AddScoped<PitchEngine>();                 // pitch por anuncio (pasos, follow-ups, avance por respuesta)
+        services.AddScoped<ConversationFeedbackProvider>(); // 👍/👎 humanos → aprendizajes en el prompt
         services.AddSingleton<TakeoverSignal>(); // señal "+": salto de cola webhook→agente
         // Relay de transcripción de audios (notas de voz → texto, sólo números de la allowlist).
         services.AddScoped<AudioTranscriptionRelay>();

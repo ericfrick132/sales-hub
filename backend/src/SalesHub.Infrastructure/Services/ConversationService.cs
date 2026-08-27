@@ -20,6 +20,7 @@ public class ConversationService
     private readonly IEvolutionClient _evo;
     private readonly ILeadAssigner _assigner;
     private readonly TakeoverSignal _takeover;
+    private readonly PitchEngine _pitch;
     private readonly ILogger<ConversationService> _log;
     private static readonly Regex NonDigit = new(@"\D", RegexOptions.Compiled);
 
@@ -31,9 +32,9 @@ public class ConversationService
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILeadAssigner assigner,
-        TakeoverSignal takeover, ILogger<ConversationService> log)
+        TakeoverSignal takeover, PitchEngine pitch, ILogger<ConversationService> log)
     {
-        _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _log = log;
+        _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _pitch = pitch; _log = log;
     }
 
     public record IncomingMessage(
@@ -54,7 +55,13 @@ public class ConversationService
         // no del webhook en vivo. Cambia la semántica: nunca mutea el bot, ignora los
         // comandos "-"/"+" (ya se consumieron en vivo) y ancla el chequeo de eco al
         // timestamp del mensaje en vez de "ahora".
-        bool FromSync = false);
+        bool FromSync = false,
+        // Atribución del anuncio (contextInfo.externalAdReply de un click-to-WhatsApp):
+        // id del ad, título, url y ctwa_clid. Null si el mensaje no viene de un anuncio.
+        AdReferral? Ad = null);
+
+    /// <summary>Datos del anuncio que WhatsApp adjunta al primer mensaje de un CTWA.</summary>
+    public record AdReferral(string? SourceId, string? Title, string? Body, string? SourceUrl, string? CtwaClid);
 
     /// <summary>Called by the Evolution webhook on every inbound message.</summary>
     public async Task<bool> HandleIncomingAsync(IncomingMessage incoming, CancellationToken ct)
@@ -101,6 +108,7 @@ public class ConversationService
             ? await MatchLeadByPhoneAsync(instance.SellerId, suffix, ct)
             : await MatchLeadByPhoneAsync(null, suffix, ct, instance.ProductKey);
         lead ??= await MatchLeadByPhoneAsync(null, suffix, ct);
+        var createdNow = false;
         if (lead is null)
         {
             // Chat LID sin teléfono real resuelto: los dígitos del LID NO son un número.
@@ -123,7 +131,21 @@ public class ConversationService
                 _log.LogWarning("Inbound de {Phone} por {I} descartado: no pude determinar producto", phone, incoming.InstanceName);
                 return false;
             }
+            createdNow = true;
         }
+        // Atribución del anuncio: si el mensaje trae externalAdReply y el lead no lo tenía, se guarda.
+        if (incoming.Ad is not null && string.IsNullOrWhiteSpace(lead.AdId))
+        {
+            lead.AdId = incoming.Ad.SourceId;
+            lead.AdTitle = Trunc(incoming.Ad.Title ?? incoming.Ad.Body, 256);
+            lead.AdSourceUrl = Trunc(incoming.Ad.SourceUrl, 512);
+            lead.CtwaClid = Trunc(incoming.Ad.CtwaClid, 256);
+            if (lead.Source == LeadSource.WhatsAppInbound) lead.Source = LeadSource.WhatsAppAd;
+        }
+        // Ventana de respuesta (24 h desde el último inbound) + reabrir si estaba cerrada.
+        if (!incoming.FromSync || lead.LastInboundAt is null || lead.LastInboundAt < incoming.Timestamp)
+            lead.LastInboundAt = incoming.Timestamp;
+        if (!incoming.FromSync) lead.ConversationClosedAt = null;
 
         _db.ConversationMessages.Add(new ConversationMessage
         {
@@ -171,8 +193,17 @@ public class ConversationService
 
         await _db.SaveChangesAsync(ct);
         _log.LogInformation("Inbound msg stored: lead={Lead} text={Text}", lead.Id, incoming.Text[..Math.Min(50, incoming.Text.Length)]);
+        // Pitch por anuncio: enrola (lead nuevo de ad) o avanza el paso (respuesta). El replay del
+        // sync no dispara nada — son mensajes viejos.
+        if (!incoming.FromSync)
+        {
+            try { await _pitch.OnInboundAsync(lead, incoming.Text, incoming.Ad, createdNow, ct); }
+            catch (Exception ex) { _log.LogError(ex, "Pitch hook falló para lead {Lead}", lead.Id); }
+        }
         return true;
     }
+
+    private static string? Trunc(string? s, int n) => string.IsNullOrEmpty(s) ? s : (s.Length > n ? s[..n] : s);
 
     /// <summary>
     /// Mensaje PROPIO (fromMe) en el chat de un lead: takeover humano.
@@ -348,6 +379,8 @@ public class ConversationService
         if (isFirstReply) lead.FirstReplyAt = timestamp;
         if (lead.Status is LeadStatus.Sent or LeadStatus.Queued or LeadStatus.Assigned)
             lead.Status = LeadStatus.Replied;
+        lead.LastInboundAt = timestamp;
+        lead.ConversationClosedAt = null;
         lead.UpdatedAt = DateTimeOffset.UtcNow;
 
         // El lead escribió → la sugerencia anterior quedó vieja; el ConversationAgent regenera.
@@ -497,10 +530,21 @@ public class ConversationService
     /// </summary>
     private async Task<Lead?> TryCreateAdLeadAsync(IncomingMessage incoming, string phone, EvolutionInstance instance, CancellationToken ct)
     {
-        if (!AdIntentRx.IsMatch(incoming.Text)) return null;
+        var hasReferral = incoming.Ad is not null;
+        if (!hasReferral && !AdIntentRx.IsMatch(incoming.Text)) return null;
 
         // Resuelve entre las apps que atiende ESTA línea (puede ser más de una).
         var product = await DetectProductForLineAsync(incoming.Text, instance, ct);
+        // Con referral: el id del anuncio puede estar asignado a un pitch → ese producto gana.
+        if (hasReferral && !string.IsNullOrWhiteSpace(incoming.Ad!.SourceId))
+        {
+            var adId = incoming.Ad.SourceId!;
+            var byPitch = await _db.Pitches.AsNoTracking()
+                .Where(p => p.Active && p.AdIds.Contains(adId))
+                .Select(p => p.ProductKey).FirstOrDefaultAsync(ct);
+            if (byPitch is not null)
+                product = await _db.Products.FirstOrDefaultAsync(p => p.Active && p.ProductKey == byPitch, ct) ?? product;
+        }
         if (product is null) return null; // no sabemos de qué app → no creamos un lead mal taggeado
 
         var lead = new Lead

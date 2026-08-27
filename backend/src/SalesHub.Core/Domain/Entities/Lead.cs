@@ -101,6 +101,17 @@ public class Lead
     /// <summary>Qué hay que hacer en esa próxima acción (texto libre y corto).</summary>
     public string? NextActionNote { get; set; }
 
+    /// <summary>Tags libres del inbox (ej. "respondio", "caliente"). Los pone el pitch o el humano.</summary>
+    public List<string> Tags { get; set; } = new();
+    /// <summary>Atribución del anuncio (externalAdReply de WhatsApp en un click-to-WhatsApp).</summary>
+    public string? AdId { get; set; }
+    public string? AdTitle { get; set; }
+    public string? AdSourceUrl { get; set; }
+    public string? CtwaClid { get; set; }
+    /// <summary>Último mensaje ENTRANTE: define la ventana de 24 h para responder (estilo Meta).</summary>
+    public DateTimeOffset? LastInboundAt { get; set; }
+    /// <summary>Conversación cerrada desde el inbox (se oculta hasta que el lead vuelva a escribir).</summary>
+    public DateTimeOffset? ConversationClosedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
