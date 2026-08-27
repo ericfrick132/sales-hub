@@ -56,7 +56,8 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                 name: "tags",
                 table: "leads",
                 type: "text[]",
-                nullable: false);
+                nullable: false,
+                defaultValueSql: "'{}'");
 
             migrationBuilder.CreateTable(
                 name: "conversation_feedbacks",
@@ -97,7 +98,7 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     name = table.Column<string>(type: "character varying(160)", maxLength: 160, nullable: false),
                     active = table.Column<bool>(type: "boolean", nullable: false),
                     sort_order = table.Column<int>(type: "integer", nullable: false),
-                    ad_ids = table.Column<List<string>>(type: "text[]", nullable: false),
+                    ad_ids = table.Column<List<string>>(type: "text[]", nullable: false, defaultValueSql: "'{}'"),
                     trigger_text = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
                     is_default = table.Column<bool>(type: "boolean", nullable: false),
                     steps = table.Column<string>(type: "jsonb", nullable: false),

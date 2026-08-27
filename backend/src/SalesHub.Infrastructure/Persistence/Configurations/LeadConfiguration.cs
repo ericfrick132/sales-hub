@@ -35,7 +35,7 @@ public class LeadConfiguration : IEntityTypeConfiguration<Lead>
         b.Property(x => x.Source).HasConversion<int>();
         b.Property(x => x.Status).HasConversion<int>();
         b.Property(x => x.Types).HasColumnType("text[]");
-        b.Property(x => x.Tags).HasColumnType("text[]");
+        b.Property(x => x.Tags).HasColumnType("text[]").HasDefaultValueSql("'{}'");
         b.Property(x => x.AdId).HasMaxLength(64);
         b.Property(x => x.AdTitle).HasMaxLength(256);
         b.Property(x => x.AdSourceUrl).HasMaxLength(512);

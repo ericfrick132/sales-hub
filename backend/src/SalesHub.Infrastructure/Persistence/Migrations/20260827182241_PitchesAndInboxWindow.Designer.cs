@@ -13,7 +13,7 @@ using SalesHub.Infrastructure.Persistence;
 namespace SalesHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260827180839_PitchesAndInboxWindow")]
+    [Migration("20260827182241_PitchesAndInboxWindow")]
     partial class PitchesAndInboxWindow
     {
         /// <inheritdoc />
@@ -1516,8 +1516,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.Property<List<string>>("Tags")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("text[]")
-                        .HasColumnName("tags");
+                        .HasColumnName("tags")
+                        .HasDefaultValueSql("'{}'");
 
                     b.Property<int?>("TotalReviews")
                         .HasColumnType("integer")
@@ -2325,8 +2327,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.Property<List<string>>("AdIds")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("text[]")
-                        .HasColumnName("ad_ids");
+                        .HasColumnName("ad_ids")
+                        .HasDefaultValueSql("'{}'");
 
                     b.Property<bool>("AiAfterPitch")
                         .HasColumnType("boolean")
