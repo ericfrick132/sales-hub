@@ -39,6 +39,7 @@ public class InstagramAccountsController : ControllerBase
             {
                 Id = a.Id,
                 Username = a.Username,
+                DailyDmCap = a.DailyDmCap,
                 SellerId = a.SellerId,
                 SellerName = a.Seller != null ? a.Seller.DisplayName : null,
                 IsActive = a.IsActive,
@@ -69,6 +70,7 @@ public class InstagramAccountsController : ControllerBase
         {
             Id = account.Id,
             Username = account.Username,
+            DailyDmCap = account.DailyDmCap,
             SellerId = account.SellerId,
             SellerName = account.Seller?.DisplayName,
             IsActive = account.IsActive,
@@ -211,6 +213,8 @@ public class InstagramAccountsController : ControllerBase
         if (req.ProxyUrl is not null)
             account.ProxyUrl = string.IsNullOrWhiteSpace(req.ProxyUrl) ? null : req.ProxyUrl.Trim();
         if (req.IsActive.HasValue) account.IsActive = req.IsActive.Value;
+        // DailyDmCap: null no toca; 0 = volver al global.
+        if (req.DailyDmCap.HasValue) account.DailyDmCap = req.DailyDmCap.Value > 0 ? req.DailyDmCap.Value : null;
 
         // Si se cambió la contraseña, invalidar sesión
         if (!string.IsNullOrEmpty(req.Password))
@@ -444,6 +448,7 @@ public class InstagramAccountsController : ControllerBase
         public bool IsActive { get; init; }
         public bool IsLoggedIn { get; init; }
         public bool IsActionBlocked { get; init; }
+        public int? DailyDmCap { get; init; }
         public bool IsAwaitingTwoFactor { get; init; }
         public string? ProxyUrl { get; init; }
         public DateTimeOffset? BlockedUntil { get; init; }
@@ -468,6 +473,7 @@ public class InstagramAccountsController : ControllerBase
         public string? TwoFactorSecret { get; init; }
         public bool? IsActive { get; init; }
         public string? ProxyUrl { get; init; }
+        public int? DailyDmCap { get; init; }
     }
 
     public record InstagramAccountDashboardDto

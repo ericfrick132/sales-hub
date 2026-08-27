@@ -146,37 +146,38 @@ public class InstagramDmSender
     {
         var lead = item.Lead;
 
-        // Cuenta del seller asignado, o cualquiera activa/logueada.
-        InstagramAccount? account = null;
-        if (lead?.SellerId is not null)
-        {
-            account = await _db.InstagramAccounts
-                .Where(a => a.SellerId == lead.SellerId && a.IsActive && !a.IsActionBlocked && a.IsLoggedIn)
-                .FirstOrDefaultAsync(ct);
-        }
-        account ??= await _db.InstagramAccounts
+        // ROTACIÓN entre cuentas (estilo "N drivers × M mensajes"): entre las activas/logueadas
+        // que todavía tienen cupo hoy, manda la que MENOS DMs mandó (empate: la menos usada).
+        // Primero las del seller asignado; si ninguna tiene cupo, cualquiera con cupo.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var candidates = await _db.InstagramAccounts
             .Where(a => a.IsActive && !a.IsActionBlocked && a.IsLoggedIn)
-            .FirstOrDefaultAsync(ct);
-
-        if (account is null)
+            .ToListAsync(ct);
+        if (candidates.Count == 0)
         {
             _log.LogWarning("No hay cuentas de Instagram disponibles para DM a @{Handle}", handle);
             return InstagramDmResult.NoAccountAvailable;
         }
-
-        // Cap DIARIO por cuenta (DmSent es el contador por fecha de InstagramMetrics).
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var dmSentToday = await _db.InstagramMetrics
-            .Where(m => m.InstagramAccountId == account.Id && m.Date == today)
-            .Select(m => (int?)m.DmSent)
-            .FirstOrDefaultAsync(ct);
-
-        if (dmSentToday.HasValue && dmSentToday.Value >= _opts.MaxDmPerDay)
+        var ids = candidates.Select(a => a.Id).ToList();
+        var sentToday = await _db.InstagramMetrics
+            .Where(m => ids.Contains(m.InstagramAccountId) && m.Date == today)
+            .ToDictionaryAsync(m => m.InstagramAccountId, m => m.DmSent, ct);
+        int CapOf(InstagramAccount a) => a.DailyDmCap is > 0 ? a.DailyDmCap.Value : _opts.MaxDmPerDay;
+        int SentOf(InstagramAccount a) => sentToday.GetValueOrDefault(a.Id);
+        var withRoom = candidates.Where(a => SentOf(a) < CapOf(a)).ToList();
+        if (withRoom.Count == 0)
         {
-            _log.LogInformation("Cuenta {User} alcanzó el cap diario de DMs ({Limit})",
-                account.Username, _opts.MaxDmPerDay);
+            _log.LogInformation("Todas las cuentas de IG ({N}) alcanzaron su cap diario de DMs", candidates.Count);
             return InstagramDmResult.RateLimited;
         }
+        var pool = lead?.SellerId is not null && withRoom.Any(a => a.SellerId == lead.SellerId)
+            ? withRoom.Where(a => a.SellerId == lead.SellerId).ToList()
+            : withRoom;
+        var account = pool
+            .OrderBy(SentOf)
+            .ThenBy(a => a.LastUsedAt ?? DateTimeOffset.MinValue)
+            .First();
+        _log.LogInformation("DM IG a @{Handle} sale por {User} ({Sent}/{Cap} hoy)", handle, account.Username, SentOf(account), CapOf(account));
 
         await using var client = new InstagramClient(_db, _crypto, _opts, _log);
         await client.InitializeAsync(account, ct);

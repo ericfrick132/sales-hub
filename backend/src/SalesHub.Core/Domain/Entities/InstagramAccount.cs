@@ -23,6 +23,11 @@ public class InstagramAccount
     public string? SessionCookiesJson { get; set; }
 
     public bool IsActive { get; set; } = true;
+    /// <summary>
+    /// Tope de DMs por DÍA de ESTA cuenta (estilo "Mensajes: 5" por cuenta). null = usa el
+    /// global Instagram:MaxDmPerDay. La cola rota entre cuentas: manda la que menos usó hoy.
+    /// </summary>
+    public int? DailyDmCap { get; set; }
     public bool IsLoggedIn { get; set; }
 
     /// <summary>Si Instagram nos bloqueó temporalmente (action_blocked).</summary>

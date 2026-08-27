@@ -14,6 +14,7 @@ interface IgAccount {
   isActionBlocked: boolean;
   isAwaitingTwoFactor: boolean;
   proxyUrl?: string | null;
+  dailyDmCap?: number | null;
   blockedUntil?: string | null;
   lastLoginAt?: string | null;
   lastUsedAt?: string | null;
@@ -223,7 +224,7 @@ export default function InstagramAccounts() {
 
               {m && (m.profilesScraped > 0 || m.dmSent > 0) && (
                 <div className="text-xs text-slate-600">
-                  hoy: scrape <b>{m.profilesScraped}</b> · DM <b>{m.dmSent}</b>
+                  hoy: scrape <b>{m.profilesScraped}</b> · DM <b>{m.dmSent}</b>{a.dailyDmCap ? <span className="text-slate-400">/{a.dailyDmCap}</span> : null}
                   {m.actionBlocks > 0 && <span className="text-rose-600"> · blocks {m.actionBlocks}</span>}
                 </div>
               )}
@@ -423,6 +424,7 @@ function EditModal({
   const [twoFactorSecret, setTwoFactorSecret] = useState('');
   const [isActive, setIsActive] = useState(account.isActive);
   const [proxyUrl, setProxyUrl] = useState(account.proxyUrl ?? '');
+  const [dailyDmCap, setDailyDmCap] = useState<number>(account.dailyDmCap ?? 0);
 
   return (
     <Modal title={`Editar @${account.username}`} onCancel={onCancel}>
@@ -442,6 +444,10 @@ function EditModal({
             placeholder="http://user:pass@host:port  ó  host:port:user:pass"
           />
         </Field>
+        <Field label="Tope de DMs por día de esta cuenta (0 = usar el global del hub, 40)">
+          <input className="input w-32" type="number" min={0} value={dailyDmCap} onChange={(e) => setDailyDmCap(Number(e.target.value))} />
+          <div className="text-[11px] text-slate-500 mt-0.5">La cola rota entre cuentas: cada DM sale por la cuenta que menos mandó hoy y todavía tiene cupo. Para cuentas de marca, 5-10 es un tope prudente.</div>
+        </Field>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           Activa
@@ -458,6 +464,7 @@ function EditModal({
             if (twoFactorSecret) body.twoFactorSecret = twoFactorSecret;
             // proxyUrl siempre se envía: permite setear y también limpiar (string vacío → null)
             body.proxyUrl = proxyUrl.trim();
+            body.dailyDmCap = Number.isFinite(dailyDmCap) ? Math.max(0, dailyDmCap) : 0;
             onSubmit(body);
           }}>
           {submitting ? 'Guardando…' : 'Guardar'}
