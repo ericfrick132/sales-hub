@@ -37,7 +37,10 @@ const newDraft = (productKey: string): Draft => ({
   statusOnReply: 'Interested',
   aiAfterPitch: true,
   replyDelayMinSec: 8,
-  replyDelayMaxSec: 40
+  replyDelayMaxSec: 40,
+  channel: 'WhatsApp',
+  autoEnroll: false,
+  dailyEnrollCap: 30
 });
 
 export default function Pitches() {
@@ -45,6 +48,7 @@ export default function Pitches() {
   const [productKey, setProductKey] = useState('');
   const [editing, setEditing] = useState<Draft | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [bulkFor, setBulkFor] = useState<Pitch | null>(null);
 
   const productsQ = useQuery({
     queryKey: ['products-min'],
@@ -151,6 +155,7 @@ export default function Pitches() {
               <PitchRow key={p.id} p={p} expanded={expanded === p.id}
                 onExpand={() => setExpanded(expanded === p.id ? null : p.id)}
                 onEdit={() => setEditing(toDraft(p))}
+                onBulk={() => setBulkFor(p)}
                 onToggle={() => toggleMut.mutate(p)}
                 onDup={() => dupMut.mutate(p.id)}
                 onDelete={() => { if (confirm(`¿Borrar "${p.name}"? Se pierde el historial de enrolados.`)) delMut.mutate(p.id); }} />
@@ -174,6 +179,8 @@ export default function Pitches() {
 
       <AdsSeenCard ads={adsQ.data ?? []} pitches={pitches} loading={adsQ.isLoading} />
 
+      {bulkFor && <BulkEnrollModal pitch={bulkFor} onClose={() => setBulkFor(null)} />}
+
       {editing && (
         <PitchEditor draft={editing} media={mediaQ.data ?? []} ads={adsQ.data ?? []}
           saving={saveMut.isPending}
@@ -195,10 +202,13 @@ function Pct({ n, d }: { n: number; d: number }) {
   return <span className="text-slate-400 font-normal">({Math.round((n / d) * 100)}%)</span>;
 }
 
-function PitchRow({ p, expanded, onExpand, onEdit, onToggle, onDup, onDelete }: {
-  p: Pitch; expanded: boolean; onExpand: () => void; onEdit: () => void; onToggle: () => void; onDup: () => void; onDelete: () => void;
+function PitchRow({ p, expanded, onExpand, onEdit, onBulk, onToggle, onDup, onDelete }: {
+  p: Pitch; expanded: boolean; onExpand: () => void; onEdit: () => void; onBulk: () => void; onToggle: () => void; onDup: () => void; onDelete: () => void;
 }) {
-  const match = [
+  const isIg = p.channel === 'Instagram';
+  const match = isIg ? (
+    <span>{p.autoEnroll ? `auto-enrola hasta ${p.dailyEnrollCap}/día` : 'enrolamiento manual (Bulk)'}</span>
+  ) : [
     p.isDefault ? 'default del producto' : null,
     p.adIds.length ? `${p.adIds.length} anuncio${p.adIds.length > 1 ? 's' : ''}` : null,
     p.triggerText ? `texto "${p.triggerText}"` : null
@@ -209,6 +219,9 @@ function PitchRow({ p, expanded, onExpand, onEdit, onToggle, onDup, onDelete }: 
         <td className="p-3">
           <button className="font-medium text-left hover:underline" onClick={onExpand}>{p.name}</button>
           <div className="text-xs text-slate-500">
+            <span className={clsx('inline-block text-[10px] px-1 rounded mr-1 border', isIg ? 'bg-pink-50 text-pink-700 border-pink-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200')}>
+              {isIg ? 'Instagram · outbound' : 'WhatsApp · anuncio'}
+            </span>
             {p.steps.length} paso{p.steps.length !== 1 ? 's' : ''} · {p.steps.reduce((a, s) => a + s.followUps.length, 0)} follow-ups ·{' '}
             {p.aiAfterPitch ? 'IA después del pitch' : 'handoff humano al terminar'}
           </div>
@@ -226,6 +239,7 @@ function PitchRow({ p, expanded, onExpand, onEdit, onToggle, onDup, onDelete }: 
         <td className="p-3 text-right font-mono">{p.stats.converted} <Pct n={p.stats.converted} d={p.stats.enrolled} /></td>
         <td className="p-3 text-right whitespace-nowrap">
           <button className="text-xs text-brand-700 hover:underline mr-2" onClick={onEdit}>Editar</button>
+          {isIg && <button className="text-xs text-pink-700 hover:underline mr-2" onClick={onBulk}>Enrolar leads</button>}
           <button className="text-xs text-slate-600 hover:underline mr-2" onClick={onToggle}>{p.active ? 'Pausar' : 'Activar'}</button>
           <button className="text-xs text-slate-600 hover:underline mr-2" onClick={onDup}>Duplicar</button>
           <button className="text-xs text-rose-600 hover:underline" onClick={onDelete}>Borrar</button>
@@ -344,6 +358,58 @@ function AdsSeenCard({ ads, pitches, loading }: { ads: AdSeen[]; pitches: Pitch[
   );
 }
 
+function BulkEnrollModal({ pitch, onClose }: { pitch: Pitch; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [limit, setLimit] = useState(30);
+  const [statuses, setStatuses] = useState<string[]>(['New', 'Assigned']);
+  const [city, setCity] = useState('');
+  const preview = useQuery({
+    queryKey: ['pitch-enroll-preview', pitch.id, statuses.join(','), city],
+    queryFn: async () => (await api.get<{ eligible: number; activeAccounts: number }>(`/pitches/${pitch.id}/enroll-preview`, { params: { statuses: statuses.join(','), city: city || undefined } })).data
+  });
+  const enroll = useMutation({
+    mutationFn: async () => (await api.post<{ enrolled: number }>(`/pitches/${pitch.id}/enroll-bulk`, { limit, statuses, city: city || null })).data,
+    onSuccess: (r) => { toast.success(`${r.enrolled} leads enrolados — los DMs salen de a uno por la cola de Instagram`); qc.invalidateQueries({ queryKey: ['pitches'] }); qc.invalidateQueries({ queryKey: ['pitch-enrollments', pitch.id] }); onClose(); },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'No se pudo enrolar')
+  });
+  const toggle = (st: string) => setStatuses((s) => (s.includes(st) ? s.filter((x) => x !== st) : [...s, st]));
+  return (
+    <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4">
+      <div className="card p-5 w-full max-w-lg space-y-3">
+        <h3 className="text-lg font-semibold">Enrolar leads en "{pitch.name}"</h3>
+        <p className="text-xs text-slate-500">
+          Toma leads de <b>{pitch.productKey}</b> con handle de Instagram que nunca recibieron un mensaje, mejor score primero.
+          El paso 1 sale como DM por la cola de Instagram (cap diario por cuenta, 1 DM por tick).
+        </p>
+        <div className="text-sm">
+          <div className="text-slate-500 mb-1">Estados a incluir</div>
+          <div className="flex gap-2 flex-wrap">
+            {['New', 'Assigned', 'Sent', 'Replied'].map((st) => (
+              <label key={st} className="flex items-center gap-1 text-xs border rounded px-2 py-1">
+                <input type="checkbox" checked={statuses.includes(st)} onChange={() => toggle(st)} /> {st}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <label><div className="text-slate-500 mb-1">Cantidad</div><input type="number" className="input" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></label>
+          <label><div className="text-slate-500 mb-1">Ciudad (opcional)</div><input className="input" value={city} onChange={(e) => setCity(e.target.value)} placeholder="ej. Córdoba" /></label>
+        </div>
+        <div className="text-xs text-slate-600">
+          {preview.isLoading ? 'Calculando…' : <>Elegibles: <b>{preview.data?.eligible ?? 0}</b> · Cuentas de IG logueadas: <b>{preview.data?.activeAccounts ?? 0}</b>
+            {(preview.data?.activeAccounts ?? 0) === 0 && <span className="text-rose-600"> — sin cuentas logueadas los DMs quedan en cola.</span>}</>}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" disabled={enroll.isPending || !pitch.active} onClick={() => enroll.mutate()} title={!pitch.active ? 'Activá el pitch primero' : ''}>
+            {enroll.isPending ? 'Enrolando…' : `Enrolar hasta ${limit}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PitchEditor({ draft, media, ads, saving, onChange, onCancel, onSave }: {
   draft: Draft; media: MediaAsset[]; ads: AdSeen[]; saving: boolean;
   onChange: (d: Draft) => void; onCancel: () => void; onSave: () => void;
@@ -370,6 +436,33 @@ function PitchEditor({ draft, media, ads, saving, onChange, onCancel, onSave }: 
             <div className="text-slate-500 mb-1">Nombre</div>
             <input className="input" placeholder='AD 1 — placa "¿cuántos turnos perdiste?"' value={draft.name} onChange={(e) => set({ name: e.target.value })} />
           </label>
+          <div className="text-sm md:col-span-2 flex flex-wrap gap-2 items-center">
+            <div className="text-slate-500">Canal</div>
+            {(['WhatsApp', 'Instagram'] as const).map((c) => (
+              <button key={c} type="button" onClick={() => set({ channel: c })}
+                className={clsx('px-3 py-1 rounded border text-sm', draft.channel === c ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-200 hover:bg-slate-50')}>
+                {c === 'WhatsApp' ? '💬 WhatsApp — se dispara cuando el lead escribe desde el anuncio' : '📸 Instagram — outbound: el paso 1 es el primer DM'}
+              </button>
+            ))}
+          </div>
+          {draft.channel === 'Instagram' && (
+            <div className="md:col-span-2 bg-pink-50 border border-pink-200 rounded p-3 text-sm space-y-2">
+              <div className="text-xs text-pink-800">
+                Los DMs salen por la cola de Instagram del hub con <b>tus cuentas</b> (Cuentas IG), respetando el cap diario por cuenta y el pacing anti-bloqueo.
+                Instagram es <b>solo texto</b>: los adjuntos y audios de los mensajes se ignoran (si un mensaje solo tiene nota de voz, se manda su guion como texto).
+                Enrolás leads con el botón <b>Enrolar leads</b> (Bulk) o dejás que se enrolen solos:
+              </div>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={draft.autoEnroll} onChange={(e) => set({ autoEnroll: e.target.checked })} />
+                Auto-enrolar leads del producto con handle de IG que nunca fueron contactados
+              </label>
+              <label className="flex items-center gap-2">
+                <span>Tope de enrolados nuevos por día</span>
+                <input type="number" className="input w-24" value={draft.dailyEnrollCap} onChange={(e) => set({ dailyEnrollCap: Number(e.target.value) })} />
+              </label>
+            </div>
+          )}
+          {draft.channel === 'WhatsApp' && (<>
           <label className="text-sm block">
             <div className="text-slate-500 mb-1">Texto prellenado del anuncio (match por contenido)</div>
             <input className="input" placeholder="ej. Vengo del anuncio de TurnosPro" value={draft.triggerText ?? ''} onChange={(e) => set({ triggerText: e.target.value })} />
@@ -400,6 +493,7 @@ function PitchEditor({ draft, media, ads, saving, onChange, onCancel, onSave }: 
             <input type="checkbox" checked={draft.isDefault} onChange={(e) => set({ isDefault: e.target.checked })} />
             Pitch <b>default</b> del producto (cualquier lead de anuncio sin match cae acá)
           </label>
+          </>)}
           <label className="text-sm flex items-center gap-2">
             <input type="checkbox" checked={draft.active} onChange={(e) => set({ active: e.target.checked })} /> Activo
           </label>

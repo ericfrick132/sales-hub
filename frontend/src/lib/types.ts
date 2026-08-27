@@ -443,6 +443,9 @@ export interface Pitch {
   replyDelayMaxSec: number;
   updatedAt: string;
   stats: PitchStats;
+  channel: 'WhatsApp' | 'Instagram';
+  autoEnroll: boolean;
+  dailyEnrollCap: number;
 }
 export interface AdSeen {
   productKey: string; adId: string; title?: string | null; leads: number; replied: number; closed: number; lastSeen: string;

@@ -29,12 +29,15 @@ public class PitchesController : ControllerBase
         Guid Id, string ProductKey, string Name, bool Active, int SortOrder,
         List<string> AdIds, string? TriggerText, bool IsDefault,
         List<PitchStepDto> Steps, string? AutoTagOnReply, string? StatusOnReply, bool AiAfterPitch,
-        int ReplyDelayMinSec, int ReplyDelayMaxSec, DateTimeOffset UpdatedAt, PitchStats Stats);
+        int ReplyDelayMinSec, int ReplyDelayMaxSec, DateTimeOffset UpdatedAt, PitchStats Stats,
+        string Channel, bool AutoEnroll, int DailyEnrollCap);
     public record UpsertPitchRequest(
         string ProductKey, string Name, bool Active, int SortOrder,
         List<string>? AdIds, string? TriggerText, bool IsDefault,
         List<PitchStepDto>? Steps, string? AutoTagOnReply, string? StatusOnReply, bool AiAfterPitch,
-        int ReplyDelayMinSec = 8, int ReplyDelayMaxSec = 40);
+        int ReplyDelayMinSec = 8, int ReplyDelayMaxSec = 40,
+        string? Channel = "WhatsApp", bool AutoEnroll = false, int DailyEnrollCap = 30);
+    public record BulkEnrollRequest(int Limit = 50, List<string>? Statuses = null, string? City = null);
 
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? productKey, CancellationToken ct)
@@ -111,6 +114,7 @@ public class PitchesController : ControllerBase
             Steps = System.Text.Json.JsonSerializer.Deserialize<List<PitchStep>>(System.Text.Json.JsonSerializer.Serialize(p.Steps)) ?? new(),
             AutoTagOnReply = p.AutoTagOnReply, StatusOnReply = p.StatusOnReply, AiAfterPitch = p.AiAfterPitch,
             ReplyDelayMinSec = p.ReplyDelayMinSec, ReplyDelayMaxSec = p.ReplyDelayMaxSec,
+            Channel = p.Channel, AutoEnroll = false, DailyEnrollCap = p.DailyEnrollCap,
         };
         _db.Pitches.Add(copy);
         await _db.SaveChangesAsync(ct);
@@ -208,6 +212,41 @@ public class PitchesController : ControllerBase
         return Ok(new { leadId, pitchId = id, enrolled = true });
     }
 
+    /// <summary>Cuántos leads del producto podrían enrolarse hoy en este pitch de Instagram (con handle, nunca contactados).</summary>
+    [HttpGet("{id:guid}/enroll-preview")]
+    public async Task<IActionResult> EnrollPreview(Guid id, [FromQuery] string? statuses, [FromQuery] string? city, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var p = await _db.Pitches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p is null) return NotFound();
+        var sts = ParseStatuses(statuses?.Split(',').ToList());
+        var n = await _engine.CountEligibleForInstagramAsync(p, sts, city, ct);
+        var accounts = await _db.InstagramAccounts.CountAsync(a => a.IsActive && a.IsLoggedIn && !a.IsActionBlocked, ct);
+        return Ok(new { eligible = n, activeAccounts = accounts });
+    }
+
+    /// <summary>Enrola en masa (estilo "Bulk"): hasta Limit leads del producto con handle de IG y sin contacto previo.</summary>
+    [HttpPost("{id:guid}/enroll-bulk")]
+    public async Task<IActionResult> EnrollBulk(Guid id, [FromBody] BulkEnrollRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var p = await _db.Pitches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p is null) return NotFound();
+        if (p.Channel != MessageChannel.Instagram) return BadRequest(new { error = "El enrolamiento masivo es para pitches de Instagram (los de WhatsApp se disparan cuando el lead escribe desde el anuncio)" });
+        if (!p.Active) return BadRequest(new { error = "Activá el pitch antes de enrolar" });
+        var accounts = await _db.InstagramAccounts.CountAsync(a => a.IsActive && !a.IsActionBlocked, ct);
+        if (accounts == 0) return BadRequest(new { error = "No hay cuentas de Instagram activas en el hub (Cuentas IG)" });
+        var n = await _engine.EnrollBulkAsync(p, req.Limit, ParseStatuses(req.Statuses), req.City, ct);
+        return Ok(new { enrolled = n });
+    }
+
+    private static List<LeadStatus> ParseStatuses(List<string>? raw)
+    {
+        var list = (raw ?? new()).Select(x => Enum.TryParse<LeadStatus>(x.Trim(), true, out var st) ? (LeadStatus?)st : null)
+            .Where(x => x != null).Select(x => x!.Value).Distinct().ToList();
+        return list.Count > 0 ? list : new List<LeadStatus> { LeadStatus.New, LeadStatus.Assigned };
+    }
+
     // ───────────────────────────── helpers ─────────────────────────────
 
     private static string? Validate(UpsertPitchRequest r)
@@ -261,6 +300,9 @@ public class PitchesController : ControllerBase
         p.AiAfterPitch = r.AiAfterPitch;
         p.ReplyDelayMinSec = Math.Clamp(r.ReplyDelayMinSec, 0, 3600);
         p.ReplyDelayMaxSec = Math.Clamp(r.ReplyDelayMaxSec, p.ReplyDelayMinSec, 3600);
+        p.Channel = string.Equals(r.Channel, "Instagram", StringComparison.OrdinalIgnoreCase) ? MessageChannel.Instagram : MessageChannel.WhatsApp;
+        p.AutoEnroll = p.Channel == MessageChannel.Instagram && r.AutoEnroll;
+        p.DailyEnrollCap = Math.Clamp(r.DailyEnrollCap, 1, 500);
     }
 
     private async Task ClearOtherDefaultsAsync(Pitch p, CancellationToken ct)
@@ -274,7 +316,8 @@ public class PitchesController : ControllerBase
         p.Steps.Select(s => new PitchStepDto(s.Title,
             s.Messages.Select(m => new PitchMessageDto(m.Text, m.MediaAssetId, m.VoiceText, m.DelaySeconds)).ToList(),
             s.FollowUps.Select(f => new PitchFollowUpDto(f.AfterHours, f.Text, f.MediaAssetId)).ToList())).ToList(),
-        p.AutoTagOnReply, p.StatusOnReply, p.AiAfterPitch, p.ReplyDelayMinSec, p.ReplyDelayMaxSec, p.UpdatedAt, stats);
+        p.AutoTagOnReply, p.StatusOnReply, p.AiAfterPitch, p.ReplyDelayMinSec, p.ReplyDelayMaxSec, p.UpdatedAt, stats,
+        p.Channel.ToString(), p.AutoEnroll, p.DailyEnrollCap);
 
     /// <summary>
     /// Enrolados / activos / respondieron / completados / abandonados / convertidos por pitch.

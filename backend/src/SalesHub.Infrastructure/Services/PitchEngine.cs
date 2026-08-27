@@ -35,13 +35,17 @@ public class PitchEngine
     private readonly IMessageRenderer _renderer;
     private readonly ElevenLabsClient _tts;
     private readonly VoiceNoteOptions _voice;
+    private readonly ILeadAssigner _assigner;
     private readonly ILogger<PitchEngine> _log;
 
     public PitchEngine(ApplicationDbContext db, IEvolutionClient evo, SellerLineSender lineSender,
-        IMessageRenderer renderer, ElevenLabsClient tts, IOptions<VoiceNoteOptions> voice, ILogger<PitchEngine> log)
+        IMessageRenderer renderer, ElevenLabsClient tts, IOptions<VoiceNoteOptions> voice, ILeadAssigner assigner, ILogger<PitchEngine> log)
     {
-        _db = db; _evo = evo; _lineSender = lineSender; _renderer = renderer; _tts = tts; _voice = voice.Value; _log = log;
+        _db = db; _evo = evo; _lineSender = lineSender; _renderer = renderer; _tts = tts; _voice = voice.Value; _assigner = assigner; _log = log;
     }
+
+    /// <summary>Marca de los outbox rows que pertenecen a un pitch (CadenceCategory).</summary>
+    public static string OutboxTag(Guid pitchId) => $"pitch:{pitchId:N}";
 
     // ───────────────────────────── Enrolamiento / avance por respuesta ─────────────────────────────
 
@@ -138,7 +142,7 @@ public class PitchEngine
     public async Task<Pitch?> ResolvePitchAsync(string productKey, string? adId, string? text, CancellationToken ct)
     {
         var pitches = await _db.Pitches.AsNoTracking()
-            .Where(p => p.ProductKey == productKey && p.Active)
+            .Where(p => p.ProductKey == productKey && p.Active && p.Channel == MessageChannel.WhatsApp)
             .OrderBy(p => p.SortOrder).ThenBy(p => p.CreatedAt)
             .ToListAsync(ct);
         if (pitches.Count == 0) return null;
@@ -172,6 +176,13 @@ public class PitchEngine
     {
         var now = DateTimeOffset.UtcNow;
         var done = 0;
+
+        // 0) Instagram: auto-enrolar leads con handle (outbound) y confirmar pasos ya despachados
+        //    por la cola de DMs (el sender de IG es asíncrono: encolamos y después miramos SentAt).
+        try { done += await AutoEnrollInstagramAsync(now, ct); }
+        catch (Exception ex) { _log.LogError(ex, "Pitch IG: auto-enroll falló"); }
+        try { await ConfirmInstagramStepsAsync(now, ct); }
+        catch (Exception ex) { _log.LogError(ex, "Pitch IG: confirmación de pasos falló"); }
 
         // 1) Pasos pendientes (paso 0 al enrolar, o el siguiente tras una respuesta).
         var dueStates = await _db.LeadPitchStates
@@ -234,6 +245,9 @@ public class PitchEngine
             await _db.SaveChangesAsync(ct);
             return false;
         }
+        if (p.Channel == MessageChannel.Instagram)
+            return await EnqueueInstagramStepAsync(s, idx, now, ct);
+
         var sender = await ResolveSenderAsync(lead, ct);
         if (sender is null)
         {
@@ -304,17 +318,199 @@ public class PitchEngine
         var since = s.LastFollowupAt ?? s.StepSentAt.Value;
         if (since.AddHours(Math.Max(0.05, fu.AfterHours)) > now) return false;
         if (!WithinActiveHours(lead.Seller, now)) return false; // proactivo: solo en horario
-        var sender = await ResolveSenderAsync(lead, ct);
-        if (sender is null) return false;
-        await TypingAsync(sender, lead, 3, ct);
-        await Task.Delay(TimeSpan.FromSeconds(3), ct);
-        var ok = await SendMessageAsync(sender, lead, fu.Text, fu.MediaAssetId, null, ct);
+        bool ok;
+        if (p.Channel == MessageChannel.Instagram)
+        {
+            if (string.IsNullOrWhiteSpace(fu.Text)) { s.FollowupsSent++; s.LastFollowupAt = now; s.UpdatedAt = now; await _db.SaveChangesAsync(ct); return false; }
+            ok = await EnqueueInstagramDmAsync(lead, p, s.StepIndex, fu.Text, now, ct);
+        }
+        else
+        {
+            var sender = await ResolveSenderAsync(lead, ct);
+            if (sender is null) return false;
+            await TypingAsync(sender, lead, 3, ct);
+            await Task.Delay(TimeSpan.FromSeconds(3), ct);
+            ok = await SendMessageAsync(sender, lead, fu.Text, fu.MediaAssetId, null, ct);
+        }
         s.FollowupsSent++;
         s.LastFollowupAt = now;
         s.UpdatedAt = now;
         await _db.SaveChangesAsync(ct);
         _log.LogInformation("Pitch \"{Pitch}\": follow-up {N} del paso {Step} a lead {Lead} ({Ok})", p.Name, s.FollowupsSent, s.StepIndex + 1, lead.Id, ok ? "ok" : "falló");
         return ok;
+    }
+
+    // ───────────────────────────── Instagram (outbound por la cola de DMs) ─────────────────────────────
+
+    /// <summary>
+    /// Enrola leads con handle de IG en los pitches de Instagram con AutoEnroll, respetando el
+    /// cap diario del pitch. Candidatos: del producto, con InstagramHandle, sin estado de pitch,
+    /// sin outbound previo, en New/Assigned (nunca contactados), mejor score primero.
+    /// </summary>
+    private async Task<int> AutoEnrollInstagramAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var pitches = await _db.Pitches.AsNoTracking()
+            .Where(p => p.Active && p.Channel == MessageChannel.Instagram && p.AutoEnroll)
+            .ToListAsync(ct);
+        if (pitches.Count == 0) return 0;
+        var total = 0;
+        var dayStart = now.Date;
+        foreach (var p in pitches)
+        {
+            var today = await _db.LeadPitchStates.CountAsync(s => s.PitchId == p.Id && s.EnrolledAt >= dayStart, ct);
+            var room = Math.Max(0, p.DailyEnrollCap - today);
+            if (room == 0) continue;
+            var n = await EnrollBulkAsync(p, Math.Min(room, 10), new[] { LeadStatus.New, LeadStatus.Assigned }, null, ct);
+            total += n;
+        }
+        return total;
+    }
+
+    /// <summary>Enrola hasta <paramref name="limit"/> leads del producto en el pitch (Instagram). Devuelve cuántos.</summary>
+    public async Task<int> EnrollBulkAsync(Pitch p, int limit, IReadOnlyCollection<LeadStatus> statuses, string? city, CancellationToken ct)
+    {
+        var q = EligibleForInstagram(p, statuses, city);
+        var leads = await q.OrderByDescending(l => l.Score).ThenBy(l => l.CreatedAt).Take(Math.Clamp(limit, 1, 500)).ToListAsync(ct);
+        if (leads.Count == 0) return 0;
+        var now = DateTimeOffset.UtcNow;
+        var i = 0;
+        foreach (var lead in leads)
+        {
+            if (lead.SellerId is null)
+            {
+                var owner = await _assigner.PickOwnerAsync(p.ProductKey, ct);
+                if (owner is null) continue;
+                lead.SellerId = owner; lead.AssignedAt = now;
+                if (lead.Status == LeadStatus.New) lead.Status = LeadStatus.Assigned;
+            }
+            _db.LeadPitchStates.Add(new LeadPitchState
+            {
+                LeadId = lead.Id, PitchId = p.Id, StepIndex = -1,
+                // Escalonados: el sender de IG manda de a uno igual, esto solo ordena la cola.
+                NextStepDueAt = now.AddSeconds(i * 20),
+                EnrolledAt = now, UpdatedAt = now,
+            });
+            i++;
+        }
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Pitch IG \"{Pitch}\": {N} leads enrolados", p.Name, i);
+        return i;
+    }
+
+    public async Task<int> CountEligibleForInstagramAsync(Pitch p, IReadOnlyCollection<LeadStatus> statuses, string? city, CancellationToken ct)
+        => await EligibleForInstagram(p, statuses, city).CountAsync(ct);
+
+    private IQueryable<Lead> EligibleForInstagram(Pitch p, IReadOnlyCollection<LeadStatus> statuses, string? city)
+    {
+        var sts = statuses.ToList();
+        var q = _db.Leads.Where(l => l.ProductKey == p.ProductKey
+            && l.InstagramHandle != null && l.InstagramHandle != ""
+            && sts.Contains(l.Status)
+            && l.BotMutedAt == null
+            && !_db.LeadPitchStates.Any(s => s.LeadId == l.Id)
+            && !_db.ConversationMessages.Any(m => m.LeadId == l.Id && m.Direction == MessageDirection.Outbound)
+            && !_db.Outbox.Any(o => o.LeadId == l.Id && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending || o.Status == OutboxStatus.Sent)));
+        if (!string.IsNullOrWhiteSpace(city)) q = q.Where(l => l.City != null && l.City.ToLower().Contains(city.ToLower()));
+        return q;
+    }
+
+    /// <summary>
+    /// Paso de un pitch de Instagram: encola cada mensaje (solo texto) en el outbox con Channel=Instagram,
+    /// espaciados por el delay del mensaje. StepSentAt queda null hasta que el sender los despache
+    /// (ver <see cref="ConfirmInstagramStepsAsync"/>).
+    /// </summary>
+    private async Task<bool> EnqueueInstagramStepAsync(LeadPitchState s, int idx, DateTimeOffset now, CancellationToken ct)
+    {
+        var lead = s.Lead!; var p = s.Pitch!;
+        if (string.IsNullOrWhiteSpace(lead.InstagramHandle))
+        {
+            s.GaveUpAt = now; s.NextStepDueAt = null; s.UpdatedAt = now;
+            await _db.SaveChangesAsync(ct);
+            return false;
+        }
+        if (lead.SellerId is null)
+        {
+            var owner = await _assigner.PickOwnerAsync(p.ProductKey, ct);
+            if (owner is null) { s.NextStepDueAt = now.AddHours(1); s.UpdatedAt = now; await _db.SaveChangesAsync(ct); return false; }
+            lead.SellerId = owner; lead.AssignedAt = now;
+        }
+        var step = p.Steps[idx];
+        var when = now;
+        var queued = 0;
+        for (var i = 0; i < step.Messages.Count; i++)
+        {
+            var m = step.Messages[i];
+            var text = string.IsNullOrWhiteSpace(m.Text) ? (m.VoiceText ?? string.Empty) : m.Text; // IG: texto o el guion del audio
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            if (queued > 0) when = when.AddSeconds(Math.Clamp(step.Messages[i - 1].DelaySeconds, 1, 3600));
+            var rendered = _renderer.RenderTemplate(text, lead, lead.Product!, lead.Seller);
+            _db.Outbox.Add(new MessageOutbox
+            {
+                Id = Guid.NewGuid(), LeadId = lead.Id, SellerId = lead.SellerId!.Value,
+                Channel = MessageChannel.Instagram, EvolutionInstance = string.Empty, WhatsappPhone = lead.WhatsappPhone ?? string.Empty,
+                Message = rendered, StepIndex = idx, CadenceCategory = OutboxTag(p.Id),
+                ScheduledAt = when, Status = OutboxStatus.Scheduled, Priority = 60,
+            });
+            queued++;
+        }
+        s.StepIndex = idx;
+        s.StepSentAt = null;   // se confirma cuando el sender despacha
+        s.NextStepDueAt = null;
+        s.FollowupsSent = 0;
+        s.LastFollowupAt = null;
+        s.UpdatedAt = now;
+        if (queued == 0)
+        {
+            // Paso sin texto (solo media): en IG no hay nada que mandar → lo damos por enviado.
+            s.StepSentAt = now;
+        }
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Pitch IG \"{Pitch}\": paso {Step}/{Total} encolado a @{Handle} ({N} DMs)", p.Name, idx + 1, p.Steps.Count, lead.InstagramHandle, queued);
+        return queued > 0;
+    }
+
+    private async Task<bool> EnqueueInstagramDmAsync(Lead lead, Pitch p, int stepIdx, string text, DateTimeOffset now, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(lead.InstagramHandle) || lead.SellerId is null) return false;
+        var rendered = _renderer.RenderTemplate(text, lead, lead.Product!, lead.Seller);
+        _db.Outbox.Add(new MessageOutbox
+        {
+            Id = Guid.NewGuid(), LeadId = lead.Id, SellerId = lead.SellerId.Value,
+            Channel = MessageChannel.Instagram, EvolutionInstance = string.Empty, WhatsappPhone = lead.WhatsappPhone ?? string.Empty,
+            Message = rendered, StepIndex = stepIdx, CadenceCategory = OutboxTag(p.Id) + ":fu",
+            ScheduledAt = now, Status = OutboxStatus.Scheduled, Priority = 60,
+        });
+        return true;
+    }
+
+    /// <summary>
+    /// Estados de IG con paso encolado pero no confirmado: cuando todos los DMs del paso salieron
+    /// (o fallaron), fija StepSentAt (arranca el reloj de los follow-ups) o da por perdido.
+    /// </summary>
+    private async Task ConfirmInstagramStepsAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var pending = await _db.LeadPitchStates
+            .Include(s => s.Pitch)
+            .Where(s => s.CompletedAt == null && s.GaveUpAt == null && s.StepIndex >= 0 && s.StepSentAt == null
+                && s.Pitch!.Channel == MessageChannel.Instagram)
+            .Take(300)
+            .ToListAsync(ct);
+        foreach (var s in pending)
+        {
+            var tag = OutboxTag(s.PitchId);
+            var rows = await _db.Outbox.AsNoTracking()
+                .Where(o => o.LeadId == s.LeadId && o.CadenceCategory == tag && o.StepIndex == s.StepIndex)
+                .Select(o => new { o.Status, o.SentAt })
+                .ToListAsync(ct);
+            if (rows.Count == 0) { s.StepSentAt = now; s.UpdatedAt = now; continue; }
+            if (rows.Any(r => r.Status == OutboxStatus.Scheduled || r.Status == OutboxStatus.Sending)) continue;
+            var sent = rows.Where(r => r.Status == OutboxStatus.Sent).Select(r => r.SentAt).Where(x => x != null).ToList();
+            if (sent.Count > 0) { s.StepSentAt = sent.Max(); s.UpdatedAt = now; continue; }
+            // Nada salió (cancelado por respuesta → OnInbound ya avanzó; fallido → perdido).
+            if (rows.All(r => r.Status == OutboxStatus.Failed)) { s.GaveUpAt = now; s.UpdatedAt = now; }
+            else { s.StepSentAt = now; s.UpdatedAt = now; }
+        }
+        await _db.SaveChangesAsync(ct);
     }
 
     // ───────────────────────────── Transporte ─────────────────────────────

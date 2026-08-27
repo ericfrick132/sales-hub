@@ -399,6 +399,9 @@ public class ConversationService
 
         await _db.SaveChangesAsync(ct);
         _log.LogInformation("IG inbound guardado: lead={Lead} @{Handle}", lead.Id, h);
+        // Pitch de Instagram: la respuesta avanza el paso (mismo motor que WhatsApp).
+        try { await _pitch.OnInboundAsync(lead, text, null, false, ct); }
+        catch (Exception ex) { _log.LogError(ex, "Pitch hook (IG) falló para lead {Lead}", lead.Id); }
         return true;
     }
 

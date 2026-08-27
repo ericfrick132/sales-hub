@@ -16,6 +16,7 @@ public class PitchConfiguration : IEntityTypeConfiguration<Pitch>
         b.Property(x => x.TriggerText).HasMaxLength(256);
         b.Property(x => x.AutoTagOnReply).HasMaxLength(64);
         b.Property(x => x.StatusOnReply).HasMaxLength(32);
+        b.Property(x => x.Channel).HasConversion<int>();
         b.Property(x => x.AdIds).HasColumnType("text[]").HasDefaultValueSql("'{}'");
         // jsonb: agregar campos a los pasos no requiere migración.
         b.Property(x => x.Steps)

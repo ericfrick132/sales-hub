@@ -22,6 +22,18 @@ public class Pitch
     public bool Active { get; set; } = true;
     public int SortOrder { get; set; }
 
+    /// <summary>
+    /// Canal del pitch. WhatsApp = se dispara cuando el lead escribe desde un anuncio (inbound).
+    /// Instagram = OUTBOUND: los pasos salen como DMs por la cola de Instagram (cuentas propias
+    /// del hub, cap diario por cuenta); los leads se enrolan a mano (bulk) o solos (AutoEnroll).
+    /// Instagram es solo texto: media/audio de los mensajes se ignoran.
+    /// </summary>
+    public SalesHub.Core.Domain.Enums.MessageChannel Channel { get; set; } = SalesHub.Core.Domain.Enums.MessageChannel.WhatsApp;
+    /// <summary>Instagram: enrolar solos a los leads del producto con handle que nunca recibieron nada.</summary>
+    public bool AutoEnroll { get; set; }
+    /// <summary>Instagram: tope de enrolados nuevos por día para este pitch (pacing de la campaña).</summary>
+    public int DailyEnrollCap { get; set; } = 30;
+
     /// <summary>Ids de anuncio de Meta (externalAdReply.sourceId) que enrolan en este pitch.</summary>
     public List<string> AdIds { get; set; } = new();
     /// <summary>Fragmento del texto prellenado del anuncio (case-insensitive) que enrola en este pitch.</summary>
