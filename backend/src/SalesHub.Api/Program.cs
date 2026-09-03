@@ -126,6 +126,27 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Artículos SEO escritos como archivos en el repo (SalesHub.Api/SeoSeed/<siteKey>/<slug>.json + .md)
+// → blog central (SeoArticles, Published). Idempotente; un error acá NUNCA frena el arranque.
+// Solo corre en el rol API: el componente "workers" de DO usa SalesHub.Workers/Program.cs.
+if ((Environment.GetEnvironmentVariable("SALESHUB_SEO_SEED_IMPORT") ?? "true") == "true")
+{
+    using var seedScope = app.Services.CreateScope();
+    var seedLog = seedScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("SalesHub.SeoSeedImporter");
+    try
+    {
+        // Publicado junto al DLL (ver SalesHub.Api.csproj); fallback al content root para `dotnet run`.
+        var seedFolder = Path.Combine(AppContext.BaseDirectory, "SeoSeed");
+        if (!Directory.Exists(seedFolder)) seedFolder = Path.Combine(app.Environment.ContentRootPath, "SeoSeed");
+        var seedDb = seedScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await SeoSeedImporter.ImportAsync(seedDb, seedFolder, seedLog);
+    }
+    catch (Exception ex)
+    {
+        seedLog.LogError(ex, "SeoSeed: falló el import de artículos; la API arranca igual");
+    }
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

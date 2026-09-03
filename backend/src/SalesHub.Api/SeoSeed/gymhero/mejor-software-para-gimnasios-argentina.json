@@ -1,0 +1,32 @@
+{
+  "siteKey": "gymhero",
+  "slug": "mejor-software-para-gimnasios-argentina",
+  "title": "Mejor software para gimnasios en Argentina (2026)",
+  "metaDescription": "Comparamos GymHero, About a Gym, GymFlow, AccesoGym, AgendaPro y más: cobros, control de acceso, reservas, WhatsApp y precios en pesos.",
+  "targetKeyword": "software para gimnasios en argentina",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-03",
+  "faq": [
+    {
+      "question": "¿Cuál es el mejor software para gimnasios en Argentina?",
+      "answer": "No hay uno solo para todos. El mejor es el que te cobra solo por MercadoPago, te muestra en recepción quién está al día y maneja las reservas de clases sin que tengas que estar encima, con precio en pesos y soporte local. Si querés una respuesta corta: probá GymHero 7 días gratis y compará contra la planilla que usás hoy."
+    },
+    {
+      "question": "¿Necesito un lector de huella o una cámara para controlar el acceso?",
+      "answer": "No. Con el semáforo con QR en recepción alcanza para saber en segundos si el socio está al día (verde) o debe (rojo). El lector de huella y el reconocimiento facial son opcionales, para cuando quieras que la puerta se abra sola y solo pase el que pagó."
+    },
+    {
+      "question": "¿Cuánto tarda la implementación?",
+      "answer": "Con setup asistido, un día: importás los socios desde Excel, cargás planes y horarios y ya estás cobrando. En GymHero el equipo está en Buenos Aires y te acompaña en el arranque por WhatsApp."
+    },
+    {
+      "question": "¿Sirve para un box de CrossFit o un estudio de pilates, o es solo para gimnasios?",
+      "answer": "Sirve para gimnasios de musculación, boxes de CrossFit, estudios de pilates y yoga y centros de entrenamiento funcional. Cada uno tiene sus particularidades (WODs y cupos, reservas de reformers, control de acceso en la puerta) y el sistema se configura para eso."
+    },
+    {
+      "question": "¿Puedo cobrar con débito automático por MercadoPago?",
+      "answer": "Sí. En GymHero el débito automático por MercadoPago está incluido: el socio deja la tarjeta una vez y la cuota se cobra sola cada mes. Si el cobro falla, le llega un WhatsApp con el link de pago para regularizar sin que vos hagas nada."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"Mejor software para gimnasios en Argentina (2026)\",\"description\":\"Comparamos GymHero, About a Gym, GymFlow, AccesoGym, AgendaPro y más: cobros, control de acceso, reservas, WhatsApp y precios en pesos.\",\"datePublished\":\"2026-09-03\",\"dateModified\":\"2026-09-03\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"GymHero\",\"url\":\"https://gymhero.fitness\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"GymHero\",\"url\":\"https://gymhero.fitness\"},\"mainEntityOfPage\":\"https://gymhero.fitness/blog/mejor-software-para-gimnasios-argentina/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://gymhero.fitness/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://gymhero.fitness/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Mejor software para gimnasios en Argentina (2026)\",\"item\":\"https://gymhero.fitness/blog/mejor-software-para-gimnasios-argentina/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Cuál es el mejor software para gimnasios en Argentina?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"No hay uno solo para todos. El mejor es el que te cobra solo por MercadoPago, te muestra en recepción quién está al día y maneja las reservas de clases sin que tengas que estar encima, con precio en pesos y soporte local. Si querés una respuesta corta: probá GymHero 7 días gratis y compará contra la planilla que usás hoy.\"}},{\"@type\":\"Question\",\"name\":\"¿Necesito un lector de huella o una cámara para controlar el acceso?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"No. Con el semáforo con QR en recepción alcanza para saber en segundos si el socio está al día (verde) o debe (rojo). El lector de huella y el reconocimiento facial son opcionales, para cuando quieras que la puerta se abra sola y solo pase el que pagó.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto tarda la implementación?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Con setup asistido, un día: importás los socios desde Excel, cargás planes y horarios y ya estás cobrando. En GymHero el equipo está en Buenos Aires y te acompaña en el arranque por WhatsApp.\"}},{\"@type\":\"Question\",\"name\":\"¿Sirve para un box de CrossFit o un estudio de pilates, o es solo para gimnasios?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sirve para gimnasios de musculación, boxes de CrossFit, estudios de pilates y yoga y centros de entrenamiento funcional. Cada uno tiene sus particularidades (WODs y cupos, reservas de reformers, control de acceso en la puerta) y el sistema se configura para eso.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo cobrar con débito automático por MercadoPago?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. En GymHero el débito automático por MercadoPago está incluido: el socio deja la tarjeta una vez y la cuota se cobra sola cada mes. Si el cobro falla, le llega un WhatsApp con el link de pago para regularizar sin que vos hagas nada.\"}}]}]}"
+}

@@ -1,0 +1,32 @@
+{
+  "siteKey": "archicloud",
+  "slug": "como-controlar-los-gastos-de-una-obra",
+  "title": "Cómo controlar los gastos de una obra",
+  "metaDescription": "Guía para controlar los gastos de una obra: presupuesto por rubro, registro diario, real vs. presupuestado e informe al cliente. ¿Planilla o software?",
+  "targetKeyword": "control de gastos de obra",
+  "contentType": "Guide",
+  "publishedAt": "2026-09-03",
+  "faq": [
+    {
+      "question": "¿Con qué frecuencia conviene revisar los gastos contra el presupuesto?",
+      "answer": "Una vez por semana, rubro por rubro. La revisión mensual llega tarde: cuando un rubro ya se pasó, la única opción es explicarlo. La semanal deja margen para corregir."
+    },
+    {
+      "question": "¿Qué rubros conviene usar en el presupuesto de una obra?",
+      "answer": "Los mismos del cómputo con el que presupuestaste: movimiento de suelo, estructura, albañilería, instalaciones, aberturas, terminaciones, honorarios, etcétera. Entre 10 y 20 rubros alcanza; más que eso, nadie los carga bien."
+    },
+    {
+      "question": "¿Cómo manejo gastos en dólares y en pesos en la misma obra?",
+      "answer": "Cargá cada gasto en la moneda real de la transacción y guardá la cotización del día. Nunca conviertas a mano ni reemplaces la cotización: el histórico es lo que hace que el informe cierre meses después."
+    },
+    {
+      "question": "¿Cuándo dejo la planilla y paso a un software de gestión de obras?",
+      "answer": "Cuando aparece cualquiera de estas cuatro cosas: más de una obra, más de una persona cargando, más de una moneda, o un cliente que pide informes periódicos. Con una obra chica y una sola persona, la planilla suele alcanzar."
+    },
+    {
+      "question": "¿Qué le muestro al cliente y qué no?",
+      "answer": "Avances con fotos, gastos por rubro y su cuenta corriente (aportes menos gastos). No le mostrás márgenes, costos ocultos ni los datos de tus contratistas. Un portal del cliente con vista limitada resuelve esto sin armar una segunda planilla."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"Cómo controlar los gastos de una obra (planilla vs software)\",\"description\":\"Guía para controlar los gastos de una obra: presupuesto por rubro, registro diario, real vs. presupuestado e informe al cliente. ¿Planilla o software?\",\"datePublished\":\"2026-09-03\",\"dateModified\":\"2026-09-03\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"ArchiCloud\",\"url\":\"https://archicloud.tech\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"ArchiCloud\",\"url\":\"https://archicloud.tech\"},\"mainEntityOfPage\":\"https://archicloud.tech/blog/como-controlar-los-gastos-de-una-obra/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://archicloud.tech/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://archicloud.tech/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Cómo controlar los gastos de una obra\",\"item\":\"https://archicloud.tech/blog/como-controlar-los-gastos-de-una-obra/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Con qué frecuencia conviene revisar los gastos contra el presupuesto?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Una vez por semana, rubro por rubro. La revisión mensual llega tarde: cuando un rubro ya se pasó, la única opción es explicarlo. La semanal deja margen para corregir.\"}},{\"@type\":\"Question\",\"name\":\"¿Qué rubros conviene usar en el presupuesto de una obra?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Los mismos del cómputo con el que presupuestaste: movimiento de suelo, estructura, albañilería, instalaciones, aberturas, terminaciones, honorarios, etcétera. Entre 10 y 20 rubros alcanza; más que eso, nadie los carga bien.\"}},{\"@type\":\"Question\",\"name\":\"¿Cómo manejo gastos en dólares y en pesos en la misma obra?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Cargá cada gasto en la moneda real de la transacción y guardá la cotización del día. Nunca conviertas a mano ni reemplaces la cotización: el histórico es lo que hace que el informe cierre meses después.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuándo dejo la planilla y paso a un software de gestión de obras?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Cuando aparece cualquiera de estas cuatro cosas: más de una obra, más de una persona cargando, más de una moneda, o un cliente que pide informes periódicos. Con una obra chica y una sola persona, la planilla suele alcanzar.\"}},{\"@type\":\"Question\",\"name\":\"¿Qué le muestro al cliente y qué no?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Avances con fotos, gastos por rubro y su cuenta corriente (aportes menos gastos). No le mostrás márgenes, costos ocultos ni los datos de tus contratistas. Un portal del cliente con vista limitada resuelve esto sin armar una segunda planilla.\"}}]}]}"
+}

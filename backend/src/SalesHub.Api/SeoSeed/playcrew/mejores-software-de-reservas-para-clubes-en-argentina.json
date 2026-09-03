@@ -1,0 +1,32 @@
+{
+  "siteKey": "playcrew",
+  "slug": "mejores-software-de-reservas-para-clubes-en-argentina",
+  "title": "Mejores software de reservas para clubes en Argentina 2026",
+  "metaDescription": "Comparamos software de reservas para clubes en Argentina: qué tienen que resolver, criterios para elegir, PlayCrew, CanchaFija, Padelero y más, con precios.",
+  "targetKeyword": "software de reservas para clubes en argentina",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-03",
+  "faq": [
+    {
+      "question": "¿Cuál es el mejor software de reservas para clubes en Argentina?",
+      "answer": "Depende del club. Si necesitás gestión completa (reservas 24/7, señas con Mercado Pago, precio pico, torneos, clases y kiosco) sin comisiones por reserva, PlayCrew está pensado exactamente para eso. Si solo buscás aparecer en una vidriera de canchas, un marketplace puede alcanzar."
+    },
+    {
+      "question": "¿Conviene un marketplace o un software propio del club?",
+      "answer": "El marketplace te trae jugadores nuevos, pero el cliente es del marketplace. El software propio te da tu página, tu marca y tu base de clientes. Lo ideal es combinar los dos: gestión propia y presencia en un buscador de clubes."
+    },
+    {
+      "question": "¿Cuánto cuesta un software de reservas para clubes?",
+      "answer": "PlayCrew va de $60.000 a $150.000 por mes según la cantidad de canchas y funciones, con 20% de descuento pagando anual y sin comisiones por reserva. Los precios de otras plataformas hay que consultarlos en cada sitio."
+    },
+    {
+      "question": "¿Sirve para clubes de fútbol 5?",
+      "answer": "Sí. PlayCrew gestiona canchas de pádel, tenis y fútbol en el mismo panel, cada una con su tipo, superficie y precio."
+    },
+    {
+      "question": "¿Qué pasa con mis datos si cambio de plataforma?",
+      "answer": "En PlayCrew te ayudamos a migrar el historial de clientes y reservas desde tu sistema actual sin costo adicional, y los datos siguen siendo tuyos."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"Los mejores software de reservas para clubes en Argentina (2026)\",\"description\":\"Comparamos software de reservas para clubes en Argentina: qué tienen que resolver, criterios para elegir, PlayCrew, CanchaFija, Padelero y más, con precios.\",\"datePublished\":\"2026-09-03\",\"dateModified\":\"2026-09-03\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"PlayCrew\",\"url\":\"https://playcrewpadel.com\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"PlayCrew\",\"url\":\"https://playcrewpadel.com\"},\"mainEntityOfPage\":\"https://playcrewpadel.com/blog/mejores-software-de-reservas-para-clubes-en-argentina/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://playcrewpadel.com/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://playcrewpadel.com/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Los mejores software de reservas para clubes en Argentina (2026)\",\"item\":\"https://playcrewpadel.com/blog/mejores-software-de-reservas-para-clubes-en-argentina/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Cuál es el mejor software de reservas para clubes en Argentina?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Depende del club. Si necesitás gestión completa (reservas 24/7, señas con Mercado Pago, precio pico, torneos, clases y kiosco) sin comisiones por reserva, PlayCrew está pensado exactamente para eso. Si solo buscás aparecer en una vidriera de canchas, un marketplace puede alcanzar.\"}},{\"@type\":\"Question\",\"name\":\"¿Conviene un marketplace o un software propio del club?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"El marketplace te trae jugadores nuevos, pero el cliente es del marketplace. El software propio te da tu página, tu marca y tu base de clientes. Lo ideal es combinar los dos: gestión propia y presencia en un buscador de clubes.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta un software de reservas para clubes?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"PlayCrew va de $60.000 a $150.000 por mes según la cantidad de canchas y funciones, con 20% de descuento pagando anual y sin comisiones por reserva. Los precios de otras plataformas hay que consultarlos en cada sitio.\"}},{\"@type\":\"Question\",\"name\":\"¿Sirve para clubes de fútbol 5?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. PlayCrew gestiona canchas de pádel, tenis y fútbol en el mismo panel, cada una con su tipo, superficie y precio.\"}},{\"@type\":\"Question\",\"name\":\"¿Qué pasa con mis datos si cambio de plataforma?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"En PlayCrew te ayudamos a migrar el historial de clientes y reservas desde tu sistema actual sin costo adicional, y los datos siguen siendo tuyos.\"}}]}]}"
+}

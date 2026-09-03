@@ -22,4 +22,13 @@
     <ProjectReference Include="..\SalesHub.Workers\SalesHub.Workers.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Artículos SEO escritos como archivos (SeoSeed/<siteKey>/<slug>.json + .md); los importa
+         SeoSeedImporter al arrancar. Remove antes del Include: el SDK Web ya mete **/*.json como
+         Content y duplicaría los items. Viajan al publish → /app/SeoSeed en la imagen. -->
+    <None Remove="SeoSeed\**\*" />
+    <Content Remove="SeoSeed\**\*" />
+    <Content Include="SeoSeed\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

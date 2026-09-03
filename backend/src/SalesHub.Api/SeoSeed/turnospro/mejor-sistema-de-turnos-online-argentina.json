@@ -1,0 +1,32 @@
+{
+  "siteKey": "turnospro",
+  "slug": "mejor-sistema-de-turnos-online-argentina",
+  "title": "Mejor sistema de turnos online en Argentina (2026)",
+  "metaDescription": "Qué tiene que tener un sistema de turnos online en Argentina: criterios, precios y comparativa de Gendu, ReservaSimple, Turnify, Turnito y TurnosPro.",
+  "targetKeyword": "sistema de turnos online argentina",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-03",
+  "faq": [
+    {
+      "question": "¿Hay sistemas de turnos online gratis en Argentina?",
+      "answer": "Sí. Según sus sitios (septiembre 2026), Gendu tiene un plan gratuito con turnos ilimitados, ReservaSimple es gratis hasta 30 turnos por mes, Turnify es gratis y Turnito es gratis hasta 100 turnos por mes con 5% de comisión. TurnosPro no tiene plan gratuito permanente: ofrece prueba gratis de 7 a 14 días sin tarjeta."
+    },
+    {
+      "question": "¿Conviene un sistema con comisión por turno o una cuota fija?",
+      "answer": "Depende del volumen. Con pocos turnos, una comisión por turno o un plan gratis limitado suele salir más barato. Con muchos turnos y tickets altos, una cuota fija sin comisión, como la de TurnosPro, termina costando menos y es más previsible."
+    },
+    {
+      "question": "¿Qué sistema de turnos cobra señas con MercadoPago?",
+      "answer": "TurnosPro integra señas y pagos anticipados con MercadoPago en el flujo de reserva: el dinero entra directo en tu cuenta y no hay comisión por turno. De las otras opciones, solo relevamos lo que publican sobre precios y comisiones, no su manejo de señas."
+    },
+    {
+      "question": "¿Cuánto tarda poner en marcha un sistema de turnos online?",
+      "answer": "En TurnosPro la puesta a punto lleva unos 15 minutos: creás la cuenta con tu WhatsApp, cargás servicios, precios y profesionales, conectás MercadoPago y compartís el link de tu web de turnos."
+    },
+    {
+      "question": "¿Los recordatorios por WhatsApp salen de mi propio número?",
+      "answer": "En TurnosPro sí: los recordatorios, las confirmaciones y el agente de IA (add-on) funcionan desde el número de WhatsApp de tu negocio, con tu nombre y tu tono."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"¿Cuál es el mejor sistema de turnos online en Argentina en 2026?\",\"description\":\"Qué tiene que tener un sistema de turnos online en Argentina: criterios, precios y comparativa de Gendu, ReservaSimple, Turnify, Turnito y TurnosPro.\",\"datePublished\":\"2026-09-03\",\"dateModified\":\"2026-09-03\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"TurnosPro\",\"url\":\"https://turnos-pro.com\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"TurnosPro\",\"url\":\"https://turnos-pro.com\"},\"mainEntityOfPage\":\"https://turnos-pro.com/blog/mejor-sistema-de-turnos-online-argentina/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://turnos-pro.com/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://turnos-pro.com/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"¿Cuál es el mejor sistema de turnos online en Argentina en 2026?\",\"item\":\"https://turnos-pro.com/blog/mejor-sistema-de-turnos-online-argentina/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Hay sistemas de turnos online gratis en Argentina?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Según sus sitios (septiembre 2026), Gendu tiene un plan gratuito con turnos ilimitados, ReservaSimple es gratis hasta 30 turnos por mes, Turnify es gratis y Turnito es gratis hasta 100 turnos por mes con 5% de comisión. TurnosPro no tiene plan gratuito permanente: ofrece prueba gratis de 7 a 14 días sin tarjeta.\"}},{\"@type\":\"Question\",\"name\":\"¿Conviene un sistema con comisión por turno o una cuota fija?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Depende del volumen. Con pocos turnos, una comisión por turno o un plan gratis limitado suele salir más barato. Con muchos turnos y tickets altos, una cuota fija sin comisión, como la de TurnosPro, termina costando menos y es más previsible.\"}},{\"@type\":\"Question\",\"name\":\"¿Qué sistema de turnos cobra señas con MercadoPago?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"TurnosPro integra señas y pagos anticipados con MercadoPago en el flujo de reserva: el dinero entra directo en tu cuenta y no hay comisión por turno. De las otras opciones, solo relevamos lo que publican sobre precios y comisiones, no su manejo de señas.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto tarda poner en marcha un sistema de turnos online?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"En TurnosPro la puesta a punto lleva unos 15 minutos: creás la cuenta con tu WhatsApp, cargás servicios, precios y profesionales, conectás MercadoPago y compartís el link de tu web de turnos.\"}},{\"@type\":\"Question\",\"name\":\"¿Los recordatorios por WhatsApp salen de mi propio número?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"En TurnosPro sí: los recordatorios, las confirmaciones y el agente de IA (add-on) funcionan desde el número de WhatsApp de tu negocio, con tu nombre y tu tono.\"}}]}]}"
+}
