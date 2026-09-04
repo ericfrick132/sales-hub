@@ -309,6 +309,40 @@ public class HubController : ControllerBase
     }
 
     /// <summary>
+    /// Atribución Meta del lead para la app (por producto + teléfono y/o email): id del anuncio y
+    /// ctwa_clid del click-to-WhatsApp, o ad id del form de leads. La app lo copia al tenant cuando
+    /// el alta no trajo esos datos (registro web, OTP) y lo usa en Conversions API al cobrar.
+    /// </summary>
+    [HttpGet("attribution")]
+    public async Task<IActionResult> Attribution([FromQuery] string productKey, [FromQuery] string? phone, [FromQuery] string? email, CancellationToken ct)
+    {
+        if (!ValidApiKey()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(productKey)) return BadRequest(new { error = "productKey requerido" });
+
+        // El lead se identifica por teléfono (WhatsApp): es el dato que comparten el CTWA, el form
+        // de leads y el alta en la app. El email queda como parámetro por compatibilidad futura.
+        var digits = new string((phone ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (digits.Length < 8) return NotFound();
+        var suffix = digits[^8..];
+
+        var lead = await _db.Leads.AsNoTracking()
+            .Where(l => l.ProductKey == productKey
+                && (l.AdId != null || l.CtwaClid != null || l.Source == LeadSource.MetaLeadAd || l.Source == LeadSource.WhatsAppAd)
+                && l.WhatsappPhone != null && l.WhatsappPhone
+                    .Replace(" ", "").Replace("-", "").Replace("+", "").Replace("(", "").Replace(")", "").Replace(".", "").EndsWith(suffix))
+            .OrderByDescending(l => l.AdId != null || l.CtwaClid != null)
+            .ThenByDescending(l => l.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (lead is null) return NotFound();
+        _ = email; // reservado
+
+        var source = lead.CtwaClid != null ? "ctwa" : lead.Source == LeadSource.MetaLeadAd ? "leadgen" : lead.AdId != null ? "ctwa" : "hub";
+        var utmSource = lead.Source == LeadSource.MetaLeadAd ? "facebook" : "whatsapp-ad";
+        var utmMedium = lead.Source == LeadSource.MetaLeadAd ? "leadgen" : "ctwa";
+        return Ok(new HubAttributionResponse(lead.AdId, lead.CtwaClid, lead.AdId, utmSource, utmMedium, lead.AdTitle, lead.AdTitle, source, lead.Id));
+    }
+
+    /// <summary>
     /// La app reenvía un WhatsApp INBOUND que recibió por su Evolution. Lo registramos en la
     /// conversación del lead (match por producto + últimos 8 dígitos del teléfono) y marcamos
     /// Replied; el cerebro (ConversationAgentService) lo levanta solo en su tick.
@@ -337,10 +371,30 @@ public class HubController : ControllerBase
                     .EndsWith(suffix))
             .OrderByDescending(l => l.CreatedAt)
             .FirstOrDefaultAsync(ct);
+        if (lead is null && !string.IsNullOrWhiteSpace(req.AdId ?? req.CtwaClid))
+        {
+            // Número desconocido que llegó desde un anuncio (click-to-WhatsApp en la línea de la app):
+            // lo creamos como lead de anuncio para no perder la atribución (ad id + ctwa_clid).
+            var created = await _ingest.IngestAsync(new LeadIngestRequest(
+                req.ProductKey, LeadSource.WhatsAppAd, null, null, null, digits, null), ct);
+            if (created.Outcome == LeadIngestOutcome.Created && created.LeadId is Guid newId)
+                lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == newId, ct);
+        }
         if (lead is null)
         {
             _log.LogInformation("Hub inbound sin lead: {Pk}/{Phone}", req.ProductKey, digits);
             return Ok(new { matched = false });
+        }
+
+        // Atribución del anuncio: si el mensaje trae referral y el lead no lo tenía, se guarda.
+        if (!string.IsNullOrWhiteSpace(req.AdId ?? req.CtwaClid) && string.IsNullOrWhiteSpace(lead.AdId) && string.IsNullOrWhiteSpace(lead.CtwaClid))
+        {
+            lead.AdId = req.AdId;
+            lead.AdTitle = Trunc(req.AdTitle, 256);
+            lead.AdSourceUrl = Trunc(req.AdSourceUrl, 512);
+            lead.CtwaClid = Trunc(req.CtwaClid, 256);
+            if (lead.Source is LeadSource.WhatsAppInbound or LeadSource.ProductReengage) lead.Source = LeadSource.WhatsAppAd;
+            _log.LogInformation("Hub inbound: lead {Lead} atribuido al anuncio {AdId} (ctwa={Ctwa})", lead.Id, req.AdId, req.CtwaClid != null);
         }
 
         var ts = req.TimestampUnix is long u ? DateTimeOffset.FromUnixTimeSeconds(u) : DateTimeOffset.UtcNow;
@@ -457,6 +511,8 @@ public class HubController : ControllerBase
         _ => LeadSource.ProductReengage,
     };
 
+    private static string? Trunc(string? s, int n) => string.IsNullOrEmpty(s) ? s : (s.Length > n ? s[..n] : s);
+
     private static string? CleanPhone(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
@@ -510,7 +566,25 @@ public record HubInboundRequest(
     string? Phone,
     string? Text,
     string? ProviderMessageId,
-    long? TimestampUnix);
+    long? TimestampUnix,
+    // Referral del anuncio (contextInfo.externalAdReply) cuando el mensaje abrió un click-to-WhatsApp
+    // en la línea de la app: id del anuncio + ctwa_clid, lo que Meta CAPI necesita para atribuir la compra.
+    string? AdId = null,
+    string? AdTitle = null,
+    string? AdSourceUrl = null,
+    string? CtwaClid = null);
+
+/// <summary>Lo que la app necesita saber del lead para atribuir el alta/compra al anuncio (GET /api/hub/attribution).</summary>
+public record HubAttributionResponse(
+    string? MetaAdId,
+    string? CtwaClid,
+    string? UtmContent,
+    string? UtmSource,
+    string? UtmMedium,
+    string? UtmCampaign,
+    string? AdTitle,
+    string? Source,
+    Guid LeadId);
 
 public record HubKnowledgeRequest(
     string ProductKey,

@@ -333,7 +333,7 @@ public class OnboardingService
             {
                 ob.Email = FixEmailTypos(email.Value.Trim());
                 var url = await _provision.RegisterAsync(provisionUrl, provisionNameField,
-                    PresentableBusinessName(ob.GymName, lead.Name), ob.Email, ob.ContactName, cfg.ProductKey, ct, provisionExtra);
+                    PresentableBusinessName(ob.GymName, lead.Name), ob.Email, ob.ContactName, cfg.ProductKey, ct, provisionExtra, lead);
                 if (string.IsNullOrWhiteSpace(url))
                 {
                     reply = "Uy, no pude crear la cuenta con ese mail. ¿Me lo confirmás escribiéndolo de nuevo?";
@@ -398,7 +398,7 @@ public class OnboardingService
         var provisionUrl = persona is null ? cfg.ProvisionUrl : persona.ProvisionUrl;
         var nameField = persona is null ? cfg.ProvisionNameField : persona.ProvisionNameField;
         var url = await _provision.RegisterAsync(provisionUrl, nameField,
-            PresentableBusinessName(ob.GymName, lead.Name), ob.Email!, ob.ContactName, cfg.ProductKey, ct, persona?.ProvisionExtra);
+            PresentableBusinessName(ob.GymName, lead.Name), ob.Email!, ob.ContactName, cfg.ProductKey, ct, persona?.ProvisionExtra, lead);
         if (string.IsNullOrWhiteSpace(url)) return null;
         ob.AccessUrl = url;
         ob.UpdatedAt = DateTimeOffset.UtcNow;

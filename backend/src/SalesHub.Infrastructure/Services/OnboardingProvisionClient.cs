@@ -11,7 +11,8 @@ public interface IOnboardingProvisionClient
     /// <summary>POST al endpoint de provisión de la app. Devuelve el accessUrl si se creó, null si falló.
     /// <paramref name="extraJson"/> son params extra a mergear en el body (ej. {"accountType":"gymowner"}).</summary>
     Task<string?> RegisterAsync(string url, string nameField, string businessName, string email,
-        string? contactName, string productKey, CancellationToken ct, string? extraJson = null);
+        string? contactName, string productKey, CancellationToken ct, string? extraJson = null,
+        SalesHub.Core.Domain.Entities.Lead? lead = null);
 }
 
 public class OnboardingProvisionClient : IOnboardingProvisionClient
@@ -26,7 +27,8 @@ public class OnboardingProvisionClient : IOnboardingProvisionClient
     }
 
     public async Task<string?> RegisterAsync(string url, string nameField, string businessName, string email,
-        string? contactName, string productKey, CancellationToken ct, string? extraJson = null)
+        string? contactName, string productKey, CancellationToken ct, string? extraJson = null,
+        SalesHub.Core.Domain.Entities.Lead? lead = null)
     {
         if (string.IsNullOrWhiteSpace(url)) { _log.LogWarning("Onboarding sin ProvisionUrl para {Product}", productKey); return null; }
         try
@@ -42,6 +44,21 @@ public class OnboardingProvisionClient : IOnboardingProvisionClient
                 ["utmMedium"] = "whatsapp",
                 ["utmCampaign"] = "chatbot-" + productKey,
             };
+            // Atribución del anuncio que originó al lead (CTWA: externalAdReply; form de leads: ad_id).
+            // La app la guarda en el tenant y la manda a Meta CAPI cuando el negocio paga.
+            if (lead is not null && (!string.IsNullOrWhiteSpace(lead.AdId) || !string.IsNullOrWhiteSpace(lead.CtwaClid)))
+            {
+                payload["metaAdId"] = lead.AdId;
+                payload["ctwaClid"] = lead.CtwaClid;
+                payload["utmContent"] = lead.AdId;
+                payload["phone"] = payload.TryGetValue("phone", out var ph) && ph is not null ? ph : lead.WhatsappPhone;
+                payload["attributionSource"] = lead.CtwaClid is not null ? "ctwa"
+                    : lead.Source == SalesHub.Core.Domain.Enums.LeadSource.MetaLeadAd ? "leadgen" : "ctwa";
+            }
+            else if (lead is not null)
+            {
+                payload["attributionSource"] = "hub";
+            }
             // Params extra por persona (ej. {"accountType":"gymowner"}) → se mergean al body.
             if (!string.IsNullOrWhiteSpace(extraJson))
             {

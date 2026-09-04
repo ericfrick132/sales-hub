@@ -96,8 +96,9 @@ public class MetaLeadsController : ControllerBase
 
                     var formId = GetStr(value, "form_id");
                     var campaign = GetStr(value, "campaign_name") ?? GetStr(value, "campaign_id") ?? GetStr(value, "ad_id");
+                    var adId = GetStr(value, "ad_id");
 
-                    try { await ProcessLeadAsync(leadgenId, formId, campaign, ct); }
+                    try { await ProcessLeadAsync(leadgenId, formId, campaign, adId, ct); }
                     catch (Exception ex) { _log.LogError(ex, "Meta lead {LeadId}: falló el procesamiento", leadgenId); }
                 }
             }
@@ -106,7 +107,7 @@ public class MetaLeadsController : ControllerBase
         return Ok();
     }
 
-    private async Task ProcessLeadAsync(string leadgenId, string? formId, string? campaign, CancellationToken ct)
+    private async Task ProcessLeadAsync(string leadgenId, string? formId, string? campaign, string? adId, CancellationToken ct)
     {
         var token = _config["Meta:PageAccessToken"];
         if (string.IsNullOrEmpty(token))
@@ -131,6 +132,7 @@ public class MetaLeadsController : ControllerBase
         using var lead = JsonDocument.Parse(json);
         var root = lead.RootElement;
         campaign ??= GetStr(root, "campaign_name") ?? GetStr(root, "ad_id");
+        adId ??= GetStr(root, "ad_id");
 
         // field_data: [{ name, values: [..] }]. Armamos un mapa name→primer valor.
         var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -185,6 +187,8 @@ public class MetaLeadsController : ControllerBase
                 if (!string.IsNullOrWhiteSpace(campaign)) notes.Append($" Campaña: {campaign}.");
                 if (qa.Count > 0) notes.Append(" Respuestas — ").Append(string.Join("; ", qa)).Append('.');
                 row.Notes = notes.ToString();
+                // Id del anuncio del form: viaja al tenant en el bot-register y a Meta CAPI cuando paga.
+                if (!string.IsNullOrWhiteSpace(adId)) { row.AdId = adId; row.AdTitle ??= campaign; }
                 if (!string.IsNullOrWhiteSpace(campaign)) row.SearchCategory = campaign;
                 row.RawDataJson = json;
                 await _db.SaveChangesAsync(ct);
