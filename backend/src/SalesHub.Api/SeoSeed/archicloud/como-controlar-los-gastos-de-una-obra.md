@@ -71,7 +71,7 @@ Un resumen de lo que cada herramienta dice hacer, según su sitio (septiembre 20
 
 | Herramienta | Enfoque declarado |
 | --- | --- |
-| **ArchiCloud** | Gestión de obras para arquitectos y constructoras: gastos por obra y rubro contra presupuesto, multi-moneda ARS/USD, planos versionados, contratistas con seguros y ART, avances por etapa, portal del cliente y agente de IA en WhatsApp (plan IA). Planes desde ARS 25.000/mes, 14 días gratis sin tarjeta. |
+| **ArchiCloud** | Gestión de obras para arquitectos y constructoras: gastos por obra y rubro contra presupuesto, multi-moneda ARS/USD, planos versionados, contratistas con seguros y ART, avances por etapa, portal del cliente y agente de IA en WhatsApp (plan IA). Planes en pesos publicados en su sitio, 14 días gratis sin tarjeta. |
 | **Obak** | Gestión de obras, costos, presupuestos y compras para constructoras, arquitectos y desarrolladoras, según su sitio (septiembre 2026). |
 | **Bloky** | Gestión de obras más un marketplace de materiales, según su sitio (septiembre 2026). |
 | **Dataobra** | Presupuesto y administración para constructoras, multiempresa y multimoneda, según su sitio (septiembre 2026). |
