@@ -1,0 +1,32 @@
+{
+  "siteKey": "turnospro",
+  "slug": "agenda-de-turnos-para-imprimir",
+  "title": "Agenda de turnos para imprimir: plantilla PDF gratis (diaria y semanal) y cómo usarla",
+  "metaDescription": "Agenda de turnos para imprimir en PDF, gratis: hoja diaria por profesional con franjas de 30 minutos, hoja semanal y registro de señas. Cómo usarla bien.",
+  "targetKeyword": "agenda de turnos para imprimir",
+  "contentType": "Guide",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Qué incluye la agenda de turnos para imprimir?",
+      "answer": "Una hoja diaria por profesional con franjas de 30 minutos de 8:00 a 21:00 y columnas para cliente, servicio, teléfono, seña y confirmación, con un resumen del día al pie; una hoja semanal con los siete días en columnas; y una hoja de señas y confirmaciones. En PDF, tamaño A4, blanco y negro."
+    },
+    {
+      "question": "¿Sirve para peluquería, barbería, estética o consultorio?",
+      "answer": "Sí. Las franjas de 30 minutos y las columnas de servicio, seña y confirmación funcionan igual para cualquier negocio que atienda con turnos. Si un servicio dura más de una franja, marcás las franjas que ocupa."
+    },
+    {
+      "question": "¿Cómo evito que se caigan turnos con una agenda de papel?",
+      "answer": "Anotá todo en un solo lugar en el momento, anotá el servicio y su duración, pedí seña en los servicios largos y confirmá cada turno el día anterior marcando la columna. Los turnos sin confirmar se llaman a primera hora."
+    },
+    {
+      "question": "¿Cuándo conviene pasar de la agenda impresa a un sistema de turnos?",
+      "answer": "Cuando tus clientas quieren reservar de noche, cuando confirmar cada turno te lleva una hora por día o cuando cobrás señas a mano. Un sistema de turnos online toma reservas las 24 horas, cobra la seña con MercadoPago y manda recordatorios y confirmación por WhatsApp solos."
+    },
+    {
+      "question": "¿Cuánto cuesta TurnosPro?",
+      "answer": "ARS 50.000 por mes en el plan mensual, con 7 días de prueba, y ARS 45.000, 40.000 y 37.500 por mes en los planes de 3, 6 y 12 meses, con 14 días de prueba. Reservas ilimitadas, agenda por profesional, señas con MercadoPago sin comisión, recordatorios por WhatsApp y reportes. Sin tarjeta para probar y sin permanencia."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"Agenda de turnos para imprimir: plantilla PDF gratis (diaria y semanal) y cómo usarla\",\"description\":\"Agenda de turnos para imprimir en PDF, gratis: hoja diaria por profesional con franjas de 30 minutos, hoja semanal y registro de señas. Cómo usarla bien.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"TurnosPro\",\"url\":\"https://turnos-pro.com\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"TurnosPro\",\"url\":\"https://turnos-pro.com\"},\"mainEntityOfPage\":\"https://turnos-pro.com/blog/agenda-de-turnos-para-imprimir/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://turnos-pro.com/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://turnos-pro.com/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Agenda de turnos para imprimir: plantilla PDF gratis (diaria y semanal) y cómo usarla\",\"item\":\"https://turnos-pro.com/blog/agenda-de-turnos-para-imprimir/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Qué incluye la agenda de turnos para imprimir?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Una hoja diaria por profesional con franjas de 30 minutos de 8:00 a 21:00 y columnas para cliente, servicio, teléfono, seña y confirmación, con un resumen del día al pie; una hoja semanal con los siete días en columnas; y una hoja de señas y confirmaciones. En PDF, tamaño A4, blanco y negro.\"}},{\"@type\":\"Question\",\"name\":\"¿Sirve para peluquería, barbería, estética o consultorio?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Las franjas de 30 minutos y las columnas de servicio, seña y confirmación funcionan igual para cualquier negocio que atienda con turnos. Si un servicio dura más de una franja, marcás las franjas que ocupa.\"}},{\"@type\":\"Question\",\"name\":\"¿Cómo evito que se caigan turnos con una agenda de papel?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Anotá todo en un solo lugar en el momento, anotá el servicio y su duración, pedí seña en los servicios largos y confirmá cada turno el día anterior marcando la columna. Los turnos sin confirmar se llaman a primera hora.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuándo conviene pasar de la agenda impresa a un sistema de turnos?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Cuando tus clientas quieren reservar de noche, cuando confirmar cada turno te lleva una hora por día o cuando cobrás señas a mano. Un sistema de turnos online toma reservas las 24 horas, cobra la seña con MercadoPago y manda recordatorios y confirmación por WhatsApp solos.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta TurnosPro?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"ARS 50.000 por mes en el plan mensual, con 7 días de prueba, y ARS 45.000, 40.000 y 37.500 por mes en los planes de 3, 6 y 12 meses, con 14 días de prueba. Reservas ilimitadas, agenda por profesional, señas con MercadoPago sin comisión, recordatorios por WhatsApp y reportes. Sin tarjeta para probar y sin permanencia.\"}}]}]}"
+}
