@@ -6,7 +6,7 @@ Turnito es, junto con AgendaPro, el sistema de turnos que más se busca en Argen
 
 - **Precio de entrada:** Turnito tiene un plan gratuito (hasta 3 agendas y 100 reservas por mes, con 5% de comisión por cobro), un plan Advance de ARS 24.500 por mes y un plan Pro de ARS 42.000. TurnosPro tiene un solo plan de ARS 50.000 por mes, que baja a ARS 37.500 con compromiso anual.
 - **Comisión:** en Turnito depende del plan: 5% en el gratuito, 1% en Advance, 0% recién en Pro. En TurnosPro es 0% siempre, con la seña directo en tu cuenta de MercadoPago.
-- **WhatsApp:** Turnito incluye 100 recordatorios por mes en Advance y 250 en Pro. TurnosPro no cuenta mensajes: recordatorios y confirmación por WhatsApp desde tu propio número, sin tope, más un agente de IA que confirma los turnos solo.
+- **WhatsApp:** Turnito incluye 100 recordatorios por mes en Advance y 250 en Pro. TurnosPro no vende paquetes de mensajes: recordatorios y confirmación por WhatsApp desde tu propio número incluidos en el plan, más un agente de IA que confirma los turnos solo.
 - **Integraciones:** acá gana Turnito. Sincroniza con Google Calendar, hace turnos virtuales con Google Meet y cobra con MercadoPago, PayPal y Talo. Opera en 8 países.
 - **Equipo:** TurnosPro incluye todos los profesionales y sucursales en el mismo precio, con soporte prioritario y activación en 15 minutos.
 
@@ -25,7 +25,7 @@ Lo que publica cada uno en su sitio a septiembre de 2026.
 | Reservas por mes | Ilimitadas | 100 en Gratuito; ilimitadas en Advance y Pro |
 | Agendas / profesionales | Todos incluidos, con sucursales | 3 en Gratuito; ilimitadas en Advance y Pro |
 | Comisión por cobro | 0% | 5% (Gratuito), 1% (Advance), 0% (Pro) |
-| Recordatorios por WhatsApp | Incluidos, sin tope, desde tu propio número | No incluidos en Gratuito; 100 por mes en Advance; 250 por mes en Pro |
+| Recordatorios por WhatsApp | Incluidos en el plan, desde tu propio número, sin paquetes de mensajes | No incluidos en Gratuito; 100 por mes en Advance; 250 por mes en Pro |
 | Confirmación automática por WhatsApp | Sí, con agente de IA que entiende la respuesta | Recordatorios por WhatsApp y email |
 | Señas y cobros anticipados | MercadoPago integrado, la plata en tu cuenta | MercadoPago, PayPal y Talo |
 | Turnos recurrentes | Sí | 15 en Advance; ilimitados en Pro |
@@ -47,7 +47,7 @@ La comparación de cuotas engaña si no mirás la comisión y los recordatorios.
 
 **Profesional solo, 60 turnos por mes, sin señas.** Turnito Gratuito: ARS 0. TurnosPro: ARS 50.000 por mes. No hay discusión: el gratis te alcanza. Lo único que no vas a tener es el recordatorio automático por WhatsApp, y a 60 turnos podés mandarlos a mano.
 
-**Salón de tres profesionales, 300 turnos por mes, seña de ARS 5.000 en todos.** Turnito Advance: ARS 24.500 más 1% de comisión sobre ARS 1.500.000 cobrados, que son ARS 15.000; total ARS 39.500, con 100 recordatorios por mes para 300 turnos. Turnito Pro: ARS 42.000 con 0% de comisión y 250 recordatorios. TurnosPro: ARS 50.000 por mes, o ARS 37.500 con plan anual, con recordatorios sin tope y confirmación con IA en los 300 turnos. Acá el precio empata, y la diferencia la hacen los 50 a 200 turnos por mes que en Turnito quedan sin recordatorio.
+**Salón de tres profesionales, 300 turnos por mes, seña de ARS 5.000 en todos.** Turnito Advance: ARS 24.500 más 1% de comisión sobre ARS 1.500.000 cobrados, que son ARS 15.000; total ARS 39.500, con 100 recordatorios por mes para 300 turnos. Turnito Pro: ARS 42.000 con 0% de comisión y 250 recordatorios. TurnosPro: ARS 50.000 por mes, o ARS 37.500 con plan anual, con recordatorios y confirmación con IA incluidos en los 300 turnos. Acá el precio empata, y la diferencia la hacen los 50 a 200 turnos por mes que en Turnito quedan sin recordatorio.
 
 **Centro de estética, 500 turnos por mes, cobro completo anticipado de ARS 20.000.** Turnito Gratuito no aplica por el límite de 100 reservas. Advance: 1% sobre ARS 10.000.000 son ARS 100.000 de comisión más la cuota, ARS 124.500 por mes. Pro: ARS 42.000 sin comisión, con 250 recordatorios para 500 turnos. TurnosPro: ARS 37.500 a 50.000 con todo incluido. A este volumen, la comisión de Turnito Advance sale más que cualquier cuota, y el plan Pro queda corto de mensajes.
 
@@ -59,11 +59,11 @@ Es la diferencia de modelo. Turnito financia el plan gratuito con una comisión 
 
 TurnosPro no cobra comisión en ningún caso: la seña o el pago completo entran directo en tu cuenta de MercadoPago y vos pagás solo la cuota fija. Más detalle en [sistema de turnos para peluquerías](/sistema-de-turnos-para-peluquerias) y [para centros de estética](/sistema-de-turnos-para-centros-de-estetica).
 
-## WhatsApp: mensajes contados o sin tope
+## WhatsApp: mensajes contados o incluidos en el plan
 
 En Argentina el cliente no lee el mail: lee WhatsApp. Turnito lo sabe y por eso incluye recordatorios por WhatsApp en los planes pagos: 100 por mes en Advance y 250 en Pro. Si tu negocio hace más turnos que eso, el resto se recuerda por email o a mano.
 
-En TurnosPro el recordatorio y la confirmación salen **desde el número de tu negocio**, sin límite de mensajes, y el agente de IA pide confirmación, entiende la respuesta del cliente y confirma o libera el horario sin que intervengas. Los negocios que combinan señas y recordatorios con TurnosPro reportan hasta un 80% menos de ausencias.
+En TurnosPro el recordatorio y la confirmación salen **desde el número de tu negocio**, incluidos en el plan, y el agente de IA pide confirmación, entiende la respuesta del cliente y confirma o libera el horario sin que intervengas. Los negocios que combinan señas y recordatorios con TurnosPro reportan hasta un 80% menos de ausencias.
 
 ## Integraciones: la ventaja de Turnito
 
@@ -96,7 +96,7 @@ Los dos se arman rápido: cargás profesionales, horarios y servicios con duraci
 **Elegí TurnosPro si:**
 
 - Cobrás señas o pagos anticipados en la mayoría de los turnos y no querés pagar comisión.
-- Hacés más de 250 turnos por mes y querés que todos reciban recordatorio y confirmación por WhatsApp.
+- Hacés más de 250 turnos por mes y querés que todos reciban recordatorio y confirmación por WhatsApp sin comprar paquetes.
 - Tenés un equipo o más de una sucursal y preferís una cuota fija con todo incluido.
 
 ## Cómo pasar de Turnito a TurnosPro

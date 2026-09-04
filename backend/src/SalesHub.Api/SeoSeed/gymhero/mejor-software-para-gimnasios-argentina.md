@@ -46,7 +46,7 @@ Lo que dice cada proveedor sobre sí mismo, según su sitio (septiembre 2026). N
 
 | Software | Qué destaca (según su sitio, septiembre 2026) | Precio publicado |
 | --- | --- | --- |
-| GymHero | Semáforo de socios con QR en recepción, débito automático y cobros por MercadoPago, recordatorios de pago y de clases por WhatsApp, reservas desde el celular con cupos, control de acceso opcional por huella o reconocimiento facial, rutinas y planificador (Coaching Pro), reportes. 850+ gimnasios en Argentina y LATAM, equipo en Buenos Aires, setup asistido en 1 día. | ARS 30.000/mes de lista; promo −33%: ARS 20.000/mes. 7 días gratis sin tarjeta. |
+| GymHero | Semáforo de socios con QR en recepción, débito automático y cobros por MercadoPago, recordatorios de pago y de clases por WhatsApp, reservas desde el celular con cupos, control de acceso opcional por huella o reconocimiento facial, rutinas y planificador (Coaching Pro), reportes. 850+ gimnasios en Argentina y LATAM, equipo en Buenos Aires, setup asistido en 1 día. | Starter ARS 50.000/mes; Coaching Pro (rutinas) ARS 69.000/mes; Multi-sede (2 sedes) ARS 99.000/mes; WhatsApp como complemento desde ARS 8.000/mes. 7 días gratis sin tarjeta. |
 | About a Gym | Control de acceso con QR, soporte por WhatsApp, "500+ gimnasios". | ARS 20.000/mes |
 | GymFlow | 15+ módulos, facturación AFIP, control de acceso, app para alumnos. | Consultar |
 | AccesoGym | Control de acceso, pagos, turnos y membresías. | Consultar |
@@ -62,9 +62,9 @@ Cómo leer la tabla, según lo que te duele:
 
 ## Cuánto cuesta un software para gimnasios en Argentina
 
-Los precios publicados que encontramos rondan los **ARS 20.000 por mes** para un plan completo: About a Gym publica ARS 20.000/mes según su sitio, y GymHero tiene un plan todo incluido de ARS 30.000/mes de lista con una promo vigente de −33% que lo deja en ARS 20.000/mes. Varios proveedores no publican precio y te piden que consultes. Cuando lo hagas, preguntá siempre por el precio final con IVA, si hay costo de alta, qué pasa cuando superás cierta cantidad de socios y si el soporte está incluido.
+Los precios publicados van de **ARS 20.000 a ARS 80.000 por mes**: About a Gym publica ARS 20.000/mes según su sitio, GymHero arranca en ARS 50.000/mes con el plan Starter (cobros, reservas, control de acceso con QR y reportes) y Crossfy publica ARS 80.000/mes. Varios proveedores no publican precio y te piden que consultes. Cuando lo hagas, preguntá siempre por el precio final con IVA, si hay costo de alta, qué pasa cuando superás cierta cantidad de socios, si los mensajes de WhatsApp están incluidos y si el soporte está incluido.
 
-En GymHero el plan es uno solo: semáforo con QR, débito automático, recordatorios por WhatsApp, reservas con cupos y reportes, sin módulos escondidos. Se paga mes a mes, o con descuento si contratás 6 meses (−15%) o 12 meses (−25%). Antes de pagar probás 7 días gratis sin cargar tarjeta. Los precios actualizados están siempre en [la sección de precios](/#precios).
+En GymHero hay tres planes mensuales, sin permanencia y sin costo de alta: Starter (ARS 50.000/mes) con semáforo con QR, débito automático, reservas con cupos y reportes; Coaching Pro (ARS 69.000/mes) que suma biblioteca de ejercicios, constructor de rutinas y planes por alumno; y Multi-sede (ARS 99.000/mes) para dos sedes. Los recordatorios por WhatsApp se contratan como complemento: ARS 8.000/mes hasta 1.000 mensajes o ARS 18.000/mes ilimitado. Antes de pagar probás 7 días gratis sin cargar tarjeta. Los precios actualizados están siempre en [la sección de precios](/#precios).
 
 Para dimensionarlo: con que el sistema te recupere un par de cuotas de morosos por mes, ya se pagó solo. Lo que sigue es ganancia y horas que no pasás persiguiendo pagos.
 
