@@ -1,0 +1,32 @@
+{
+  "siteKey": "bunker",
+  "slug": "como-planificar-entrenamientos-para-tus-alumnos",
+  "title": "Cómo planificar los entrenamientos de tus alumnos (y dejar el Excel)",
+  "metaDescription": "Guía práctica para planificar los entrenamientos de tus alumnos sin Excel: objetivo, bloques, progresiones, plantillas y ajuste con datos reales.",
+  "targetKeyword": "planificar entrenamientos alumnos",
+  "contentType": "Guide",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Cada cuánto conviene cambiar la planificación de un alumno?",
+      "answer": "No cambies el plan cada semana: planificá un ciclo de varias semanas con la progresión escrita de antemano y una semana de descarga al final. Dentro del ciclo solo ajustás cargas según lo que el alumno registró. Cambiás la estructura cuando termina el ciclo o cuando el objetivo cambia."
+    },
+    {
+      "question": "¿Qué datos tiene que registrar el alumno en cada entrenamiento?",
+      "answer": "Con tres datos por serie alcanza: peso, repeticiones y sensación (RPE o RIR). Registrados en el momento, desde el celular, son confiables; reconstruidos por audio al día siguiente, no. En Bunker el alumno los carga desde la app para iPhone o el navegador y los gráficos de progreso se generan automáticamente."
+    },
+    {
+      "question": "¿Qué es mejor: planificar por semana o por ciclo?",
+      "answer": "La semana es la unidad de ejecución; el ciclo es la unidad de planificación. Armá el ciclo con la progresión definida (más peso, más repeticiones o más series semana a semana) y cada semana solo confirmás que el alumno puede avanzar. Así no rehacés el plan todos los lunes."
+    },
+    {
+      "question": "¿Puedo seguir usando Excel para planificar y una app solo para el alumno?",
+      "answer": "Podés, pero perdés lo más valioso: ver el plan y lo ejecutado en el mismo lugar. Si el registro del alumno cae en una app y tu planificación vive en una planilla, seguís cruzando datos a mano. Conviene que planificación, registro y mensajería estén juntos."
+    },
+    {
+      "question": "¿Cuánto cuesta una app para planificar entrenamientos como Bunker?",
+      "answer": "Los atletas usan Bunker gratis. Los entrenadores empiezan con una prueba gratis sin tarjeta y después eligen plan: Básico $5.000 ARS/mes (hasta 10 atletas), Profesional $12.000 (hasta 50), Premium $25.000 (hasta 200) y Plan IA $35.000 con planificación asistida por IA."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"Cómo planificar los entrenamientos de tus alumnos (y dejar el Excel)\",\"description\":\"Guía práctica para planificar los entrenamientos de tus alumnos sin Excel: objetivo, bloques, progresiones, plantillas y ajuste con datos reales.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"Bunker\",\"url\":\"https://bunker-app.com\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"Bunker\",\"url\":\"https://bunker-app.com\"},\"mainEntityOfPage\":\"https://bunker-app.com/blog/como-planificar-entrenamientos-para-tus-alumnos/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://bunker-app.com/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://bunker-app.com/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Cómo planificar los entrenamientos de tus alumnos (y dejar el Excel)\",\"item\":\"https://bunker-app.com/blog/como-planificar-entrenamientos-para-tus-alumnos/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Cada cuánto conviene cambiar la planificación de un alumno?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"No cambies el plan cada semana: planificá un ciclo de varias semanas con la progresión escrita de antemano y una semana de descarga al final. Dentro del ciclo solo ajustás cargas según lo que el alumno registró. Cambiás la estructura cuando termina el ciclo o cuando el objetivo cambia.\"}},{\"@type\":\"Question\",\"name\":\"¿Qué datos tiene que registrar el alumno en cada entrenamiento?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Con tres datos por serie alcanza: peso, repeticiones y sensación (RPE o RIR). Registrados en el momento, desde el celular, son confiables; reconstruidos por audio al día siguiente, no. En Bunker el alumno los carga desde la app para iPhone o el navegador y los gráficos de progreso se generan automáticamente.\"}},{\"@type\":\"Question\",\"name\":\"¿Qué es mejor: planificar por semana o por ciclo?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"La semana es la unidad de ejecución; el ciclo es la unidad de planificación. Armá el ciclo con la progresión definida (más peso, más repeticiones o más series semana a semana) y cada semana solo confirmás que el alumno puede avanzar. Así no rehacés el plan todos los lunes.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo seguir usando Excel para planificar y una app solo para el alumno?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Podés, pero perdés lo más valioso: ver el plan y lo ejecutado en el mismo lugar. Si el registro del alumno cae en una app y tu planificación vive en una planilla, seguís cruzando datos a mano. Conviene que planificación, registro y mensajería estén juntos.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta una app para planificar entrenamientos como Bunker?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Los atletas usan Bunker gratis. Los entrenadores empiezan con una prueba gratis sin tarjeta y después eligen plan: Básico $5.000 ARS/mes (hasta 10 atletas), Profesional $12.000 (hasta 50), Premium $25.000 (hasta 200) y Plan IA $35.000 con planificación asistida por IA.\"}}]}]}"
+}
