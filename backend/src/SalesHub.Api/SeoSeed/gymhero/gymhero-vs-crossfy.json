@@ -1,0 +1,36 @@
+{
+  "siteKey": "gymhero",
+  "slug": "gymhero-vs-crossfy",
+  "title": "GymHero vs Crossfy: comparativa de software para gimnasios (2026)",
+  "metaDescription": "Crossfy publica ARS 80.000/mes y GymHero ARS 30.000. Comparamos precios, control de acceso, cobros por MercadoPago, reservas, app para socios y soporte.",
+  "targetKeyword": "crossfy",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Cuánto cuesta Crossfy?",
+      "answer": "Según su sitio (septiembre de 2026), Crossfy cuesta ARS 80.000 por mes en el plan mensual, ARS 70.000 por mes en el semestral (pago único de ARS 420.000) y ARS 57.500 por mes en el anual (pago único de ARS 690.000), sin costo de lanzamiento y sin límite de socios."
+    },
+    {
+      "question": "¿Crossfy es gratis?",
+      "answer": "No. Crossfy ofrece una prueba gratis y después se paga una suscripción mensual, semestral o anual. GymHero también tiene 7 días de prueba gratis sin tarjeta y después cuesta ARS 30.000 por mes de lista, hoy ARS 20.000 con promo."
+    },
+    {
+      "question": "¿Cuál es la diferencia principal entre GymHero y Crossfy?",
+      "answer": "El precio y el foco. GymHero cuesta entre 2,5 y 4 veces menos e incluye semáforo con QR, lector de huella, reconocimiento facial y débito automático por MercadoPago. Crossfy incluye una app con tu marca en las tiendas y herramientas específicas de CrossFit como WODs, RMs, benchmarks y generación de WODs con IA."
+    },
+    {
+      "question": "¿GymHero tiene app para los socios?",
+      "answer": "Los socios usan GymHero desde el navegador del celular, con un link, sin instalar nada: reservan clases, escanean el QR en recepción y pagan la cuota. No hay una app con tu marca en las tiendas; eso sí lo ofrece Crossfy."
+    },
+    {
+      "question": "¿Puedo pasar mis socios de Crossfy a GymHero?",
+      "answer": "Sí. Exportás los socios a Excel desde Crossfy y los importás en GymHero con planes y vencimientos. Con el setup asistido se hace en un día y durante la prueba gratis podés tener los dos sistemas en paralelo."
+    },
+    {
+      "question": "¿Cuál conviene para un box de CrossFit?",
+      "answer": "Si el box es chico o mediano y el problema es cobrar y controlar cupos, GymHero lo resuelve con reservas, control de acceso y rutinas a un precio mucho menor. Si el box es competitivo, con programación propia, RMs, benchmarks y leaderboard, Crossfy tiene más profundidad en eso."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"GymHero vs Crossfy: comparativa de software para gimnasios (2026)\",\"description\":\"Crossfy publica ARS 80.000/mes y GymHero ARS 30.000. Comparamos precios, control de acceso, cobros por MercadoPago, reservas, app para socios y soporte.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"GymHero\",\"url\":\"https://gymhero.fitness\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"GymHero\",\"url\":\"https://gymhero.fitness\"},\"mainEntityOfPage\":\"https://gymhero.fitness/blog/gymhero-vs-crossfy/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://gymhero.fitness/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://gymhero.fitness/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"GymHero vs Crossfy: comparativa de software para gimnasios (2026)\",\"item\":\"https://gymhero.fitness/blog/gymhero-vs-crossfy/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta Crossfy?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Según su sitio (septiembre de 2026), Crossfy cuesta ARS 80.000 por mes en el plan mensual, ARS 70.000 por mes en el semestral (pago único de ARS 420.000) y ARS 57.500 por mes en el anual (pago único de ARS 690.000), sin costo de lanzamiento y sin límite de socios.\"}},{\"@type\":\"Question\",\"name\":\"¿Crossfy es gratis?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"No. Crossfy ofrece una prueba gratis y después se paga una suscripción mensual, semestral o anual. GymHero también tiene 7 días de prueba gratis sin tarjeta y después cuesta ARS 30.000 por mes de lista, hoy ARS 20.000 con promo.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuál es la diferencia principal entre GymHero y Crossfy?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"El precio y el foco. GymHero cuesta entre 2,5 y 4 veces menos e incluye semáforo con QR, lector de huella, reconocimiento facial y débito automático por MercadoPago. Crossfy incluye una app con tu marca en las tiendas y herramientas específicas de CrossFit como WODs, RMs, benchmarks y generación de WODs con IA.\"}},{\"@type\":\"Question\",\"name\":\"¿GymHero tiene app para los socios?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Los socios usan GymHero desde el navegador del celular, con un link, sin instalar nada: reservan clases, escanean el QR en recepción y pagan la cuota. No hay una app con tu marca en las tiendas; eso sí lo ofrece Crossfy.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo pasar mis socios de Crossfy a GymHero?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Exportás los socios a Excel desde Crossfy y los importás en GymHero con planes y vencimientos. Con el setup asistido se hace en un día y durante la prueba gratis podés tener los dos sistemas en paralelo.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuál conviene para un box de CrossFit?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Si el box es chico o mediano y el problema es cobrar y controlar cupos, GymHero lo resuelve con reservas, control de acceso y rutinas a un precio mucho menor. Si el box es competitivo, con programación propia, RMs, benchmarks y leaderboard, Crossfy tiene más profundidad en eso.\"}}]}]}"
+}
