@@ -1,0 +1,32 @@
+{
+  "siteKey": "gymhero",
+  "slug": "planilla-socios-gimnasio-excel",
+  "title": "Planilla de control de socios de gimnasio en Excel: plantilla gratis y cómo usarla",
+  "metaDescription": "Plantilla Excel gratis para el control de socios de tu gimnasio: planes, vencimientos y estado calculados solos, pagos, asistencia y resumen mensual.",
+  "targetKeyword": "plantilla excel control de gimnasio",
+  "contentType": "Guide",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Qué incluye la planilla de control de gimnasio?",
+      "answer": "Cinco hojas: Resumen (al día, vencidos, próximos a vencer, morosidad, cobrado en el mes, ingresos esperados y asistencias), Planes, Socios con vencimiento y estado calculados solos, Pagos con medio de pago y Asistencia diaria."
+    },
+    {
+      "question": "¿Cómo calcula el vencimiento de cada socio?",
+      "answer": "Toma la fecha del último pago y le suma la duración en días del plan elegido en la hoja Planes. Si el vencimiento es hoy o posterior, el estado es Al día; si ya pasó, Vencido. Los que vencen en 5 días o menos se marcan en amarillo."
+    },
+    {
+      "question": "¿Sirve para un box de CrossFit o un estudio de pilates?",
+      "answer": "Sí. Cargás tus planes con su duración (mensual, trimestral, pase de clases) y la lógica es la misma. Lo que la planilla no hace es manejar cupos por clase: para eso necesitás reservas con cupo en un sistema."
+    },
+    {
+      "question": "¿Puedo importar la planilla a GymHero después?",
+      "answer": "Sí. GymHero importa los socios desde Excel con sus planes y vencimientos, con setup asistido en un día, y desde ahí la cuota se cobra con débito automático y el acceso se controla con el semáforo con QR."
+    },
+    {
+      "question": "¿Cuándo conviene pasar del Excel a un software de gestión?",
+      "answer": "Cuando tenés más de 100 socios, cobrás por varios medios y necesitás saber en la puerta, en segundos, quién está al día. GymHero cuesta ARS 50.000 por mes en el plan Starter, con 7 días de prueba gratis sin tarjeta."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"Planilla de control de socios de gimnasio en Excel: plantilla gratis y cómo usarla\",\"description\":\"Plantilla Excel gratis para el control de socios de tu gimnasio: planes, vencimientos y estado calculados solos, pagos, asistencia y resumen mensual.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"GymHero\",\"url\":\"https://gymhero.fitness\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"GymHero\",\"url\":\"https://gymhero.fitness\"},\"mainEntityOfPage\":\"https://gymhero.fitness/blog/planilla-socios-gimnasio-excel/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://gymhero.fitness/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://gymhero.fitness/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Planilla de control de socios de gimnasio en Excel: plantilla gratis y cómo usarla\",\"item\":\"https://gymhero.fitness/blog/planilla-socios-gimnasio-excel/\"}]},{\"@type\":\"HowTo\",\"name\":\"Cómo usar la planilla de control de socios de gimnasio\",\"step\":[{\"@type\":\"HowToStep\",\"name\":\"Cargar los planes\",\"text\":\"Nombre, duración en días y precio de cada plan.\"},{\"@type\":\"HowToStep\",\"name\":\"Cargar los socios\",\"text\":\"Datos, plan, fecha de alta y último pago; vencimiento y estado se calculan solos.\"},{\"@type\":\"HowToStep\",\"name\":\"Registrar cada pago\",\"text\":\"Fila en Pagos y actualización del último pago del socio.\"},{\"@type\":\"HowToStep\",\"name\":\"Mirar el resumen cada semana\",\"text\":\"Próximos a vencer, vencidos y cobrado en el mes.\"},{\"@type\":\"HowToStep\",\"name\":\"Registrar asistencia\",\"text\":\"Una fila por ingreso para ver horarios y socios que dejaron de venir.\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Qué incluye la planilla de control de gimnasio?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Cinco hojas: Resumen (al día, vencidos, próximos a vencer, morosidad, cobrado en el mes, ingresos esperados y asistencias), Planes, Socios con vencimiento y estado calculados solos, Pagos con medio de pago y Asistencia diaria.\"}},{\"@type\":\"Question\",\"name\":\"¿Cómo calcula el vencimiento de cada socio?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Toma la fecha del último pago y le suma la duración en días del plan elegido en la hoja Planes. Si el vencimiento es hoy o posterior, el estado es Al día; si ya pasó, Vencido. Los que vencen en 5 días o menos se marcan en amarillo.\"}},{\"@type\":\"Question\",\"name\":\"¿Sirve para un box de CrossFit o un estudio de pilates?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Cargás tus planes con su duración (mensual, trimestral, pase de clases) y la lógica es la misma. Lo que la planilla no hace es manejar cupos por clase: para eso necesitás reservas con cupo en un sistema.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo importar la planilla a GymHero después?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. GymHero importa los socios desde Excel con sus planes y vencimientos, con setup asistido en un día, y desde ahí la cuota se cobra con débito automático y el acceso se controla con el semáforo con QR.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuándo conviene pasar del Excel a un software de gestión?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Cuando tenés más de 100 socios, cobrás por varios medios y necesitás saber en la puerta, en segundos, quién está al día. GymHero cuesta ARS 50.000 por mes en el plan Starter, con 7 días de prueba gratis sin tarjeta.\"}}]}]}"
+}
