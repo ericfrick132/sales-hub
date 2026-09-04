@@ -1,0 +1,36 @@
+{
+  "siteKey": "playcrew",
+  "slug": "playcrew-vs-alquila-tu-cancha",
+  "title": "PlayCrew vs Alquila Tu Cancha: comparativa de software para clubes (2026)",
+  "metaDescription": "ATC cobra USD 50 a 100 por mes; PlayCrew ARS 60.000 a 150.000 sin comisión. Comparamos app de jugadores, señas, turnos fijos, torneos, clases y soporte.",
+  "targetKeyword": "alquila tu cancha",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Cuánto cuesta Alquila Tu Cancha?",
+      "answer": "Según su sitio (septiembre de 2026), ATC cuesta USD 50 por mes para 1 a 3 canchas, USD 80 para 4 a 6 y USD 100 para 7 o más, con 20% de descuento pagando el año (USD 40, 64 y 80 por mes). Aclara que los planes varían según el país. No publica si cobra comisión por reserva."
+    },
+    {
+      "question": "¿Cuánto cuesta PlayCrew?",
+      "answer": "PlayCrew cuesta ARS 60.000 por mes en Starter (hasta 3 canchas), 90.000 en Pro (hasta 6), 120.000 en Enterprise (hasta 9) y 150.000 en Agente IA (canchas ilimitadas y agente de inteligencia artificial). Sin comisión por reserva y con 14 días de prueba sin tarjeta."
+    },
+    {
+      "question": "¿Cuál es la diferencia principal entre PlayCrew y Alquila Tu Cancha?",
+      "answer": "ATC tiene una app de jugadores muy conocida en Argentina y cobra en dólares; PlayCrew cobra en pesos, sin comisión, e incluye torneos con ranking ELO, clases con profesores y un agente de IA. En la operación básica (reservas 24/7, señas con MercadoPago, turnos fijos, precios por horario, caja y stock) son parecidos."
+    },
+    {
+      "question": "¿Alquila Tu Cancha cobra comisión por reserva?",
+      "answer": "Su sitio no lo publica. Antes de contratar, preguntá por comisiones sobre reservas y cobros. PlayCrew no cobra comisión por reserva ni por cobro: la seña entra directo en la cuenta de MercadoPago del club."
+    },
+    {
+      "question": "¿Puedo usar PlayCrew si mis jugadores reservan por la app de ATC?",
+      "answer": "Podés operar los dos sistemas en paralelo durante la prueba gratis de PlayCrew y comparar cuántas reservas entran por cada uno. En PlayCrew tus jugadores reservan desde la página pública de tu club y desde el buscador de clubes, sin instalar nada."
+    },
+    {
+      "question": "¿Cómo paso mi club de Alquila Tu Cancha a PlayCrew?",
+      "answer": "Cargás canchas, franjas con precio pico y turnos fijos, importás tus clientes y activás las señas con tu cuenta de MercadoPago. En un día está operativo, y tenés 14 días de prueba sin tarjeta."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"PlayCrew vs Alquila Tu Cancha: comparativa de software para clubes (2026)\",\"description\":\"ATC cobra USD 50 a 100 por mes; PlayCrew ARS 60.000 a 150.000 sin comisión. Comparamos app de jugadores, señas, turnos fijos, torneos, clases y soporte.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"PlayCrew\",\"url\":\"https://playcrewpadel.com\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"PlayCrew\",\"url\":\"https://playcrewpadel.com\"},\"mainEntityOfPage\":\"https://playcrewpadel.com/blog/playcrew-vs-alquila-tu-cancha/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://playcrewpadel.com/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://playcrewpadel.com/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"PlayCrew vs Alquila Tu Cancha: comparativa de software para clubes (2026)\",\"item\":\"https://playcrewpadel.com/blog/playcrew-vs-alquila-tu-cancha/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta Alquila Tu Cancha?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Según su sitio (septiembre de 2026), ATC cuesta USD 50 por mes para 1 a 3 canchas, USD 80 para 4 a 6 y USD 100 para 7 o más, con 20% de descuento pagando el año (USD 40, 64 y 80 por mes). Aclara que los planes varían según el país. No publica si cobra comisión por reserva.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta PlayCrew?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"PlayCrew cuesta ARS 60.000 por mes en Starter (hasta 3 canchas), 90.000 en Pro (hasta 6), 120.000 en Enterprise (hasta 9) y 150.000 en Agente IA (canchas ilimitadas y agente de inteligencia artificial). Sin comisión por reserva y con 14 días de prueba sin tarjeta.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuál es la diferencia principal entre PlayCrew y Alquila Tu Cancha?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"ATC tiene una app de jugadores muy conocida en Argentina y cobra en dólares; PlayCrew cobra en pesos, sin comisión, e incluye torneos con ranking ELO, clases con profesores y un agente de IA. En la operación básica (reservas 24/7, señas con MercadoPago, turnos fijos, precios por horario, caja y stock) son parecidos.\"}},{\"@type\":\"Question\",\"name\":\"¿Alquila Tu Cancha cobra comisión por reserva?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Su sitio no lo publica. Antes de contratar, preguntá por comisiones sobre reservas y cobros. PlayCrew no cobra comisión por reserva ni por cobro: la seña entra directo en la cuenta de MercadoPago del club.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo usar PlayCrew si mis jugadores reservan por la app de ATC?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Podés operar los dos sistemas en paralelo durante la prueba gratis de PlayCrew y comparar cuántas reservas entran por cada uno. En PlayCrew tus jugadores reservan desde la página pública de tu club y desde el buscador de clubes, sin instalar nada.\"}},{\"@type\":\"Question\",\"name\":\"¿Cómo paso mi club de Alquila Tu Cancha a PlayCrew?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Cargás canchas, franjas con precio pico y turnos fijos, importás tus clientes y activás las señas con tu cuenta de MercadoPago. En un día está operativo, y tenés 14 días de prueba sin tarjeta.\"}}]}]}"
+}
