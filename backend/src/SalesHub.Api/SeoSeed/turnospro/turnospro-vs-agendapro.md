@@ -106,4 +106,4 @@ AgendaPro es un producto regional con presencia en más de 100 países; el sopor
 
 Exportás tus clientes desde AgendaPro, los importás en TurnosPro, cargás profesionales, horarios y servicios, y activás las señas con tu cuenta de MercadoPago. Durante la prueba gratis podés tener los dos sistemas en paralelo y comparar cuántos turnos se confirman solos.
 
-**[Probá TurnosPro gratis](/#precios)** — sin tarjeta y sin permanencia. Si preferís, [escribinos por WhatsApp](https://wa.me/16892564251?text=Uso%20AgendaPro%20y%20quiero%20comparar%20con%20TurnosPro) y te lo mostramos con tu propia agenda.
+**[Probá TurnosPro gratis](/#precios)** — sin tarjeta y sin permanencia.

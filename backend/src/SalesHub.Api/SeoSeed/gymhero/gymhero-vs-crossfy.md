@@ -107,4 +107,4 @@ GymHero tiene el equipo en Buenos Aires, soporte por WhatsApp y **setup asistido
 
 Si ya usás Crossfy y querés bajar el costo, la migración se hace en un día: exportás tus socios a Excel, los importás en GymHero con sus planes y vencimientos, cargás los horarios de clases y activás el débito automático. Tus socios reciben un WhatsApp con el link para reservar y pagar, sin instalar nada. Durante los 7 días de prueba podés tener los dos sistemas en paralelo y comparar.
 
-**[Probá GymHero gratis 7 días](/#precios)** — sin tarjeta y sin contrato. Si preferís, [escribinos por WhatsApp](https://wa.me/16892564251?text=Uso%20Crossfy%20y%20quiero%20comparar%20con%20GymHero) y te mostramos el sistema con tus propios datos.
+**[Probá GymHero gratis 7 días](/#precios)** — sin tarjeta y sin contrato.

@@ -1,0 +1,36 @@
+{
+  "siteKey": "turnospro",
+  "slug": "turnospro-vs-turnito",
+  "title": "TurnosPro vs Turnito: comparativa de sistemas de turnos (2026)",
+  "metaDescription": "Turnito es gratis hasta 100 turnos con 5% de comisión; TurnosPro cuesta ARS 50.000 con 0% y WhatsApp sin tope. Comparamos planes, señas y recordatorios.",
+  "targetKeyword": "turnito",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Turnito es gratis?",
+      "answer": "Sí, tiene un plan gratuito permanente con hasta 3 agendas y 100 reservas por mes, con una comisión del 5% sobre cada cobro, según su página de planes (septiembre de 2026). Los planes pagos son Advance, ARS 24.500 por mes con 1% de comisión, y Pro, ARS 42.000 por mes con 0%."
+    },
+    {
+      "question": "¿Cuánto cuesta Turnito?",
+      "answer": "ARS 0 en el plan Gratuito, ARS 24.500 por mes en Advance y ARS 42.000 por mes en Pro, más la comisión por cobro del 5%, 1% y 0% respectivamente. TurnosPro cuesta ARS 50.000 por mes, o ARS 37.500 con plan anual, sin comisión."
+    },
+    {
+      "question": "¿Cuál es la diferencia principal entre TurnosPro y Turnito?",
+      "answer": "El modelo de precio. Turnito cobra menos de cuota y compensa con comisión por cobro y recordatorios de WhatsApp contados (100 en Advance, 250 en Pro). TurnosPro cobra una cuota fija con 0% de comisión, WhatsApp sin tope desde tu número y un agente de IA que confirma los turnos."
+    },
+    {
+      "question": "¿Turnito cobra comisión por las señas?",
+      "answer": "Sí, según su sitio: 5% por cobro en el plan Gratuito, 1% en Advance y 0% en Pro. TurnosPro no cobra comisión en ningún plan; la seña entra directo en tu cuenta de MercadoPago."
+    },
+    {
+      "question": "¿TurnosPro se sincroniza con Google Calendar o hace videollamadas?",
+      "answer": "No. Turnito sí sincroniza con Google Calendar y genera turnos virtuales con Google Meet, además de cobrar por PayPal y Talo. Si necesitás eso, es un punto a favor de Turnito."
+    },
+    {
+      "question": "¿Puedo pasar mis clientes de Turnito a TurnosPro?",
+      "answer": "Sí. Exportás clientes y turnos desde Turnito, los importás en TurnosPro, cargás profesionales, horarios y servicios y activás las señas con MercadoPago. Durante la prueba gratis podés usar los dos en paralelo."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"TurnosPro vs Turnito: comparativa de sistemas de turnos (2026)\",\"description\":\"Turnito es gratis hasta 100 turnos con 5% de comisión; TurnosPro cuesta ARS 50.000 con 0% y WhatsApp sin tope. Comparamos planes, señas y recordatorios.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"TurnosPro\",\"url\":\"https://turnos-pro.com\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"TurnosPro\",\"url\":\"https://turnos-pro.com\"},\"mainEntityOfPage\":\"https://turnos-pro.com/blog/turnospro-vs-turnito/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://turnos-pro.com/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://turnos-pro.com/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"TurnosPro vs Turnito: comparativa de sistemas de turnos (2026)\",\"item\":\"https://turnos-pro.com/blog/turnospro-vs-turnito/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Turnito es gratis?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí, tiene un plan gratuito permanente con hasta 3 agendas y 100 reservas por mes, con una comisión del 5% sobre cada cobro, según su página de planes (septiembre de 2026). Los planes pagos son Advance, ARS 24.500 por mes con 1% de comisión, y Pro, ARS 42.000 por mes con 0%.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta Turnito?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"ARS 0 en el plan Gratuito, ARS 24.500 por mes en Advance y ARS 42.000 por mes en Pro, más la comisión por cobro del 5%, 1% y 0% respectivamente. TurnosPro cuesta ARS 50.000 por mes, o ARS 37.500 con plan anual, sin comisión.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuál es la diferencia principal entre TurnosPro y Turnito?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"El modelo de precio. Turnito cobra menos de cuota y compensa con comisión por cobro y recordatorios de WhatsApp contados (100 en Advance, 250 en Pro). TurnosPro cobra una cuota fija con 0% de comisión, WhatsApp sin tope desde tu número y un agente de IA que confirma los turnos.\"}},{\"@type\":\"Question\",\"name\":\"¿Turnito cobra comisión por las señas?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí, según su sitio: 5% por cobro en el plan Gratuito, 1% en Advance y 0% en Pro. TurnosPro no cobra comisión en ningún plan; la seña entra directo en tu cuenta de MercadoPago.\"}},{\"@type\":\"Question\",\"name\":\"¿TurnosPro se sincroniza con Google Calendar o hace videollamadas?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"No. Turnito sí sincroniza con Google Calendar y genera turnos virtuales con Google Meet, además de cobrar por PayPal y Talo. Si necesitás eso, es un punto a favor de Turnito.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo pasar mis clientes de Turnito a TurnosPro?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Exportás clientes y turnos desde Turnito, los importás en TurnosPro, cargás profesionales, horarios y servicios y activás las señas con MercadoPago. Durante la prueba gratis podés usar los dos en paralelo.\"}}]}]}"
+}
