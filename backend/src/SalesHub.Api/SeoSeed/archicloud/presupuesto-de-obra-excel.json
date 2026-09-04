@@ -1,0 +1,36 @@
+{
+  "siteKey": "archicloud",
+  "slug": "presupuesto-de-obra-excel",
+  "title": "Presupuesto de obra en Excel: plantilla gratis y cómo armarlo paso a paso",
+  "metaDescription": "Plantilla de presupuesto de obra en Excel gratis: rubros, cómputo, precios unitarios, gastos generales, IVA y certificación de avance. Cómo armarlo sin errores.",
+  "targetKeyword": "presupuesto de obra excel",
+  "contentType": "Guide",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Qué tiene que incluir un presupuesto de obra?",
+      "answer": "Rubros, ítems con su unidad de medida, cómputo métrico, precios unitarios separados en materiales y mano de obra, costo directo, gastos generales, beneficio e IVA, y la incidencia de cada rubro sobre el total. Además, fecha, validez y qué no incluye."
+    },
+    {
+      "question": "¿Cómo se calcula el precio final de un presupuesto de obra?",
+      "answer": "Sobre el costo directo (suma de cantidad por precio unitario de todos los ítems) se aplican primero los gastos generales, después el beneficio sobre ese subtotal y al final el IVA. La plantilla lo hace sola en la hoja Resumen y también calcula el precio por m² cubierto."
+    },
+    {
+      "question": "¿Qué porcentaje de gastos generales y beneficio se usa?",
+      "answer": "Depende de la empresa y del riesgo de la obra. Un punto de partida habitual es gastos generales entre 10 y 15 por ciento y beneficio entre 10 y 20 por ciento. En la plantilla se cargan en la hoja Datos y se recalcula todo."
+    },
+    {
+      "question": "¿La plantilla sirve para certificar avances de obra?",
+      "answer": "Sí. La hoja Certificación toma el monto presupuestado de cada ítem y, con el porcentaje de avance acumulado que cargás cada mes, calcula el certificado del mes, el certificado a origen y el saldo a certificar."
+    },
+    {
+      "question": "¿Los precios de la plantilla son de referencia?",
+      "answer": "No. Son valores ilustrativos para una casa de 120 m², puestos para mostrar la mecánica de cálculo. Reemplazalos por tus precios de materiales y mano de obra al momento de presupuestar."
+    },
+    {
+      "question": "¿Cuándo conviene pasar del Excel a un software de gestión de obras?",
+      "answer": "Cuando manejás más de una obra a la vez, con gastos diarios y varios contratistas, y necesitás comparar en vivo lo gastado contra el presupuesto de cada rubro. ArchiCloud carga los gastos por foto desde el celular, en pesos o dólares, y los compara con el presupuesto; tiene 14 días de prueba gratis."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"Presupuesto de obra en Excel: plantilla gratis y cómo armarlo paso a paso\",\"description\":\"Plantilla de presupuesto de obra en Excel gratis: rubros, cómputo, precios unitarios, gastos generales, IVA y certificación de avance. Cómo armarlo sin errores.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"ArchiCloud\",\"url\":\"https://archicloud.tech\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"ArchiCloud\",\"url\":\"https://archicloud.tech\"},\"mainEntityOfPage\":\"https://archicloud.tech/blog/presupuesto-de-obra-excel/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://archicloud.tech/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://archicloud.tech/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Presupuesto de obra en Excel: plantilla gratis y cómo armarlo paso a paso\",\"item\":\"https://archicloud.tech/blog/presupuesto-de-obra-excel/\"}]},{\"@type\":\"HowTo\",\"name\":\"Cómo armar un presupuesto de obra en Excel\",\"step\":[{\"@type\":\"HowToStep\",\"name\":\"Cargar los datos generales\",\"text\":\"Obra, cliente, superficie y porcentajes de gastos generales, beneficio e IVA.\"},{\"@type\":\"HowToStep\",\"name\":\"Hacer el cómputo métrico\",\"text\":\"Medir cada ítem sobre el plano en su unidad.\"},{\"@type\":\"HowToStep\",\"name\":\"Cargar precios unitarios\",\"text\":\"Separar materiales y mano de obra por ítem.\"},{\"@type\":\"HowToStep\",\"name\":\"Revisar incidencias\",\"text\":\"Controlar el peso de cada rubro sobre el total.\"},{\"@type\":\"HowToStep\",\"name\":\"Definir precio final y validez\",\"text\":\"Aplicar gastos generales, beneficio e IVA y fijar la validez.\"},{\"@type\":\"HowToStep\",\"name\":\"Certificar avances\",\"text\":\"Cargar el porcentaje de avance mensual para calcular el certificado.\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Qué tiene que incluir un presupuesto de obra?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Rubros, ítems con su unidad de medida, cómputo métrico, precios unitarios separados en materiales y mano de obra, costo directo, gastos generales, beneficio e IVA, y la incidencia de cada rubro sobre el total. Además, fecha, validez y qué no incluye.\"}},{\"@type\":\"Question\",\"name\":\"¿Cómo se calcula el precio final de un presupuesto de obra?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sobre el costo directo (suma de cantidad por precio unitario de todos los ítems) se aplican primero los gastos generales, después el beneficio sobre ese subtotal y al final el IVA. La plantilla lo hace sola en la hoja Resumen y también calcula el precio por m² cubierto.\"}},{\"@type\":\"Question\",\"name\":\"¿Qué porcentaje de gastos generales y beneficio se usa?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Depende de la empresa y del riesgo de la obra. Un punto de partida habitual es gastos generales entre 10 y 15 por ciento y beneficio entre 10 y 20 por ciento. En la plantilla se cargan en la hoja Datos y se recalcula todo.\"}},{\"@type\":\"Question\",\"name\":\"¿La plantilla sirve para certificar avances de obra?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. La hoja Certificación toma el monto presupuestado de cada ítem y, con el porcentaje de avance acumulado que cargás cada mes, calcula el certificado del mes, el certificado a origen y el saldo a certificar.\"}},{\"@type\":\"Question\",\"name\":\"¿Los precios de la plantilla son de referencia?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"No. Son valores ilustrativos para una casa de 120 m², puestos para mostrar la mecánica de cálculo. Reemplazalos por tus precios de materiales y mano de obra al momento de presupuestar.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuándo conviene pasar del Excel a un software de gestión de obras?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Cuando manejás más de una obra a la vez, con gastos diarios y varios contratistas, y necesitás comparar en vivo lo gastado contra el presupuesto de cada rubro. ArchiCloud carga los gastos por foto desde el celular, en pesos o dólares, y los compara con el presupuesto; tiene 14 días de prueba gratis.\"}}]}]}"
+}
