@@ -1,0 +1,36 @@
+{
+  "siteKey": "bunker",
+  "slug": "bunker-vs-trainingym",
+  "title": "Bunker vs Trainingym: comparativa de apps para entrenadores y estudios (2026)",
+  "metaDescription": "Trainingym es una suite para gimnasios sin precio publicado; Bunker cuesta ARS 5.000 a 35.000 con atletas gratis. Comparamos planificación, CRM, accesos y cobros.",
+  "targetKeyword": "trainingym",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Cuánto cuesta Trainingym?",
+      "answer": "Trainingym no publica precios en su sitio (septiembre de 2026): indica planes variables según el tamaño del negocio y pide contactar para un presupuesto personalizado. Ofrece prueba gratis y una demo de 30 minutos."
+    },
+    {
+      "question": "¿Cuánto cuesta Bunker?",
+      "answer": "Bunker cuesta ARS 5.000 por mes en Básico (hasta 10 atletas), ARS 12.000 en Profesional (hasta 50), ARS 25.000 en Premium (hasta 200) y ARS 35.000 en Plan IA (hasta 200, con planificación asistida por inteligencia artificial). Los atletas usan la app gratis y la prueba es de 14 a 30 días sin tarjeta."
+    },
+    {
+      "question": "¿Trainingym y Bunker son el mismo tipo de producto?",
+      "answer": "No. Trainingym es un software de gestión de gimnasios: socios, cuotas, control de accesos, CRM, reservas de clases y nutrición, con el entrenamiento como un módulo. Bunker es una app de entrenamiento para entrenadores, preparadores físicos y equipos: planificación por bloques, adherencia, mensajería y control de cuotas."
+    },
+    {
+      "question": "¿Bunker sirve para gestionar un gimnasio?",
+      "answer": "Sirve para que los entrenadores de un gimnasio planifiquen y sigan a sus alumnos, con gestión de equipos y control de cuotas. No maneja control de accesos, reservas de clases, CRM ni cobros integrados; para eso necesitás un software de gestión de gimnasios."
+    },
+    {
+      "question": "¿Trainingym tiene app para los socios?",
+      "answer": "Sí. Según su sitio, incluye una app para miembros con reservas y seguimiento de progreso, rutinas con videos y comunicación por WhatsApp con inteligencia artificial. En Bunker los atletas usan la app para iPhone o la versión web, gratis."
+    },
+    {
+      "question": "¿Puedo usar Bunker junto con el software de mi gimnasio?",
+      "answer": "Sí. Muchos entrenadores usan Bunker para planificar y seguir a sus atletas dentro de un gimnasio que gestiona socios, accesos y cobros con otro sistema. Los atletas se vinculan con un código de invitación y no pagan nada."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"Bunker vs Trainingym: comparativa de apps para entrenadores y estudios (2026)\",\"description\":\"Trainingym es una suite para gimnasios sin precio publicado; Bunker cuesta ARS 5.000 a 35.000 con atletas gratis. Comparamos planificación, CRM, accesos y cobros.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"Bunker\",\"url\":\"https://bunker-app.com\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"Bunker\",\"url\":\"https://bunker-app.com\"},\"mainEntityOfPage\":\"https://bunker-app.com/blog/bunker-vs-trainingym/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://bunker-app.com/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://bunker-app.com/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Bunker vs Trainingym: comparativa de apps para entrenadores y estudios (2026)\",\"item\":\"https://bunker-app.com/blog/bunker-vs-trainingym/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta Trainingym?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Trainingym no publica precios en su sitio (septiembre de 2026): indica planes variables según el tamaño del negocio y pide contactar para un presupuesto personalizado. Ofrece prueba gratis y una demo de 30 minutos.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta Bunker?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Bunker cuesta ARS 5.000 por mes en Básico (hasta 10 atletas), ARS 12.000 en Profesional (hasta 50), ARS 25.000 en Premium (hasta 200) y ARS 35.000 en Plan IA (hasta 200, con planificación asistida por inteligencia artificial). Los atletas usan la app gratis y la prueba es de 14 a 30 días sin tarjeta.\"}},{\"@type\":\"Question\",\"name\":\"¿Trainingym y Bunker son el mismo tipo de producto?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"No. Trainingym es un software de gestión de gimnasios: socios, cuotas, control de accesos, CRM, reservas de clases y nutrición, con el entrenamiento como un módulo. Bunker es una app de entrenamiento para entrenadores, preparadores físicos y equipos: planificación por bloques, adherencia, mensajería y control de cuotas.\"}},{\"@type\":\"Question\",\"name\":\"¿Bunker sirve para gestionar un gimnasio?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sirve para que los entrenadores de un gimnasio planifiquen y sigan a sus alumnos, con gestión de equipos y control de cuotas. No maneja control de accesos, reservas de clases, CRM ni cobros integrados; para eso necesitás un software de gestión de gimnasios.\"}},{\"@type\":\"Question\",\"name\":\"¿Trainingym tiene app para los socios?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Según su sitio, incluye una app para miembros con reservas y seguimiento de progreso, rutinas con videos y comunicación por WhatsApp con inteligencia artificial. En Bunker los atletas usan la app para iPhone o la versión web, gratis.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo usar Bunker junto con el software de mi gimnasio?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Muchos entrenadores usan Bunker para planificar y seguir a sus atletas dentro de un gimnasio que gestiona socios, accesos y cobros con otro sistema. Los atletas se vinculan con un código de invitación y no pagan nada.\"}}]}]}"
+}
