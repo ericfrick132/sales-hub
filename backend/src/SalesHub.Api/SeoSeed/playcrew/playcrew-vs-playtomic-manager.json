@@ -1,0 +1,36 @@
+{
+  "siteKey": "playcrew",
+  "slug": "playcrew-vs-playtomic-manager",
+  "title": "PlayCrew vs Playtomic Manager: comparativa de software para clubes de pádel (2026)",
+  "metaDescription": "Playtomic Manager no publica precios; PlayCrew cuesta ARS 60.000 a 150.000 sin comisión. Comparamos marketplace, señas, turnos fijos, torneos y soporte.",
+  "targetKeyword": "playtomic manager",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Cuánto cuesta Playtomic Manager?",
+      "answer": "Playtomic no publica precios en su sitio (septiembre de 2026). Tiene cuatro planes, Estándar, Profesional, Campeón y Máster, con distintas funciones y tiempos de soporte, y pide que solicites una cotización. Tampoco publica si cobra comisión por reserva."
+    },
+    {
+      "question": "¿Cuánto cuesta PlayCrew?",
+      "answer": "PlayCrew cuesta ARS 60.000 por mes en Starter (hasta 3 canchas), 90.000 en Pro (hasta 6), 120.000 en Enterprise (hasta 9) y 150.000 en Agente IA (canchas ilimitadas y agente de inteligencia artificial). Sin comisión por reserva y con 14 días de prueba sin tarjeta."
+    },
+    {
+      "question": "¿Cuál es la diferencia principal entre PlayCrew y Playtomic Manager?",
+      "answer": "Playtomic trae un marketplace con 4 millones de jugadores registrados y 1,7 millones activos por mes que buscan cancha y arman partidos abiertos; es su gran ventaja. PlayCrew está hecho para la operación de un club en Argentina: turnos fijos, precio pico, señas con MercadoPago en tu cuenta, torneos con ranking ELO, kiosco y clases, con precio publicado en pesos y sin comisión."
+    },
+    {
+      "question": "¿Playtomic cobra comisión por cada reserva?",
+      "answer": "Su sitio no lo publica. Antes de contratar, preguntá por comisiones sobre las reservas que entran por la app y sobre los pagos, porque definen el costo real cuando el volumen crece. PlayCrew no cobra comisión por reserva ni por cobro."
+    },
+    {
+      "question": "¿PlayCrew tiene una app de jugadores como Playtomic?",
+      "answer": "PlayCrew tiene un buscador de clubes para que los jugadores encuentren cancha y reserven, y cada club tiene su página pública de reservas. No tiene una comunidad de millones de jugadores como Playtomic; su foco es la gestión del club."
+    },
+    {
+      "question": "¿Puedo pasar mi club de Playtomic Manager a PlayCrew?",
+      "answer": "Sí. Cargás canchas, franjas con precio pico y turnos fijos, importás tus clientes y activás las señas con MercadoPago. Durante los 14 días de prueba podés operar los dos sistemas en paralelo."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"PlayCrew vs Playtomic Manager: comparativa de software para clubes de pádel (2026)\",\"description\":\"Playtomic Manager no publica precios; PlayCrew cuesta ARS 60.000 a 150.000 sin comisión. Comparamos marketplace, señas, turnos fijos, torneos y soporte.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"PlayCrew\",\"url\":\"https://playcrewpadel.com\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"PlayCrew\",\"url\":\"https://playcrewpadel.com\"},\"mainEntityOfPage\":\"https://playcrewpadel.com/blog/playcrew-vs-playtomic-manager/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://playcrewpadel.com/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://playcrewpadel.com/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"PlayCrew vs Playtomic Manager: comparativa de software para clubes de pádel (2026)\",\"item\":\"https://playcrewpadel.com/blog/playcrew-vs-playtomic-manager/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta Playtomic Manager?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Playtomic no publica precios en su sitio (septiembre de 2026). Tiene cuatro planes, Estándar, Profesional, Campeón y Máster, con distintas funciones y tiempos de soporte, y pide que solicites una cotización. Tampoco publica si cobra comisión por reserva.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta PlayCrew?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"PlayCrew cuesta ARS 60.000 por mes en Starter (hasta 3 canchas), 90.000 en Pro (hasta 6), 120.000 en Enterprise (hasta 9) y 150.000 en Agente IA (canchas ilimitadas y agente de inteligencia artificial). Sin comisión por reserva y con 14 días de prueba sin tarjeta.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuál es la diferencia principal entre PlayCrew y Playtomic Manager?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Playtomic trae un marketplace con 4 millones de jugadores registrados y 1,7 millones activos por mes que buscan cancha y arman partidos abiertos; es su gran ventaja. PlayCrew está hecho para la operación de un club en Argentina: turnos fijos, precio pico, señas con MercadoPago en tu cuenta, torneos con ranking ELO, kiosco y clases, con precio publicado en pesos y sin comisión.\"}},{\"@type\":\"Question\",\"name\":\"¿Playtomic cobra comisión por cada reserva?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Su sitio no lo publica. Antes de contratar, preguntá por comisiones sobre las reservas que entran por la app y sobre los pagos, porque definen el costo real cuando el volumen crece. PlayCrew no cobra comisión por reserva ni por cobro.\"}},{\"@type\":\"Question\",\"name\":\"¿PlayCrew tiene una app de jugadores como Playtomic?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"PlayCrew tiene un buscador de clubes para que los jugadores encuentren cancha y reserven, y cada club tiene su página pública de reservas. No tiene una comunidad de millones de jugadores como Playtomic; su foco es la gestión del club.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo pasar mi club de Playtomic Manager a PlayCrew?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Cargás canchas, franjas con precio pico y turnos fijos, importás tus clientes y activás las señas con MercadoPago. Durante los 14 días de prueba podés operar los dos sistemas en paralelo.\"}}]}]}"
+}
