@@ -79,7 +79,7 @@ TurnosPro se concentra en agenda, señas con MercadoPago, WhatsApp y reportes. S
 
 ## Equipo y sucursales
 
-En TurnosPro todos los profesionales y sucursales van en el mismo plan, con turnos recurrentes y campos personalizados sin tope. Turnito limita las agendas a 3 en el plan gratuito y las hace ilimitadas en los pagos, con 15 turnos recurrentes y 5 campos personalizados en Advance, ilimitados en Pro.
+En TurnosPro todos los profesionales y sucursales van en el mismo plan, con turnos recurrentes y campos personalizados sin límite. Turnito limita las agendas a 3 en el plan gratuito y las hace ilimitadas en los pagos, con 15 turnos recurrentes y 5 campos personalizados en Advance, ilimitados en Pro.
 
 ## Implementación y soporte
 

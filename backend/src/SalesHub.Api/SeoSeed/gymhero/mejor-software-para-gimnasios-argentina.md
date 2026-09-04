@@ -68,4 +68,4 @@ En GymHero hay tres planes mensuales, sin permanencia y sin costo de alta: Start
 
 Para dimensionarlo: con que el sistema te recupere un par de cuotas de morosos por mes, ya se pagó solo. Lo que sigue es ganancia y horas que no pasás persiguiendo pagos.
 
-**[Probá GymHero gratis 7 días](/#precios)** — sin tarjeta y sin contrato. También podés [hablar por WhatsApp](https://wa.me/16892564251?text=Quiero%20contratar%20GymHero%20y%20dejar%20el%20Excel).
+**[Probá GymHero gratis 7 días](/#precios)** — sin tarjeta y sin contrato.

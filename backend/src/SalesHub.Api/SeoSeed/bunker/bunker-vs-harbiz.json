@@ -1,0 +1,36 @@
+{
+  "siteKey": "bunker",
+  "slug": "bunker-vs-harbiz",
+  "title": "Bunker vs Harbiz: comparativa de apps para entrenadores personales (2026)",
+  "metaDescription": "Harbiz cobra USD 19 a 219 por mes por cantidad de clientes; Bunker ARS 5.000 a 35.000 con atletas gratis. Comparamos planificación, app, nutrición y cobros.",
+  "targetKeyword": "harbiz",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Cuánto cuesta Harbiz?",
+      "answer": "Según su página de tarifas para América (septiembre de 2026), Harbiz cuesta USD 19 por mes en Basic (hasta 5 clientes), USD 129 en Pro (hasta 50) y USD 219 en App (hasta 50, con más personalización de la app). Con pago anual baja a USD 14, 97 y 164. Los complementos de app, Nutri AI y biblioteca de vídeos se pagan aparte."
+    },
+    {
+      "question": "¿Cuánto cuesta Bunker?",
+      "answer": "Bunker cuesta ARS 5.000 por mes en Básico (hasta 10 atletas), ARS 12.000 en Profesional (hasta 50), ARS 25.000 en Premium (hasta 200) y ARS 35.000 en Plan IA (hasta 200, con planificación asistida por inteligencia artificial). Los atletas usan la app gratis y la prueba es de 14 a 30 días sin tarjeta."
+    },
+    {
+      "question": "¿Cuál es la diferencia principal entre Bunker y Harbiz?",
+      "answer": "Harbiz es una suite en dólares con app con tu marca, nutrición, cobros recurrentes y comunidad. Bunker es una app en pesos centrada en planificar entrenamientos por bloques y seguir la adherencia, con hasta 200 atletas que la usan gratis."
+    },
+    {
+      "question": "¿Harbiz tiene plan gratis?",
+      "answer": "No publica un plan gratuito permanente; ofrece 14 días de prueba. Bunker tampoco es gratis para el entrenador, pero sí para los atletas, y la prueba va de 14 a 30 días según el plan."
+    },
+    {
+      "question": "¿Bunker tiene app con mi marca?",
+      "answer": "No. Bunker tiene su propia app para iPhone y versión web; el alumno la usa gratis con un código de invitación. Harbiz incluye app personalizada con tu marca en todos sus planes."
+    },
+    {
+      "question": "¿Puedo pasar mis alumnos de Harbiz a Bunker?",
+      "answer": "Sí. Creás tu cuenta de entrenador, cargás los planes por bloques y progresiones y le mandás a cada alumno el código de invitación. Durante la prueba gratis podés usar las dos apps en paralelo."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"Bunker vs Harbiz: comparativa de apps para entrenadores personales (2026)\",\"description\":\"Harbiz cobra USD 19 a 219 por mes por cantidad de clientes; Bunker ARS 5.000 a 35.000 con atletas gratis. Comparamos planificación, app, nutrición y cobros.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"Bunker\",\"url\":\"https://bunker-app.com\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"Bunker\",\"url\":\"https://bunker-app.com\"},\"mainEntityOfPage\":\"https://bunker-app.com/blog/bunker-vs-harbiz/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://bunker-app.com/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://bunker-app.com/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Bunker vs Harbiz: comparativa de apps para entrenadores personales (2026)\",\"item\":\"https://bunker-app.com/blog/bunker-vs-harbiz/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta Harbiz?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Según su página de tarifas para América (septiembre de 2026), Harbiz cuesta USD 19 por mes en Basic (hasta 5 clientes), USD 129 en Pro (hasta 50) y USD 219 en App (hasta 50, con más personalización de la app). Con pago anual baja a USD 14, 97 y 164. Los complementos de app, Nutri AI y biblioteca de vídeos se pagan aparte.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta Bunker?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Bunker cuesta ARS 5.000 por mes en Básico (hasta 10 atletas), ARS 12.000 en Profesional (hasta 50), ARS 25.000 en Premium (hasta 200) y ARS 35.000 en Plan IA (hasta 200, con planificación asistida por inteligencia artificial). Los atletas usan la app gratis y la prueba es de 14 a 30 días sin tarjeta.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuál es la diferencia principal entre Bunker y Harbiz?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Harbiz es una suite en dólares con app con tu marca, nutrición, cobros recurrentes y comunidad. Bunker es una app en pesos centrada en planificar entrenamientos por bloques y seguir la adherencia, con hasta 200 atletas que la usan gratis.\"}},{\"@type\":\"Question\",\"name\":\"¿Harbiz tiene plan gratis?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"No publica un plan gratuito permanente; ofrece 14 días de prueba. Bunker tampoco es gratis para el entrenador, pero sí para los atletas, y la prueba va de 14 a 30 días según el plan.\"}},{\"@type\":\"Question\",\"name\":\"¿Bunker tiene app con mi marca?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"No. Bunker tiene su propia app para iPhone y versión web; el alumno la usa gratis con un código de invitación. Harbiz incluye app personalizada con tu marca en todos sus planes.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo pasar mis alumnos de Harbiz a Bunker?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Creás tu cuenta de entrenador, cargás los planes por bloques y progresiones y le mandás a cada alumno el código de invitación. Durante la prueba gratis podés usar las dos apps en paralelo.\"}}]}]}"
+}
