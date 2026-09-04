@@ -51,7 +51,7 @@ Es la diferencia más grande y conviene mirarla por cantidad de alumnos.
 
 Un detalle que pesa: en Harbiz, la app más personalizada, la nutrición con IA y la biblioteca de vídeos son complementos que se suman a la cuota. En Bunker no hay complementos: el plan incluye todo lo que hace.
 
-Los precios actualizados de Bunker están siempre en [la página de planes](/#planes).
+Los precios actualizados de Bunker están siempre en [la página de planes](/#trainers).
 
 ## Planificación: el corazón de Bunker
 
