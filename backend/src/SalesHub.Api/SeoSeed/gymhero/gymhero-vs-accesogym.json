@@ -1,0 +1,36 @@
+{
+  "siteKey": "gymhero",
+  "slug": "gymhero-vs-accesogym",
+  "title": "GymHero vs AccesoGym: comparativa de software para gimnasios (2026)",
+  "metaDescription": "AccesoGym no publica precios; GymHero arranca en ARS 50.000/mes. Comparamos control de acceso con huella y molinete, QR, débito automático, WhatsApp y soporte.",
+  "targetKeyword": "accesogym",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Cuánto cuesta AccesoGym?",
+      "answer": "AccesoGym no publica precios en su sitio (septiembre de 2026). El camino es pedir una demo gratuita con el formulario; prometen contactarte en menos de 24 horas. Preguntá por precio mensual, costo de instalación o personalización y si el hardware lo venden ellos."
+    },
+    {
+      "question": "¿Cuánto cuesta GymHero?",
+      "answer": "GymHero tiene tres planes mensuales sin permanencia: Starter ARS 50.000 (cobros, reservas, control de acceso con QR y reportes), Coaching Pro ARS 69.000 (suma rutinas) y Multi-sede ARS 99.000 (dos sedes). Los recordatorios por WhatsApp son un complemento de ARS 8.000 o 18.000 por mes. Hay 7 días de prueba gratis sin tarjeta."
+    },
+    {
+      "question": "¿Cuál es la diferencia principal entre GymHero y AccesoGym?",
+      "answer": "AccesoGym es un sistema que se instala, con marcación por DNI, tarjeta o huella y molinete o puerta magnética, y recordatorios por WhatsApp incluidos. GymHero es 100% online, con acceso por QR desde el celular, débito automático por MercadoPago en todos los planes, precio publicado y prueba gratis, y se integra con huella, facial y molinete cuando lo necesitás."
+    },
+    {
+      "question": "¿AccesoGym tiene débito automático por MercadoPago?",
+      "answer": "Su sitio no lo menciona: describe gestión de suscripciones, manejo de caja e informes de vencimientos. Consultalo en la demo. En GymHero el débito automático por MercadoPago viene en todos los planes."
+    },
+    {
+      "question": "¿Puedo usar mi lector de huella o mi molinete con GymHero?",
+      "answer": "GymHero se integra con lectores de huella USB a través de su Access Agent, con equipos biométricos y faciales ZKTeco de red y con terminales Hikvision, y sincroniza la vigencia de cada socio con el molinete. Si tenés otro equipo, consultá la compatibilidad antes de migrar."
+    },
+    {
+      "question": "¿Cómo paso mis socios de AccesoGym a GymHero?",
+      "answer": "Exportás los socios con planes y vencimientos, los importás en GymHero desde Excel, cargás horarios y activás el débito automático. Con el setup asistido se hace en un día y durante los 7 días de prueba podés usar los dos sistemas en paralelo."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"GymHero vs AccesoGym: comparativa de software para gimnasios (2026)\",\"description\":\"AccesoGym no publica precios; GymHero arranca en ARS 50.000/mes. Comparamos control de acceso con huella y molinete, QR, débito automático, WhatsApp y soporte.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"GymHero\",\"url\":\"https://gymhero.fitness\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"GymHero\",\"url\":\"https://gymhero.fitness\"},\"mainEntityOfPage\":\"https://gymhero.fitness/blog/gymhero-vs-accesogym/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://gymhero.fitness/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://gymhero.fitness/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"GymHero vs AccesoGym: comparativa de software para gimnasios (2026)\",\"item\":\"https://gymhero.fitness/blog/gymhero-vs-accesogym/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta AccesoGym?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"AccesoGym no publica precios en su sitio (septiembre de 2026). El camino es pedir una demo gratuita con el formulario; prometen contactarte en menos de 24 horas. Preguntá por precio mensual, costo de instalación o personalización y si el hardware lo venden ellos.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta GymHero?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"GymHero tiene tres planes mensuales sin permanencia: Starter ARS 50.000 (cobros, reservas, control de acceso con QR y reportes), Coaching Pro ARS 69.000 (suma rutinas) y Multi-sede ARS 99.000 (dos sedes). Los recordatorios por WhatsApp son un complemento de ARS 8.000 o 18.000 por mes. Hay 7 días de prueba gratis sin tarjeta.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuál es la diferencia principal entre GymHero y AccesoGym?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"AccesoGym es un sistema que se instala, con marcación por DNI, tarjeta o huella y molinete o puerta magnética, y recordatorios por WhatsApp incluidos. GymHero es 100% online, con acceso por QR desde el celular, débito automático por MercadoPago en todos los planes, precio publicado y prueba gratis, y se integra con huella, facial y molinete cuando lo necesitás.\"}},{\"@type\":\"Question\",\"name\":\"¿AccesoGym tiene débito automático por MercadoPago?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Su sitio no lo menciona: describe gestión de suscripciones, manejo de caja e informes de vencimientos. Consultalo en la demo. En GymHero el débito automático por MercadoPago viene en todos los planes.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo usar mi lector de huella o mi molinete con GymHero?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"GymHero se integra con lectores de huella USB a través de su Access Agent, con equipos biométricos y faciales ZKTeco de red y con terminales Hikvision, y sincroniza la vigencia de cada socio con el molinete. Si tenés otro equipo, consultá la compatibilidad antes de migrar.\"}},{\"@type\":\"Question\",\"name\":\"¿Cómo paso mis socios de AccesoGym a GymHero?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Exportás los socios con planes y vencimientos, los importás en GymHero desde Excel, cargás horarios y activás el débito automático. Con el setup asistido se hace en un día y durante los 7 días de prueba podés usar los dos sistemas en paralelo.\"}}]}]}"
+}
