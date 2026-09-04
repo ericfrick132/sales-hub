@@ -1,0 +1,36 @@
+{
+  "siteKey": "bunker",
+  "slug": "bunker-vs-hexfit",
+  "title": "Bunker vs Hexfit: comparativa de software para entrenadores personales (2026)",
+  "metaDescription": "Hexfit publica 19 a 250 por mes con límite de clientes; Bunker cuesta ARS 5.000 a 35.000 con atletas gratis. Planificación, nutrición, cobros e integraciones.",
+  "targetKeyword": "hexfit",
+  "contentType": "Comparison",
+  "publishedAt": "2026-09-04",
+  "faq": [
+    {
+      "question": "¿Cuánto cuesta Hexfit?",
+      "answer": "Según su página de precios en español (septiembre de 2026), Hexfit cuesta 19 por mes en Starter (hasta 5 clientes activos), 50 en Solo (hasta 15), 90 en Growth (hasta 40) y 250 en Studio (hasta 500). La página aclara que la moneda final depende del país de emisión de tu medio de pago. Tiene prueba gratis sin tarjeta."
+    },
+    {
+      "question": "¿Cuánto cuesta Bunker?",
+      "answer": "Bunker cuesta ARS 5.000 por mes en Básico (hasta 10 atletas), ARS 12.000 en Profesional (hasta 50), ARS 25.000 en Premium (hasta 200) y ARS 35.000 en Plan IA (hasta 200, con planificación asistida por inteligencia artificial). Los atletas usan la app gratis y la prueba es de 14 a 30 días sin tarjeta."
+    },
+    {
+      "question": "¿Cuál es la diferencia principal entre Bunker y Hexfit?",
+      "answer": "Hexfit es una suite para profesionales del fitness y la salud: 13.000 ejercicios, nutrición, facturación, citas, videollamadas, app con tu marca e integraciones con Apple Health, Strava y Fitbit. Bunker se concentra en planificar entrenamientos por bloques y seguir la adherencia de atletas y equipos, en pesos y con los atletas gratis."
+    },
+    {
+      "question": "¿Hexfit tiene nutrición y Bunker no?",
+      "answer": "Sí. Hexfit incluye planes nutricionales y seguimiento alimentario, como complemento en Solo e incluido desde Growth. Bunker no tiene módulo de nutrición: hace entrenamiento, adherencia, mensajería y control de cuotas."
+    },
+    {
+      "question": "¿Bunker se integra con Apple Watch, Strava o Fitbit?",
+      "answer": "No. Hexfit sí publica integración con Apple Health, Strava y Fitbit. En Bunker el atleta registra sus series, reps y pesos en la app entre serie y serie, y con eso se arma el progreso y la adherencia."
+    },
+    {
+      "question": "¿Puedo pasar mis alumnos de Hexfit a Bunker?",
+      "answer": "Sí. Creás tu cuenta de entrenador, cargás los planes por bloques y progresiones y le mandás a cada alumno el código de invitación. Durante la prueba gratis podés usar las dos plataformas en paralelo."
+    }
+  ],
+  "jsonLd": "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Article\",\"headline\":\"Bunker vs Hexfit: comparativa de software para entrenadores personales (2026)\",\"description\":\"Hexfit publica 19 a 250 por mes con límite de clientes; Bunker cuesta ARS 5.000 a 35.000 con atletas gratis. Planificación, nutrición, cobros e integraciones.\",\"datePublished\":\"2026-09-04\",\"dateModified\":\"2026-09-04\",\"inLanguage\":\"es-AR\",\"author\":{\"@type\":\"Organization\",\"name\":\"Bunker\",\"url\":\"https://bunker-app.com\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"Bunker\",\"url\":\"https://bunker-app.com\"},\"mainEntityOfPage\":\"https://bunker-app.com/blog/bunker-vs-hexfit/\"},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Inicio\",\"item\":\"https://bunker-app.com/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://bunker-app.com/blog/\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Bunker vs Hexfit: comparativa de software para entrenadores personales (2026)\",\"item\":\"https://bunker-app.com/blog/bunker-vs-hexfit/\"}]},{\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta Hexfit?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Según su página de precios en español (septiembre de 2026), Hexfit cuesta 19 por mes en Starter (hasta 5 clientes activos), 50 en Solo (hasta 15), 90 en Growth (hasta 40) y 250 en Studio (hasta 500). La página aclara que la moneda final depende del país de emisión de tu medio de pago. Tiene prueba gratis sin tarjeta.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuánto cuesta Bunker?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Bunker cuesta ARS 5.000 por mes en Básico (hasta 10 atletas), ARS 12.000 en Profesional (hasta 50), ARS 25.000 en Premium (hasta 200) y ARS 35.000 en Plan IA (hasta 200, con planificación asistida por inteligencia artificial). Los atletas usan la app gratis y la prueba es de 14 a 30 días sin tarjeta.\"}},{\"@type\":\"Question\",\"name\":\"¿Cuál es la diferencia principal entre Bunker y Hexfit?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Hexfit es una suite para profesionales del fitness y la salud: 13.000 ejercicios, nutrición, facturación, citas, videollamadas, app con tu marca e integraciones con Apple Health, Strava y Fitbit. Bunker se concentra en planificar entrenamientos por bloques y seguir la adherencia de atletas y equipos, en pesos y con los atletas gratis.\"}},{\"@type\":\"Question\",\"name\":\"¿Hexfit tiene nutrición y Bunker no?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Hexfit incluye planes nutricionales y seguimiento alimentario, como complemento en Solo e incluido desde Growth. Bunker no tiene módulo de nutrición: hace entrenamiento, adherencia, mensajería y control de cuotas.\"}},{\"@type\":\"Question\",\"name\":\"¿Bunker se integra con Apple Watch, Strava o Fitbit?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"No. Hexfit sí publica integración con Apple Health, Strava y Fitbit. En Bunker el atleta registra sus series, reps y pesos en la app entre serie y serie, y con eso se arma el progreso y la adherencia.\"}},{\"@type\":\"Question\",\"name\":\"¿Puedo pasar mis alumnos de Hexfit a Bunker?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Sí. Creás tu cuenta de entrenador, cargás los planes por bloques y progresiones y le mandás a cada alumno el código de invitación. Durante la prueba gratis podés usar las dos plataformas en paralelo.\"}}]}]}"
+}
