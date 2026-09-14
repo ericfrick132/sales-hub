@@ -61,6 +61,10 @@ public class GeonamesImporter
         // en una provincia — y las ciudades cargadas a mano no tienen geonameId: insertarlas
         // de nuevo rompía el import entero en el primer lote y el mapa quedaba vacío.
         var byName = rows.ToDictionary(c => NameKey(c.Province, c.City), StringComparer.Ordinal);
+        // Las cargadas a mano se reconocen sin importar tildes ("Cordoba" = "Córdoba").
+        var seededByNorm = rows.Where(c => c.GeonameId is null)
+            .GroupBy(c => NormKey(c.Province, c.City))
+            .ToDictionary(g => g.Key, g => g.First());
 
         int inserted = 0, updated = 0, skipped = 0;
         string? line;
@@ -81,11 +85,29 @@ public class GeonamesImporter
             if (!double.TryParse(cols[5], NumberStyles.Float, CultureInfo.InvariantCulture, out var lng)) { skipped++; continue; }
             var admin1Code = cols[10];
             _ = int.TryParse(cols[14], out var population);
-            if (population < minPopulation) { skipped++; continue; }
 
-            var provinceName = admin1.TryGetValue($"{country}.{admin1Code}", out var prov) ? prov : admin1Code;
+            var provinceName = CanonicalProvince(country,
+                admin1.TryGetValue($"{country}.{admin1Code}", out var prov) ? prov : admin1Code);
+            // La capital: los leads la traen como "CABA", no como "Buenos Aires".
+            if (country == "AR" && featureCode == "PPLC") name = "CABA";
             var bucket = BucketFor(population);
             var key = NameKey(provinceName, name);
+
+            if (!byGeoname.ContainsKey(geonameId)
+                && seededByNorm.TryGetValue(NormKey(provinceName, name), out var seeded) && seeded.GeonameId is null)
+            {
+                // Ciudad cargada a mano: se completa con coordenadas aunque GeoNames no tenga su
+                // población (pasa con varios partidos). Sin población se respeta el tamaño del seed.
+                seeded.Latitude = lat;
+                seeded.Longitude = lng;
+                seeded.GeonameId = geonameId;
+                if (population >= minPopulation) { seeded.Population = population; seeded.PopulationBucket = bucket; }
+                byGeoname[geonameId] = seeded;
+                updated++;
+                if ((inserted + updated) % 500 == 0) await _db.SaveChangesAsync(ct);
+                continue;
+            }
+            if (population < minPopulation) { skipped++; continue; }
 
             if (byGeoname.TryGetValue(geonameId, out var current))
             {
@@ -104,17 +126,10 @@ public class GeonamesImporter
             }
             else if (byName.TryGetValue(key, out var sameName))
             {
-                if (sameName.GeonameId is null)
-                {
-                    // Ciudad cargada a mano (seed): se completa con los datos de GeoNames.
-                    Apply(sameName, lat, lng, population, bucket, geonameId);
-                    byGeoname[geonameId] = sameName;
-                    updated++;
-                }
-                else if (population > (sameName.Population ?? 0))
+                if (sameName.GeonameId is null || population > (sameName.Population ?? 0))
                 {
                     // Homónima en la misma provincia: gana la más poblada.
-                    byGeoname.Remove(sameName.GeonameId.Value);
+                    if (sameName.GeonameId is { } prevId) byGeoname.Remove(prevId);
                     Apply(sameName, lat, lng, population, bucket, geonameId);
                     byGeoname[geonameId] = sameName;
                     updated++;
@@ -149,6 +164,38 @@ public class GeonamesImporter
     }
 
     private static string NameKey(string province, string city) => $"{province}\u0001{city}";
+
+    private static string NormKey(string province, string city) => $"{Fold(province)}\u0001{Fold(city)}";
+
+    /// <summary>Minúsculas y sin tildes, para comparar nombres escritos distinto.</summary>
+    private static string Fold(string text)
+    {
+        var sb = new StringBuilder(text.Length);
+        foreach (var ch in text.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD))
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark) sb.Append(ch);
+        return sb.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    /// <summary>
+    /// Provincias argentinas como las escriben los leads ("Córdoba", "Tucumán"). GeoNames las
+    /// trae sin tildes ("Cordoba") y a la capital como "Buenos Aires F.D.": si se guardaran así,
+    /// asignar una provincia en el mapa de zonas no matchearía con ningún lead.
+    /// </summary>
+    private static readonly string[] ArProvinces =
+    {
+        "Buenos Aires", "Catamarca", "Chaco", "Chubut", "Córdoba", "Corrientes", "Entre Ríos",
+        "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones", "Neuquén", "Río Negro",
+        "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe", "Santiago del Estero",
+        "Tierra del Fuego", "Tucumán",
+    };
+
+    private static string CanonicalProvince(string country, string name)
+    {
+        if (country != "AR") return name;
+        if (Fold(name).StartsWith("buenos aires f")) return "Buenos Aires";
+        var folded = Fold(name);
+        return ArProvinces.FirstOrDefault(p => Fold(p) == folded || folded.StartsWith(Fold(p) + " ")) ?? name;
+    }
 
     private static void Apply(CityQueue c, double lat, double lng, int population, PopulationBucket bucket, int geonameId)
     {
