@@ -138,8 +138,7 @@ public class CrmController : ControllerBase
         if (leadQ is null)
             return Ok(new { stages = Stages.Select(s => new StageColumn(s.Key, s.Label, 0, Array.Empty<CrmCard>())), total = 0, overdue = 0, perStage });
 
-        var devices = await _db.Devices.AsNoTracking()
-            .Select(d => new { d.Id, d.Name, d.SellerId }).ToListAsync(ct);
+        var deviceBySeller = await DeviceBySellerAsync(ct);
         var now = DateTimeOffset.UtcNow;
 
         // Los totales salen de un GROUP BY sobre columnas reales — nada de traer los 12k
@@ -151,53 +150,11 @@ public class CrmController : ControllerBase
 
         var overdue = await leadQ.CountAsync(l => l.NextActionAt != null && l.NextActionAt < now, ct);
 
-        var deviceBySeller = devices.Where(d => d.SellerId != null)
-            .GroupBy(d => d.SellerId!.Value)
-            .ToDictionary(g => g.Key, g => g.OrderBy(x => x.Name).First());
-
         // Una query por etapa, ya ordenada y cortada en SQL: sólo bajan las tarjetas visibles.
-        // El orden va por columnas indexables (vencimiento y última actualización); el dato
-        // del chat se resuelve sólo para esas pocas filas.
         var columns = new List<StageColumn>();
         foreach (var s in Stages)
         {
-            var top = await leadQ
-                .Where(l => s.Statuses.Contains(l.Status))
-                // OrderBy sobre la columna cruda, sin COALESCE: en Postgres un ASC ya manda
-                // los NULL al final (los que no tienen recordatorio van después), y así el
-                // sort puede apoyarse en el índice (status, next_action_at, updated_at).
-                .OrderBy(l => l.NextActionAt)
-                .ThenByDescending(l => l.UpdatedAt)
-                .Take(perStage)
-                .Select(l => new
-                {
-                    l.Id, l.Name, l.City, l.ProductKey,
-                    ProductName = l.Product != null ? l.Product.DisplayName : null,
-                    l.WhatsappPhone, l.Status, l.Source, l.SellerId,
-                    SellerName = l.Seller != null ? l.Seller.DisplayName : null,
-                    l.NextActionAt, l.NextActionNote, l.Score, l.CreatedAt, l.UpdatedAt,
-                    LastMessageAt = _db.ConversationMessages.Where(m => m.LeadId == l.Id)
-                        .OrderByDescending(m => m.Timestamp).Select(m => (DateTimeOffset?)m.Timestamp).FirstOrDefault(),
-                    Unread = _db.ConversationMessages.Count(m => m.LeadId == l.Id
-                        && m.Direction == MessageDirection.Inbound && !m.IsRead),
-                    NoteCount = _db.LeadNotes.Count(n => n.LeadId == l.Id),
-                    LastNote = _db.LeadNotes.Where(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Note)
-                        .OrderByDescending(n => n.CreatedAt).Select(n => n.Text).FirstOrDefault(),
-                })
-                .ToListAsync(ct);
-
-            var cards = top.Select(r =>
-            {
-                deviceBySeller.TryGetValue(r.SellerId ?? Guid.Empty, out var dev);
-                return new CrmCard(
-                    r.Id, r.Name, r.City, r.ProductKey, r.ProductName, r.WhatsappPhone,
-                    r.Status.ToString(), s.Key, r.Source.ToString(),
-                    r.SellerId, r.SellerName, dev?.Id, dev?.Name,
-                    r.LastMessageAt ?? r.UpdatedAt,
-                    r.NextActionAt, r.NextActionNote,
-                    r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt);
-            }).ToList();
-
+            var (cards, _) = await StageCardsAsync(leadQ, s, 0, perStage, deviceBySeller, ct);
             columns.Add(new StageColumn(s.Key, s.Label, s.Statuses.Sum(st => counts.GetValueOrDefault(st)), cards));
         }
 
@@ -208,6 +165,91 @@ public class CrmController : ControllerBase
             overdue,
             perStage,
         });
+    }
+
+    /// <summary>
+    /// Las tarjetas que siguen en una columna (scroll infinito del tablero): mismos filtros y
+    /// mismo orden que <see cref="Board"/>, desde <paramref name="skip"/>.
+    /// </summary>
+    [HttpGet("board/{stageKey}")]
+    public async Task<IActionResult> StageCards(
+        string stageKey,
+        [FromQuery] LeadFilter filter,
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = 50,
+        CancellationToken ct = default)
+    {
+        var stage = Stages.FirstOrDefault(s => s.Key == stageKey.ToLowerInvariant());
+        if (stage is null) return BadRequest(new { error = $"Etapa desconocida: {stageKey}" });
+        skip = Math.Max(0, skip);
+        take = Math.Clamp(take, 5, 200);
+
+        var leadQ = await FilteredLeadsAsync(filter, ct);
+        if (leadQ is null) return Ok(new { key = stage.Key, cards = Array.Empty<CrmCard>(), nextSkip = (int?)null });
+
+        var (cards, hasMore) = await StageCardsAsync(leadQ, stage, skip, take, await DeviceBySellerAsync(ct), ct);
+        return Ok(new { key = stage.Key, cards, nextSkip = hasMore ? skip + cards.Count : (int?)null });
+    }
+
+    private record DeviceRef(Guid Id, string Name);
+
+    /// <summary>El celular de cada vendedor (el primero por nombre si tiene varios).</summary>
+    private async Task<Dictionary<Guid, DeviceRef>> DeviceBySellerAsync(CancellationToken ct) =>
+        (await _db.Devices.AsNoTracking().Where(d => d.SellerId != null)
+            .Select(d => new { d.Id, d.Name, d.SellerId }).ToListAsync(ct))
+        .GroupBy(d => d.SellerId!.Value)
+        .ToDictionary(g => g.Key, g => g.OrderBy(x => x.Name).Select(x => new DeviceRef(x.Id, x.Name)).First());
+
+    /// <summary>
+    /// Una página de tarjetas de una etapa, ordenada y cortada en SQL. El orden va por columnas
+    /// indexables (vencimiento y última actualización) y desempata por Id para que las páginas
+    /// no se pisen; el dato del chat se resuelve sólo para las filas de la página.
+    /// </summary>
+    private async Task<(List<CrmCard> Cards, bool HasMore)> StageCardsAsync(
+        IQueryable<Lead> leadQ, Stage s, int skip, int take,
+        Dictionary<Guid, DeviceRef> deviceBySeller, CancellationToken ct)
+    {
+        var rows = await leadQ
+            .Where(l => s.Statuses.Contains(l.Status))
+            // OrderBy sobre la columna cruda, sin COALESCE: en Postgres un ASC ya manda
+            // los NULL al final (los que no tienen recordatorio van después), y así el
+            // sort puede apoyarse en el índice (status, next_action_at, updated_at).
+            .OrderBy(l => l.NextActionAt)
+            .ThenByDescending(l => l.UpdatedAt)
+            .ThenBy(l => l.Id)
+            .Skip(skip)
+            .Take(take + 1)
+            .Select(l => new
+            {
+                l.Id, l.Name, l.City, l.ProductKey,
+                ProductName = l.Product != null ? l.Product.DisplayName : null,
+                l.WhatsappPhone, l.Status, l.Source, l.SellerId,
+                SellerName = l.Seller != null ? l.Seller.DisplayName : null,
+                l.NextActionAt, l.NextActionNote, l.Score, l.CreatedAt, l.UpdatedAt,
+                LastMessageAt = _db.ConversationMessages.Where(m => m.LeadId == l.Id)
+                    .OrderByDescending(m => m.Timestamp).Select(m => (DateTimeOffset?)m.Timestamp).FirstOrDefault(),
+                Unread = _db.ConversationMessages.Count(m => m.LeadId == l.Id
+                    && m.Direction == MessageDirection.Inbound && !m.IsRead),
+                NoteCount = _db.LeadNotes.Count(n => n.LeadId == l.Id),
+                LastNote = _db.LeadNotes.Where(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Note)
+                    .OrderByDescending(n => n.CreatedAt).Select(n => n.Text).FirstOrDefault(),
+            })
+            .ToListAsync(ct);
+
+        // Se pide una fila de más sólo para saber si hay otra página.
+        var hasMore = rows.Count > take;
+        var cards = rows.Take(take).Select(r =>
+        {
+            deviceBySeller.TryGetValue(r.SellerId ?? Guid.Empty, out var dev);
+            return new CrmCard(
+                r.Id, r.Name, r.City, r.ProductKey, r.ProductName, r.WhatsappPhone,
+                r.Status.ToString(), s.Key, r.Source.ToString(),
+                r.SellerId, r.SellerName, dev?.Id, dev?.Name,
+                r.LastMessageAt ?? r.UpdatedAt,
+                r.NextActionAt, r.NextActionNote,
+                r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt);
+        }).ToList();
+        return (cards, hasMore);
     }
 
     public record NoteDto(Guid Id, string Text, string Kind, DateTimeOffset CreatedAt, Guid? SellerId, string? SellerName);

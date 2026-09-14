@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import { api } from '../lib/api';
@@ -220,45 +220,24 @@ export default function Crm() {
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-3">
           {cols.map((col) => (
-            <div
+            <BoardColumn
               key={col.key}
-              onDragOver={(e) => { e.preventDefault(); setOverStage(col.key); }}
+              col={col}
+              filters={filters}
+              perStage={board.data?.perStage ?? 50}
+              over={overStage === col.key}
+              onDragOver={() => setOverStage(col.key)}
               onDragLeave={() => setOverStage((s) => (s === col.key ? null : s))}
-              onDrop={(e) => {
-                e.preventDefault();
+              onDrop={(dataId) => {
                 setOverStage(null);
-                const id = dragging ?? e.dataTransfer.getData('text/plain');
+                const id = dragging ?? dataId;
                 setDragging(null);
                 if (id) move(id, col.key);
               }}
-              className={clsx(
-                'w-[280px] shrink-0 rounded-lg border bg-slate-50/60 flex flex-col max-h-[calc(100vh-260px)]',
-                overStage === col.key ? 'border-brand-400 bg-brand-50/60' : 'border-slate-200'
-              )}>
-              <div className="px-3 py-2 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-inherit rounded-t-lg">
-                <span className="font-semibold text-sm">{col.label}</span>
-                <span className="text-xs text-slate-500 tabular-nums">{col.total}</span>
-              </div>
-              <div className="p-2 space-y-2 overflow-y-auto">
-                {col.cards.map((c) => (
-                  <CrmCard
-                    key={c.id}
-                    card={c}
-                    onOpen={() => setOpenLead(c.id)}
-                    onDragStart={() => setDragging(c.id)}
-                    onDragEnd={() => setDragging(null)}
-                  />
-                ))}
-                {col.cards.length === 0 && (
-                  <div className="text-xs text-slate-400 text-center py-6">vacío</div>
-                )}
-                {col.total > col.cards.length && (
-                  <div className="text-[11px] text-slate-400 text-center py-1">
-                    +{col.total - col.cards.length} más
-                  </div>
-                )}
-              </div>
-            </div>
+              onOpen={setOpenLead}
+              onDragStart={setDragging}
+              onDragEnd={() => setDragging(null)}
+            />
           ))}
         </div>
       )}
@@ -280,6 +259,111 @@ export default function Crm() {
           onMove={move}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Una columna del tablero. Las primeras tarjetas vienen con el tablero; al llegar al final
+ * de la columna pide las que siguen (scroll infinito). Las páginas extra cuelgan de la key
+ * 'crm-board', así que mover una tarjeta o anotar algo también las refresca.
+ */
+function BoardColumn({ col, filters, perStage, over, onDragOver, onDragLeave, onDrop, onOpen, onDragStart, onDragEnd }: {
+  col: Column;
+  filters: Record<string, unknown>;
+  perStage: number;
+  over: boolean;
+  onDragOver: () => void;
+  onDragLeave: () => void;
+  onDrop: (id: string) => void;
+  onOpen: (id: string) => void;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+  // No se piden páginas extra hasta que alguien baja hasta el final de la columna.
+  const [wantMore, setWantMore] = useState(false);
+  const filtersKey = JSON.stringify(filters);
+  useEffect(() => setWantMore(false), [filtersKey]);
+
+  const more = useInfiniteQuery({
+    queryKey: ['crm-board', 'stage', col.key, filters],
+    enabled: wantMore,
+    initialPageParam: perStage,
+    queryFn: async ({ pageParam }) =>
+      (await api.get<{ cards: Card[]; nextSkip: number | null }>(`/crm/board/${col.key}`, {
+        params: { ...filters, skip: pageParam, take: perStage },
+      })).data,
+    getNextPageParam: (last) => last.nextSkip ?? undefined,
+  });
+
+  // El tablero se refresca solo cada minuto y las páginas se piden por posición: si algo
+  // se corrió de lugar entre medio, la misma tarjeta puede venir dos veces.
+  const cards = useMemo(() => {
+    const seen = new Set<string>();
+    return [...col.cards, ...(more.data?.pages.flatMap((p) => p.cards) ?? [])]
+      .filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
+  }, [col.cards, more.data]);
+
+  const hasMore = wantMore ? !!more.hasNextPage : col.total > col.cards.length;
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    const root = scrollRef.current;
+    if (!el || !root) return;
+    const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), {
+      root,
+      rootMargin: '0px 0px 300px 0px',
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore]);
+
+  // Mientras el final de la columna esté a la vista, sigue cargando.
+  useEffect(() => {
+    if (!inView || !hasMore || more.isError) return;
+    if (!wantMore) setWantMore(true);
+    else if (!more.isFetching) more.fetchNextPage();
+  }, [inView, hasMore, wantMore, more.isFetching, more.isError]);
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); onDragOver(); }}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => { e.preventDefault(); onDrop(e.dataTransfer.getData('text/plain')); }}
+      className={clsx(
+        'w-[280px] shrink-0 rounded-lg border bg-slate-50/60 flex flex-col max-h-[calc(100vh-260px)]',
+        over ? 'border-brand-400 bg-brand-50/60' : 'border-slate-200'
+      )}>
+      <div className="px-3 py-2 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-inherit rounded-t-lg">
+        <span className="font-semibold text-sm">{col.label}</span>
+        <span className="text-xs text-slate-500 tabular-nums">{col.total}</span>
+      </div>
+      <div ref={scrollRef} className="p-2 space-y-2 overflow-y-auto">
+        {cards.map((c) => (
+          <CrmCard
+            key={c.id}
+            card={c}
+            onOpen={() => onOpen(c.id)}
+            onDragStart={() => onDragStart(c.id)}
+            onDragEnd={onDragEnd}
+          />
+        ))}
+        {cards.length === 0 && (
+          <div className="text-xs text-slate-400 text-center py-6">vacío</div>
+        )}
+        {more.isError ? (
+          <button className="w-full text-[11px] text-red-600 underline text-center py-1" onClick={() => more.fetchNextPage()}>
+            No se pudieron cargar más. Reintentar
+          </button>
+        ) : hasMore && (
+          <div ref={sentinelRef} className="text-[11px] text-slate-400 text-center py-2">
+            {more.isFetching ? 'Cargando…' : `+${Math.max(0, col.total - cards.length)} más`}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
