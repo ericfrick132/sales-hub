@@ -200,7 +200,8 @@ export default function Crm() {
         </div>
         <div className="flex flex-wrap gap-1.5">
           <Chip active={quick === ''} onClick={() => setQuick('')}>Todos</Chip>
-          <Chip active={quick === 'mine'} onClick={() => setQuick('mine')}>Míos</Chip>
+          {/* Un vendedor ya ve sólo sus leads: el filtro "Míos" es para el admin. */}
+          {admin && <Chip active={quick === 'mine'} onClick={() => setQuick('mine')}>Míos</Chip>}
           <Chip active={quick === 'overdue'} onClick={() => setQuick('overdue')} tone="red">Vencidos</Chip>
           <Chip active={quick === 'today'} onClick={() => setQuick('today')}>Para hoy</Chip>
           <Chip active={quick === 'stalled'} onClick={() => setQuick('stalled')}>Sin tocar +7 días</Chip>

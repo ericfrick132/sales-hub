@@ -77,10 +77,22 @@ public class CrmController : ControllerBase
         public string? Due { get; set; }
     }
 
+    /// <summary>
+    /// Los leads que puede ver quien llama: el admin ve todos; un vendedor, sólo los suyos.
+    /// Todo endpoint del CRM parte de acá (tablero, cola de llamadas, ficha y cambios), así
+    /// un vendedor no ve ni toca leads ajenos aunque arme la URL a mano.
+    /// </summary>
+    private IQueryable<Lead> VisibleLeads()
+    {
+        if (CurrentUser.IsAdmin(User)) return _db.Leads;
+        var callerId = CurrentUser.Id(User);
+        return _db.Leads.Where(l => l.SellerId == callerId);
+    }
+
     /// <summary>La query de leads con los filtros aplicados; null si el filtro no puede matchear nada.</summary>
     private async Task<IQueryable<Lead>?> FilteredLeadsAsync(LeadFilter f, CancellationToken ct)
     {
-        var leadQ = _db.Leads.AsNoTracking().Include(l => l.Product).Include(l => l.Seller).AsQueryable();
+        var leadQ = VisibleLeads().AsNoTracking().Include(l => l.Product).Include(l => l.Seller).AsQueryable();
 
         if (f.OnlyMine) { var callerId = CurrentUser.Id(User); leadQ = leadQ.Where(l => l.SellerId == callerId); }
         else if (f.SellerId is not null) leadQ = leadQ.Where(l => l.SellerId == f.SellerId);
@@ -258,7 +270,7 @@ public class CrmController : ControllerBase
     [HttpGet("leads/{id:guid}")]
     public async Task<IActionResult> Detail(Guid id, CancellationToken ct)
     {
-        var lead = await _db.Leads.AsNoTracking()
+        var lead = await VisibleLeads().AsNoTracking()
             .Include(l => l.Product).Include(l => l.Seller)
             .FirstOrDefaultAsync(l => l.Id == id, ct);
         if (lead is null) return NotFound();
@@ -339,7 +351,7 @@ public class CrmController : ControllerBase
         var text = (req.Text ?? "").Trim();
         if (text.Length == 0) return BadRequest(new { error = "La nota está vacía" });
 
-        var exists = await _db.Leads.AnyAsync(l => l.Id == id, ct);
+        var exists = await VisibleLeads().AnyAsync(l => l.Id == id, ct);
         if (!exists) return NotFound();
 
         var note = new LeadNote
@@ -387,7 +399,7 @@ public class CrmController : ControllerBase
         var stage = Stages.FirstOrDefault(s => s.Key == (req.Stage ?? "").ToLowerInvariant());
         if (stage is null) return BadRequest(new { error = $"Etapa desconocida: {req.Stage}" });
 
-        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == id, ct);
+        var lead = await VisibleLeads().FirstOrDefaultAsync(l => l.Id == id, ct);
         if (lead is null) return NotFound();
 
         if (!string.IsNullOrWhiteSpace(req.Note))
@@ -555,7 +567,7 @@ public class CrmController : ControllerBase
         if (req.Outcome == CallOutcome.Callback && req.CallbackAt is null)
             return BadRequest(new { error = "Falta cuándo volver a llamar" });
 
-        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == id, ct);
+        var lead = await VisibleLeads().FirstOrDefaultAsync(l => l.Id == id, ct);
         if (lead is null) return NotFound();
 
         var now = DateTimeOffset.UtcNow;
@@ -706,7 +718,7 @@ public class CrmController : ControllerBase
     [HttpPatch("leads/{id:guid}/next-action")]
     public async Task<IActionResult> SetNextAction(Guid id, [FromBody] NextActionRequest req, CancellationToken ct)
     {
-        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == id, ct);
+        var lead = await VisibleLeads().FirstOrDefaultAsync(l => l.Id == id, ct);
         if (lead is null) return NotFound();
 
         lead.NextActionAt = req.At;
