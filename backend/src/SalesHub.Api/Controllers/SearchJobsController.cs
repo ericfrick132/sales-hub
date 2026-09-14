@@ -96,11 +96,7 @@ public class SearchJobsController : ControllerBase
     public async Task<ActionResult<IEnumerable<SuggestedQueryDto>>> Suggestions(CancellationToken ct)
     {
         var sellerId = CurrentUser.Id(User);
-        var localities = await _db.SellerLocalities.AsNoTracking()
-            .Where(sl => sl.SellerId == sellerId)
-            .Include(sl => sl.Locality)
-            .Select(sl => sl.Locality!)
-            .ToListAsync(ct);
+        var localities = await SellerZones.LocalitiesForAsync(_db, sellerId, ct);
         var products = await _db.Products.AsNoTracking().Where(p => p.Active).ToListAsync(ct);
 
         var rows = new List<SuggestedQueryDto>();
@@ -156,11 +152,7 @@ public class SearchJobsController : ControllerBase
     {
         var sellerId = CurrentUser.Id(User);
         var seller = await _db.Sellers.AsNoTracking().FirstAsync(s => s.Id == sellerId, ct);
-        var localities = await _db.SellerLocalities.AsNoTracking()
-            .Where(sl => sl.SellerId == sellerId)
-            .Include(sl => sl.Locality)
-            .Select(sl => sl.Locality!)
-            .ToListAsync(ct);
+        var localities = await SellerZones.LocalitiesForAsync(_db, sellerId, ct);
         var productsQ = _db.Products.AsNoTracking().Where(p => p.Active);
         if (seller.VerticalsWhitelist.Count > 0)
             productsQ = productsQ.Where(p => seller.VerticalsWhitelist.Contains(p.ProductKey));
@@ -267,8 +259,7 @@ public class SearchJobsController : ControllerBase
             if (locality is null) return BadRequest(new { error = "Locality desconocida" });
             if (!CurrentUser.IsAdmin(User))
             {
-                var owned = await _db.SellerLocalities
-                    .AnyAsync(sl => sl.SellerId == sellerId && sl.LocalityGid2 == locality.Gid2, ct);
+                var owned = await SellerZones.OwnsAsync(_db, sellerId, locality.Gid2, ct);
                 if (!owned)
                 {
                     // Antes devolvíamos 403 seco. El error real es accionable: ese

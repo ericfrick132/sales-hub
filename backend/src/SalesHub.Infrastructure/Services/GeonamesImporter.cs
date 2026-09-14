@@ -167,14 +167,7 @@ public class GeonamesImporter
 
     private static string NormKey(string province, string city) => $"{Fold(province)}\u0001{Fold(city)}";
 
-    /// <summary>Minúsculas y sin tildes, para comparar nombres escritos distinto.</summary>
-    private static string Fold(string text)
-    {
-        var sb = new StringBuilder(text.Length);
-        foreach (var ch in text.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD))
-            if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark) sb.Append(ch);
-        return sb.ToString().Normalize(NormalizationForm.FormC);
-    }
+    private static string Fold(string text) => SellerZones.Fold(text);
 
     /// <summary>
     /// Provincias argentinas como las escriben los leads ("Córdoba", "Tucumán"). GeoNames las
