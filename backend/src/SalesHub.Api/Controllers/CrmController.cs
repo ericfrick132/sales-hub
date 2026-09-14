@@ -60,48 +60,46 @@ public class CrmController : ControllerBase
     public record StageColumn(string Key, string Label, int Total, IReadOnlyList<CrmCard> Cards);
 
     /// <summary>
-    /// Tablero completo. Todos los filtros son opcionales y se combinan.
-    /// <paramref name="q"/> busca por nombre, teléfono o ciudad.
-    /// <paramref name="stalledDays"/> deja sólo los que no tienen movimiento hace N días.
-    /// <paramref name="due"/> = "today" | "overdue": filtra por la próxima acción comprometida.
+    /// Filtros del tablero, compartidos con la cola del modo llamadas (que llama a los mismos
+    /// leads que el usuario está mirando). Todos opcionales y combinables.
+    /// <c>Q</c> busca por nombre, teléfono o ciudad; <c>StalledDays</c> deja sólo los que no
+    /// tienen movimiento hace N días; <c>Due</c> = "today" | "overdue" filtra por la próxima acción.
     /// </summary>
-    [HttpGet("board")]
-    public async Task<IActionResult> Board(
-        [FromQuery] string? q,
-        [FromQuery] string? productKey,
-        [FromQuery] Guid? sellerId,
-        [FromQuery] Guid? deviceId,
-        [FromQuery] LeadSource[]? source,
-        [FromQuery] bool onlyMine = false,
-        [FromQuery] int? stalledDays = null,
-        [FromQuery] string? due = null,
-        [FromQuery] int perStage = 50,
-        CancellationToken ct = default)
+    public class LeadFilter
     {
-        perStage = Math.Clamp(perStage, 5, 200);
-        var callerId = CurrentUser.Id(User);
+        public string? Q { get; set; }
+        public string? ProductKey { get; set; }
+        public Guid? SellerId { get; set; }
+        public Guid? DeviceId { get; set; }
+        public LeadSource[]? Source { get; set; }
+        public bool OnlyMine { get; set; }
+        public int? StalledDays { get; set; }
+        public string? Due { get; set; }
+    }
 
-        var devices = await _db.Devices.AsNoTracking()
-            .Select(d => new { d.Id, d.Name, d.SellerId }).ToListAsync(ct);
-
+    /// <summary>La query de leads con los filtros aplicados; null si el filtro no puede matchear nada.</summary>
+    private async Task<IQueryable<Lead>?> FilteredLeadsAsync(LeadFilter f, CancellationToken ct)
+    {
         var leadQ = _db.Leads.AsNoTracking().Include(l => l.Product).Include(l => l.Seller).AsQueryable();
 
-        if (onlyMine) leadQ = leadQ.Where(l => l.SellerId == callerId);
-        else if (sellerId is not null) leadQ = leadQ.Where(l => l.SellerId == sellerId);
+        if (f.OnlyMine) { var callerId = CurrentUser.Id(User); leadQ = leadQ.Where(l => l.SellerId == callerId); }
+        else if (f.SellerId is not null) leadQ = leadQ.Where(l => l.SellerId == f.SellerId);
 
-        if (deviceId is not null)
+        if (f.DeviceId is not null)
         {
-            var dev = devices.FirstOrDefault(d => d.Id == deviceId);
-            if (dev?.SellerId is null) return Ok(new { stages = Stages.Select(s => new StageColumn(s.Key, s.Label, 0, Array.Empty<CrmCard>())), total = 0 });
-            leadQ = leadQ.Where(l => l.SellerId == dev.SellerId);
+            // Un celular sin vendedor no tiene leads.
+            var devSellerId = await _db.Devices.AsNoTracking().Where(d => d.Id == f.DeviceId)
+                .Select(d => d.SellerId).FirstOrDefaultAsync(ct);
+            if (devSellerId is null) return null;
+            leadQ = leadQ.Where(l => l.SellerId == devSellerId);
         }
 
-        if (!string.IsNullOrWhiteSpace(productKey)) leadQ = leadQ.Where(l => l.ProductKey == productKey);
-        if (source is { Length: > 0 }) leadQ = leadQ.Where(l => source.Contains(l.Source));
+        if (!string.IsNullOrWhiteSpace(f.ProductKey)) leadQ = leadQ.Where(l => l.ProductKey == f.ProductKey);
+        if (f.Source is { Length: > 0 }) leadQ = leadQ.Where(l => f.Source.Contains(l.Source));
 
-        if (!string.IsNullOrWhiteSpace(q))
+        if (!string.IsNullOrWhiteSpace(f.Q))
         {
-            var term = q.Trim().ToLower();
+            var term = f.Q.Trim().ToLower();
             var digits = new string(term.Where(char.IsDigit).ToArray());
             leadQ = leadQ.Where(l =>
                 l.Name.ToLower().Contains(term)
@@ -110,12 +108,12 @@ public class CrmController : ControllerBase
         }
 
         var now = DateTimeOffset.UtcNow;
-        if (stalledDays is > 0)
+        if (f.StalledDays is > 0)
         {
-            var cutoff = now.AddDays(-stalledDays.Value);
+            var cutoff = now.AddDays(-f.StalledDays.Value);
             leadQ = leadQ.Where(l => l.UpdatedAt <= cutoff);
         }
-        switch ((due ?? "").ToLowerInvariant())
+        switch ((f.Due ?? "").ToLowerInvariant())
         {
             case "today":
                 leadQ = leadQ.Where(l => l.NextActionAt != null && l.NextActionAt <= now.AddDays(1).Date);
@@ -124,6 +122,25 @@ public class CrmController : ControllerBase
                 leadQ = leadQ.Where(l => l.NextActionAt != null && l.NextActionAt < now);
                 break;
         }
+        return leadQ;
+    }
+
+    /// <summary>Tablero completo, con los filtros de <see cref="LeadFilter"/>.</summary>
+    [HttpGet("board")]
+    public async Task<IActionResult> Board(
+        [FromQuery] LeadFilter filter,
+        [FromQuery] int perStage = 50,
+        CancellationToken ct = default)
+    {
+        perStage = Math.Clamp(perStage, 5, 200);
+
+        var leadQ = await FilteredLeadsAsync(filter, ct);
+        if (leadQ is null)
+            return Ok(new { stages = Stages.Select(s => new StageColumn(s.Key, s.Label, 0, Array.Empty<CrmCard>())), total = 0, overdue = 0, perStage });
+
+        var devices = await _db.Devices.AsNoTracking()
+            .Select(d => new { d.Id, d.Name, d.SellerId }).ToListAsync(ct);
+        var now = DateTimeOffset.UtcNow;
 
         // Los totales salen de un GROUP BY sobre columnas reales — nada de traer los 12k
         // leads a memoria para después quedarse con 50 por columna.
@@ -331,6 +348,29 @@ public class CrmController : ControllerBase
         var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == id, ct);
         if (lead is null) return NotFound();
 
+        if (!string.IsNullOrWhiteSpace(req.Note))
+        {
+            _db.LeadNotes.Add(new LeadNote
+            {
+                Id = Guid.NewGuid(),
+                LeadId = id,
+                SellerId = CurrentUser.Id(User),
+                Kind = LeadNoteKind.Note,
+                Text = req.Note!.Trim(),
+            });
+        }
+
+        await ApplyStageAsync(lead, stage, ct);
+        return Ok(new { id = lead.Id, status = lead.Status.ToString(), stage = stage.Key });
+    }
+
+    /// <summary>
+    /// Escribe el LeadStatus de la etapa, sella las fechas del embudo, deja el rastro en la
+    /// bitácora, guarda y avisa al producto de origen. Lo usan el arrastre y el modo llamadas.
+    /// </summary>
+    private async Task ApplyStageAsync(Lead lead, Stage stage, CancellationToken ct)
+    {
+        var id = lead.Id;
         var before = lead.Status;
         // Si ya está en un estado que pertenece a la etapa destino, no lo pisamos: mover
         // "Perdidos" no debe convertir un Blocked en Lost y perder el motivo real.
@@ -359,25 +399,164 @@ public class CrmController : ControllerBase
             Text = trail,
         });
 
-        if (!string.IsNullOrWhiteSpace(req.Note))
-        {
-            _db.LeadNotes.Add(new LeadNote
-            {
-                Id = Guid.NewGuid(),
-                LeadId = id,
-                SellerId = CurrentUser.Id(User),
-                Kind = LeadNoteKind.Note,
-                Text = req.Note!.Trim(),
-            });
-        }
-
         await _db.SaveChangesAsync(ct);
 
         // Mismo status-back que el PATCH clásico: el producto de origen se entera del cierre.
         await _statusNotifier.NotifyAsync(lead.ProductKey, lead.ExternalId, target.ToString(),
             target == LeadStatus.Closed, ct);
+    }
 
-        return Ok(new { id = lead.Id, status = lead.Status.ToString(), stage = stage.Key });
+    public record CallQueueItem(
+        Guid Id, string Name, string Phone, string ProductKey, string? ProductName, string? City,
+        string Status, string StageKey, string? SellerName, DateTimeOffset? NextActionAt,
+        string? NextActionNote, string? LastNote, int CallCount, DateTimeOffset? LastCallAt,
+        DateTimeOffset CreatedAt);
+
+    /// <summary>
+    /// Cola del modo llamadas: los leads con teléfono que matchean los filtros del tablero,
+    /// en el orden en que conviene llamarlos (recordatorios vencidos primero, después los
+    /// más nuevos: un lead recién entrado es el que más chance tiene de atender).
+    /// <paramref name="stages"/> limita las etapas, separadas por coma (por defecto todas menos
+    /// ganados y perdidos).
+    /// <paramref name="skipCalled"/> = "ever" (nunca llamados, por defecto) | "today" | "week" | "no".
+    /// </summary>
+    [HttpGet("call-queue")]
+    public async Task<IActionResult> CallQueue(
+        [FromQuery] LeadFilter filter,
+        [FromQuery] string? stages,
+        [FromQuery] string? skipCalled = "ever",
+        [FromQuery] int limit = 300,
+        CancellationToken ct = default)
+    {
+        limit = Math.Clamp(limit, 1, 500);
+        var leadQ = await FilteredLeadsAsync(filter, ct);
+        if (leadQ is null) return Ok(new { total = 0, items = Array.Empty<CallQueueItem>() });
+
+        var stageKeys = (stages ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var chosen = stageKeys.Length > 0
+            ? Stages.Where(s => stageKeys.Contains(s.Key)).ToArray()
+            : Stages.Where(s => s.Key is not ("ganado" or "perdido")).ToArray();
+        var statuses = chosen.SelectMany(s => s.Statuses).ToArray();
+
+        leadQ = leadQ.Where(l => statuses.Contains(l.Status) && l.WhatsappPhone != null && l.WhatsappPhone != "");
+
+        var now = DateTimeOffset.UtcNow;
+        var calls = _db.LeadNotes.Where(n => n.Kind == LeadNoteKind.Call);
+        switch ((skipCalled ?? "ever").ToLowerInvariant())
+        {
+            case "no":
+                break;
+            case "today":
+                var halfDay = now.AddHours(-12);
+                leadQ = leadQ.Where(l => !calls.Any(n => n.LeadId == l.Id && n.CreatedAt >= halfDay));
+                break;
+            case "week":
+                var week = now.AddDays(-7);
+                leadQ = leadQ.Where(l => !calls.Any(n => n.LeadId == l.Id && n.CreatedAt >= week));
+                break;
+            default:
+                leadQ = leadQ.Where(l => !calls.Any(n => n.LeadId == l.Id));
+                break;
+        }
+
+        var total = await leadQ.CountAsync(ct);
+        var rows = await leadQ
+            .OrderBy(l => l.NextActionAt)
+            .ThenByDescending(l => l.CreatedAt)
+            .Take(limit)
+            .Select(l => new
+            {
+                l.Id, l.Name, l.WhatsappPhone, l.ProductKey,
+                ProductName = l.Product != null ? l.Product.DisplayName : null,
+                l.City, l.Status,
+                SellerName = l.Seller != null ? l.Seller.DisplayName : null,
+                l.NextActionAt, l.NextActionNote, l.CreatedAt,
+                LastNote = _db.LeadNotes.Where(n => n.LeadId == l.Id && (n.Kind == LeadNoteKind.Note || n.Kind == LeadNoteKind.Call))
+                    .OrderByDescending(n => n.CreatedAt).Select(n => n.Text).FirstOrDefault(),
+                CallCount = _db.LeadNotes.Count(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Call),
+                LastCallAt = _db.LeadNotes.Where(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Call)
+                    .OrderByDescending(n => n.CreatedAt).Select(n => (DateTimeOffset?)n.CreatedAt).FirstOrDefault(),
+            })
+            .ToListAsync(ct);
+
+        var items = rows.Select(r => new CallQueueItem(
+            r.Id, r.Name, r.WhatsappPhone!, r.ProductKey, r.ProductName, r.City, r.Status.ToString(),
+            StageKeyOf(r.Status), r.SellerName, r.NextActionAt, r.NextActionNote, r.LastNote,
+            r.CallCount, r.LastCallAt, r.CreatedAt)).ToList();
+
+        return Ok(new { total, items });
+    }
+
+    public enum CallOutcome { NoAnswer, Answered, Interested, NotInterested, Callback, WrongNumber }
+
+    public record LogCallRequest(CallOutcome Outcome, string? Note, DateTimeOffset? CallbackAt);
+
+    private static readonly Dictionary<CallOutcome, string> CallOutcomeLabel = new()
+    {
+        [CallOutcome.NoAnswer] = "No atendió",
+        [CallOutcome.Answered] = "Atendió",
+        [CallOutcome.Interested] = "Interesado",
+        [CallOutcome.NotInterested] = "No le interesa",
+        [CallOutcome.Callback] = "Volver a llamar",
+        [CallOutcome.WrongNumber] = "Número equivocado",
+    };
+
+    /// <summary>
+    /// Registra el resultado de una llamada del modo llamadas y aplica lo que implica:
+    /// interesado → etapa Interesados; no le interesa / número equivocado → Perdidos;
+    /// volver a llamar → recordatorio. "Atendió" y "No atendió" sólo dejan la nota: cambiar
+    /// la etapa ahí movería el follow-up automático sin que nadie lo haya decidido.
+    /// </summary>
+    [HttpPost("leads/{id:guid}/calls")]
+    public async Task<IActionResult> LogCall(Guid id, [FromBody] LogCallRequest req, CancellationToken ct)
+    {
+        if (req.Outcome == CallOutcome.Callback && req.CallbackAt is null)
+            return BadRequest(new { error = "Falta cuándo volver a llamar" });
+
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (lead is null) return NotFound();
+
+        var now = DateTimeOffset.UtcNow;
+        var note = string.IsNullOrWhiteSpace(req.Note) ? null : req.Note!.Trim();
+        var text = $"Llamada: {CallOutcomeLabel[req.Outcome]}"
+            + (req.Outcome == CallOutcome.Callback ? $" ({req.CallbackAt!.Value.ToOffset(TimeSpan.FromHours(-3)):dd/MM HH:mm})" : "")
+            + (note is null ? "" : $" — {note}");
+        _db.LeadNotes.Add(new LeadNote
+        {
+            Id = Guid.NewGuid(),
+            LeadId = id,
+            SellerId = CurrentUser.Id(User),
+            Kind = LeadNoteKind.Call,
+            Text = text,
+        });
+
+        if (req.Outcome == CallOutcome.Callback)
+        {
+            lead.NextActionAt = req.CallbackAt;
+            lead.NextActionNote = "Volver a llamar" + (note is null ? "" : $": {note}");
+        }
+        else if (lead.NextActionNote?.StartsWith("Volver a llamar") == true)
+        {
+            // El recordatorio de llamarlo ya se cumplió.
+            lead.NextActionAt = null;
+            lead.NextActionNote = null;
+        }
+        lead.UpdatedAt = now;
+
+        // Sólo avanza: un "interesado" que ya tiene demo o está ganado no retrocede.
+        var stageKey = req.Outcome switch
+        {
+            CallOutcome.Interested when lead.Status is LeadStatus.New or LeadStatus.Assigned or LeadStatus.Queued
+                or LeadStatus.Sent or LeadStatus.Replied => "interesado",
+            CallOutcome.NotInterested or CallOutcome.WrongNumber when lead.Status != LeadStatus.Closed => "perdido",
+            _ => null,
+        };
+
+        var stage = stageKey is null ? null : Stages.First(s => s.Key == stageKey);
+        if (stage is not null) await ApplyStageAsync(lead, stage, ct);
+        else await _db.SaveChangesAsync(ct);
+
+        return Ok(new { id = lead.Id, status = lead.Status.ToString(), stage = StageKeyOf(lead.Status), text });
     }
 
     public record AssignSellerRequest(Guid SellerId);
@@ -514,4 +693,7 @@ public class CrmController : ControllerBase
 
     private static string StageLabelOf(LeadStatus status) =>
         Stages.FirstOrDefault(s => s.Statuses.Contains(status))?.Label ?? status.ToString();
+
+    private static string StageKeyOf(LeadStatus status) =>
+        Stages.FirstOrDefault(s => s.Statuses.Contains(status))?.Key ?? "";
 }

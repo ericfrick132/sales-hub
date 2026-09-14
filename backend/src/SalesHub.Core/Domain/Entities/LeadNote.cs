@@ -7,7 +7,9 @@ public enum LeadNoteKind
     /// <summary>Rastro automático de un cambio de etapa (quién lo movió y de dónde a dónde).</summary>
     StageChange = 1,
     /// <summary>Anotación del sistema (recordatorio fijado, tarea cumplida).</summary>
-    System = 2
+    System = 2,
+    /// <summary>Resultado de una llamada del modo llamadas (atendió, no atendió…).</summary>
+    Call = 3
 }
 
 /// <summary>

@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import { api } from '../lib/api';
 import { isAdmin, useAuthStore } from '../lib/auth';
+import { fmtDate, fmtDateTime, fmtPhone, hace, telHref, toLocalInput } from '../lib/crmFormat';
+import CrmCallMode from '../components/CrmCallMode';
 import type { Product, Seller } from '../lib/types';
 
 /**
@@ -74,31 +76,6 @@ const lineLabel = (m: { line?: string; linePhone?: string; isDevice: boolean; di
   return '';
 };
 
-/** El teléfono se guarda sólo con dígitos (5491112345678); se muestra con el +. */
-const fmtPhone = (phone: string) => `+${phone.replace(/\D/g, '')}`;
-/** tel: en la Mac abre FaceTime, que llama por el iPhone vinculado (Continuity). */
-const telHref = (phone: string) => `tel:${fmtPhone(phone)}`;
-
-const hace = (iso?: string) => {
-  if (!iso) return 'sin actividad';
-  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (min < 1) return 'recién';
-  if (min < 60) return `hace ${min} min`;
-  if (min < 1440) return `hace ${Math.floor(min / 60)} h`;
-  return `hace ${Math.floor(min / 1440)} d`;
-};
-const fmtDate = (iso?: string) =>
-  iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '—';
-const fmtDateTime = (iso?: string) =>
-  iso ? new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
-/** ISO → valor para <input type="datetime-local"> en hora local. */
-const toLocalInput = (iso?: string) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  const off = d.getTimezoneOffset();
-  return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
-};
-
 export default function Crm() {
   const qc = useQueryClient();
   const admin = isAdmin(useAuthStore((s) => s.user));
@@ -111,6 +88,7 @@ export default function Crm() {
   const [openLead, setOpenLead] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [overStage, setOverStage] = useState<string | null>(null);
+  const [callMode, setCallMode] = useState(false);
 
   const filters = {
     q: q.trim() || undefined,
@@ -171,11 +149,16 @@ export default function Crm() {
             Arrastrá una tarjeta para moverla de etapa. Cada lead guarda sus notas y su próxima acción.
           </p>
         </div>
-        <div className="text-sm text-slate-500">
-          {board.data ? `${board.data.total} leads` : '…'}
-          {board.data && board.data.overdue > 0 && (
-            <span className="ml-2 text-red-600 font-medium">{board.data.overdue} vencidos</span>
-          )}
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-slate-500">
+            {board.data ? `${board.data.total} leads` : '…'}
+            {board.data && board.data.overdue > 0 && (
+              <span className="ml-2 text-red-600 font-medium">{board.data.overdue} vencidos</span>
+            )}
+          </div>
+          <button className="btn-primary text-sm" onClick={() => setCallMode(true)} disabled={cols.length === 0}>
+            Modo llamadas
+          </button>
         </div>
       </div>
 
@@ -278,6 +261,14 @@ export default function Crm() {
             </div>
           ))}
         </div>
+      )}
+
+      {callMode && (
+        <CrmCallMode
+          filters={filters}
+          stages={cols.map((c) => ({ key: c.key, label: c.label }))}
+          onClose={() => setCallMode(false)}
+        />
       )}
 
       {openLead && (
@@ -597,9 +588,10 @@ function LeadDrawer({ leadId, stages, sellers, onClose, onMove }: {
                     <div className="text-xs text-slate-400 flex gap-2">
                       <span>{fmtDateTime(n.createdAt)}</span>
                       {n.sellerName && <span>· {n.sellerName}</span>}
-                      {n.kind !== 'Note' && <span className="text-slate-300">· automático</span>}
+                      {n.kind === 'Call' && <span className="text-emerald-600">· llamada</span>}
+                      {n.kind !== 'Note' && n.kind !== 'Call' && <span className="text-slate-300">· automático</span>}
                     </div>
-                    <div className={clsx('text-sm', n.kind !== 'Note' && 'text-slate-500 italic')}>{n.text}</div>
+                    <div className={clsx('text-sm', n.kind !== 'Note' && n.kind !== 'Call' && 'text-slate-500 italic')}>{n.text}</div>
                   </div>
                 ))}
                 {d.notes.length === 0 && <div className="text-xs text-slate-400 py-2">Todavía no hay notas.</div>}
