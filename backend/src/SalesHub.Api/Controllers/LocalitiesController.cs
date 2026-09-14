@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Api.Controllers;
 
@@ -101,12 +102,11 @@ public class LocalitiesController : ControllerBase
     {
         var sellerId = CurrentUser.Id(User);
         if (sellerId == Guid.Empty) return Forbid();
-        var rows = await _db.SellerLocalities.AsNoTracking()
-            .Where(sl => sl.SellerId == sellerId)
-            .Select(sl => sl.Locality!)
+        // Las pintadas en /map y las cargadas por nombre en /sellers/zones.
+        var localities = await SellerZones.LocalitiesForAsync(_db, sellerId, ct);
+        return localities
             .Select(l => new LocalityDto(l.Gid2, l.Name, l.AdminLevel1Name, l.CountryCode, l.CentroidLat, l.CentroidLng))
-            .ToListAsync(ct);
-        return rows;
+            .ToList();
     }
 
     /// <summary>Bulk-replace the locality assignments for a seller (M:N). The frontend

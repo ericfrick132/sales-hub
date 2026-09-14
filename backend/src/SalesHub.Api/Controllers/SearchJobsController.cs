@@ -141,15 +141,74 @@ public class SearchJobsController : ControllerBase
     /// vendedor debería capturar ahora. Prioriza:
     /// 1) las que nunca capturó,
     /// 2) las que hizo hace > staleDays (default 30),
-    /// y oculta las recientes para no superponer trabajo. La idea es que el vendedor
-    /// haga click en una sola card grande y arranque, sin pensar.
+    /// y oculta las recientes para no superponer trabajo. Con <paramref name="gid2"/> trae
+    /// sólo las de esa localidad (la que el vendedor eligió en el mapa).
     /// </summary>
     [HttpGet("next")]
     public async Task<ActionResult<IEnumerable<NextCaptureDto>>> Next(
         [FromQuery] int limit = 5,
         [FromQuery] int staleDays = 30,
         [FromQuery] string? productKey = null,
+        [FromQuery] string? gid2 = null,
         CancellationToken ct = default)
+    {
+        var (_, combos) = await CaptureCombosAsync(productKey, staleDays, ct);
+
+        // Orden: nuevas primero, después stale por más viejo. Tiebreaker estable por gid2/cat
+        // para que la sugerencia no salte aleatoriamente cada refresh.
+        var sorted = combos
+            .Where(r => r.Priority != "done")
+            .Where(r => string.IsNullOrWhiteSpace(gid2) || r.LocalityGid2 == gid2)
+            .OrderBy(r => r.Priority == "new" ? 0 : 1)
+            .ThenBy(r => r.LastCapturedAt ?? DateTimeOffset.MinValue)
+            .ThenBy(r => r.LocalityGid2)
+            .ThenBy(r => r.Category)
+            .Take(Math.Clamp(limit, 1, 1000))
+            .ToList();
+
+        return sorted;
+    }
+
+    public record CaptureZoneDto(
+        string Gid2, string Name, string AdminLevel1Name, string CountryCode,
+        double CentroidLat, double CentroidLng,
+        // Combos (producto × categoría) que nunca capturó, que conviene refrescar y que ya están al día.
+        int NewCount, int StaleCount, int DoneCount,
+        DateTimeOffset? LastCapturedAt);
+
+    /// <summary>
+    /// Las zonas del vendedor con cuánto le queda por capturar en cada una, para pintar el
+    /// mapa de "Capturar de Maps" y elegir la localidad con un click.
+    /// </summary>
+    [HttpGet("zones")]
+    public async Task<ActionResult<IEnumerable<CaptureZoneDto>>> Zones(
+        [FromQuery] string? productKey = null,
+        [FromQuery] int staleDays = 30,
+        CancellationToken ct = default)
+    {
+        var (localities, combos) = await CaptureCombosAsync(productKey, staleDays, ct);
+        var byGid2 = combos.ToLookup(c => c.LocalityGid2);
+        return localities
+            .Select(l =>
+            {
+                var cs = byGid2[l.Gid2].ToList();
+                return new CaptureZoneDto(
+                    l.Gid2, l.Name, l.AdminLevel1Name, l.CountryCode, l.CentroidLat, l.CentroidLng,
+                    cs.Count(c => c.Priority == "new"), cs.Count(c => c.Priority == "stale"),
+                    cs.Count(c => c.Priority == "done"),
+                    cs.Max(c => c.LastCapturedAt));
+            })
+            .OrderBy(z => z.AdminLevel1Name).ThenBy(z => z.Name)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Todas las combinaciones (localidad × producto × categoría) de las zonas del vendedor
+    /// logueado con su estado: "new" nunca capturada, "stale" hace más de
+    /// <paramref name="staleDays"/> días, "done" capturada hace poco.
+    /// </summary>
+    private async Task<(List<Locality> Localities, List<NextCaptureDto> Combos)> CaptureCombosAsync(
+        string? productKey, int staleDays, CancellationToken ct)
     {
         var sellerId = CurrentUser.Id(User);
         var seller = await _db.Sellers.AsNoTracking().FirstAsync(s => s.Id == sellerId, ct);
@@ -193,10 +252,9 @@ public class SearchJobsController : ControllerBase
                     var key = $"{p.ProductKey}|{loc.Gid2}|{cat}";
                     historyMap.TryGetValue(key, out var h);
                     var lastAt = h.LastAt == default ? (DateTimeOffset?)null : h.LastAt;
-                    string? priority = lastAt is null ? "new"
+                    var priority = lastAt is null ? "new"
                         : lastAt < staleThreshold ? "stale"
-                        : null; // reciente → ocultar
-                    if (priority is null) continue;
+                        : "done";
 
                     var q = string.IsNullOrWhiteSpace(cat)
                         ? $"{loc.Name}, {loc.CountryName}"
@@ -212,18 +270,7 @@ public class SearchJobsController : ControllerBase
                 }
             }
         }
-
-        // Orden: nuevas primero, después stale por más viejo. Tiebreaker estable por gid2/cat
-        // para que la sugerencia no salte aleatoriamente cada refresh.
-        var sorted = rows
-            .OrderBy(r => r.Priority == "new" ? 0 : 1)
-            .ThenBy(r => r.LastCapturedAt ?? DateTimeOffset.MinValue)
-            .ThenBy(r => r.LocalityGid2)
-            .ThenBy(r => r.Category)
-            .Take(Math.Clamp(limit, 1, 1000))
-            .ToList();
-
-        return sorted;
+        return (localities, rows);
     }
 
     [HttpGet]

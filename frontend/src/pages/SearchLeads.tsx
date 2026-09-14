@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuthStore } from '../lib/auth';
-import MyZonesMap from '../components/MyZonesMap';
+import CaptureZonesMap, { ZONE_COLORS, type CaptureZone } from '../components/CaptureZonesMap';
 import type { Product, Seller } from '../lib/types';
 
 type NextCapture = {
@@ -44,7 +44,7 @@ const readStoredProduct = () => {
 export default function SearchLeads() {
   const token = useAuthStore((s) => s.token);
   const [setupOpen, setSetupOpen] = useState(false);
-  const [cursor, setCursor] = useState(0);
+  const [pickedGid2, setPickedGid2] = useState<string | null>(null);
   const [productKey, setProductKey] = useState(readStoredProduct);
 
   const me = useQuery({
@@ -66,28 +66,46 @@ export default function SearchLeads() {
 
   function chooseProduct(key: string) {
     setProductKey(key);
-    setCursor(0);
     try { localStorage.setItem(PRODUCT_KEY_STORAGE, key); } catch { /* sin storage: sólo dura la sesión */ }
   }
 
-  const next = useQuery({
-    queryKey: ['capture-next', selectedProduct],
-    enabled: me.isFetched && products.isFetched,
-    queryFn: async () => (await api.get<NextCapture[]>('/search-jobs/next', {
-      params: { limit: 500, productKey: selectedProduct || undefined },
-    })).data,
-    // El upload pasa por fuera de React (Tampermonkey), así que re-fetcheamos
-    // cuando el vendedor vuelve a la pestaña y cada 15s mientras está acá.
+  const ready = me.isFetched && products.isFetched;
+  const productParam = selectedProduct || undefined;
+
+  // El upload pasa por fuera de React (Tampermonkey), así que se re-consulta cada 15s y al
+  // volver a la pestaña para que el mapa y la zona elegida reflejen lo recién capturado.
+  const zones = useQuery({
+    queryKey: ['capture-zones', selectedProduct],
+    enabled: ready,
+    queryFn: async () => (await api.get<CaptureZone[]>('/search-jobs/zones', { params: { productKey: productParam } })).data,
     refetchInterval: 15_000,
-    refetchOnWindowFocus: true
+    refetchOnWindowFocus: true,
+  });
+  // La mejor sugerencia (nunca capturada primero) elige la zona inicial: un click y a capturar.
+  const top = useQuery({
+    queryKey: ['capture-next', selectedProduct],
+    enabled: ready,
+    queryFn: async () => (await api.get<NextCapture[]>('/search-jobs/next', { params: { limit: 1, productKey: productParam } })).data,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 
-  // Si el array se acorta (el vendedor capturó la zona actual), reseteamos
-  // el cursor para no quedar fuera de rango.
-  const list = next.data ?? [];
-  const safeCursor = list.length === 0 ? 0 : Math.min(cursor, list.length - 1);
-  const top = list[safeCursor];
-  const rest = list.filter((_, i) => i !== safeCursor).slice(0, 4);
+  const zoneList = zones.data ?? [];
+  const selectedGid2 = pickedGid2 && zoneList.some((z) => z.gid2 === pickedGid2)
+    ? pickedGid2
+    : top.data?.[0]?.localityGid2 ?? zoneList[0]?.gid2 ?? null;
+  const selectedZone = zoneList.find((z) => z.gid2 === selectedGid2);
+
+  const zoneCaptures = useQuery({
+    queryKey: ['capture-next', selectedProduct, selectedGid2],
+    enabled: ready && !!selectedGid2,
+    queryFn: async () => (await api.get<NextCapture[]>('/search-jobs/next', {
+      params: { limit: 200, productKey: productParam, gid2: selectedGid2 },
+    })).data,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
+  const pendingZones = zoneList.filter((z) => z.newCount + z.staleCount > 0).length;
 
   const captures = useQuery({
     queryKey: ['capture-history'],
@@ -140,91 +158,79 @@ export default function SearchLeads() {
         </div>
       )}
 
-      {/* CARD GRANDE: la próxima captura. Esto es lo único que el vendedor necesita ver. */}
-      {next.isLoading || !next.isFetched ? (
-        <div className="card p-8 text-center text-slate-500">Buscando qué te conviene capturar…</div>
-      ) : !top ? (
-        <div className="card p-8 text-center space-y-2">
-          <div className="text-lg font-semibold">¡Estás al día!</div>
-          <div className="text-sm text-slate-600">
-            {selectedProduct
-              ? <>No hay zonas tuyas sin capturar para <b>{myProducts.find((p) => p.productKey === selectedProduct)?.displayName}</b>. Probá con otro producto.</>
-              : <>Por ahora no hay zonas tuyas sin capturar. Vuelvo en un rato a buscar nuevas sugerencias automáticamente.</>}
-          </div>
+      {/* Mapa de zonas: click en una localidad para ver qué capturar ahí. */}
+      {!ready || zones.isLoading ? (
+        <div className="card p-8 text-center text-slate-500">Buscando tus zonas…</div>
+      ) : zoneList.length === 0 ? (
+        <div className="card p-8 text-center text-sm text-slate-600">
+          Todavía no tenés zonas asignadas. Pedile a un admin que te asigne territorio.
         </div>
       ) : (
-        <div className="card p-6 md:p-8 bg-gradient-to-br from-brand-50 to-white border-brand-200">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-brand-700 mb-2">
-            <span className="bg-brand-600 text-white rounded-full px-2 py-0.5 text-[10px]">
-              {top.priority === 'new' ? 'Nueva zona' : 'Refrescar'}
-            </span>
-            <span className="text-slate-500">{top.productName}</span>
-            {top.lastCapturedAt && (
-              <span className="text-slate-400">
-                · última vez {daysAgo(top.lastCapturedAt)}d ({top.leadsLastTime} leads)
-              </span>
-            )}
-            <span className="ml-auto text-[10px] text-slate-400 normal-case tracking-normal">
-              Sugerencia {safeCursor + 1} de {list.length}
-            </span>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div className="card p-3 md:col-span-3 space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2 px-1">
+              <div className="text-sm font-semibold">Elegí una zona en el mapa</div>
+              <div className="text-xs text-slate-500">{pendingZones} de {zoneList.length} con algo para capturar</div>
+            </div>
+            <div className="h-[340px] md:h-[440px]">
+              <CaptureZonesMap zones={zoneList} selected={selectedGid2} onSelect={setPickedGid2} />
+            </div>
+            <div className="flex flex-wrap gap-3 text-xs text-slate-600 px-1">
+              <Legend color={ZONE_COLORS.new} label="Sin capturar" />
+              <Legend color={ZONE_COLORS.stale} label="Para refrescar" />
+              <Legend color={ZONE_COLORS.done} label="Al día" />
+            </div>
           </div>
-          <div className="text-2xl md:text-3xl font-bold text-slate-900">
-            {top.category ? <>{cap(top.category)} en {top.localityName}</> : <>{top.localityName}</>}
-          </div>
-          <div className="text-sm text-slate-500 mt-1">
-            {top.adminLevel1Name}, {top.countryName}
-          </div>
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            <a
-              href={top.mapsUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="btn-primary text-base px-5 py-2.5">
-              Abrir en Maps →
-            </a>
-            <button
-              type="button"
-              className="btn-secondary text-sm"
-              disabled={safeCursor === 0}
-              onClick={() => setCursor((c) => Math.max(0, c - 1))}>
-              ← Anterior
-            </button>
-            <button
-              type="button"
-              className="btn-secondary text-sm"
-              disabled={safeCursor >= list.length - 1}
-              onClick={() => setCursor((c) => c + 1)}>
-              Siguiente →
-            </button>
-          </div>
-          <div className="text-xs text-slate-500 mt-3">
-            Click en cada negocio del listado, después <b>"+ Este lugar"</b> en el panel de SalesHub.
-          </div>
-        </div>
-      )}
 
-      {/* Otras opciones (chiquitas) — por si la sugerencia no le sirve. */}
-      {rest.length > 0 && (
-        <div className="card p-3">
-          <div className="text-xs uppercase tracking-wide text-slate-500 mb-2 px-1">O probá con</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-            {rest.map((s, i) => (
-              <a
-                key={i}
-                href={s.mapsUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-2 px-2 py-2 rounded hover:bg-slate-50 text-sm">
-                <span className="text-[10px] uppercase text-slate-400 w-12">
-                  {s.priority === 'new' ? 'Nueva' : 'Refrescar'}
-                </span>
-                <span className="flex-1 truncate">
-                  {s.category ? <b>{cap(s.category)}</b> : <span className="text-slate-400">(sin categoría)</span>}
-                  <span className="text-slate-500"> en {s.localityName}</span>
-                  <span className="text-xs text-slate-400"> · {s.productName}</span>
-                </span>
-              </a>
-            ))}
+          <div className="card p-4 md:col-span-2 space-y-3 md:max-h-[520px] md:overflow-y-auto">
+            {!selectedZone ? (
+              <div className="text-sm text-slate-500">Tocá una zona del mapa.</div>
+            ) : (
+              <>
+                <div>
+                  <div className="text-xl font-bold text-slate-900 leading-tight">{selectedZone.name}</div>
+                  <div className="text-sm text-slate-500">{selectedZone.adminLevel1Name}</div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    {selectedZone.newCount} sin capturar · {selectedZone.staleCount} para refrescar · {selectedZone.doneCount} al día
+                  </div>
+                </div>
+                {zoneCaptures.isLoading ? (
+                  <div className="text-sm text-slate-500">Cargando…</div>
+                ) : (zoneCaptures.data ?? []).length === 0 ? (
+                  <div className="text-sm text-slate-600 bg-slate-50 rounded p-3">
+                    Esta zona está al día. Elegí otra en el mapa (las azules y ámbar tienen para capturar).
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {(zoneCaptures.data ?? []).map((c) => (
+                      <a
+                        key={`${c.productKey}|${c.category}`}
+                        href={c.mapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 hover:border-brand-300 hover:bg-brand-50/40 transition">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.priority === 'new' ? ZONE_COLORS.new : ZONE_COLORS.stale }} />
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-medium truncate">
+                            {c.category ? cap(c.category) : 'Todo el rubro'}
+                          </span>
+                          <span className="block text-[11px] text-slate-500 truncate">
+                            {!selectedProduct && `${c.productName} · `}
+                            {c.priority === 'new'
+                              ? 'nunca capturado'
+                              : `hace ${daysAgo(c.lastCapturedAt!)} d (${c.leadsLastTime} leads)`}
+                          </span>
+                        </span>
+                        <span className="text-xs font-medium text-brand-700 whitespace-nowrap">Abrir en Maps →</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                <div className="text-xs text-slate-500 border-t border-slate-100 pt-2">
+                  Click en cada negocio del listado, después <b>"+ Este lugar"</b> en el panel de SalesHub.
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -292,8 +298,16 @@ export default function SearchLeads() {
         </div>
       </div>
 
-      <MyZonesMap />
     </div>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="w-3 h-3 rounded-sm" style={{ background: color, opacity: 0.8 }} />
+      {label}
+    </span>
   );
 }
 
