@@ -118,17 +118,18 @@ export default function SearchLeads() {
       </div>
 
       {/* Qué producto sale a capturar: las sugerencias y el link a Maps van con ese producto. */}
-      {myProducts.length > 1 && (
+      {myProducts.length > 0 && (
         <div className="card p-3 space-y-2">
           <div className="text-xs uppercase tracking-wide text-slate-500 px-1">¿Qué producto vas a capturar?</div>
           <div className="flex flex-wrap gap-1.5">
-            {[{ productKey: '', displayName: 'Todos' }, ...myProducts].map((p) => (
+            {/* Con un solo producto "Todos" es lo mismo: se muestra sólo ese, ya elegido. */}
+            {(myProducts.length > 1 ? [{ productKey: '', displayName: 'Todos' }, ...myProducts] : myProducts).map((p) => (
               <button
                 key={p.productKey || 'all'}
                 type="button"
                 onClick={() => chooseProduct(p.productKey)}
                 className={`text-sm px-3 py-1.5 rounded-full border transition ${
-                  selectedProduct === p.productKey
+                  selectedProduct === p.productKey || myProducts.length === 1
                     ? 'bg-brand-600 text-white border-brand-600'
                     : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
                 }`}>
