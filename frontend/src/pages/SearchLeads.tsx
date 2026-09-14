@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuthStore } from '../lib/auth';
 import MyZonesMap from '../components/MyZonesMap';
+import type { Product, Seller } from '../lib/types';
 
 type NextCapture = {
   productKey: string;
@@ -34,14 +35,47 @@ type Capture = {
 
 const SCRIPT_URL = '/saleshub-capture.user.js';
 
+// El producto elegido se recuerda en este navegador: quien captura suele salir con uno solo.
+const PRODUCT_KEY_STORAGE = 'saleshub-capture-product';
+const readStoredProduct = () => {
+  try { return localStorage.getItem(PRODUCT_KEY_STORAGE) ?? ''; } catch { return ''; }
+};
+
 export default function SearchLeads() {
   const token = useAuthStore((s) => s.token);
   const [setupOpen, setSetupOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
+  const [productKey, setProductKey] = useState(readStoredProduct);
+
+  const me = useQuery({
+    queryKey: ['seller-me'],
+    queryFn: async () => (await api.get<Seller>('/sellers/me')).data,
+    staleTime: 5 * 60_000,
+  });
+  const products = useQuery({
+    queryKey: ['products-min'],
+    queryFn: async () => (await api.get<Product[]>('/products')).data,
+    staleTime: 5 * 60_000,
+  });
+  // Los productos que este vendedor puede salir a capturar (whitelist vacía = todos).
+  const whitelist = me.data?.verticalsWhitelist ?? [];
+  const myProducts = (products.data ?? []).filter((p) =>
+    p.active && p.productKey?.trim() && (whitelist.length === 0 || whitelist.includes(p.productKey)));
+  // Si lo que quedó guardado ya no es suyo (le cambiaron las apps), vuelve a "Todos".
+  const selectedProduct = myProducts.some((p) => p.productKey === productKey) ? productKey : '';
+
+  function chooseProduct(key: string) {
+    setProductKey(key);
+    setCursor(0);
+    try { localStorage.setItem(PRODUCT_KEY_STORAGE, key); } catch { /* sin storage: sólo dura la sesión */ }
+  }
 
   const next = useQuery({
-    queryKey: ['capture-next'],
-    queryFn: async () => (await api.get<NextCapture[]>('/search-jobs/next', { params: { limit: 500 } })).data,
+    queryKey: ['capture-next', selectedProduct],
+    enabled: me.isFetched && products.isFetched,
+    queryFn: async () => (await api.get<NextCapture[]>('/search-jobs/next', {
+      params: { limit: 500, productKey: selectedProduct || undefined },
+    })).data,
     // El upload pasa por fuera de React (Tampermonkey), así que re-fetcheamos
     // cuando el vendedor vuelve a la pestaña y cada 15s mientras está acá.
     refetchInterval: 15_000,
@@ -83,15 +117,38 @@ export default function SearchLeads() {
         </button>
       </div>
 
+      {/* Qué producto sale a capturar: las sugerencias y el link a Maps van con ese producto. */}
+      {myProducts.length > 1 && (
+        <div className="card p-3 space-y-2">
+          <div className="text-xs uppercase tracking-wide text-slate-500 px-1">¿Qué producto vas a capturar?</div>
+          <div className="flex flex-wrap gap-1.5">
+            {[{ productKey: '', displayName: 'Todos' }, ...myProducts].map((p) => (
+              <button
+                key={p.productKey || 'all'}
+                type="button"
+                onClick={() => chooseProduct(p.productKey)}
+                className={`text-sm px-3 py-1.5 rounded-full border transition ${
+                  selectedProduct === p.productKey
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                }`}>
+                {p.displayName}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* CARD GRANDE: la próxima captura. Esto es lo único que el vendedor necesita ver. */}
-      {next.isLoading ? (
+      {next.isLoading || !next.isFetched ? (
         <div className="card p-8 text-center text-slate-500">Buscando qué te conviene capturar…</div>
       ) : !top ? (
         <div className="card p-8 text-center space-y-2">
           <div className="text-lg font-semibold">¡Estás al día!</div>
           <div className="text-sm text-slate-600">
-            Por ahora no hay zonas tuyas sin capturar. Vuelvo en un rato a buscar nuevas
-            sugerencias automáticamente.
+            {selectedProduct
+              ? <>No hay zonas tuyas sin capturar para <b>{myProducts.find((p) => p.productKey === selectedProduct)?.displayName}</b>. Probá con otro producto.</>
+              : <>Por ahora no hay zonas tuyas sin capturar. Vuelvo en un rato a buscar nuevas sugerencias automáticamente.</>}
           </div>
         </div>
       ) : (

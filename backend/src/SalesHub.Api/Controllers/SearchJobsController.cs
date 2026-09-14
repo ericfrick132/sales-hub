@@ -148,6 +148,7 @@ public class SearchJobsController : ControllerBase
     public async Task<ActionResult<IEnumerable<NextCaptureDto>>> Next(
         [FromQuery] int limit = 5,
         [FromQuery] int staleDays = 30,
+        [FromQuery] string? productKey = null,
         CancellationToken ct = default)
     {
         var sellerId = CurrentUser.Id(User);
@@ -156,6 +157,9 @@ public class SearchJobsController : ControllerBase
         var productsQ = _db.Products.AsNoTracking().Where(p => p.Active);
         if (seller.VerticalsWhitelist.Count > 0)
             productsQ = productsQ.Where(p => seller.VerticalsWhitelist.Contains(p.ProductKey));
+        // El vendedor elige qué producto sale a capturar; sin elegir, todos los suyos.
+        if (!string.IsNullOrWhiteSpace(productKey))
+            productsQ = productsQ.Where(p => p.ProductKey == productKey);
         var products = await productsQ.ToListAsync(ct);
 
         // Histórico de jobs del seller, indexado por la combo (producto, gid2, categoría).
