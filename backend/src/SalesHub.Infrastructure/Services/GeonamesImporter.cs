@@ -54,9 +54,13 @@ public class GeonamesImporter
             ?? throw new InvalidOperationException($"{country}.txt not found in dump");
         using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
 
-        var existing = await _db.Cities
-            .Where(c => c.Country == country && c.GeonameId != null)
-            .ToDictionaryAsync(c => c.GeonameId!.Value, ct);
+        var rows = await _db.Cities.Where(c => c.Country == country).ToListAsync(ct);
+        var byGeoname = rows.Where(c => c.GeonameId != null).ToDictionary(c => c.GeonameId!.Value);
+        // La tabla no admite dos ciudades con el mismo nombre en la misma provincia
+        // (ix_cities_queue_country_province_city). El dump sí las trae — varios "San José"
+        // en una provincia — y las ciudades cargadas a mano no tienen geonameId: insertarlas
+        // de nuevo rompía el import entero en el primer lote y el mapa quedaba vacío.
+        var byName = rows.ToDictionary(c => NameKey(c.Province, c.City), StringComparer.Ordinal);
 
         int inserted = 0, updated = 0, skipped = 0;
         string? line;
@@ -81,31 +85,59 @@ public class GeonamesImporter
 
             var provinceName = admin1.TryGetValue($"{country}.{admin1Code}", out var prov) ? prov : admin1Code;
             var bucket = BucketFor(population);
+            var key = NameKey(provinceName, name);
 
-            if (existing.TryGetValue(geonameId, out var current))
+            if (byGeoname.TryGetValue(geonameId, out var current))
             {
-                current.City = name;
-                current.Province = provinceName;
-                current.Latitude = lat;
-                current.Longitude = lng;
-                current.Population = population;
-                current.PopulationBucket = bucket;
+                // Re-import: si GeoNames le cambió el nombre y el nuevo ya lo usa otra fila, se
+                // queda con el nombre viejo y sólo refresca coordenadas y población.
+                var oldKey = NameKey(current.Province, current.City);
+                if (key != oldKey && !byName.ContainsKey(key))
+                {
+                    byName.Remove(oldKey);
+                    current.City = name;
+                    current.Province = provinceName;
+                    byName[key] = current;
+                }
+                Apply(current, lat, lng, population, bucket, geonameId);
                 updated++;
+            }
+            else if (byName.TryGetValue(key, out var sameName))
+            {
+                if (sameName.GeonameId is null)
+                {
+                    // Ciudad cargada a mano (seed): se completa con los datos de GeoNames.
+                    Apply(sameName, lat, lng, population, bucket, geonameId);
+                    byGeoname[geonameId] = sameName;
+                    updated++;
+                }
+                else if (population > (sameName.Population ?? 0))
+                {
+                    // Homónima en la misma provincia: gana la más poblada.
+                    byGeoname.Remove(sameName.GeonameId.Value);
+                    Apply(sameName, lat, lng, population, bucket, geonameId);
+                    byGeoname[geonameId] = sameName;
+                    updated++;
+                }
+                else
+                {
+                    skipped++;
+                    continue;
+                }
             }
             else
             {
-                _db.Cities.Add(new CityQueue
+                var city = new CityQueue
                 {
                     Id = Guid.NewGuid(),
                     Country = country,
                     Province = provinceName,
                     City = name,
-                    Latitude = lat,
-                    Longitude = lng,
-                    Population = population,
-                    PopulationBucket = bucket,
-                    GeonameId = geonameId
-                });
+                };
+                Apply(city, lat, lng, population, bucket, geonameId);
+                _db.Cities.Add(city);
+                byGeoname[geonameId] = city;
+                byName[key] = city;
                 inserted++;
             }
 
@@ -114,6 +146,17 @@ public class GeonamesImporter
         await _db.SaveChangesAsync(ct);
         _log.LogInformation("GeoNames import done: {Ins} inserted, {Upd} updated, {Skip} skipped", inserted, updated, skipped);
         return new ImportResult(inserted, updated, skipped);
+    }
+
+    private static string NameKey(string province, string city) => $"{province}\u0001{city}";
+
+    private static void Apply(CityQueue c, double lat, double lng, int population, PopulationBucket bucket, int geonameId)
+    {
+        c.Latitude = lat;
+        c.Longitude = lng;
+        c.Population = population;
+        c.PopulationBucket = bucket;
+        c.GeonameId = geonameId;
     }
 
     private async Task<Dictionary<string, string>> FetchAdmin1Map(string country, CancellationToken ct)

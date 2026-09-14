@@ -56,6 +56,22 @@ export default function SellerZones() {
   const [activeSellerId, setActiveSellerId] = useState<string | null>(params.get('seller'));
   const [provinceFilter, setProvinceFilter] = useState<string>('');
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  async function importCities() {
+    setImporting(true);
+    try {
+      const { data } = await api.post<{ inserted: number; updated: number }>(
+        '/admin/cities/import', { country: 'AR', minPopulation: 500 });
+      toast.success(`${data.inserted} ciudades nuevas y ${data.updated} actualizadas`);
+      qc.invalidateQueries({ queryKey: ['cities-map'] });
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e?.response?.data?.error ?? 'Falló el import');
+    } finally {
+      setImporting(false);
+    }
+  }
 
   // Hydrate from server when sellers load.
   useEffect(() => {
@@ -219,6 +235,18 @@ export default function SellerZones() {
           </button>
         </div>
       </div>
+
+      {cities.length === 0 && (
+        // El mapa sólo dibuja ciudades con coordenadas, y esas vienen del catálogo de GeoNames.
+        <div className="card p-3 flex items-center justify-between gap-3 flex-wrap border-amber-200 bg-amber-50">
+          <div className="text-sm text-amber-900">
+            No hay ciudades con coordenadas para mostrar en el mapa. Hay que importar el catálogo de ciudades (tarda cerca de un minuto).
+          </div>
+          <button className="btn-primary text-sm" onClick={importCities} disabled={importing}>
+            {importing ? 'Importando…' : 'Importar ciudades AR'}
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-12 gap-4">
         {/* Sidebar */}
