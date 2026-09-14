@@ -11,5 +11,11 @@ public interface ILeadAssigner
     /// "Reasignar todo"): dedicados primero, catch-all (whitelist vacía) como fallback,
     /// prefiriendo a los que pueden enviar ya. null si no hay ningún candidato activo.</summary>
     Task<Guid?> PickOwnerAsync(string productKey, CancellationToken ct = default);
+    /// <summary>
+    /// Igual, para un lead que ya existe: descarta a los vendedores que "empezaron de cero"
+    /// después de que se creó el lead (<c>Seller.LeadsFromAt</c>).
+    /// </summary>
+    Task<Guid?> PickOwnerAsync(string productKey, DateTimeOffset leadCreatedAt, CancellationToken ct = default);
+    Task<Guid?> PickForLeadAsync(string productKey, string? localityGid2, string? province, string? city, DateTimeOffset leadCreatedAt, CancellationToken ct = default);
     Task AssignAsync(Lead lead, Guid sellerId, CancellationToken ct = default);
 }

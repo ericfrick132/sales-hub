@@ -378,7 +378,7 @@ public class PitchEngine
         {
             if (lead.SellerId is null)
             {
-                var owner = await _assigner.PickOwnerAsync(p.ProductKey, ct);
+                var owner = await _assigner.PickOwnerAsync(p.ProductKey, lead.CreatedAt, ct);
                 if (owner is null) continue;
                 lead.SellerId = owner; lead.AssignedAt = now;
                 if (lead.Status == LeadStatus.New) lead.Status = LeadStatus.Assigned;
@@ -430,7 +430,7 @@ public class PitchEngine
         }
         if (lead.SellerId is null)
         {
-            var owner = await _assigner.PickOwnerAsync(p.ProductKey, ct);
+            var owner = await _assigner.PickOwnerAsync(p.ProductKey, lead.CreatedAt, ct);
             if (owner is null) { s.NextStepDueAt = now.AddHours(1); s.UpdatedAt = now; await _db.SaveChangesAsync(ct); return false; }
             lead.SellerId = owner; lead.AssignedAt = now;
         }

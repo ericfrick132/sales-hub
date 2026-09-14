@@ -254,6 +254,8 @@ export interface Seller {
   connectedPhoneNumber?: string | null;
   /** Dispositivo Android (bridge) asignado — la linea sale por el celu, sin QR de Evolution. */
   device?: SellerDevice | null;
+  /** "Empezar de cero": el reparto automático sólo le da leads creados desde esta fecha. */
+  leadsFromAt?: string | null;
   /** Archivar el chat de cada lead (linea que comparte telefono con el uso personal). */
   autoArchiveChats?: boolean;
   verticalsWhitelist: string[];

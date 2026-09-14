@@ -19,18 +19,29 @@ public class LeadAssigner : ILeadAssigner
     public LeadAssigner(ApplicationDbContext db) { _db = db; }
 
     public Task<Guid?> PickSellerForProductAsync(string productKey, CancellationToken ct = default)
-        => PickAsync(productKey, localityGid2: null, province: null, city: null, ct);
+        => PickAsync(productKey, localityGid2: null, province: null, city: null, leadCreatedAt: null, ct);
 
     /// <summary>Resolves the best seller for a lead given its product vertical and the lead's
     /// city/province. RegionsAssigned can hold either provinces or cities (e.g. "Rosario", "CABA",
     /// "Morón") — we match against both so a city assignment wins for a city-level lead.</summary>
     public Task<Guid?> PickForLeadAsync(string productKey, string? province, string? city = null, CancellationToken ct = default)
-        => PickAsync(productKey, localityGid2: null, province, city, ct);
+        => PickAsync(productKey, localityGid2: null, province, city, leadCreatedAt: null, ct);
 
     public Task<Guid?> PickForLeadAsync(string productKey, string? localityGid2, string? province, string? city, CancellationToken ct = default)
-        => PickAsync(productKey, localityGid2, province, city, ct);
+        => PickAsync(productKey, localityGid2, province, city, leadCreatedAt: null, ct);
 
-    private async Task<Guid?> PickAsync(string productKey, string? localityGid2, string? province, string? city, CancellationToken ct)
+    public Task<Guid?> PickForLeadAsync(string productKey, string? localityGid2, string? province, string? city, DateTimeOffset leadCreatedAt, CancellationToken ct = default)
+        => PickAsync(productKey, localityGid2, province, city, leadCreatedAt, ct);
+
+    /// <summary>
+    /// ¿Puede recibir este lead por reparto automático? Un lead sin fecha es uno que se está
+    /// creando ahora, así que siempre entra.
+    /// </summary>
+    internal static bool TakesLeadsFrom(Seller s, DateTimeOffset? leadCreatedAt) =>
+        s.LeadsFromAt is null || leadCreatedAt is null || leadCreatedAt >= s.LeadsFromAt;
+
+    private async Task<Guid?> PickAsync(string productKey, string? localityGid2, string? province, string? city,
+        DateTimeOffset? leadCreatedAt, CancellationToken ct)
     {
         // Solo asignamos a vendedores listos para enviar AHORA: WhatsApp conectado + envío prendido.
         // Si están desconectados o pausados, sus leads se quedarían parados. Mejor que caigan al
@@ -54,6 +65,7 @@ public class LeadAssigner : ILeadAssigner
             .Where(s => s.VerticalsWhitelist == null
                      || s.VerticalsWhitelist.Count == 0
                      || s.VerticalsWhitelist.Contains(productKey))
+            .Where(s => TakesLeadsFrom(s, leadCreatedAt))
             .ToList();
         if (candidates.Count == 0) return null;
 
@@ -114,7 +126,13 @@ public class LeadAssigner : ILeadAssigner
     /// Es el fallback cuando el pick estricto (solo conectados) no encuentra a nadie:
     /// mejor un lead Assigned esperando a su dueño que un lead New que nadie ve.
     /// </summary>
-    public async Task<Guid?> PickOwnerAsync(string productKey, CancellationToken ct = default)
+    public Task<Guid?> PickOwnerAsync(string productKey, CancellationToken ct = default)
+        => PickOwnerCoreAsync(productKey, leadCreatedAt: null, ct);
+
+    public Task<Guid?> PickOwnerAsync(string productKey, DateTimeOffset leadCreatedAt, CancellationToken ct = default)
+        => PickOwnerCoreAsync(productKey, leadCreatedAt, ct);
+
+    private async Task<Guid?> PickOwnerCoreAsync(string productKey, DateTimeOffset? leadCreatedAt, CancellationToken ct)
     {
         var sellers = (await _db.Sellers
                 .Include(s => s.EvolutionInstance)
@@ -122,6 +140,7 @@ public class LeadAssigner : ILeadAssigner
                 .ToListAsync(ct))
             .Where(s => s.Role == SellerRole.Seller
                      || (s.Role == SellerRole.Admin && s.VerticalsWhitelist is { Count: > 0 }))
+            .Where(s => TakesLeadsFrom(s, leadCreatedAt))
             .ToList();
 
         var dedicated = sellers

@@ -36,7 +36,9 @@ public record SellerDto(
     int TypoProbabilityPct,
     string? ConnectedPhoneNumber = null,
     bool AutoArchiveChats = false,
-    SellerDeviceDto? Device = null);
+    SellerDeviceDto? Device = null,
+    /// <summary>"Empezar de cero": sólo recibe por reparto automático leads creados desde acá.</summary>
+    DateTimeOffset? LeadsFromAt = null);
 
 /// <summary>Dispositivo Android (bridge) asignado al vendedor — la línea sale por el celu, sin QR de Evolution.</summary>
 public record SellerDeviceDto(

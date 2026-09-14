@@ -323,7 +323,7 @@ public class PipelineService
         foreach (var lead in orphans)
         {
             if (lead.Product is null) continue;
-            var sellerId = await _assigner.PickForLeadAsync(lead.ProductKey, lead.LocalityGid2, lead.Province, lead.City, ct);
+            var sellerId = await _assigner.PickForLeadAsync(lead.ProductKey, lead.LocalityGid2, lead.Province, lead.City, lead.CreatedAt, ct);
             if (sellerId is null)
             {
                 stillOrphan[lead.ProductKey] = stillOrphan.GetValueOrDefault(lead.ProductKey) + 1;
@@ -452,7 +452,12 @@ public class PipelineService
             // Ya está en un dueño válido → no lo movemos (evita churn y re-render inútil).
             if (lead.SellerId != null && owners.Any(o => o.Id == lead.SellerId.Value)) { alreadyOk++; continue; }
 
-            var target = PickOwner(owners);
+            // Los dueños que "empezaron de cero" después de que entró este lead no lo reciben;
+            // si no queda ninguno, el lead se queda donde está.
+            var eligible = owners.Where(o => LeadAssigner.TakesLeadsFrom(o, lead.CreatedAt)).ToList();
+            if (eligible.Count == 0) { alreadyOk++; continue; }
+
+            var target = PickOwner(eligible);
             counts[target.Id] = counts.GetValueOrDefault(target.Id) + 1;
             moves.Add((lead, target));
         }

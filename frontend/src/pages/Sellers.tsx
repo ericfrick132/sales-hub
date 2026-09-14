@@ -231,6 +231,29 @@ export default function Sellers() {
                     Archivar chats {selected.autoArchiveChats ? 'ON' : 'OFF'}
                   </span>
                 </div>
+                <div className="flex items-center gap-2 px-1">
+                  <Switch
+                    on={!!selected.leadsFromAt}
+                    onClick={async () => {
+                      const enabled = !selected.leadsFromAt;
+                      try {
+                        const { data } = await api.post<Seller>(`/sellers/${selected.id}/start-fresh`, { enabled });
+                        setSelected({ ...selected, leadsFromAt: data.leadsFromAt ?? null });
+                        qc.invalidateQueries({ queryKey: ['sellers'] });
+                        toast.success(enabled
+                          ? 'Desde ahora solo recibe leads nuevos'
+                          : 'Vuelve a recibir leads viejos del reparto');
+                      } catch {
+                        toast.error('No se pudo guardar');
+                      }
+                    }}
+                    title="El reparto automático no le asigna leads que ya existían (ni del pool ni de otros vendedores): solo los que entran desde este momento. Asignar a mano desde el CRM sigue funcionando." />
+                  <span className="text-xs font-medium text-slate-600">
+                    {selected.leadsFromAt
+                      ? `Solo leads nuevos (desde ${new Date(selected.leadsFromAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})`
+                      : 'Solo leads nuevos OFF'}
+                  </span>
+                </div>
                 <Link to={`/sellers/zones?seller=${selected.id}`} className="btn-secondary text-xs">
                   Editar zonas (mapa)
                 </Link>

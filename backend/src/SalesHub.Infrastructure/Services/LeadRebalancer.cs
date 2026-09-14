@@ -273,7 +273,7 @@ public class LeadRebalancer
         foreach (var lead in orphans)
         {
             if (lead.Product is null) continue;
-            var sellerId = await _assigner.PickForLeadAsync(lead.ProductKey, lead.LocalityGid2, lead.Province, lead.City, ct);
+            var sellerId = await _assigner.PickForLeadAsync(lead.ProductKey, lead.LocalityGid2, lead.Province, lead.City, lead.CreatedAt, ct);
             if (sellerId is null) continue;
             var seller = capable.FirstOrDefault(s => s.Id == sellerId.Value);
             if (seller is null) continue;
@@ -309,19 +309,24 @@ public class LeadRebalancer
             .ToListAsync(ct);
         if (orphans.Count == 0) return 0;
 
+        // Los que "empezaron de cero" no toman leads anteriores a su fecha: el dueño elegido
+        // depende también de cuáles de esas fechas ya pasó el lead.
+        var cutoffs = await _db.Sellers.Where(s => s.LeadsFromAt != null)
+            .Select(s => s.LeadsFromAt!.Value).ToListAsync(ct);
         var ownerByProduct = new Dictionary<string, Seller?>(StringComparer.OrdinalIgnoreCase);
         var assigned = 0;
         foreach (var lead in orphans)
         {
             if (lead.Product is null || string.IsNullOrWhiteSpace(lead.ProductKey)) continue;
-            if (!ownerByProduct.TryGetValue(lead.ProductKey, out var owner))
+            var cacheKey = $"{lead.ProductKey}|{cutoffs.Count(c => lead.CreatedAt >= c)}";
+            if (!ownerByProduct.TryGetValue(cacheKey, out var owner))
             {
-                var ownerId = await _assigner.PickOwnerAsync(lead.ProductKey, ct);
+                var ownerId = await _assigner.PickOwnerAsync(lead.ProductKey, lead.CreatedAt, ct);
                 owner = ownerId is null
                     ? null
                     : await _db.Sellers.Include(s => s.EvolutionInstance)
                         .FirstOrDefaultAsync(s => s.Id == ownerId.Value, ct);
-                ownerByProduct[lead.ProductKey] = owner;
+                ownerByProduct[cacheKey] = owner;
             }
             if (owner is null) continue;
 
@@ -381,7 +386,9 @@ public class LeadRebalancer
                         .Where(l => l.SellerId == donor.Id && l.ProductKey == vertical
                                  && (l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued)
                                  && l.SentAt == null && l.FirstReplyAt == null
-                                 && l.ManualAssignedAt == null)
+                                 && l.ManualAssignedAt == null
+                                 // Si "empezó de cero", no hereda backlog anterior a esa fecha.
+                                 && (receiver.LeadsFromAt == null || l.CreatedAt >= receiver.LeadsFromAt))
                         .OrderBy(l => l.CreatedAt)
                         .Take(deficit)
                         .ToListAsync(ct);

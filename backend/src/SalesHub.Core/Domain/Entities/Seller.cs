@@ -18,6 +18,13 @@ public class Seller
     public string? WhatsappPhone { get; set; }
     public List<string> VerticalsWhitelist { get; set; } = new();
     public List<string> RegionsAssigned { get; set; } = new();
+
+    /// <summary>
+    /// "Empezar de cero": el reparto automático no le asigna leads creados antes de esta fecha
+    /// (ni del pool ni drenados de otros vendedores), sólo los que entran desde ahí. null = sin
+    /// límite. Asignar a mano (CRM, ficha del lead) no lo respeta: es una decisión explícita.
+    /// </summary>
+    public DateTimeOffset? LeadsFromAt { get; set; }
     // Reglas keyword → respuesta para sugerencias sin IA. Cada entrada es
     // "keyword = respuesta". Si el último mensaje del lead contiene el keyword,
     // se sugiere esa respuesta y se saltea la llamada a Claude (la IA queda de

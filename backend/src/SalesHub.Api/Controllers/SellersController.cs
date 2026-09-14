@@ -155,6 +155,26 @@ public class SellersController : ControllerBase
         return NoContent();
     }
 
+    public record StartFreshRequest(bool Enabled);
+
+    /// <summary>
+    /// "Empezar de cero": desde ahora el reparto automático sólo le da leads que entren a partir
+    /// de este momento (nada del pool viejo ni backlog de otros vendedores). Enabled=false lo quita.
+    /// </summary>
+    [HttpPost("{id:guid}/start-fresh")]
+    public async Task<ActionResult<SellerDto>> StartFresh(Guid id, [FromBody] StartFreshRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (seller is null) return NotFound();
+
+        seller.LeadsFromAt = req.Enabled ? DateTimeOffset.UtcNow : null;
+        seller.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        var devices = await LoadDevicesAsync(new[] { seller.Id }, ct);
+        return ToDto(seller, devices.GetValueOrDefault(seller.Id));
+    }
+
     [HttpPost("{id:guid}/sending")]
     public async Task<IActionResult> ToggleSending(Guid id, [FromBody] ToggleSendingRequest req, CancellationToken ct)
     {
@@ -343,5 +363,5 @@ public class SellersController : ControllerBase
         s.DelayMinSeconds, s.DelayMaxSeconds, s.BurstSize, s.BurstPauseMinSeconds, s.BurstPauseMaxSeconds,
         s.PreSendTypingMinSeconds, s.PreSendTypingMaxSeconds, s.ReadIncomingFirst,
         s.SkipDayProbabilityPct, s.TypoProbabilityPct, s.EvolutionInstance?.ConnectedPhoneNumber,
-        s.AutoArchiveChats, ToDeviceDto(device));
+        s.AutoArchiveChats, ToDeviceDto(device), s.LeadsFromAt);
 }
