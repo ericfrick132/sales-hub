@@ -76,6 +76,8 @@ const lineLabel = (m: { line?: string; linePhone?: string; isDevice: boolean; di
 
 /** El teléfono se guarda sólo con dígitos (5491112345678); se muestra con el +. */
 const fmtPhone = (phone: string) => `+${phone.replace(/\D/g, '')}`;
+/** tel: en la Mac abre FaceTime, que llama por el iPhone vinculado (Continuity). */
+const telHref = (phone: string) => `tel:${fmtPhone(phone)}`;
 
 const hace = (iso?: string) => {
   if (!iso) return 'sin actividad';
@@ -326,7 +328,15 @@ function CrmCard({ card, onOpen, onDragStart, onDragEnd }: {
         )}
       </div>
       {card.phone && (
-        <div className="text-[11px] text-slate-700 mt-0.5 tabular-nums truncate">{fmtPhone(card.phone)}</div>
+        <a
+          href={telHref(card.phone)}
+          title="Llamar"
+          draggable={false}
+          // Sin esto el click también abre la ficha.
+          onClick={(e) => e.stopPropagation()}
+          className="block text-[11px] text-slate-700 mt-0.5 tabular-nums truncate hover:text-brand-700 hover:underline">
+          {fmtPhone(card.phone)}
+        </a>
       )}
       <div className="text-[11px] text-slate-500 mt-0.5 truncate">
         {card.productKey}{card.city ? ` · ${card.city}` : ''}
@@ -447,16 +457,21 @@ function LeadDrawer({ leadId, stages, sellers, onClose, onMove }: {
               <div className="min-w-0">
                 <h2 className="text-lg font-bold truncate">{d.name}</h2>
                 {d.phone ? (
-                  <button
-                    className="text-sm text-slate-700 tabular-nums hover:text-brand-700"
-                    title="Copiar"
-                    onClick={() => {
-                      navigator.clipboard.writeText(fmtPhone(d.phone!))
-                        .then(() => toast.success('Teléfono copiado'))
-                        .catch(() => toast.error('No se pudo copiar'));
-                    }}>
-                    {fmtPhone(d.phone)}
-                  </button>
+                  <div className="flex items-baseline gap-2">
+                    <a href={telHref(d.phone)} title="Llamar"
+                       className="text-sm text-slate-700 tabular-nums hover:text-brand-700 hover:underline">
+                      {fmtPhone(d.phone)}
+                    </a>
+                    <button
+                      className="text-[11px] text-slate-400 hover:text-slate-600 underline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(fmtPhone(d.phone!))
+                          .then(() => toast.success('Teléfono copiado'))
+                          .catch(() => toast.error('No se pudo copiar'));
+                      }}>
+                      copiar
+                    </button>
+                  </div>
                 ) : (
                   <p className="text-sm text-slate-400">sin teléfono</p>
                 )}
@@ -470,8 +485,11 @@ function LeadDrawer({ leadId, stages, sellers, onClose, onMove }: {
 
             <div className="flex gap-2 flex-wrap">
               {d.phone && (
-                <a href={`https://wa.me/${d.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer"
-                   className="btn-primary text-xs">WhatsApp</a>
+                <>
+                  <a href={telHref(d.phone)} className="btn-primary text-xs">Llamar</a>
+                  <a href={`https://wa.me/${d.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer"
+                     className="btn-secondary text-xs">WhatsApp</a>
+                </>
               )}
               <Link to={`/conversations?lead=${d.id}`} className="btn-secondary text-xs">Ver chat</Link>
               <Link to={`/leads/${d.id}`} className="btn-secondary text-xs">Ficha completa</Link>
