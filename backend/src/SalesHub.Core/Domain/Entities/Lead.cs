@@ -101,6 +101,14 @@ public class Lead
     /// <summary>Qué hay que hacer en esa próxima acción (texto libre y corto).</summary>
     public string? NextActionNote { get; set; }
 
+    /// <summary>
+    /// Cuándo un admin eligió a mano el vendedor de este lead. Mientras tenga valor, el
+    /// reparto automático (rebalanceo, "Reasignar todo") no se lo saca: sin esto, un lead
+    /// sin contactar asignado a mano volvía al pool o a otra línea en el próximo tick.
+    /// Se limpia cuando el lead se suelta al pool.
+    /// </summary>
+    public DateTimeOffset? ManualAssignedAt { get; set; }
+
     /// <summary>Tags libres del inbox (ej. "respondio", "caliente"). Los pone el pitch o el humano.</summary>
     public List<string> Tags { get; set; } = new();
     /// <summary>Atribución del anuncio (externalAdReply de WhatsApp en un click-to-WhatsApp).</summary>

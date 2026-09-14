@@ -425,7 +425,9 @@ public class PipelineService
 
         var leads = await _db.Leads.Include(l => l.Product)
             .Where(l => l.SentAt == null && l.FirstReplyAt == null
-                     && (l.Status == LeadStatus.New || l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued))
+                     && (l.Status == LeadStatus.New || l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued)
+                     // Los asignados a mano no se reparten por reglas.
+                     && l.ManualAssignedAt == null)
             .ToListAsync(ct);
 
         // Fase 1: decidir (sin tocar la DB todavía).

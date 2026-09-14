@@ -5,6 +5,7 @@ using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services;
 
 namespace SalesHub.Api.Controllers;
 
@@ -21,10 +22,13 @@ public class CrmController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IProductStatusNotifier _statusNotifier;
+    private readonly IMessageRenderer _renderer;
+    private readonly OnboardingService _onboarding;
 
-    public CrmController(ApplicationDbContext db, IProductStatusNotifier statusNotifier)
+    public CrmController(ApplicationDbContext db, IProductStatusNotifier statusNotifier,
+        IMessageRenderer renderer, OnboardingService onboarding)
     {
-        _db = db; _statusNotifier = statusNotifier;
+        _db = db; _statusNotifier = statusNotifier; _renderer = renderer; _onboarding = onboarding;
     }
 
     /// <summary>
@@ -253,6 +257,7 @@ public class CrmController : ControllerBase
             score = lead.Score,
             sellerId = lead.SellerId,
             sellerName = lead.Seller?.DisplayName,
+            manualAssignedAt = lead.ManualAssignedAt,
             createdAt = lead.CreatedAt,
             sentAt = lead.SentAt,
             firstReplyAt = lead.FirstReplyAt,
@@ -373,6 +378,105 @@ public class CrmController : ControllerBase
             target == LeadStatus.Closed, ct);
 
         return Ok(new { id = lead.Id, status = lead.Status.ToString(), stage = stage.Key });
+    }
+
+    public record AssignSellerRequest(Guid SellerId);
+
+    /// <summary>
+    /// Cambia el vendedor del lead desde la ficha (sólo admin). Si todavía no se le escribió,
+    /// el mensaje se re-renderiza con el vendedor nuevo y se encola por su línea; si ya hay
+    /// charla, sólo cambia el dueño y el estado queda como estaba (no vuelve a "Nuevos").
+    /// En los dos casos se cancela lo pendiente de la línea vieja, que si no le seguiría
+    /// escribiendo. Queda marcado como manual para que el reparto automático no lo mueva.
+    /// </summary>
+    [HttpPatch("leads/{id:guid}/seller")]
+    public async Task<IActionResult> AssignSeller(Guid id, [FromBody] AssignSellerRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+
+        var lead = await _db.Leads.Include(l => l.Product).FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (lead is null) return NotFound();
+
+        var seller = await _db.Sellers.Include(s => s.EvolutionInstance)
+            .FirstOrDefaultAsync(s => s.Id == req.SellerId, ct);
+        if (seller is null) return BadRequest(new { error = "Vendedor no encontrado" });
+        if (!seller.IsActive) return BadRequest(new { error = "Vendedor inactivo" });
+
+        var now = DateTimeOffset.UtcNow;
+        if (lead.SellerId == seller.Id)
+        {
+            lead.ManualAssignedAt ??= now;
+            await _db.SaveChangesAsync(ct);
+            return Ok(new { sellerId = seller.Id, sellerName = seller.DisplayName, status = lead.Status.ToString(), queued = false, contacted = false });
+        }
+
+        var previous = lead.SellerId is null
+            ? null
+            : await _db.Sellers.AsNoTracking().Where(s => s.Id == lead.SellerId)
+                .Select(s => s.DisplayName).FirstOrDefaultAsync(ct);
+
+        var pending = await _db.Outbox
+            .Where(o => o.LeadId == id && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending))
+            .ToListAsync(ct);
+        foreach (var o in pending) o.Status = OutboxStatus.Cancelled;
+
+        // Mismo criterio que bulk-reassign: con algo enviado o respondido, la charla ya arrancó.
+        var contacted = lead.SentAt != null || lead.FirstReplyAt != null
+            || lead.Status is not (LeadStatus.New or LeadStatus.Assigned or LeadStatus.Queued);
+
+        lead.SellerId = seller.Id;
+        lead.ManualAssignedAt = now;
+        lead.UpdatedAt = now;
+
+        var queued = false;
+        if (!contacted)
+        {
+            lead.AssignedAt = now;
+            lead.QueuedAt = null;
+            lead.Status = LeadStatus.Assigned;
+            if (lead.Product is not null)
+            {
+                lead.RenderedMessage = _renderer.Render(lead, lead.Product, seller);
+                lead.WhatsappLink = string.IsNullOrWhiteSpace(lead.WhatsappPhone)
+                    ? null
+                    : $"https://wa.me/{lead.WhatsappPhone}?text={Uri.EscapeDataString(lead.RenderedMessage ?? "")}";
+
+                // Encolar aunque la línea esté caída: el sender chequea al momento de mandar.
+                if (!string.IsNullOrWhiteSpace(lead.WhatsappPhone) && seller.EvolutionInstance is not null)
+                {
+                    // Meta Lead Ads con alta self-serve arrancan por el onboarding, no por la
+                    // cadencia (mismo camino que el ingest y el rebalanceo).
+                    var startedOnboarding = await _onboarding.TryKickoffAsync(
+                        lead, lead.Product, seller, lead.WhatsappPhone,
+                        seller.EvolutionInstance.InstanceName, _renderer, ct);
+                    if (!startedOnboarding)
+                    {
+                        OutboxEnqueueHelper.EnqueueLeadMessages(
+                            _db, _renderer, lead, lead.Product, seller,
+                            lead.WhatsappPhone, seller.EvolutionInstance.InstanceName);
+                    }
+                    lead.Status = LeadStatus.Queued;
+                    lead.QueuedAt = now;
+                    queued = true;
+                }
+            }
+        }
+
+        var actor = await _db.Sellers.AsNoTracking().Where(s => s.Id == CurrentUser.Id(User))
+            .Select(s => s.DisplayName).FirstOrDefaultAsync(ct);
+        _db.LeadNotes.Add(new LeadNote
+        {
+            Id = Guid.NewGuid(),
+            LeadId = id,
+            SellerId = CurrentUser.Id(User),
+            Kind = LeadNoteKind.System,
+            Text = $"Asignado a {seller.DisplayName}"
+                + (previous is null ? "" : $" (antes: {previous})")
+                + (actor is null ? "" : $" por {actor}"),
+        });
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { sellerId = seller.Id, sellerName = seller.DisplayName, status = lead.Status.ToString(), queued, contacted });
     }
 
     public record NextActionRequest(DateTimeOffset? At, string? Note);

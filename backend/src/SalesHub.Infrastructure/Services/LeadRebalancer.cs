@@ -180,7 +180,9 @@ public class LeadRebalancer
         var held = await _db.Leads
             .Where(l => l.SellerId != null && restrictedIds.Contains(l.SellerId.Value)
                      && (l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued)
-                     && l.SentAt == null && l.FirstReplyAt == null)
+                     && l.SentAt == null && l.FirstReplyAt == null
+                     // Asignado a mano: el admin eligió esa línea aunque no esté en su whitelist.
+                     && l.ManualAssignedAt == null)
             .ToListAsync(ct);
 
         var mismatched = held
@@ -229,7 +231,8 @@ public class LeadRebalancer
         var q = _db.Leads
             .Where(l => l.SellerId != null && frozenIds.Contains(l.SellerId.Value)
                      && (l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued)
-                     && l.SentAt == null && l.FirstReplyAt == null);
+                     && l.SentAt == null && l.FirstReplyAt == null
+                     && l.ManualAssignedAt == null);
         if (!hasCatchAll) q = q.Where(l => coverable.Contains(l.ProductKey));
 
         var leads = await q.ToListAsync(ct);
@@ -377,7 +380,8 @@ public class LeadRebalancer
                     var movable = await _db.Leads.Include(l => l.Product)
                         .Where(l => l.SellerId == donor.Id && l.ProductKey == vertical
                                  && (l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued)
-                                 && l.SentAt == null && l.FirstReplyAt == null)
+                                 && l.SentAt == null && l.FirstReplyAt == null
+                                 && l.ManualAssignedAt == null)
                         .OrderBy(l => l.CreatedAt)
                         .Take(deficit)
                         .ToListAsync(ct);

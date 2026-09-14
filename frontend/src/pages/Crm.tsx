@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import { api } from '../lib/api';
-import type { Product } from '../lib/types';
+import { isAdmin, useAuthStore } from '../lib/auth';
+import type { Product, Seller } from '../lib/types';
 
 /**
  * CRM: los mismos leads, vistos como pipeline. Las etapas son el LeadStatus de siempre
@@ -25,7 +26,8 @@ type Note = { id: string; text: string; kind: string; createdAt: string; sellerI
 type Detail = {
   id: string; name: string; phone?: string; city?: string; province?: string; website?: string;
   instagram?: string; productKey: string; productName?: string; status: string; source: string;
-  score: number; sellerName?: string; createdAt: string; sentAt?: string; firstReplyAt?: string;
+  score: number; sellerId?: string; sellerName?: string; manualAssignedAt?: string;
+  createdAt: string; sentAt?: string; firstReplyAt?: string;
   demoScheduledAt?: string; closedAt?: string; nextActionAt?: string; nextActionNote?: string;
   legacyNotes?: string; notes: Note[];
   messages: {
@@ -97,8 +99,10 @@ const toLocalInput = (iso?: string) => {
 
 export default function Crm() {
   const qc = useQueryClient();
+  const admin = isAdmin(useAuthStore((s) => s.user));
   const [q, setQ] = useState('');
   const [productKey, setProductKey] = useState('');
+  const [sellerId, setSellerId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [source, setSource] = useState('');
   const [quick, setQuick] = useState<'' | 'mine' | 'overdue' | 'today' | 'stalled'>('');
@@ -109,6 +113,7 @@ export default function Crm() {
   const filters = {
     q: q.trim() || undefined,
     productKey: productKey || undefined,
+    sellerId: sellerId || undefined,
     deviceId: deviceId || undefined,
     source: source || undefined,
     onlyMine: quick === 'mine' || undefined,
@@ -134,6 +139,14 @@ export default function Crm() {
     queryFn: async () => (await api.get<Device[]>('/devices')).data,
     staleTime: 60_000,
   });
+  // El listado de vendedores es sólo para admin (el backend lo rechaza a los demás).
+  const sellers = useQuery({
+    queryKey: ['sellers-for-assign'],
+    enabled: admin,
+    queryFn: async () => (await api.get<Seller[]>('/sellers')).data,
+    staleTime: 60_000,
+  });
+  const activeSellers = (sellers.data ?? []).filter((s) => s.isActive);
 
   async function move(leadId: string, stage: string) {
     try {
@@ -179,6 +192,14 @@ export default function Crm() {
               <option key={p.productKey} value={p.productKey}>{p.displayName}</option>
             ))}
           </select>
+          {admin && (
+            <select className="input text-sm w-44" value={sellerId} onChange={(e) => setSellerId(e.target.value)}>
+              <option value="">Todos los vendedores</option>
+              {activeSellers.map((s) => (
+                <option key={s.id} value={s.id}>{s.displayName}</option>
+              ))}
+            </select>
+          )}
           <select className="input text-sm w-36" value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
             <option value="">Todos los celus</option>
             {(devices.data ?? []).map((d) => (
@@ -198,10 +219,10 @@ export default function Crm() {
           <Chip active={quick === 'overdue'} onClick={() => setQuick('overdue')} tone="red">Vencidos</Chip>
           <Chip active={quick === 'today'} onClick={() => setQuick('today')}>Para hoy</Chip>
           <Chip active={quick === 'stalled'} onClick={() => setQuick('stalled')}>Sin tocar +7 días</Chip>
-          {(q || productKey || deviceId || source || quick) && (
+          {(q || productKey || sellerId || deviceId || source || quick) && (
             <button
               className="text-xs text-slate-500 hover:text-slate-700 underline ml-1"
-              onClick={() => { setQ(''); setProductKey(''); setDeviceId(''); setSource(''); setQuick(''); }}>
+              onClick={() => { setQ(''); setProductKey(''); setSellerId(''); setDeviceId(''); setSource(''); setQuick(''); }}>
               limpiar
             </button>
           )}
@@ -261,6 +282,7 @@ export default function Crm() {
         <LeadDrawer
           leadId={openLead}
           stages={cols.map((c) => ({ key: c.key, label: c.label }))}
+          sellers={admin ? activeSellers : null}
           onClose={() => setOpenLead(null)}
           onMove={move}
         />
@@ -323,6 +345,13 @@ function CrmCard({ card, onOpen, onDragStart, onDragEnd }: {
             {overdue ? '⚑ ' : ''}{fmtDate(card.nextActionAt)}
           </span>
         )}
+        {card.sellerName ? (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 truncate max-w-[120px]">
+            {card.sellerName}
+          </span>
+        ) : (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 text-slate-400">sin vendedor</span>
+        )}
         {card.deviceName && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700">{card.deviceName}</span>
         )}
@@ -334,15 +363,18 @@ function CrmCard({ card, onOpen, onDragStart, onDragEnd }: {
 }
 
 /** Ficha lateral: datos, etapa, próxima acción y la bitácora de notas. */
-function LeadDrawer({ leadId, stages, onClose, onMove }: {
+function LeadDrawer({ leadId, stages, sellers, onClose, onMove }: {
   leadId: string;
   stages: { key: string; label: string }[];
+  /** Vendedores a los que se puede asignar; null = el usuario no es admin (sólo lectura). */
+  sellers: Seller[] | null;
   onClose: () => void;
   onMove: (leadId: string, stage: string) => Promise<void>;
 }) {
   const qc = useQueryClient();
   const [noteText, setNoteText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   const detail = useQuery({
     queryKey: ['crm-lead', leadId],
@@ -366,6 +398,25 @@ function LeadDrawer({ leadId, stages, onClose, onMove }: {
       toast.error('No se pudo guardar la nota');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function assignSeller(sellerId: string) {
+    if (!sellerId || sellerId === d?.sellerId) return;
+    setAssigning(true);
+    try {
+      const { data } = await api.patch<{ sellerName: string; queued: boolean; contacted: boolean }>(
+        `/crm/leads/${leadId}/seller`, { sellerId });
+      toast.success(
+        `Asignado a ${data.sellerName}` +
+        (data.queued ? ' · el primer mensaje sale por su línea'
+          : data.contacted ? ' · la charla sigue a mano' : ''));
+      qc.invalidateQueries({ queryKey: ['crm-lead', leadId] });
+      qc.invalidateQueries({ queryKey: ['crm-board'] });
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo asignar');
+    } finally {
+      setAssigning(false);
     }
   }
 
@@ -440,6 +491,36 @@ function LeadDrawer({ leadId, stages, onClose, onMove }: {
                   <option key={s.key} value={s.key}>{s.label}</option>
                 ))}
               </select>
+            </div>
+
+            {/* ── Vendedor ── */}
+            <div className="card p-3 space-y-1">
+              <div className="text-sm font-semibold">Vendedor</div>
+              {sellers ? (
+                <>
+                  <select
+                    className="input text-sm w-full"
+                    value={d.sellerId ?? ''}
+                    disabled={assigning}
+                    onChange={(e) => assignSeller(e.target.value)}>
+                    {!d.sellerId && <option value="">— Sin vendedor —</option>}
+                    {/* Si el dueño actual está inactivo no viene en la lista: lo mostramos igual. */}
+                    {d.sellerId && !sellers.some((s) => s.id === d.sellerId) && (
+                      <option value={d.sellerId}>{d.sellerName ?? 'Vendedor actual'}</option>
+                    )}
+                    {sellers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.displayName}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400">
+                    {d.manualAssignedAt
+                      ? `Asignado a mano el ${fmtDateTime(d.manualAssignedAt)}: el reparto automático no lo mueve.`
+                      : 'Si todavía no se le escribió, el primer mensaje sale por la línea del vendedor nuevo.'}
+                  </p>
+                </>
+              ) : (
+                <div className="text-sm text-slate-600">{d.sellerName ?? 'Sin vendedor'}</div>
+              )}
             </div>
 
             {/* ── Próxima acción ── */}
@@ -539,7 +620,6 @@ function LeadDrawer({ leadId, stages, onClose, onMove }: {
               {d.firstReplyAt && <div>Respondió: {fmtDateTime(d.firstReplyAt)}</div>}
               {d.demoScheduledAt && <div>Demo: {fmtDateTime(d.demoScheduledAt)}</div>}
               {d.closedAt && <div>Cerrado: {fmtDateTime(d.closedAt)}</div>}
-              {d.sellerName && <div>Línea: {d.sellerName}</div>}
             </div>
           </div>
         )}

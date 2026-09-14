@@ -55,6 +55,7 @@ public class LeadsController : ControllerBase
 
         lead.SellerId = seller.Id;
         lead.AssignedAt = DateTimeOffset.UtcNow;
+        lead.ManualAssignedAt = lead.AssignedAt;
         lead.Status = LeadStatus.Assigned;
         if (lead.Product is not null)
         {
@@ -783,6 +784,7 @@ public class LeadsController : ControllerBase
 
         lead.SellerId = null;
         lead.AssignedAt = null;
+        lead.ManualAssignedAt = null;
         lead.Status = LeadStatus.New;
         await _db.SaveChangesAsync(ct);
         return ToDto(lead);
@@ -821,6 +823,7 @@ public class LeadsController : ControllerBase
             lead.SellerId = null;
             lead.AssignedAt = null;
             lead.QueuedAt = null;
+            lead.ManualAssignedAt = null;
             lead.Status = LeadStatus.New;
         }
 
