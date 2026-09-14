@@ -72,6 +72,9 @@ const lineLabel = (m: { line?: string; linePhone?: string; isDevice: boolean; di
   return '';
 };
 
+/** El teléfono se guarda sólo con dígitos (5491112345678); se muestra con el +. */
+const fmtPhone = (phone: string) => `+${phone.replace(/\D/g, '')}`;
+
 const hace = (iso?: string) => {
   if (!iso) return 'sin actividad';
   const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -300,6 +303,9 @@ function CrmCard({ card, onOpen, onDragStart, onDragEnd }: {
           <span className="badge bg-rose-500 text-white text-[10px] shrink-0">{card.unreadCount}</span>
         )}
       </div>
+      {card.phone && (
+        <div className="text-[11px] text-slate-700 mt-0.5 tabular-nums truncate">{fmtPhone(card.phone)}</div>
+      )}
       <div className="text-[11px] text-slate-500 mt-0.5 truncate">
         {card.productKey}{card.city ? ` · ${card.city}` : ''}
       </div>
@@ -389,6 +395,20 @@ function LeadDrawer({ leadId, stages, onClose, onMove }: {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <h2 className="text-lg font-bold truncate">{d.name}</h2>
+                {d.phone ? (
+                  <button
+                    className="text-sm text-slate-700 tabular-nums hover:text-brand-700"
+                    title="Copiar"
+                    onClick={() => {
+                      navigator.clipboard.writeText(fmtPhone(d.phone!))
+                        .then(() => toast.success('Teléfono copiado'))
+                        .catch(() => toast.error('No se pudo copiar'));
+                    }}>
+                    {fmtPhone(d.phone)}
+                  </button>
+                ) : (
+                  <p className="text-sm text-slate-400">sin teléfono</p>
+                )}
                 <p className="text-xs text-slate-500">
                   {d.productName ?? d.productKey} · {d.status}
                   {d.city ? ` · ${d.city}` : ''}
@@ -492,7 +512,7 @@ function LeadDrawer({ leadId, stages, onClose, onMove }: {
               <div className="space-y-1">
                 <div className="flex items-baseline justify-between gap-2">
                   <div className="text-sm font-semibold">Últimos mensajes</div>
-                  {d.phone && <div className="text-[11px] text-slate-500">chat con +{d.phone.replace(/\D/g, '')}</div>}
+                  {d.phone && <div className="text-[11px] text-slate-500">chat con {fmtPhone(d.phone)}</div>}
                 </div>
                 {d.messages.map((m, i) => (
                   <div key={i} className={clsx(
