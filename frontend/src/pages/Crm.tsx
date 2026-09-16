@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import { api } from '../lib/api';
 import { isAdmin, useAuthStore } from '../lib/auth';
-import { fmtDate, fmtDateTime, fmtPhone, hace, telHref, toLocalInput } from '../lib/crmFormat';
+import { demoFollowUps, fmtDate, fmtDateTime, fmtPhone, hace, telHref, toLocalInput } from '../lib/crmFormat';
 import CrmCallMode from '../components/CrmCallMode';
 import type { Product, Seller } from '../lib/types';
 
@@ -21,6 +21,8 @@ type Card = {
   sellerId?: string; sellerName?: string; deviceId?: string; deviceName?: string;
   lastActivityAt?: string; nextActionAt?: string; nextActionNote?: string;
   noteCount: number; lastNote?: string; unreadCount: number; score: number; createdAt: string;
+  /** Cuándo pasó a demo (la primera vez). */
+  demoScheduledAt?: string;
 };
 type Column = { key: string; label: string; total: number; cards: Card[] };
 type Board = { stages: Column[]; total: number; overdue: number; perStage: number };
@@ -417,6 +419,7 @@ function CrmCard({ card, onOpen, onDragStart, onDragEnd }: {
       <div className="text-[11px] text-slate-500 mt-0.5 truncate">
         {card.productKey}{card.city ? ` · ${card.city}` : ''}
       </div>
+      {card.stageKey === 'demo' && card.demoScheduledAt && <DemoFollowUps demoAt={card.demoScheduledAt} />}
       {card.lastNote && (
         <div className="text-[11px] text-slate-600 mt-1.5 line-clamp-2 bg-slate-50 rounded px-1.5 py-1">
           {card.lastNote}
@@ -444,6 +447,34 @@ function CrmCard({ card, onOpen, onDragStart, onDragEnd }: {
         {card.noteCount > 0 && <span className="text-[10px] text-slate-400">{card.noteCount} notas</span>}
         <span className="text-[10px] text-slate-400 ml-auto">{hace(card.lastActivityAt)}</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Cuándo pasó a demo y los seguimientos de +1 y +3 días: el que toca hoy resalta, los que ya
+ * pasaron quedan apagados.
+ */
+function DemoFollowUps({ demoAt }: { demoAt: string }) {
+  return (
+    <div className="flex items-center gap-1 flex-wrap mt-1.5 text-[10px]">
+      <span className="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 font-medium"
+            title={`Pasó a demo el ${fmtDateTime(demoAt)}`}>
+        En demo {fmtDate(demoAt)}
+      </span>
+      {demoFollowUps(demoAt).map((f) => (
+        <span
+          key={f.days}
+          title={`Seguimiento a los ${f.days} ${f.days === 1 ? 'día' : 'días'}`}
+          className={clsx(
+            'px-1.5 py-0.5 rounded',
+            f.when === 'today' ? 'bg-amber-100 text-amber-800 font-semibold'
+              : f.when === 'past' ? 'text-slate-400'
+                : 'bg-slate-100 text-slate-600'
+          )}>
+          +{f.days}d {f.when === 'today' ? 'hoy' : fmtDate(f.date.toISOString())}
+        </span>
+      ))}
     </div>
   );
 }
@@ -713,7 +744,12 @@ function LeadDrawer({ leadId, stages, sellers, onClose, onMove }: {
               <div>Entró: {fmtDateTime(d.createdAt)} · origen {d.source}</div>
               {d.sentAt && <div>Primer contacto: {fmtDateTime(d.sentAt)}</div>}
               {d.firstReplyAt && <div>Respondió: {fmtDateTime(d.firstReplyAt)}</div>}
-              {d.demoScheduledAt && <div>Demo: {fmtDateTime(d.demoScheduledAt)}</div>}
+              {d.demoScheduledAt && (
+                <div>
+                  Pasó a demo: {fmtDateTime(d.demoScheduledAt)} · seguimientos{' '}
+                  {demoFollowUps(d.demoScheduledAt).map((f) => `+${f.days}d ${fmtDate(f.date.toISOString())}`).join(' y ')}
+                </div>
+              )}
               {d.closedAt && <div>Cerrado: {fmtDateTime(d.closedAt)}</div>}
             </div>
           </div>

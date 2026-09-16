@@ -31,3 +31,22 @@ export const toLocalInput = (iso?: string) => {
   const off = d.getTimezoneOffset();
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
 };
+
+/** Días después de pasar a demo en que toca escribirle al prospecto. */
+export const DEMO_FOLLOW_UP_DAYS = [1, 3];
+
+export type FollowUp = { days: number; date: Date; when: 'past' | 'today' | 'future' };
+
+/**
+ * Los seguimientos de una demo, contados en días de calendario (hora local): pasó a demo el
+ * lunes a la noche → el primero toca el martes, aunque no hayan pasado 24 h.
+ */
+export const demoFollowUps = (demoIso: string, now = new Date()): FollowUp[] => {
+  const demo = new Date(demoIso);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return DEMO_FOLLOW_UP_DAYS.map((days) => {
+    const date = new Date(demo.getFullYear(), demo.getMonth(), demo.getDate() + days);
+    const t = date.getTime();
+    return { days, date, when: t < today ? 'past' : t === today ? 'today' : 'future' };
+  });
+};

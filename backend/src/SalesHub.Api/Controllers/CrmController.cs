@@ -55,7 +55,7 @@ public class CrmController : ControllerBase
         Guid? SellerId, string? SellerName, Guid? DeviceId, string? DeviceName,
         DateTimeOffset? LastActivityAt, DateTimeOffset? NextActionAt, string? NextActionNote,
         int NoteCount, string? LastNote, int UnreadCount, int Score,
-        DateTimeOffset CreatedAt);
+        DateTimeOffset CreatedAt, DateTimeOffset? DemoScheduledAt);
 
     public record StageColumn(string Key, string Label, int Total, IReadOnlyList<CrmCard> Cards);
 
@@ -237,7 +237,7 @@ public class CrmController : ControllerBase
                 ProductName = l.Product != null ? l.Product.DisplayName : null,
                 l.WhatsappPhone, l.Status, l.Source, l.SellerId,
                 SellerName = l.Seller != null ? l.Seller.DisplayName : null,
-                l.NextActionAt, l.NextActionNote, l.Score, l.CreatedAt, l.UpdatedAt,
+                l.NextActionAt, l.NextActionNote, l.Score, l.CreatedAt, l.UpdatedAt, l.DemoScheduledAt,
                 LastMessageAt = _db.ConversationMessages.Where(m => m.LeadId == l.Id)
                     .OrderByDescending(m => m.Timestamp).Select(m => (DateTimeOffset?)m.Timestamp).FirstOrDefault(),
                 Unread = _db.ConversationMessages.Count(m => m.LeadId == l.Id
@@ -259,7 +259,7 @@ public class CrmController : ControllerBase
                 r.SellerId, r.SellerName, dev?.Id, dev?.Name,
                 r.LastMessageAt ?? r.UpdatedAt,
                 r.NextActionAt, r.NextActionNote,
-                r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt);
+                r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt, r.DemoScheduledAt);
         }).ToList();
         return (cards, hasMore);
     }
