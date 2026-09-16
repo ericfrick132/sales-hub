@@ -169,7 +169,7 @@ public class LeadEntryService
         sb.AppendLine(ofDay.Count == 0
             ? $"*Leads por teléfono — {dayText}: no entró ninguno*"
             : $"*Leads que entraron el {dayText}: {ofDay.Count}*");
-        sb.AppendLine($"Promedio de los 7 días anteriores: {Math.Round(prev7.Count / 7.0, 1):0.#} por día");
+        sb.AppendLine($"Promedio de los 7 días anteriores: {(prev7.Count / 7.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',')} por día");
 
         // Por teléfono: los que tuvieron entradas + los conectados aunque estén en cero (un
         // teléfono conectado en cero todo el día es justo lo que hay que ver).

@@ -78,17 +78,22 @@ export default function PhoneLinesCard() {
     setEditingId(l.id);
   }
 
+  // Si el form se abrió antes de que cargaran las apps, el select muestra la primera pero el
+  // borrador no la tiene: se toma la que se ve.
+  const mainKey = draft.productKey || products[0]?.productKey || '';
+
   async function save() {
     if (!draft.label.trim()) return toast.error('Poné un nombre para reconocer el teléfono');
-    if (!draft.productKey) return toast.error('Elegí qué app atiende');
+    if (!mainKey) return toast.error('Elegí qué app atiende');
+    const body = { ...draft, productKey: mainKey, extraProductKeys: draft.extraProductKeys.filter(k => k !== mainKey) };
     setSaving(true);
     try {
       if (editingId) {
-        await api.put(`/phone-lines/${editingId}`, draft);
+        await api.put(`/phone-lines/${editingId}`, body);
         toast.success('Teléfono actualizado');
         setEditingId(null);
       } else {
-        const { data } = await api.post<PhoneLine>('/phone-lines', draft);
+        const { data } = await api.post<PhoneLine>('/phone-lines', body);
         toast.success('Teléfono agregado: escaneá el QR');
         setAdding(false);
         // El QR se abre solo: agregar un teléfono ES escanearlo.
@@ -137,7 +142,7 @@ export default function PhoneLinesCard() {
         App principal (con esa se crea el lead cuando escribe un número nuevo)
         <select
           className="input mt-1"
-          value={draft.productKey}
+          value={mainKey}
           onChange={e => setDraft({
             ...draft,
             productKey: e.target.value,
@@ -151,7 +156,7 @@ export default function PhoneLinesCard() {
       <div>
         <div className="text-xs text-slate-600">También atiende:</div>
         <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
-          {products.filter(p => p.productKey !== draft.productKey).map(p => (
+          {products.filter(p => p.productKey !== mainKey).map(p => (
             <label key={p.productKey} className="text-xs text-slate-600 flex items-center gap-1 cursor-pointer">
               <input
                 type="checkbox"
