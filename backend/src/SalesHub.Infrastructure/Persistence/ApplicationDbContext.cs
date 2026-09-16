@@ -58,6 +58,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<TranscriptionPhone> TranscriptionPhones => Set<TranscriptionPhone>();
     public DbSet<TranscriptionSettings> TranscriptionSettings => Set<TranscriptionSettings>();
 
+    // Reporte diario por WhatsApp de leads que entraron a cada teléfono (fila única).
+    public DbSet<LeadEntryReportSettings> LeadEntryReportSettings => Set<LeadEntryReportSettings>();
+
     // Follow-up de abandono unificado y AGNÓSTICO: secuencias genéricas por (app, trigger) +
     // telemetría que reportan las apps, para reportes centralizados por app.
     public DbSet<FollowupSequence> FollowupSequences => Set<FollowupSequence>();

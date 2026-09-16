@@ -22,6 +22,13 @@ public class EvolutionInstance
     public List<string> ExtraProductKeys { get; set; } = new();
 
     public string InstanceName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Nombre con el que se reconoce el teléfono en /devices y en el reporte diario de leads
+    /// (ej. "Celu Rosario"). null en las líneas viejas: se muestra el número o el nombre de
+    /// la instancia.
+    /// </summary>
+    public string? Label { get; set; }
     public string? ConnectedPhoneNumber { get; set; }
 
     /// <summary>

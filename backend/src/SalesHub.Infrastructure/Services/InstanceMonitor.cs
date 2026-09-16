@@ -48,6 +48,17 @@ public class InstanceMonitor
                 _log.LogDebug(ex, "Instance {N} status check failed", inst.InstanceName);
             }
         }
+
+        // connectionState no trae el número: si un teléfono se vinculó por fuera del modal del
+        // QR (o se re-escaneó con otro celu), lo completamos desde fetchInstances.
+        var missingPhone = instances.Where(i => i.Status == InstanceStatus.Connected && i.ConnectedPhoneNumber is null).ToList();
+        if (missingPhone.Count > 0)
+        {
+            var owners = await _evo.GetInstanceOwnersAsync(ct);
+            foreach (var inst in missingPhone)
+                if (owners.TryGetValue(inst.InstanceName, out var owner) && !string.IsNullOrWhiteSpace(owner))
+                    inst.ConnectedPhoneNumber = owner;
+        }
         await _db.SaveChangesAsync(ct);
     }
 }

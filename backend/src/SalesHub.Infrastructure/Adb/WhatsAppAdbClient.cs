@@ -69,6 +69,12 @@ public class WhatsAppAdbClient : IEvolutionClient
         return Task.CompletedTask;
     }
 
+    public Task DeleteInstanceAsync(string instanceName, CancellationToken ct = default)
+    {
+        _log.LogWarning("DeleteInstanceAsync no soportado en modo adb");
+        return Task.CompletedTask;
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Send
     // ═══════════════════════════════════════════════════════════════

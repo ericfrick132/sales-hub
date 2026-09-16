@@ -276,6 +276,33 @@ public class EvolutionClient : IEvolutionClient
             _log.LogWarning("Envío bloqueado: la línea {I} está marcada como solo escuchar", instanceName);
             return false;
         }
+        return await SendTextUncheckedAsync(instanceName, jid, message, ct);
+    }
+
+    /// <summary>
+    /// Aviso INTERNO al dueño (el reporte diario de leads): sale aunque la línea sea de solo
+    /// escucha. El candado existe para no escribirle a leads desde un número que sólo trackea;
+    /// un mensaje por día al número propio no es ese riesgo. No está en IEvolutionClient a
+    /// propósito: quien lo use tiene que pedir esta clase concreta, así no se cuela por olvido
+    /// en un camino que le escribe a leads.
+    /// </summary>
+    public Task<bool> SendInternalTextAsync(string instanceName, string ownerPhone, string message, CancellationToken ct = default)
+        => SendTextUncheckedAsync(instanceName, ownerPhone, message, ct);
+
+    public async Task DeleteInstanceAsync(string instanceName, CancellationToken ct = default)
+    {
+        try
+        {
+            await _http.DeleteAsync($"instance/logout/{Uri.EscapeDataString(instanceName)}", ct);
+            var resp = await _http.DeleteAsync($"instance/delete/{Uri.EscapeDataString(instanceName)}", ct);
+            if (!resp.IsSuccessStatusCode && resp.StatusCode != HttpStatusCode.NotFound)
+                _log.LogWarning("Delete instance {Name} falló: {Status}", instanceName, resp.StatusCode);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Delete instance {Name} falló", instanceName); }
+    }
+
+    private async Task<bool> SendTextUncheckedAsync(string instanceName, string jid, string message, CancellationToken ct)
+    {
         var body = new
         {
             number = jid,

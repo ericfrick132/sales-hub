@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import QrConnectModal from '../components/QrConnectModal';
 import Switch from '../components/Switch';
+import PhoneLinesCard from '../components/PhoneLinesCard';
 
 interface Device {
   id: string; name: string; sellerId?: string; sellerName?: string; tailscaleIp?: string;
@@ -17,15 +18,6 @@ interface Device {
 interface Seller {
   id: string; displayName: string; email: string; sellerKey?: string; isActive?: boolean;
   instanceStatus?: string; connectedPhoneNumber?: string | null;
-}
-interface Product { productKey: string; displayName: string }
-/** Línea propia de una app: instancia sin vendedor (app_&lt;key&gt;). */
-interface AppLine {
-  productKey: string; instanceName: string; connectedPhoneNumber?: string | null; status: string;
-  /** Candado: entra todo, no sale nada por esta línea. */
-  listenOnly: boolean;
-  /** Otras apps que atiende el MISMO número (además de productKey). */
-  extraProductKeys: string[];
 }
 
 /** "hace 3 min" / "hace 2 h" / "hace 4 d" — para saber de cuándo es el último latido. */
@@ -47,8 +39,6 @@ export default function Devices() {
   const [pairing, setPairing] = useState<{ deviceId: string; token: string; qrUrl: string } | null>(null);
   /** Línea de vendedor para la que está abierto el QR. */
   const [qrFor, setQrFor] = useState<{ id: string; name: string } | null>(null);
-  /** App para la que está abierto el QR de la línea de escucha (sin vendedor). */
-  const [appQrFor, setAppQrFor] = useState<{ key: string; name: string } | null>(null);
 
   const { data: devices } = useQuery({
     queryKey: ['devices'],
@@ -58,19 +48,6 @@ export default function Devices() {
   const { data: sellers } = useQuery({
     queryKey: ['sellers'],
     queryFn: async () => (await api.get<Seller[]>('/sellers')).data
-  });
-  const { data: products } = useQuery({
-    queryKey: ['products-min'],
-    queryFn: async () => (await api.get<Product[]>('/products')).data,
-    staleTime: 5 * 60_000,
-    // Hay una fila de producto con key y nombre vacíos (941 leads viejos cuelgan de ella):
-    // no es una app real y ensucia todas las listas.
-    select: (rows) => rows.filter(p => p.productKey?.trim())
-  });
-  const { data: appLines } = useQuery({
-    queryKey: ['wa-app-lines'],
-    queryFn: async () => (await api.get<AppLine[]>('/products/whatsapp-lines')).data,
-    refetchInterval: 15_000
   });
 
   async function createDevice() {
@@ -115,42 +92,6 @@ export default function Devices() {
     }
   }
 
-  /** Suma o saca una app de las que atiende ese número. */
-  async function toggleLineApp(line: AppLine, appKey: string, on: boolean) {
-    const next = on
-      ? [...line.extraProductKeys, appKey]
-      : line.extraProductKeys.filter(k => k !== appKey);
-    try {
-      await api.post(`/products/${line.productKey}/whatsapp/apps`, { productKeys: next });
-      qc.invalidateQueries({ queryKey: ['wa-app-lines'] });
-    } catch {
-      toast.error('No se pudo cambiar las apps de la línea');
-    }
-  }
-
-  /** Candado de solo escucha: bloquea CUALQUIER envío por esa línea (bot, cadencia o manual). */
-  async function toggleListenOnly(productKey: string, enabled: boolean) {
-    try {
-      await api.post(`/products/${productKey}/whatsapp/listen-only`, { enabled });
-      toast.success(enabled ? 'Línea en modo solo escuchar' : 'La línea puede volver a enviar');
-      qc.invalidateQueries({ queryKey: ['wa-app-lines'] });
-    } catch {
-      toast.error('No se pudo cambiar el modo');
-    }
-  }
-
-  /** Corta la línea de escucha de una app (deja de recibir; se reconecta con otro QR). */
-  async function unlinkApp(productKey: string) {
-    if (!confirm('Desvincular esta línea de escucha? Deja de recibir chats hasta que escanees de nuevo.')) return;
-    try {
-      await api.post(`/products/${productKey}/whatsapp/logout`);
-      toast.success('Línea desvinculada');
-      qc.invalidateQueries({ queryKey: ['wa-app-lines'] });
-    } catch {
-      toast.error('No se pudo desvincular');
-    }
-  }
-
   /** Cierra la sesión de WhatsApp Web de esa línea (hay que volver a escanear). */
   async function unlink(sellerId: string) {
     if (!confirm('Desvincular WhatsApp de esta línea? Vas a tener que escanear el QR de nuevo.')) return;
@@ -182,110 +123,13 @@ export default function Devices() {
       <div className="mb-4">
         <h2 className="text-xl font-bold">Dispositivos y líneas</h2>
         <p className="text-sm text-slate-500">
-          Dos formas de tener una línea de WhatsApp funcionando: un celular con la app instalada, o
-          escaneando un QR desde el WhatsApp del teléfono.
+          Dos formas de tener una línea de WhatsApp funcionando: escaneando un QR desde el WhatsApp del
+          teléfono, o un celular con la app instalada.
         </p>
       </div>
 
-      {/* ══ Líneas de SOLO ESCUCHA (sin vendedor) ══ */}
-      <div className="card p-4 mb-5">
-        <div className="mb-3">
-          <h3 className="font-semibold">Escanear QR para escuchar (sin vendedor)</h3>
-          <p className="text-xs text-slate-500">
-            Vinculás el número como un dispositivo más de WhatsApp y sus chats entran a Conversaciones y al
-            CRM. <b>No se le asigna ningún vendedor y no manda mensajes</b>: sólo trackea. Cada línea queda
-            atada a una app para saber de qué producto es el que escribe.
-          </p>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {(products ?? []).map(p => {
-            const line = (appLines ?? []).find(l => l.productKey === p.productKey);
-            const connected = line?.status === 'Connected';
-            // Hay productos sin displayName cargado: mostrar la key antes que una fila muda.
-            const label = p.displayName?.trim() || p.productKey;
-            // Si otra línea ya declara atender esta app, no hace falta escanear un número
-            // aparte: se avisa acá para no terminar con dos líneas para el mismo celu.
-            const coveredBy = !line
-              ? (appLines ?? []).find(l => l.extraProductKeys?.includes(p.productKey))
-              : undefined;
-            const coveredByLabel = coveredBy
-              ? ((products ?? []).find(o => o.productKey === coveredBy.productKey)?.displayName || coveredBy.productKey)
-              : null;
-            return (
-              <div key={p.productKey} className="py-2 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-medium truncate">{label}</div>
-                  <div className="text-xs text-slate-500 truncate">
-                    <span className={connected ? 'text-emerald-600' : coveredBy ? 'text-emerald-600' : 'text-slate-400'}>
-                      {connected ? '● Escuchando'
-                        : line ? `○ ${line.status}`
-                        : coveredBy ? `● Ya la atiende la línea de ${coveredByLabel}`
-                        : '○ sin línea propia'}
-                    </span>
-                    {line?.connectedPhoneNumber && ` · +${line.connectedPhoneNumber}`}
-                    {!line && coveredBy?.connectedPhoneNumber && ` · +${coveredBy.connectedPhoneNumber}`}
-                  </div>
-                  {line && (
-                    <>
-                      <label className="text-[11px] text-slate-600 flex items-center gap-1.5 mt-1 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={line.listenOnly}
-                          onChange={e => toggleListenOnly(p.productKey, e.target.checked)}
-                        />
-                        <span className={line.listenOnly ? 'text-emerald-700 font-medium' : ''}>
-                          {line.listenOnly ? 'Solo escuchar (no puede enviar nada)' : 'Solo escuchar'}
-                        </span>
-                      </label>
-                      {/* Un mismo celu suele atender varias apps. */}
-                      <div className="mt-1.5">
-                        <div className="text-[11px] text-slate-500">
-                          Este número también atiende:
-                          {line.extraProductKeys.length === 0 && <span className="text-slate-400"> solo {label}</span>}
-                        </div>
-                        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
-                          {(products ?? []).filter(o => o.productKey !== p.productKey).map(o => (
-                            <label key={o.productKey} className="text-[11px] text-slate-600 flex items-center gap-1 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={line.extraProductKeys.includes(o.productKey)}
-                                onChange={e => toggleLineApp(line, o.productKey, e.target.checked)}
-                              />
-                              {o.displayName?.trim() || o.productKey}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <button
-                    className={connected || coveredBy ? 'btn-secondary text-xs' : 'btn-primary text-xs'}
-                    title={coveredBy ? `Ya entra por la línea de ${coveredByLabel}. Escaneá sólo si querés un número aparte para esta app.` : undefined}
-                    onClick={() => setAppQrFor({ key: p.productKey, name: label })}>
-                    {connected ? 'Ver QR' : coveredBy ? 'Número aparte' : 'Escanear QR'}
-                  </button>
-                  {connected && (
-                    <button className="btn-danger text-xs" onClick={() => unlinkApp(p.productKey)}>Desvincular</button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {appQrFor && (
-        <QrConnectModal
-          title={`Escuchar ${appQrFor.name}`}
-          fetchUrl={`/products/${appQrFor.key}/whatsapp/qr`}
-          onClose={() => setAppQrFor(null)}
-          // Se vincula ya candada: si dependiera de que después te acuerdes de tildar el
-          // checkbox, una línea recién escaneada podría mandar algo sin querer.
-          onConnected={() => toggleListenOnly(appQrFor.key, true)}
-        />
-      )}
+      {/* ══ Teléfonos escaneados por QR (sin vendedor): CRUD ══ */}
+      <PhoneLinesCard />
 
       {/* ══ Líneas de VENDEDOR (las que además mandan) ══ */}
       <div className="card p-4 mb-5">

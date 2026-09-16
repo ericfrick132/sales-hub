@@ -40,6 +40,7 @@ export default function Layout() {
           { to: '/leads', label: 'Leads' },
           { to: '/conversations', label: 'Conversaciones', badge: unread.data },
           { to: '/atencion', label: 'Atención' },
+          { to: '/entradas', label: 'Entradas por teléfono' },
         ] },
         { title: 'Captación', items: [
           { to: '/leads/search', label: 'Capturar de Maps' },

@@ -23,6 +23,8 @@ public interface IEvolutionClient
     Task<InstanceConnectionInfo> EnsureInstanceAsync(string instanceName, CancellationToken ct = default, string? proxyUrl = null);
     Task<string?> GetQrCodeAsync(string instanceName, CancellationToken ct = default);
     Task LogoutInstanceAsync(string instanceName, CancellationToken ct = default);
+    /// <summary>Cierra la sesión y borra la instancia en Evolution (best-effort, no tira).</summary>
+    Task DeleteInstanceAsync(string instanceName, CancellationToken ct = default);
 
     Task<IReadOnlyList<WhatsappCheckResult>> CheckNumbersAsync(string instanceName, IEnumerable<string> phoneNumbers, CancellationToken ct = default);
 

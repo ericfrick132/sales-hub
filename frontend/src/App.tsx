@@ -9,6 +9,7 @@ import Pool from './pages/Pool';
 import MyDashboard from './pages/MyDashboard';
 import Connect from './pages/Connect';
 import Devices from './pages/Devices';
+import Entradas from './pages/Entradas';
 import AdminDashboard from './pages/AdminDashboard';
 import Atencion from './pages/Atencion';
 import Crm from './pages/Crm';
@@ -77,6 +78,7 @@ export default function App() {
           <>
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/atencion" element={<Atencion />} />
+            <Route path="/entradas" element={<Entradas />} />
             <Route path="/sellers" element={<Sellers />} />
             <Route path="/devices" element={<Devices />} />
             <Route path="/objetivos" element={<Objetivos />} />

@@ -13,8 +13,10 @@ public class EvolutionInstanceConfiguration : IEntityTypeConfiguration<Evolution
         b.Property(x => x.InstanceName).HasMaxLength(128).IsRequired();
         b.HasIndex(x => x.InstanceName).IsUnique();
         b.HasIndex(x => x.SellerId).IsUnique();
+        b.Property(x => x.Label).HasMaxLength(80);
         b.Property(x => x.ProductKey).HasMaxLength(64);
-        b.HasIndex(x => x.ProductKey).IsUnique();
+        // Sin unique: dos teléfonos pueden atender la misma app (se agregan desde /devices).
+        b.HasIndex(x => x.ProductKey);
         // Las otras apps que atiende el mismo número (un celu recibe consultas de varias).
         b.Property(x => x.ExtraProductKeys)
             .HasColumnType("text[]")
