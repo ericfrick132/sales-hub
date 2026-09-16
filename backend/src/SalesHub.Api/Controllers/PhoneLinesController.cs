@@ -39,9 +39,13 @@ public class PhoneLinesController : ControllerBase
     public record PhoneLineDto(
         Guid Id, string InstanceName, string Label, string? Phone, string Status, bool ListenOnly,
         string? ProductKey, List<string> ExtraProductKeys, DateTimeOffset? ConnectedAt,
-        DateTimeOffset? DisconnectedAt, DateTimeOffset CreatedAt, int LeadsToday, int Leads7d);
+        DateTimeOffset? DisconnectedAt, DateTimeOffset CreatedAt, int LeadsToday, int Leads7d,
+        bool ImportHistory, int HistoryImportPasses, DateTimeOffset? HistoryImportStartedAt,
+        DateTimeOffset? HistoryImportedAt, int HistoryImportedMessages);
 
-    public record SavePhoneLineRequest(string Label, string ProductKey, List<string>? ExtraProductKeys, bool ListenOnly = true);
+    /// <param name="ImportHistory">Cargar también los chats de antes de escanear (por defecto sí).</param>
+    public record SavePhoneLineRequest(string Label, string ProductKey, List<string>? ExtraProductKeys,
+        bool ListenOnly = true, bool ImportHistory = true);
 
     [HttpGet]
     public async Task<ActionResult<List<PhoneLineDto>>> List(CancellationToken ct)
@@ -74,6 +78,7 @@ public class PhoneLinesController : ControllerBase
             ProductKey = apps.Main,
             ExtraProductKeys = apps.Extra,
             ListenOnly = req.ListenOnly,
+            ImportHistory = req.ImportHistory,
         };
         _db.EvolutionInstances.Add(line);
         await _db.SaveChangesAsync(ct);
@@ -112,6 +117,9 @@ public class PhoneLinesController : ControllerBase
         line.ProductKey = apps.Main;
         line.ExtraProductKeys = apps.Extra;
         line.ListenOnly = req.ListenOnly;
+        // Prenderlo en un teléfono que ya estaba vinculado lo carga ahora (repasar no duplica).
+        if (req.ImportHistory && !line.ImportHistory) line.HistoryImportPasses = 0;
+        line.ImportHistory = req.ImportHistory;
         line.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         _listenOnly.Invalidate();
@@ -172,6 +180,8 @@ public class PhoneLinesController : ControllerBase
         line.Status = InstanceStatus.Disconnected;
         line.DisconnectedAt = DateTimeOffset.UtcNow;
         line.ConnectedAt = null;
+        // Si después se escanea otro celu, su historial se carga de nuevo.
+        line.HistoryImportPasses = 0;
         line.LastQrCodeBase64 = null;
         line.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
@@ -203,7 +213,8 @@ public class PhoneLinesController : ControllerBase
         return new PhoneLineDto(
             i.Id, i.InstanceName, LeadEntryService.DisplayName(i), i.ConnectedPhoneNumber, i.Status.ToString(),
             i.ListenOnly, i.ProductKey, i.ExtraProductKeys, i.ConnectedAt, i.DisconnectedAt, i.CreatedAt,
-            mine.Count(e => e.Day == today), mine.Count);
+            mine.Count(e => e.Day == today), mine.Count,
+            i.ImportHistory, i.HistoryImportPasses, i.HistoryImportStartedAt, i.HistoryImportedAt, i.HistoryImportedMessages);
     }
 
     /// <summary>

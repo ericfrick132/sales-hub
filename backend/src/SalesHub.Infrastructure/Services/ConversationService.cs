@@ -60,6 +60,15 @@ public class ConversationService
         // id del ad, título, url y ctwa_clid. Null si el mensaje no viene de un anuncio.
         AdReferral? Ad = null);
 
+    /// <summary>
+    /// Un mensaje del sync/importación más viejo que esto es HISTORIA (ej. el historial de un
+    /// teléfono recién escaneado): queda registrado, pero no puede hacer que el bot conteste ni
+    /// re-enganche — le escribiría a alguien por una charla de hace meses.
+    /// </summary>
+    public static readonly TimeSpan HistoryAge = TimeSpan.FromHours(2);
+
+    private static bool IsHistory(IncomingMessage m) => m.FromSync && m.Timestamp < DateTimeOffset.UtcNow - HistoryAge;
+
     /// <summary>Datos del anuncio que WhatsApp adjunta al primer mensaje de un CTWA.</summary>
     public record AdReferral(string? SourceId, string? Title, string? Body, string? SourceUrl, string? CtwaClid);
 
@@ -171,11 +180,20 @@ public class ConversationService
         }
         lead.UpdatedAt = DateTimeOffset.UtcNow;
 
-        // El lead mandó algo nuevo → la sugerencia anterior (si había) quedó
-        // vieja. La limpiamos para que el ConversationAgent regenere incluyendo
-        // este mensaje.
-        lead.AiSuggestedReply = null;
-        lead.AiSuggestedReplyAt = null;
+        if (IsHistory(incoming))
+        {
+            // Historia: marcador "ya evaluado, sin respuesta" en la MISMA escritura que el mensaje,
+            // así el agente no alcanza a tomarlo en el medio. El próximo inbound en vivo lo limpia.
+            if (lead.AiSuggestedReply is null) lead.AiSuggestedReplyAt ??= DateTimeOffset.UtcNow;
+        }
+        else
+        {
+            // El lead mandó algo nuevo → la sugerencia anterior (si había) quedó
+            // vieja. La limpiamos para que el ConversationAgent regenere incluyendo
+            // este mensaje.
+            lead.AiSuggestedReply = null;
+            lead.AiSuggestedReplyAt = null;
+        }
 
         // Cortar el drip: si el lead respondió, los siguientes steps de
         // outreach inicial ya no tienen sentido (ahora la conversación queda
@@ -203,6 +221,14 @@ public class ConversationService
         return true;
     }
 
+    /// <summary>
+    /// Un lead que nace del sync/historial lleva la fecha de su primer mensaje, no la de hoy: si no,
+    /// cargar el historial de un teléfono inflaría los "leads nuevos de hoy" y el reparto a quien
+    /// arrancó de cero (sellers.leads_from_at) le daría chats de hace meses.
+    /// </summary>
+    private static DateTimeOffset CreatedAtFor(IncomingMessage m)
+        => m.FromSync && m.Timestamp < DateTimeOffset.UtcNow ? m.Timestamp : DateTimeOffset.UtcNow;
+
     private static string? Trunc(string? s, int n) => string.IsNullOrEmpty(s) ? s : (s.Length > n ? s[..n] : s);
 
     /// <summary>
@@ -216,6 +242,11 @@ public class ConversationService
     public async Task<bool> HandleOwnMessageAsync(IncomingMessage incoming, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(incoming.Text)) return false;
+        // Ya registrado (reentrega del webhook o repaso del historial): cortar antes de buscar el
+        // lead, que es lo caro — cargar el historial de un teléfono repasa miles de mensajes.
+        if (!string.IsNullOrWhiteSpace(incoming.MessageId)
+            && await _db.ConversationMessages.AnyAsync(m => m.WhatsappMessageId == incoming.MessageId, ct))
+            return true;
         var phone = incoming.FromPhone ?? ExtractPhone(incoming.FromJid);
         if (phone is null) return false;
         phone = NonDigit.Replace(phone, "");
@@ -324,6 +355,9 @@ public class ConversationService
             lead.AiSuggestedReply = null;
             lead.AiSuggestedReplyAt = null;
         }
+        // Historia: un mensaje nuestro viejo como "último" haría que el re-enganche lo persiga ya.
+        // Cuenta como el último toque (lo escribió una persona), así no sale nada por esto.
+        if (IsHistory(incoming)) lead.LastNudgeAt = DateTimeOffset.UtcNow;
         lead.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         _log.LogInformation(
@@ -558,14 +592,15 @@ public class ConversationService
             Name = ExtractPushName(incoming.RawJson) ?? "Lead de anuncio",
             WhatsappPhone = phone,
             WhatsappValidated = true,
-            SellerId = instance.SellerId ?? await _assigner.PickOwnerAsync(product.ProductKey, ct),
+            SellerId = instance.SellerId ?? await _assigner.PickOwnerAsync(product.ProductKey, CreatedAtFor(incoming), ct),
             AssignedAt = DateTimeOffset.UtcNow,
             Status = LeadStatus.Replied,        // ya escribió ellos
             FirstReplyAt = incoming.Timestamp,
             // Línea de APP: el bot responde por la línea del SELLER (número distinto al que
             // le escribieron) → confundiría al cliente. Muteado hasta cablear ese envío.
-            BotMutedAt = instance.SellerId is null ? DateTimeOffset.UtcNow : null,
-            CreatedAt = DateTimeOffset.UtcNow,
+            // Historia: tampoco (sería contestarle a un anuncio de hace meses).
+            BotMutedAt = instance.SellerId is null || IsHistory(incoming) ? DateTimeOffset.UtcNow : null,
+            CreatedAt = CreatedAtFor(incoming),
             UpdatedAt = DateTimeOffset.UtcNow,
         };
         _db.Leads.Add(lead);
@@ -597,12 +632,12 @@ public class ConversationService
             Name = ExtractPushName(incoming.RawJson) ?? "Contacto WhatsApp",
             WhatsappPhone = phone,
             WhatsappValidated = true,
-            SellerId = instance.SellerId ?? await _assigner.PickOwnerAsync(product.ProductKey, ct),
+            SellerId = instance.SellerId ?? await _assigner.PickOwnerAsync(product.ProductKey, CreatedAtFor(incoming), ct),
             AssignedAt = DateTimeOffset.UtcNow,
             Status = LeadStatus.Replied,        // arrancó escribiendo él
             FirstReplyAt = incoming.Timestamp,
             BotMutedAt = DateTimeOffset.UtcNow, // orgánico: sin bot ni cadencias automáticas
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = CreatedAtFor(incoming),
             UpdatedAt = DateTimeOffset.UtcNow,
         };
         _db.Leads.Add(lead);

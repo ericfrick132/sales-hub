@@ -21,11 +21,31 @@ interface PhoneLine {
   createdAt: string;
   leadsToday: number;
   leads7d: number;
+  /** Cargar también los chats de antes de escanear. */
+  importHistory: boolean;
+  historyImportPasses: number;
+  historyImportStartedAt?: string | null;
+  historyImportedAt?: string | null;
+  historyImportedMessages: number;
 }
 interface Product { productKey: string; displayName: string }
 
-type Draft = { label: string; productKey: string; extraProductKeys: string[]; listenOnly: boolean };
-const EMPTY: Draft = { label: '', productKey: '', extraProductKeys: [], listenOnly: true };
+type Draft = { label: string; productKey: string; extraProductKeys: string[]; listenOnly: boolean; importHistory: boolean };
+const EMPTY: Draft = { label: '', productKey: '', extraProductKeys: [], listenOnly: true, importHistory: true };
+
+/** En qué va la carga del historial de un teléfono (null si no se pidió). */
+function historyStatus(l: PhoneLine): string | null {
+  if (!l.importHistory) return null;
+  const running = !!l.historyImportStartedAt
+    && (!l.historyImportedAt || l.historyImportStartedAt > l.historyImportedAt);
+  const n = l.historyImportedMessages.toLocaleString('es-AR');
+  if (running) return l.historyImportPasses === 0 ? 'Cargando el historial…' : `Historial cargado (${n} mensajes) · repasando lo que llegó tarde…`;
+  if (l.historyImportPasses >= 2) return `Historial cargado (${n} mensajes)`;
+  if (l.historyImportPasses === 1) return `Historial cargado (${n} mensajes) · a la media hora repasa lo que llegue tarde`;
+  return l.status === 'Connected'
+    ? 'El historial se empieza a cargar a los 3 minutos de conectar'
+    : 'El historial se carga cuando escanees el QR';
+}
 
 const appName = (products: Product[], key?: string | null) =>
   products.find(p => p.productKey === key)?.displayName?.trim() || key || '';
@@ -73,7 +93,8 @@ export default function PhoneLinesCard() {
       label: l.label,
       productKey: l.productKey ?? products[0]?.productKey ?? '',
       extraProductKeys: l.extraProductKeys,
-      listenOnly: l.listenOnly
+      listenOnly: l.listenOnly,
+      importHistory: l.importHistory
     });
     setEditingId(l.id);
   }
@@ -183,6 +204,23 @@ export default function PhoneLinesCard() {
           Solo escuchar (no sale ningún mensaje a leads por este número)
         </span>
       </label>
+      <label className="text-xs text-slate-600 flex items-start gap-1.5 cursor-pointer">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={draft.importHistory}
+          onChange={e => setDraft({ ...draft, importHistory: e.target.checked })}
+        />
+        <span>
+          <span className={draft.importHistory ? 'text-emerald-700 font-medium' : ''}>
+            Cargar también los chats de antes (para atrás)
+          </span>
+          <span className="block text-slate-400">
+            Trae el historial que WhatsApp le pasa al vincular: los contactos entran como leads con la fecha de su
+            primer mensaje y el bot no les escribe por esas charlas viejas.
+          </span>
+        </span>
+      </label>
       <div className="flex gap-2">
         <button className="btn-primary text-xs" disabled={saving} onClick={save}>
           {editingId ? 'Guardar' : 'Agregar y escanear QR'}
@@ -230,6 +268,9 @@ export default function PhoneLinesCard() {
                     {[l.productKey, ...l.extraProductKeys].filter(Boolean).map(k => appName(products, k)).join(', ') || 'sin app'}
                     {l.listenOnly && <span className="text-emerald-700"> · solo escucha</span>}
                   </div>
+                  {historyStatus(l) && (
+                    <div className="text-[11px] text-slate-500 truncate">{historyStatus(l)}</div>
+                  )}
                 </div>
                 <div className="flex gap-1 shrink-0 flex-wrap justify-end">
                   {!connected && (

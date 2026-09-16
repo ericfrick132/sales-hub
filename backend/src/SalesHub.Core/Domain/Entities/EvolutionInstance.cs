@@ -46,6 +46,24 @@ public class EvolutionInstance
     /// </summary>
     public string? ProxyUrl { get; set; }
 
+    /// <summary>
+    /// Al vincular el teléfono, cargar también los chats de ANTES del escaneo (el historial que
+    /// WhatsApp le pasa al dispositivo vinculado y Evolution guarda). Lo elige quien lo agrega.
+    /// </summary>
+    public bool ImportHistory { get; set; }
+
+    /// <summary>
+    /// Pasadas de importación hechas desde la última vinculación: el historial llega en tandas
+    /// después de escanear, así que va una a los pocos minutos y otra a la media hora. Vuelve a 0
+    /// al desvincular o al prender <see cref="ImportHistory"/>.
+    /// </summary>
+    public int HistoryImportPasses { get; set; }
+    public DateTimeOffset? HistoryImportStartedAt { get; set; }
+    public DateTimeOffset? HistoryImportedAt { get; set; }
+
+    /// <summary>Mensajes nuevos que entraron por la importación (suma de las pasadas).</summary>
+    public int HistoryImportedMessages { get; set; }
+
     public InstanceStatus Status { get; set; } = InstanceStatus.Disconnected;
     public DateTimeOffset? LastStatusCheckAt { get; set; }
     public DateTimeOffset? ConnectedAt { get; set; }
