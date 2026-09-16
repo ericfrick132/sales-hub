@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import { api } from '../lib/api';
@@ -82,6 +82,12 @@ export default function Crm() {
   const qc = useQueryClient();
   const admin = isAdmin(useAuthStore((s) => s.user));
   const [q, setQ] = useState('');
+  // La búsqueda sale cuando se deja de tipear, no con cada letra.
+  const [searchQ, setSearchQ] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQ(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
   const [productKey, setProductKey] = useState('');
   const [sellerId, setSellerId] = useState('');
   const [deviceId, setDeviceId] = useState('');
@@ -93,7 +99,7 @@ export default function Crm() {
   const [callMode, setCallMode] = useState(false);
 
   const filters = {
-    q: q.trim() || undefined,
+    q: searchQ || undefined,
     productKey: productKey || undefined,
     sellerId: sellerId || undefined,
     deviceId: deviceId || undefined,
@@ -107,6 +113,8 @@ export default function Crm() {
     queryKey: ['crm-board', filters],
     queryFn: async () => (await api.get<Board>('/crm/board', { params: filters })).data,
     refetchInterval: 60000,
+    // Mientras llega el resultado de un filtro nuevo queda el tablero anterior, sin parpadear.
+    placeholderData: keepPreviousData,
   });
 
   const products = useQuery({
@@ -221,7 +229,7 @@ export default function Crm() {
       {board.isLoading ? (
         <div className="text-slate-500">Cargando…</div>
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-3">
+        <div className={clsx('flex gap-3 overflow-x-auto pb-3 transition-opacity', board.isPlaceholderData && 'opacity-60')}>
           {cols.map((col) => (
             <BoardColumn
               key={col.key}

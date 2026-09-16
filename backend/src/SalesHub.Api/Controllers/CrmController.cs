@@ -112,11 +112,19 @@ public class CrmController : ControllerBase
         if (!string.IsNullOrWhiteSpace(f.Q))
         {
             var term = f.Q.Trim().ToLower();
-            var digits = new string(term.Where(char.IsDigit).ToArray());
-            leadQ = leadQ.Where(l =>
-                l.Name.ToLower().Contains(term)
-                || (l.City != null && l.City.ToLower().Contains(term))
-                || (digits.Length >= 4 && l.WhatsappPhone != null && l.WhatsappPhone.Contains(digits)));
+            // En los teléfonos se busca sólo si lo tipeado parece un teléfono: "1350 fitness"
+            // es un nombre, y buscar "1350" en los teléfonos traía gimnasios que no eran.
+            var phoneTerms = term.All(c => char.IsDigit(c) || " +-().".Contains(c))
+                ? PhoneSearchTerms(term)
+                : Array.Empty<string>();
+            leadQ = phoneTerms.Length == 0
+                ? leadQ.Where(l =>
+                    l.Name.ToLower().Contains(term)
+                    || (l.City != null && l.City.ToLower().Contains(term)))
+                : leadQ.Where(l =>
+                    l.Name.ToLower().Contains(term)
+                    || (l.City != null && l.City.ToLower().Contains(term))
+                    || (l.WhatsappPhone != null && phoneTerms.Any(p => l.WhatsappPhone.Contains(p))));
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -135,6 +143,42 @@ public class CrmController : ControllerBase
                 break;
         }
         return leadQ;
+    }
+
+    /// <summary>
+    /// Las formas de encontrar un teléfono tipeado. En la base conviven 54…, 549…, 0… y sin
+    /// prefijo, y el que busca lo pega como lo ve: "+54 9 11 3001-0377" desde WhatsApp o
+    /// "011 15 3001-0377" desde la agenda. Se busca por el número nacional (sin 54, 9, 0 ni
+    /// 15), que está dentro de cualquiera de esas formas, y también con el 15 puesto, porque
+    /// hay números guardados así.
+    /// </summary>
+    private static string[] PhoneSearchTerms(string text)
+    {
+        var digits = new string(text.Where(char.IsDigit).ToArray());
+        if (digits.Length < 4) return Array.Empty<string>();
+
+        var terms = new List<string> { digits };
+        if (digits.Length >= 10)
+        {
+            var n = digits;
+            if (n.StartsWith("00")) n = n[2..];
+            if (n.StartsWith("54") && n.Length >= 12) { n = n[2..]; if (n.StartsWith("9")) n = n[1..]; }
+            else if (n.StartsWith("0")) n = n[1..];
+
+            // El 15 va entre el código de área (2 a 4 dígitos) y el número.
+            var areaCodeLengths = new[] { 2, 3, 4 };
+            var national = new List<string>();
+            if (n.Length == 10) national.Add(n);
+            else if (n.Length == 12)
+                national.AddRange(areaCodeLengths.Where(at => n.Substring(at, 2) == "15").Select(at => n.Remove(at, 2)));
+
+            foreach (var nat in national)
+            {
+                terms.Add(nat);
+                terms.AddRange(areaCodeLengths.Select(at => nat.Insert(at, "15")));
+            }
+        }
+        return terms.Distinct().ToArray();
     }
 
     /// <summary>Tablero completo, con los filtros de <see cref="LeadFilter"/>.</summary>
