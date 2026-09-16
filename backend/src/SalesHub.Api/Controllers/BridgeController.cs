@@ -24,6 +24,14 @@ public class BridgeController : ControllerBase
     /// <summary>Se apretó enviar pero no se pudo confirmar: reintentar duplicaría.</summary>
     public const string SendNotConfirmedError = "send_not_confirmed";
 
+    /// <summary>Etapas en las que un lead frío todavía recibe su cadencia: nadie lo trabajó a mano.</summary>
+    private static readonly LeadStatus[] ColdCadenceStatuses =
+        { LeadStatus.New, LeadStatus.Assigned, LeadStatus.Queued, LeadStatus.Sent };
+
+    /// <summary>Leads terminados: no les sigue ninguna cadencia.</summary>
+    private static readonly LeadStatus[] ClosedStatuses =
+        { LeadStatus.Closed, LeadStatus.Lost, LeadStatus.Blocked, LeadStatus.NoWhatsApp };
+
     private static readonly System.Text.RegularExpressions.Regex NotAMessage = new(
         @"^(\d+ (mensajes|messages)( nuevos| new)?|mensaje|message|escribiendo\.\.\.|en l[ií]nea|online|\d{1,2}:\d{2}( ?[ap]\.? ?m\.?)?|hoy|ayer|today|yesterday)$",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
@@ -121,21 +129,30 @@ public class BridgeController : ControllerBase
         // nativa, no una sesión de Baileys, así que el techo puede parecerse al de una
         // persona que se pasa el día escribiendo. El jitter es lo que lo hace humano: sin
         // variación, un mensaje cada exactamente N minutos es un patrón de bot.
-        var dailyCap = _cfg.GetValue<int?>("Bridge:DailyCap") ?? 40;
+        // El tope de charlas nuevas es de cada celu y lo edita el admin en /devices (2026-09-16:
+        // 10 por día, lo que una cold caller alcanza a llamar en el día).
+        var dailyCap = device.DailyNewChatCap ?? Device.DefaultDailyNewChatCap;
         var minGapSeconds = _cfg.GetValue<int?>("Bridge:NewChatGapSeconds")
                             ?? (_cfg.GetValue<int?>("Bridge:MinGapMinutes") * 60) ?? 210;
         var continuationGapSeconds = _cfg.GetValue<int?>("Bridge:ContinuationGapSeconds") ?? 45;
-        var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
+        // El cupo es por día de Argentina (sin horario de verano), el mismo día que mira la cold
+        // caller en "Contactados hoy"; con medianoche UTC el cupo se renovaba a las 21 h.
+        var ar = now.ToOffset(TimeSpan.FromHours(-3));
+        var todayStart = new DateTimeOffset(ar.Year, ar.Month, ar.Day, 0, 0, 0, ar.Offset);
 
         // Qué manda el bridge: cadencia de Meta Lead Ads + "enviar ahora" manual
-        // (Priority >= BridgeManualPriority). NUNCA el backlog frío histórico
-        // (miles de filas Scheduled priority<=70) — drenarlas solas quema la línea.
+        // (Priority >= BridgeManualPriority). El backlog frío (miles de filas Scheduled
+        // priority<=70 de hace meses) sólo si el admin prendió "leads fríos" en este celu —
+        // pensado para la línea de una cold caller que arranca de cero; drenarlo solo en
+        // cualquier otra línea la quema.
+        var sendsCold = device.SendsColdLeads;
         var sentQuery = _db.Outbox
             .Where(o => o.Status == OutboxStatus.Sent
                      && o.Channel == MessageChannel.WhatsApp
                      && o.SellerId == sellerId
                      && o.StepIndex != null
-                     && (o.Lead.Source == LeadSource.MetaLeadAd
+                     && (sendsCold
+                         || o.Lead.Source == LeadSource.MetaLeadAd
                          || o.Priority >= MessageOutbox.BridgeManualPriority));
 
         var leadsToday = await sentQuery
@@ -157,7 +174,13 @@ public class BridgeController : ControllerBase
                      && o.Channel == MessageChannel.WhatsApp
                      && o.SellerId == sellerId
                      && (o.Lead.Source == LeadSource.MetaLeadAd
-                         || o.Priority >= MessageOutbox.BridgeManualPriority)
+                         || o.Priority >= MessageOutbox.BridgeManualPriority
+                         // Un frío sólo mientras nadie lo trabajó a mano: si la cold caller ya
+                         // lo llamó y lo movió de etapa, el "hola, me pasaron tu número" sobra.
+                         || (sendsCold && ColdCadenceStatuses.Contains(o.Lead.Status)))
+                     // A un lead perdido o ganado no le sigue la cadencia (salvo un envío manual).
+                     && (o.Priority >= MessageOutbox.BridgeManualPriority
+                         || !ClosedStatuses.Contains(o.Lead.Status))
                      && o.StepIndex != null       // solo mensajes de cadencia (no chat)
                      && o.MediaAssetId == null    // solo texto (MVP)
                      && !string.IsNullOrWhiteSpace(o.Message))

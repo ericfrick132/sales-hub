@@ -38,6 +38,22 @@ public class Device
     /// <summary>Versión del APK que reporta el celu en cada poll (ej. "1.21").</summary>
     public string? AppVersion { get; set; }
 
+    /// <summary>Charlas nuevas por día que abre un celu si el admin no le puso otro número.</summary>
+    public const int DefaultDailyNewChatCap = 10;
+
+    /// <summary>
+    /// Tope de charlas NUEVAS por día de este celu (lo que sigue de una charla ya abierta no
+    /// cuenta). null = <see cref="DefaultDailyNewChatCap"/>. Lo edita el admin en /devices.
+    /// </summary>
+    public int? DailyNewChatCap { get; set; }
+
+    /// <summary>
+    /// Si además de los anuncios manda la cadencia a leads fríos (capturas de Maps, etc.) de su
+    /// vendedor. Apagado por defecto: hay vendedores con miles de filas frías de hace meses que no
+    /// deben salir solas. Se prende en la línea de una cold caller que arranca de cero.
+    /// </summary>
+    public bool SendsColdLeads { get; set; }
+
     /// <summary>Batería reportada (0-100)</summary>
     public int? BatteryLevel { get; set; }
 

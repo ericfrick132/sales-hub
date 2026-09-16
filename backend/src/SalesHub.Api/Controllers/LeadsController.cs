@@ -851,12 +851,16 @@ public class LeadsController : ControllerBase
         if (lead is null) return NotFound();
         if (lead.SellerId != sellerId && !CurrentUser.IsAdmin(User)) return Forbid();
 
+        var before = lead.Status;
         lead.Status = req.Status;
         if (req.Notes is not null) lead.Notes = req.Notes;
         if (req.Status == LeadStatus.Replied && lead.FirstReplyAt is null) lead.FirstReplyAt = DateTimeOffset.UtcNow;
         if (req.Status == LeadStatus.DemoScheduled && lead.DemoScheduledAt is null) lead.DemoScheduledAt = DateTimeOffset.UtcNow;
         if (req.Status is LeadStatus.Closed or LeadStatus.Lost) lead.ClosedAt = DateTimeOffset.UtcNow;
         lead.UpdatedAt = DateTimeOffset.UtcNow;
+        // Mismo pase que el CRM: la cold caller que lo lleva a demo se lo pasa al que la da.
+        if (req.Status == LeadStatus.DemoScheduled && before != LeadStatus.DemoScheduled)
+            await DemoHandoff.ApplyAsync(_db, lead, sellerId, ct);
         await _db.SaveChangesAsync(ct);
 
         // Status-back al producto de origen (no-op si el lead no es de producto o no hay

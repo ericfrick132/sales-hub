@@ -254,6 +254,32 @@ export default function Sellers() {
                       : 'Solo leads nuevos OFF'}
                   </span>
                 </div>
+                <div className="flex items-center gap-2 px-1"
+                  title="Cuando este vendedor lleva un lead a demo, el lead pasa a ser del elegido (lo ve en su CRM y lo sigue). El ganado se le sigue contando a este vendedor.">
+                  <span className="text-xs font-medium text-slate-600">Pasa las demos a</span>
+                  <select
+                    className="text-xs border rounded px-1 py-0.5"
+                    value={selected.demoHandoffSellerId ?? ''}
+                    onChange={async (e) => {
+                      const sellerId = e.target.value || null;
+                      try {
+                        const { data } = await api.put<Seller>(`/sellers/${selected.id}/demo-handoff`, { sellerId });
+                        setSelected({ ...selected, demoHandoffSellerId: data.demoHandoffSellerId ?? null });
+                        qc.invalidateQueries({ queryKey: ['sellers'] });
+                        const to = (sellersQ.data ?? []).find((s) => s.id === sellerId)?.displayName;
+                        toast.success(to ? `Sus demos pasan a ${to}` : 'Se queda con sus demos');
+                      } catch (err: any) {
+                        toast.error(err.response?.data?.error ?? 'No se pudo guardar');
+                      }
+                    }}>
+                    <option value="">Nadie (se queda con sus demos)</option>
+                    {(sellersQ.data ?? [])
+                      .filter((s) => s.isActive && s.id !== selected.id)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>{s.displayName}</option>
+                      ))}
+                  </select>
+                </div>
                 <Link to={`/sellers/zones?seller=${selected.id}`} className="btn-secondary text-xs">
                   Editar zonas (mapa)
                 </Link>

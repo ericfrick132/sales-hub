@@ -175,6 +175,33 @@ public class SellersController : ControllerBase
         return ToDto(seller, devices.GetValueOrDefault(seller.Id));
     }
 
+    public record DemoHandoffRequest(Guid? SellerId);
+
+    /// <summary>
+    /// A quién le pasa este vendedor los leads que lleva a demo (ej. la cold caller → el que da
+    /// las demos). SellerId=null lo quita: se queda con sus demos.
+    /// </summary>
+    [HttpPut("{id:guid}/demo-handoff")]
+    public async Task<ActionResult<SellerDto>> SetDemoHandoff(Guid id, [FromBody] DemoHandoffRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (seller is null) return NotFound();
+
+        if (req.SellerId is { } targetId)
+        {
+            if (targetId == id) return BadRequest(new { error = "No puede pasarse las demos a sí mismo" });
+            var targetOk = await _db.Sellers.AnyAsync(s => s.Id == targetId && s.IsActive, ct);
+            if (!targetOk) return BadRequest(new { error = "Vendedor no encontrado o inactivo" });
+        }
+
+        seller.DemoHandoffSellerId = req.SellerId;
+        seller.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        var devices = await LoadDevicesAsync(new[] { seller.Id }, ct);
+        return ToDto(seller, devices.GetValueOrDefault(seller.Id));
+    }
+
     [HttpPost("{id:guid}/sending")]
     public async Task<IActionResult> ToggleSending(Guid id, [FromBody] ToggleSendingRequest req, CancellationToken ct)
     {
@@ -363,5 +390,5 @@ public class SellersController : ControllerBase
         s.DelayMinSeconds, s.DelayMaxSeconds, s.BurstSize, s.BurstPauseMinSeconds, s.BurstPauseMaxSeconds,
         s.PreSendTypingMinSeconds, s.PreSendTypingMaxSeconds, s.ReadIncomingFirst,
         s.SkipDayProbabilityPct, s.TypoProbabilityPct, s.EvolutionInstance?.ConnectedPhoneNumber,
-        s.AutoArchiveChats, ToDeviceDto(device), s.LeadsFromAt);
+        s.AutoArchiveChats, ToDeviceDto(device), s.LeadsFromAt, s.DemoHandoffSellerId);
 }

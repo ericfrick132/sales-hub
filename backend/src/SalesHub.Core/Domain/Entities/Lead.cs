@@ -109,6 +109,14 @@ public class Lead
     /// </summary>
     public DateTimeOffset? ManualAssignedAt { get; set; }
 
+    /// <summary>
+    /// Vendedor que originó el lead cuando después lo tomó otro: la cold caller que lo llamó,
+    /// coordinó la demo y se lo pasó al que la da (ver <see cref="Seller.DemoHandoffSellerId"/>).
+    /// Los ganados y los objetivos se le cuentan a este, no al dueño actual. null = el lead es
+    /// de quien lo tiene.
+    /// </summary>
+    public Guid? OriginSellerId { get; set; }
+
     /// <summary>Tags libres del inbox (ej. "respondio", "caliente"). Los pone el pitch o el humano.</summary>
     public List<string> Tags { get; set; } = new();
     /// <summary>Atribución del anuncio (externalAdReply de WhatsApp en un click-to-WhatsApp).</summary>

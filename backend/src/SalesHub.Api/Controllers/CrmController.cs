@@ -55,7 +55,7 @@ public class CrmController : ControllerBase
         Guid? SellerId, string? SellerName, Guid? DeviceId, string? DeviceName,
         DateTimeOffset? LastActivityAt, DateTimeOffset? NextActionAt, string? NextActionNote,
         int NoteCount, string? LastNote, int UnreadCount, int Score,
-        DateTimeOffset CreatedAt, DateTimeOffset? DemoScheduledAt);
+        DateTimeOffset CreatedAt, DateTimeOffset? DemoScheduledAt, string? OriginSellerName);
 
     public record StageColumn(string Key, string Label, int Total, IReadOnlyList<CrmCard> Cards);
 
@@ -63,7 +63,9 @@ public class CrmController : ControllerBase
     /// Filtros del tablero, compartidos con la cola del modo llamadas (que llama a los mismos
     /// leads que el usuario está mirando). Todos opcionales y combinables.
     /// <c>Q</c> busca por nombre, teléfono o ciudad; <c>StalledDays</c> deja sólo los que no
-    /// tienen movimiento hace N días; <c>Due</c> = "today" | "overdue" filtra por la próxima acción.
+    /// tienen movimiento hace N días; <c>Due</c> = "today" | "overdue" filtra por la próxima acción;
+    /// <c>ContactedToday</c> deja los que recibieron el primer mensaje hoy (hora AR): son los que
+    /// la cold caller tiene que llamar en el día.
     /// </summary>
     public class LeadFilter
     {
@@ -75,6 +77,7 @@ public class CrmController : ControllerBase
         public bool OnlyMine { get; set; }
         public int? StalledDays { get; set; }
         public string? Due { get; set; }
+        public bool ContactedToday { get; set; }
     }
 
     /// <summary>
@@ -132,6 +135,13 @@ public class CrmController : ControllerBase
         {
             var cutoff = now.AddDays(-f.StalledDays.Value);
             leadQ = leadQ.Where(l => l.UpdatedAt <= cutoff);
+        }
+        if (f.ContactedToday)
+        {
+            // Argentina no tiene horario de verano: el día arranca a las 00:00 UTC-3.
+            var ar = now.ToOffset(TimeSpan.FromHours(-3));
+            var todayStart = new DateTimeOffset(ar.Year, ar.Month, ar.Day, 0, 0, 0, ar.Offset);
+            leadQ = leadQ.Where(l => l.SentAt >= todayStart);
         }
         switch ((f.Due ?? "").ToLowerInvariant())
         {
@@ -282,6 +292,7 @@ public class CrmController : ControllerBase
                 l.WhatsappPhone, l.Status, l.Source, l.SellerId,
                 SellerName = l.Seller != null ? l.Seller.DisplayName : null,
                 l.NextActionAt, l.NextActionNote, l.Score, l.CreatedAt, l.UpdatedAt, l.DemoScheduledAt,
+                OriginSellerName = _db.Sellers.Where(x => x.Id == l.OriginSellerId).Select(x => x.DisplayName).FirstOrDefault(),
                 LastMessageAt = _db.ConversationMessages.Where(m => m.LeadId == l.Id)
                     .OrderByDescending(m => m.Timestamp).Select(m => (DateTimeOffset?)m.Timestamp).FirstOrDefault(),
                 Unread = _db.ConversationMessages.Count(m => m.LeadId == l.Id
@@ -303,7 +314,7 @@ public class CrmController : ControllerBase
                 r.SellerId, r.SellerName, dev?.Id, dev?.Name,
                 r.LastMessageAt ?? r.UpdatedAt,
                 r.NextActionAt, r.NextActionNote,
-                r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt, r.DemoScheduledAt);
+                r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt, r.DemoScheduledAt, r.OriginSellerName);
         }).ToList();
         return (cards, hasMore);
     }
@@ -318,6 +329,11 @@ public class CrmController : ControllerBase
             .Include(l => l.Product).Include(l => l.Seller)
             .FirstOrDefaultAsync(l => l.Id == id, ct);
         if (lead is null) return NotFound();
+
+        var originSellerName = lead.OriginSellerId is null
+            ? null
+            : await _db.Sellers.AsNoTracking().Where(s => s.Id == lead.OriginSellerId)
+                .Select(s => s.DisplayName).FirstOrDefaultAsync(ct);
 
         var notes = await _db.LeadNotes.AsNoTracking()
             .Where(n => n.LeadId == id)
@@ -373,6 +389,8 @@ public class CrmController : ControllerBase
             sellerId = lead.SellerId,
             sellerName = lead.Seller?.DisplayName,
             manualAssignedAt = lead.ManualAssignedAt,
+            originSellerId = lead.OriginSellerId,
+            originSellerName,
             createdAt = lead.CreatedAt,
             sentAt = lead.SentAt,
             firstReplyAt = lead.FirstReplyAt,
@@ -458,15 +476,17 @@ public class CrmController : ControllerBase
             });
         }
 
-        await ApplyStageAsync(lead, stage, ct);
-        return Ok(new { id = lead.Id, status = lead.Status.ToString(), stage = stage.Key });
+        var handoff = await ApplyStageAsync(lead, stage, ct);
+        return Ok(new { id = lead.Id, status = lead.Status.ToString(), stage = stage.Key, handedOffTo = handoff?.SellerName });
     }
 
     /// <summary>
     /// Escribe el LeadStatus de la etapa, sella las fechas del embudo, deja el rastro en la
     /// bitácora, guarda y avisa al producto de origen. Lo usan el arrastre y el modo llamadas.
+    /// Si el lead entra en demo y su vendedor pasa las demos a otro, cambia de dueño
+    /// (<see cref="DemoHandoff"/>); devuelve a quién pasó, o null.
     /// </summary>
-    private async Task ApplyStageAsync(Lead lead, Stage stage, CancellationToken ct)
+    private async Task<DemoHandoff.Result?> ApplyStageAsync(Lead lead, Stage stage, CancellationToken ct)
     {
         var id = lead.Id;
         var before = lead.Status;
@@ -497,11 +517,16 @@ public class CrmController : ControllerBase
             Text = trail,
         });
 
+        var handoff = target == LeadStatus.DemoScheduled && before != LeadStatus.DemoScheduled
+            ? await DemoHandoff.ApplyAsync(_db, lead, CurrentUser.Id(User), ct)
+            : null;
+
         await _db.SaveChangesAsync(ct);
 
         // Mismo status-back que el PATCH clásico: el producto de origen se entera del cierre.
         await _statusNotifier.NotifyAsync(lead.ProductKey, lead.ExternalId, target.ToString(),
             target == LeadStatus.Closed, ct);
+        return handoff;
     }
 
     public record CallQueueItem(

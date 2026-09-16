@@ -177,7 +177,9 @@ public class SellerGoalsController : ControllerBase
 
     private async Task<int> CountActualAsync(Guid sellerId, SellerGoal g, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
-        var q = _db.Leads.Where(l => l.SellerId == sellerId);
+        // Cuenta para quien originó el lead: lo que la cold caller pasó a otro para la demo
+        // sigue siendo suyo (Lead.OriginSellerId), y al que da la demo no se le suma.
+        var q = _db.Leads.Where(l => (l.OriginSellerId ?? l.SellerId) == sellerId);
         if (g.ProductKey is not null) q = q.Where(l => l.ProductKey == g.ProductKey);
 
         return g.Metric switch

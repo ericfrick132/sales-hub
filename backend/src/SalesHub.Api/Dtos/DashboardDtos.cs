@@ -12,7 +12,10 @@ public record SellerMetricRow(
     int TodayCap,
     int TodaySent,
     string InstanceStatus,
-    bool SendingEnabled);
+    bool SendingEnabled,
+    /// <summary>Ganados del mes en curso (hora AR), contados como LeadsClosed.</summary>
+    int LeadsClosedThisMonth = 0,
+    bool IsActive = true);
 
 public record GlobalMetrics(
     int TotalLeads,

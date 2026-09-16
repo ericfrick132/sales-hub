@@ -38,7 +38,9 @@ public record SellerDto(
     bool AutoArchiveChats = false,
     SellerDeviceDto? Device = null,
     /// <summary>"Empezar de cero": sólo recibe por reparto automático leads creados desde acá.</summary>
-    DateTimeOffset? LeadsFromAt = null);
+    DateTimeOffset? LeadsFromAt = null,
+    /// <summary>A quién le pasa sus leads cuando los lleva a demo (null = se queda con sus demos).</summary>
+    Guid? DemoHandoffSellerId = null);
 
 /// <summary>Dispositivo Android (bridge) asignado al vendedor — la línea sale por el celu, sin QR de Evolution.</summary>
 public record SellerDeviceDto(

@@ -4,10 +4,15 @@ import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import QrConnectModal from '../components/QrConnectModal';
+import Switch from '../components/Switch';
 
 interface Device {
   id: string; name: string; sellerId?: string; sellerName?: string; tailscaleIp?: string;
   status: string; batteryLevel?: number; appVersion?: string; lastHeartbeatAt?: string;
+  /** Charlas nuevas por día que abre el celu (lo que sigue de una charla abierta no cuenta). */
+  dailyNewChatCap: number;
+  /** Además de los anuncios, manda la cadencia a leads fríos (capturas de Maps) de su vendedor. */
+  sendsColdLeads: boolean;
 }
 interface Seller {
   id: string; displayName: string; email: string; sellerKey?: string; isActive?: boolean;
@@ -74,6 +79,19 @@ export default function Devices() {
     setCreated({ token: data.pairingToken, qrUrl: data.qrUrl });
     toast.success('Device creado');
     qc.invalidateQueries({ queryKey: ['devices'] });
+  }
+
+  async function saveSending(d: Device, patch: Partial<Pick<Device, 'dailyNewChatCap' | 'sendsColdLeads'>>) {
+    try {
+      await api.put(`/devices/${d.id}/sending`, {
+        dailyNewChatCap: patch.dailyNewChatCap ?? d.dailyNewChatCap,
+        sendsColdLeads: patch.sendsColdLeads ?? d.sendsColdLeads,
+      });
+      toast.success('Guardado');
+      qc.invalidateQueries({ queryKey: ['devices'] });
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo guardar');
+    }
   }
 
   async function assignSeller(deviceId: string, sellerId: string) {
@@ -387,6 +405,32 @@ export default function Devices() {
                   {d.status === 'Pairing' ? 'Nuevo código' : 'Reconectar'}
                 </button>
                 <button className="btn-danger text-xs" onClick={() => deleteDevice(d.id)}>Eliminar</button>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 flex-wrap mt-2 text-xs text-slate-600">
+              <label className="flex items-center gap-1.5"
+                title="Cuántas charlas nuevas abre este celu por día (día de Argentina). Lo que sigue de una charla ya abierta no cuenta.">
+                Charlas nuevas por día
+                <input
+                  // Remonta al cambiar el valor guardado: el listado se refresca cada 10 s.
+                  key={`${d.id}-${d.dailyNewChatCap}`}
+                  type="number" min={0} max={200}
+                  className="w-16 border rounded px-1 py-0.5 tabular-nums"
+                  defaultValue={d.dailyNewChatCap}
+                  onBlur={e => {
+                    const v = parseInt(e.target.value, 10);
+                    if (Number.isNaN(v) || v === d.dailyNewChatCap) return;
+                    saveSending(d, { dailyNewChatCap: v });
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                />
+              </label>
+              <div className="flex items-center gap-1.5">
+                <Switch
+                  on={d.sendsColdLeads}
+                  onClick={() => saveSending(d, { sendsColdLeads: !d.sendsColdLeads })}
+                  title="Además de los anuncios, le manda la cadencia a los leads fríos (capturas de Maps) de su vendedor. Para la línea de una cold caller que arranca de cero: en una línea con leads viejos saldrían mensajes de hace meses." />
+                <span>Manda a leads fríos {d.sendsColdLeads ? 'ON' : 'OFF'}</span>
               </div>
             </div>
             {pairing?.deviceId === d.id && <PairingPanel token={pairing.token} qrUrl={pairing.qrUrl} />}

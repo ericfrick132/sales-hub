@@ -629,9 +629,15 @@ public class DashboardController : ControllerBase
         // "Asignados" = leads actualmente asignados sin encolar/enviar. Sin el filtro
         // de estado contaba todo (incluido Sent/Closed/Lost) y no reconciliaba.
         var assigned = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.Status == LeadStatus.Assigned, ct);
-        var sent = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.SentAt != null, ct);
-        var replied = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.FirstReplyAt != null, ct);
-        var closed = await _db.Leads.CountAsync(l => l.SellerId == s.Id && l.Status == LeadStatus.Closed, ct);
+        // Enviados, respuestas y ganados son de quien originó el lead: si la cold caller lo llevó
+        // a demo y se lo pasó a otro, el ganado sigue siendo de ella y no del que dio la demo.
+        var credited = _db.Leads.Where(l => (l.OriginSellerId ?? l.SellerId) == s.Id);
+        var sent = await credited.CountAsync(l => l.SentAt != null, ct);
+        var replied = await credited.CountAsync(l => l.FirstReplyAt != null, ct);
+        var closed = await credited.CountAsync(l => l.Status == LeadStatus.Closed, ct);
+        var nowAr = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-3));
+        var monthStart = new DateTimeOffset(nowAr.Year, nowAr.Month, 1, 0, 0, 0, nowAr.Offset);
+        var closedThisMonth = await credited.CountAsync(l => l.Status == LeadStatus.Closed && l.ClosedAt >= monthStart, ct);
         // "Enviados hoy" = leads distintos contactados hoy. Lead.SentAt lo setean
         // tanto el envío manual como el OutboxSender, así que basta contar leads
         // (antes se sumaba además las filas de outbox → doble conteo).
@@ -644,6 +650,6 @@ public class DashboardController : ControllerBase
             sent == 0 ? 0 : Math.Round((double)replied / sent, 3),
             sent == 0 ? 0 : Math.Round((double)closed / sent, 3),
             _scheduler.ComputeTodayCap(s, today), todaySent,
-            s.EvolutionInstance?.Status.ToString() ?? "no_instance", s.SendingEnabled);
+            s.EvolutionInstance?.Status.ToString() ?? "no_instance", s.SendingEnabled, closedThisMonth, s.IsActive);
     }
 }

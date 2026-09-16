@@ -256,6 +256,8 @@ export interface Seller {
   device?: SellerDevice | null;
   /** "Empezar de cero": el reparto automático sólo le da leads creados desde esta fecha. */
   leadsFromAt?: string | null;
+  /** A quién le pasa sus leads cuando los lleva a demo (null = se queda con sus demos). */
+  demoHandoffSellerId?: string | null;
   /** Archivar el chat de cada lead (linea que comparte telefono con el uso personal). */
   autoArchiveChats?: boolean;
   verticalsWhitelist: string[];
@@ -294,6 +296,9 @@ export interface SellerMetricRow {
   todaySent: number;
   instanceStatus: string;
   sendingEnabled: boolean;
+  /** Ganados del mes en curso. Como leadsClosed, cuentan para quien originó el lead. */
+  leadsClosedThisMonth: number;
+  isActive: boolean;
 }
 
 export interface GlobalMetrics {

@@ -41,7 +41,9 @@ public class DevicesController : ControllerBase
                 Status = d.Status.ToString(),
                 BatteryLevel = d.BatteryLevel,
                 AppVersion = d.AppVersion,
-                LastHeartbeatAt = d.LastHeartbeatAt
+                LastHeartbeatAt = d.LastHeartbeatAt,
+                DailyNewChatCap = d.DailyNewChatCap ?? Device.DefaultDailyNewChatCap,
+                SendsColdLeads = d.SendsColdLeads
             })
             .ToListAsync();
 
@@ -103,6 +105,27 @@ public class DevicesController : ControllerBase
         device.SellerId = body.SellerId;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
+    }
+
+    /// <summary>
+    /// Cuánto manda el celu (sólo admin): el tope de charlas nuevas por día y si además de los
+    /// anuncios manda la cadencia a leads fríos de su vendedor.
+    /// </summary>
+    [HttpPut("{id:guid}/sending")]
+    public async Task<ActionResult> UpdateSending(Guid id, [FromBody] DeviceSendingBody body)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        if (body.DailyNewChatCap is < 0 or > 200)
+            return BadRequest(new { error = "El tope diario va de 0 a 200" });
+
+        var device = await _db.Devices.FindAsync(id);
+        if (device is null) return NotFound();
+
+        device.DailyNewChatCap = body.DailyNewChatCap;
+        device.SendsColdLeads = body.SendsColdLeads;
+        device.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, dailyNewChatCap = device.DailyNewChatCap ?? Device.DefaultDailyNewChatCap, device.SendsColdLeads });
     }
 
     /// <summary>
@@ -184,6 +207,16 @@ public class DeviceDto
     public int? BatteryLevel { get; set; }
     public string? AppVersion { get; set; }
     public DateTimeOffset? LastHeartbeatAt { get; set; }
+    /// <summary>Charlas nuevas por día que abre este celu (ya resuelto el default).</summary>
+    public int DailyNewChatCap { get; set; }
+    public bool SendsColdLeads { get; set; }
+}
+
+public class DeviceSendingBody
+{
+    /// <summary>null = volver al default.</summary>
+    public int? DailyNewChatCap { get; set; }
+    public bool SendsColdLeads { get; set; }
 }
 
 public class DeviceCreatedDto

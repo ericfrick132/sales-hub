@@ -25,6 +25,13 @@ public class Seller
     /// límite. Asignar a mano (CRM, ficha del lead) no lo respeta: es una decisión explícita.
     /// </summary>
     public DateTimeOffset? LeadsFromAt { get; set; }
+
+    /// <summary>
+    /// A quién le pasa sus leads cuando los lleva a demo (ej. Rosario → Mateo): al entrar en
+    /// "Demo agendada" el lead cambia de dueño y queda <see cref="Lead.OriginSellerId"/> con este
+    /// vendedor, así el ganado se le sigue contando. null = se queda con sus demos.
+    /// </summary>
+    public Guid? DemoHandoffSellerId { get; set; }
     // Reglas keyword → respuesta para sugerencias sin IA. Cada entrada es
     // "keyword = respuesta". Si el último mensaje del lead contiene el keyword,
     // se sugiere esa respuesta y se saltea la llamada a Claude (la IA queda de

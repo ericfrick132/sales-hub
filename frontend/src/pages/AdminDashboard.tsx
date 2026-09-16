@@ -174,6 +174,46 @@ export default function AdminDashboard() {
         <TeamCompliance />
 
         <div>
+          <h3 className="text-sm font-semibold mb-1">Ganados por vendedor</h3>
+          <p className="text-xs text-slate-500 mb-2">
+            Cada venta cuenta para quien originó el lead: si una cold caller lo llevó a demo y se lo pasó a
+            otro vendedor, el ganado es de ella y al que dio la demo no se le suma.
+          </p>
+          <div className="card overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Vendedor</th>
+                  <th className="px-3 py-2 text-right">Este mes</th>
+                  <th className="px-3 py-2 text-right">Total</th>
+                  <th className="px-3 py-2 text-right">Contactados</th>
+                  <th className="px-3 py-2 text-right">Close %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.sellers
+                  .filter((s) => s.displayName && (s.isActive || s.leadsClosed > 0))
+                  .sort((a, b) => b.leadsClosedThisMonth - a.leadsClosedThisMonth || b.leadsClosed - a.leadsClosed)
+                  .map((s) => (
+                    <tr key={s.sellerId}>
+                      <td className="px-3 py-2 font-medium">
+                        <Link to={`/admin/sellers/${s.sellerId}`} className="text-brand-700 hover:underline">
+                          {s.displayName}
+                        </Link>
+                        {!s.isActive && <span className="ml-1 text-[10px] text-slate-400">inactivo</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{s.leadsClosedThisMonth}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{s.leadsClosed}</td>
+                      <td className="px-3 py-2 text-right text-slate-600 tabular-nums">{s.leadsSent}</td>
+                      <td className="px-3 py-2 text-right text-slate-600">{(s.closeRate * 100).toFixed(0)}%</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
           <h3 className="text-sm font-semibold mb-2">Estado de envíos</h3>
           <div className="card overflow-x-auto">
             <table className="min-w-full text-sm">

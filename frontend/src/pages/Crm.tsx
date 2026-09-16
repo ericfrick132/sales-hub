@@ -23,6 +23,8 @@ type Card = {
   noteCount: number; lastNote?: string; unreadCount: number; score: number; createdAt: string;
   /** Cuándo pasó a demo (la primera vez). */
   demoScheduledAt?: string;
+  /** Quién lo originó, si después lo tomó otro (la cold caller que se lo pasó para la demo). */
+  originSellerName?: string;
 };
 type Column = { key: string; label: string; total: number; cards: Card[] };
 type Board = { stages: Column[]; total: number; overdue: number; perStage: number };
@@ -30,7 +32,7 @@ type Note = { id: string; text: string; kind: string; createdAt: string; sellerI
 type Detail = {
   id: string; name: string; phone?: string; city?: string; province?: string; website?: string;
   instagram?: string; productKey: string; productName?: string; status: string; source: string;
-  score: number; sellerId?: string; sellerName?: string; manualAssignedAt?: string;
+  score: number; sellerId?: string; sellerName?: string; manualAssignedAt?: string; originSellerName?: string;
   createdAt: string; sentAt?: string; firstReplyAt?: string;
   demoScheduledAt?: string; closedAt?: string; nextActionAt?: string; nextActionNote?: string;
   legacyNotes?: string; notes: Note[];
@@ -92,7 +94,7 @@ export default function Crm() {
   const [sellerId, setSellerId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [source, setSource] = useState('');
-  const [quick, setQuick] = useState<'' | 'mine' | 'overdue' | 'today' | 'stalled'>('');
+  const [quick, setQuick] = useState<'' | 'mine' | 'overdue' | 'today' | 'stalled' | 'contacted'>('');
   const [openLead, setOpenLead] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [overStage, setOverStage] = useState<string | null>(null);
@@ -107,6 +109,7 @@ export default function Crm() {
     onlyMine: quick === 'mine' || undefined,
     due: quick === 'overdue' ? 'overdue' : quick === 'today' ? 'today' : undefined,
     stalledDays: quick === 'stalled' ? 7 : undefined,
+    contactedToday: quick === 'contacted' || undefined,
   };
 
   const board = useQuery({
@@ -140,7 +143,12 @@ export default function Crm() {
 
   async function move(leadId: string, stage: string) {
     try {
-      await api.patch(`/crm/leads/${leadId}/stage`, { stage });
+      const { data } = await api.patch<{ handedOffTo?: string }>(`/crm/leads/${leadId}/stage`, { stage });
+      if (data.handedOffTo) {
+        toast.success(`Pasó a ${data.handedOffTo} para la demo`);
+        // Un vendedor deja de ver el lead que pasó: la ficha ya no se puede abrir.
+        if (!admin) setOpenLead(null);
+      }
       qc.invalidateQueries({ queryKey: ['crm-board'] });
       qc.invalidateQueries({ queryKey: ['crm-lead', leadId] });
     } catch (e: any) {
@@ -214,6 +222,7 @@ export default function Crm() {
           {admin && <Chip active={quick === 'mine'} onClick={() => setQuick('mine')}>Míos</Chip>}
           <Chip active={quick === 'overdue'} onClick={() => setQuick('overdue')} tone="red">Vencidos</Chip>
           <Chip active={quick === 'today'} onClick={() => setQuick('today')}>Para hoy</Chip>
+          <Chip active={quick === 'contacted'} onClick={() => setQuick('contacted')}>Contactados hoy</Chip>
           <Chip active={quick === 'stalled'} onClick={() => setQuick('stalled')}>Sin tocar +7 días</Chip>
           {(q || productKey || sellerId || deviceId || source || quick) && (
             <button
@@ -449,6 +458,12 @@ function CrmCard({ card, onOpen, onDragStart, onDragEnd }: {
         ) : (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 text-slate-400">sin vendedor</span>
         )}
+        {card.originSellerName && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 truncate max-w-[120px]"
+                title={`Lo originó ${card.originSellerName}: el ganado cuenta para ${card.originSellerName}`}>
+            vía {card.originSellerName}
+          </span>
+        )}
         {card.deviceName && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700">{card.deviceName}</span>
         )}
@@ -645,6 +660,11 @@ function LeadDrawer({ leadId, stages, sellers, onClose, onMove }: {
                       <option key={s.id} value={s.id}>{s.displayName}</option>
                     ))}
                   </select>
+                  {d.originSellerName && (
+                    <p className="text-[11px] text-emerald-700">
+                      Lo originó {d.originSellerName}: el ganado cuenta para {d.originSellerName}.
+                    </p>
+                  )}
                   <p className="text-[11px] text-slate-400">
                     {d.manualAssignedAt
                       ? `Asignado a mano el ${fmtDateTime(d.manualAssignedAt)}: el reparto automático no lo mueve.`
@@ -652,7 +672,10 @@ function LeadDrawer({ leadId, stages, sellers, onClose, onMove }: {
                   </p>
                 </>
               ) : (
-                <div className="text-sm text-slate-600">{d.sellerName ?? 'Sin vendedor'}</div>
+                <div className="text-sm text-slate-600">
+                  {d.sellerName ?? 'Sin vendedor'}
+                  {d.originSellerName && <span className="text-[11px] text-emerald-700"> · lo originó {d.originSellerName}</span>}
+                </div>
               )}
             </div>
 
