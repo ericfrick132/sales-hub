@@ -196,6 +196,18 @@ export default function PhoneLinesCard() {
     }
   }
 
+  async function importNow(l: PhoneLine) {
+    if (l.prospectSellerIds.length === 0
+      && !confirm('Este teléfono no tiene a nadie tildado para tomar los prospectos: se van a cargar los chats pero NO se van a crear leads para llamar. ¿Seguir igual?')) return;
+    try {
+      await api.post(`/phone-lines/${l.id}/import-now`);
+      toast.success('Cargando: en un minuto arranca y vas a ver la barra');
+      refresh();
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo arrancar la carga');
+    }
+  }
+
   async function unlink(l: PhoneLine) {
     if (!confirm(`Desvincular "${l.label}"? Deja de recibir chats hasta que lo escanees de nuevo. Queda registrado.`)) return;
     try {
@@ -386,6 +398,11 @@ export default function PhoneLinesCard() {
                 <div className="flex gap-1 shrink-0 flex-wrap justify-end">
                   {!connected && (
                     <button className="btn-primary text-xs" onClick={() => setQrFor(l)}>Escanear QR</button>
+                  )}
+                  {l.connectedAt && !isImporting(l) && (
+                    <button className="btn-secondary text-xs" onClick={() => importNow(l)}>
+                      Cargar contactos ahora
+                    </button>
                   )}
                   <button className="btn-secondary text-xs"
                     onClick={() => editingId === l.id ? setEditingId(null) : startEdit(l)}>

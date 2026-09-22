@@ -182,6 +182,30 @@ public class PhoneLinesController : ControllerBase
         return new QrCodeResponse(qr, info.Status);
     }
 
+    /// <summary>
+    /// Vuelve a recorrer el teléfono AHORA (agenda + chats) sin tener que re-escanear el QR:
+    /// deja las pasadas en cero y el worker lo agarra en el próximo minuto. Es idempotente —
+    /// los números y mensajes que ya están no se duplican — así que sirve para forzar la carga
+    /// cuando la sesión estuvo inestable o se acaba de elegir quién toma los prospectos.
+    /// </summary>
+    [HttpPost("{id:guid}/import-now")]
+    public async Task<IActionResult> ImportNow(Guid id, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var line = await _db.EvolutionInstances.FirstOrDefaultAsync(i => i.Id == id && i.SellerId == null, ct);
+        if (line is null) return NotFound(new { error = "No existe ese teléfono." });
+        if (line.ConnectedAt is null) return BadRequest(new { error = "Escaneá el QR primero: todavía no se vinculó ningún celu." });
+
+        line.ImportHistory = true;
+        line.HistoryImportPasses = 0;
+        line.HistoryImportStartedAt = null;
+        line.HistoryImportTotalChats = 0;
+        line.HistoryImportDoneChats = 0;
+        line.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Accepted(new { ok = true });
+    }
+
     /// <summary>Cierra la sesión de WhatsApp del teléfono. Queda registrado: se reconecta con otro QR.</summary>
     [HttpPost("{id:guid}/logout")]
     public async Task<IActionResult> Logout(Guid id, CancellationToken ct)

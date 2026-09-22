@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
 using SalesHub.Infrastructure.Services;
 
@@ -55,8 +54,13 @@ public class LineHistoryImportWorker : BackgroundService
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var now = DateTimeOffset.UtcNow;
+            // Sin exigir Status == Connected: la sesión de WhatsApp parpadea (caso real:
+            // conectada/desconectada/conectando en ticks seguidos del monitor), así que pedir
+            // "conectada justo en este segundo" hacía que las pasadas no salieran nunca. Lo que
+            // manda es que el teléfono se haya vinculado (ConnectedAt): si la sesión está caída,
+            // Evolution devuelve lo que tenga guardado y la pasada siguiente completa.
             var candidates = await db.EvolutionInstances.AsNoTracking()
-                .Where(i => i.ImportHistory && i.Status == InstanceStatus.Connected
+                .Where(i => i.ImportHistory
                     && i.ConnectedAt != null && i.HistoryImportPasses < PassDelays.Length)
                 .Select(i => new { i.Id, i.InstanceName, i.HistoryImportPasses, i.ConnectedAt,
                     i.ProspectSellerIds, i.ProspectSkipWords, i.ConnectedPhoneNumber })
