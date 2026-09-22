@@ -88,7 +88,7 @@ const WINDOW_CHIPS: { key: WindowFilter; label: string; dot?: string }[] = [
 const SOURCE_LABEL: Record<string, string> = {
   WhatsAppAd: 'Anuncio WhatsApp', WhatsAppInbound: 'Escribió solo', MetaLeadAd: 'Form de Meta', DemoSignup: 'Se registró en la app',
   ProductReengage: 'Re-enganche', ProductOnboarding: 'Onboarding app', GooglePlaces: 'Google Maps', ApifyGoogleMaps: 'Google Maps',
-  InstagramScraper: 'Instagram', ManualWhatsApp: 'Manual'
+  InstagramScraper: 'Instagram', ManualWhatsApp: 'Manual', Remarketing: 'Remarketing'
 };
 
 /** Cuánto queda de la ventana de 24 h. */

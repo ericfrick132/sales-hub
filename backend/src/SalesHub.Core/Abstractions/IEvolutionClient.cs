@@ -66,7 +66,9 @@ public interface IEvolutionClient
     Task<EvolutionMessagesPage> FindMessagesAsync(string instanceName, string remoteJid, int page, int pageSize, CancellationToken ct = default);
 }
 
-public record EvolutionChatSummary(string RemoteJid, DateTimeOffset? UpdatedAt);
+/// <param name="Name">Nombre con el que el contacto figura en la agenda/WhatsApp del teléfono
+/// (pushName). Es el único nombre que tenemos para un chat donde sólo escribimos nosotros.</param>
+public record EvolutionChatSummary(string RemoteJid, DateTimeOffset? UpdatedAt, string? Name = null);
 
 public record EvolutionMessagesPage(int Total, int Pages, int CurrentPage, IReadOnlyList<System.Text.Json.JsonElement> Records);
 

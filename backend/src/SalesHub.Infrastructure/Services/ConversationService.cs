@@ -58,7 +58,15 @@ public class ConversationService
         bool FromSync = false,
         // Atribución del anuncio (contextInfo.externalAdReply de un click-to-WhatsApp):
         // id del ad, título, url y ctwa_clid. Null si el mensaje no viene de un anuncio.
-        AdReferral? Ad = null);
+        AdReferral? Ad = null,
+        // Carga del historial de un teléfono escaneado con prospectos prendidos: vendedores
+        // que se reparten los contactos de ese teléfono. Con esto, un número que no está en
+        // el sistema se crea como PROSPECTO de remarketing asignado a uno de ellos (también
+        // si el chat lo arrancamos nosotros y nunca contestaron). Null/vacío = flujo normal.
+        IReadOnlyList<Guid>? ProspectOwners = null,
+        // Nombre del contacto en la agenda del teléfono (pushName del chat). Es el nombre que
+        // lleva el prospecto en el CRM.
+        string? ContactName = null);
 
     /// <summary>
     /// Un mensaje del sync/importación más viejo que esto es HISTORIA (ej. el historial de un
@@ -127,11 +135,18 @@ public class ConversationService
                 _log.LogInformation("Inbound LID sin teléfono resolvible en {I} — no se crea lead", incoming.InstanceName);
                 return false;
             }
-            // Número desconocido: ¿es un lead de anuncio (click-to-WhatsApp)? El texto
-            // pre-armado del ad trae "activar <app>". Si sí, lo creamos taggeado WhatsAppAd.
-            lead = await TryCreateAdLeadAsync(incoming, phone, instance, ct);
-            if (lead is not null)
-                _log.LogInformation("Lead de anuncio creado: {Lead} app={Product} tel={Phone}", lead.Id, lead.ProductKey, phone);
+            // Carga del historial con prospectos prendidos: TODO chat del teléfono es un lead
+            // de remarketing para llamar, con dueño ya elegido. Va antes que los otros dos
+            // caminos: acá el origen lo decide quien escaneó el teléfono, no el texto.
+            lead = await TryCreateProspectLeadAsync(incoming, phone, instance, ct);
+            if (lead is null)
+            {
+                // Número desconocido: ¿es un lead de anuncio (click-to-WhatsApp)? El texto
+                // pre-armado del ad trae "activar <app>". Si sí, lo creamos taggeado WhatsAppAd.
+                lead = await TryCreateAdLeadAsync(incoming, phone, instance, ct);
+                if (lead is not null)
+                    _log.LogInformation("Lead de anuncio creado: {Lead} app={Product} tel={Phone}", lead.Id, lead.ProductKey, phone);
+            }
             // Si no, lo creamos igual (WhatsAppInbound, bot muteado): TODOS los chats de
             // las líneas vinculadas tienen que quedar centralizados en Conversaciones.
             lead ??= await TryCreateInboundLeadAsync(incoming, phone, instance, ct);
@@ -262,13 +277,20 @@ public class ConversationService
             ? await MatchLeadByPhoneAsync(instance.SellerId, suffix, ct)
             : await MatchLeadByPhoneAsync(null, suffix, ct, instance.ProductKey);
         lead ??= await MatchLeadByPhoneAsync(null, suffix, ct);
-        if (lead is null) return false; // chat que no es de un lead: no nos interesa
 
         var text = incoming.Text.Trim();
 
         // Replay del sync: los comandos "-"/"+" ya se consumieron en vivo — re-procesarlos
-        // horas después mutearía/desmutearía el bot fuera de contexto.
+        // horas después mutearía/desmutearía el bot fuera de contexto. Va ANTES de crear nada:
+        // un lead agregado al tracker y abandonado sin SaveChanges lo vuelve a crear el
+        // próximo mensaje del mismo chat (leads duplicados en serie).
         if (incoming.FromSync && text is "-" or "+") return false;
+
+        // Carga del historial con prospectos prendidos: un chat que arrancamos NOSOTROS y que
+        // nunca contestaron también es un prospecto (justamente el que quedó colgado). Fuera de
+        // esa carga, un chat propio que no es de ningún lead no nos interesa.
+        lead ??= await TryCreateProspectLeadAsync(incoming, phone, instance, ct);
+        if (lead is null) return false;
 
         if (text == "-")
         {
@@ -605,6 +627,69 @@ public class ConversationService
         };
         _db.Leads.Add(lead);
         return lead;
+    }
+
+    /// <summary>
+    /// PROSPECTO de remarketing: un contacto del historial de un teléfono escaneado que todavía
+    /// no está en el sistema. Nace listo para LLAMAR desde el CRM (teléfono validado, con dueño
+    /// y en una etapa del tablero), nunca para que le salga un mensaje solo:
+    /// - bot muteado y origen <see cref="LeadSource.Remarketing"/>, que
+    ///   <see cref="OutboxEnqueueHelper"/> no encola;
+    /// - <c>ManualAssignedAt</c> puesto, porque el dueño lo eligió quien escaneó el teléfono:
+    ///   ni el rebalanceo ni "Reasignar todo" se lo sacan a Rosario o a Eric;
+    /// - fecha de creación = la de su primer mensaje, para no inflar los "nuevos de hoy".
+    /// Devuelve null si el teléfono no tiene prospectos prendidos (flujo viejo).
+    /// </summary>
+    private async Task<Lead?> TryCreateProspectLeadAsync(IncomingMessage incoming, string phone, EvolutionInstance instance, CancellationToken ct)
+    {
+        if (incoming.ProspectOwners is not { Count: > 0 } owners) return null;
+        // Chat LID sin teléfono real: los dígitos del LID no son un número al que llamar.
+        if (incoming.FromJid.EndsWith("@lid", StringComparison.Ordinal) && incoming.FromPhone is null) return null;
+
+        var product = await DetectProductForLineAsync(incoming.Text, instance, ct);
+        if (product is null) return null;
+
+        // El pushName de un mensaje NUESTRO es el nuestro, no el del contacto: ahí sólo sirve
+        // el nombre del chat (la agenda del teléfono).
+        var name = Trunc(incoming.ContactName, 120)
+            ?? (incoming.FromMe ? null : ExtractPushName(incoming.RawJson))
+            ?? "Contacto WhatsApp";
+
+        var lead = new Lead
+        {
+            Id = Guid.NewGuid(),
+            ProductKey = product.ProductKey,
+            Source = LeadSource.Remarketing,
+            Name = name,
+            WhatsappPhone = phone,
+            WhatsappValidated = true,
+            SellerId = PickProspectOwner(owners, phone),
+            AssignedAt = DateTimeOffset.UtcNow,
+            ManualAssignedAt = DateTimeOffset.UtcNow,
+            // Si nos escribió, ya respondió (etapa "Respondieron"); si el chat lo arrancamos
+            // nosotros y nunca contestó, queda en "Nuevos". Las dos entran al modo llamadas.
+            Status = incoming.FromMe ? LeadStatus.Assigned : LeadStatus.Replied,
+            FirstReplyAt = incoming.FromMe ? null : incoming.Timestamp,
+            BotMutedAt = DateTimeOffset.UtcNow,
+            CreatedAt = CreatedAtFor(incoming),
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        _db.Leads.Add(lead);
+        _log.LogInformation("Prospecto de remarketing creado: {Lead} app={Product} tel={Phone} teléfono={I}",
+            lead.Id, lead.ProductKey, phone, instance.InstanceName);
+        return lead;
+    }
+
+    /// <summary>
+    /// Reparto de los prospectos entre los vendedores elegidos. Por suma de dígitos del teléfono
+    /// y no por azar ni por carga: así el reparto es estable (las dos pasadas de la importación y
+    /// un re-escaneo dejan cada contacto en el mismo vendedor) y parejo.
+    /// </summary>
+    private static Guid PickProspectOwner(IReadOnlyList<Guid> owners, string phone)
+    {
+        if (owners.Count == 1) return owners[0];
+        var sum = phone.Where(char.IsDigit).Sum(c => c - '0');
+        return owners[sum % owners.Count];
     }
 
     /// <summary>

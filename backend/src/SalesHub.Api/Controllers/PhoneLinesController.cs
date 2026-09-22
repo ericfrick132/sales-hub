@@ -41,11 +41,16 @@ public class PhoneLinesController : ControllerBase
         string? ProductKey, List<string> ExtraProductKeys, DateTimeOffset? ConnectedAt,
         DateTimeOffset? DisconnectedAt, DateTimeOffset CreatedAt, int LeadsToday, int Leads7d,
         bool ImportHistory, int HistoryImportPasses, DateTimeOffset? HistoryImportStartedAt,
-        DateTimeOffset? HistoryImportedAt, int HistoryImportedMessages);
+        DateTimeOffset? HistoryImportedAt, int HistoryImportedMessages,
+        List<Guid> ProspectSellerIds, List<string> ProspectSkipWords, int Prospects);
 
     /// <param name="ImportHistory">Cargar también los chats de antes de escanear (por defecto sí).</param>
+    /// <param name="ProspectSellerIds">Vendedores que se reparten los contactos del historial como
+    /// prospectos para llamar. Vacío = el historial entra a Conversaciones y nada más.</param>
+    /// <param name="ProspectSkipWords">Palabras que dejan un chat afuera (delivery, bancos, etc.).</param>
     public record SavePhoneLineRequest(string Label, string ProductKey, List<string>? ExtraProductKeys,
-        bool ListenOnly = true, bool ImportHistory = true);
+        bool ListenOnly = true, bool ImportHistory = true,
+        List<Guid>? ProspectSellerIds = null, List<string>? ProspectSkipWords = null);
 
     [HttpGet]
     public async Task<ActionResult<List<PhoneLineDto>>> List(CancellationToken ct)
@@ -56,9 +61,19 @@ public class PhoneLinesController : ControllerBase
             .OrderBy(i => i.CreatedAt)
             .ToListAsync(ct);
 
+        // Prospectos cargados por cada teléfono: leads de remarketing con al menos un mensaje
+        // de esa línea. Una sola query para toda la lista.
+        var prospects = (await _db.ConversationMessages.AsNoTracking()
+                .Where(m => m.EvolutionInstance != null && m.Lead != null && m.Lead.Source == LeadSource.Remarketing)
+                .Select(m => new { Line = m.EvolutionInstance!, m.LeadId })
+                .Distinct()
+                .ToListAsync(ct))
+            .GroupBy(x => x.Line, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
         var today = LeadEntryService.TodayAr();
         var entries = await _entries.GetEntriesAsync(today.AddDays(-6), today, ct);
-        return lines.Select(i => ToDto(i, entries)).ToList();
+        return lines.Select(i => ToDto(i, entries, prospects)).ToList();
     }
 
     [HttpPost]
@@ -79,6 +94,8 @@ public class PhoneLinesController : ControllerBase
             ExtraProductKeys = apps.Extra,
             ListenOnly = req.ListenOnly,
             ImportHistory = req.ImportHistory,
+            ProspectSellerIds = await ValidSellersAsync(req.ProspectSellerIds, ct),
+            ProspectSkipWords = CleanWords(req.ProspectSkipWords),
         };
         _db.EvolutionInstances.Add(line);
         await _db.SaveChangesAsync(ct);
@@ -98,7 +115,7 @@ public class PhoneLinesController : ControllerBase
         }
 
         _listenOnly.Invalidate();
-        return ToDto(line, new List<LeadEntryService.Entry>());
+        return ToDto(line, new List<LeadEntryService.Entry>(), null);
     }
 
     [HttpPut("{id:guid}")]
@@ -117,6 +134,12 @@ public class PhoneLinesController : ControllerBase
         line.ProductKey = apps.Main;
         line.ExtraProductKeys = apps.Extra;
         line.ListenOnly = req.ListenOnly;
+        var owners = await ValidSellersAsync(req.ProspectSellerIds, ct);
+        // Sumar vendedores (o prender los prospectos) en un teléfono ya cargado: se repasa el
+        // historial para que los contactos que todavía no son lead entren ahora.
+        if (owners.Count > 0 && !owners.SequenceEqual(line.ProspectSellerIds)) line.HistoryImportPasses = 0;
+        line.ProspectSellerIds = owners;
+        line.ProspectSkipWords = CleanWords(req.ProspectSkipWords);
         // Prenderlo en un teléfono que ya estaba vinculado lo carga ahora (repasar no duplica).
         if (req.ImportHistory && !line.ImportHistory) line.HistoryImportPasses = 0;
         line.ImportHistory = req.ImportHistory;
@@ -125,7 +148,7 @@ public class PhoneLinesController : ControllerBase
         _listenOnly.Invalidate();
 
         var today = LeadEntryService.TodayAr();
-        return ToDto(line, await _entries.GetEntriesAsync(today.AddDays(-6), today, ct));
+        return ToDto(line, await _entries.GetEntriesAsync(today.AddDays(-6), today, ct), null);
     }
 
     /// <summary>
@@ -206,7 +229,8 @@ public class PhoneLinesController : ControllerBase
         return NoContent();
     }
 
-    private static PhoneLineDto ToDto(EvolutionInstance i, List<LeadEntryService.Entry> entries)
+    private static PhoneLineDto ToDto(EvolutionInstance i, List<LeadEntryService.Entry> entries,
+        IReadOnlyDictionary<string, int>? prospects)
     {
         var today = LeadEntryService.TodayAr();
         var mine = entries.Where(e => string.Equals(e.Line, i.InstanceName, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -214,7 +238,9 @@ public class PhoneLinesController : ControllerBase
             i.Id, i.InstanceName, LeadEntryService.DisplayName(i), i.ConnectedPhoneNumber, i.Status.ToString(),
             i.ListenOnly, i.ProductKey, i.ExtraProductKeys, i.ConnectedAt, i.DisconnectedAt, i.CreatedAt,
             mine.Count(e => e.Day == today), mine.Count,
-            i.ImportHistory, i.HistoryImportPasses, i.HistoryImportStartedAt, i.HistoryImportedAt, i.HistoryImportedMessages);
+            i.ImportHistory, i.HistoryImportPasses, i.HistoryImportStartedAt, i.HistoryImportedAt, i.HistoryImportedMessages,
+            i.ProspectSellerIds, i.ProspectSkipWords,
+            prospects is not null && prospects.TryGetValue(i.InstanceName, out var n) ? n : 0);
     }
 
     /// <summary>
@@ -238,6 +264,26 @@ public class PhoneLinesController : ControllerBase
         if (!valid.Contains(main)) return ("", new(), "Esa app no existe.");
         return (main, wanted.Where(valid.Contains).ToList(), null);
     }
+
+    /// <summary>Los vendedores que existen y están activos, en el orden en que llegaron.</summary>
+    private async Task<List<Guid>> ValidSellersAsync(List<Guid>? ids, CancellationToken ct)
+    {
+        if (ids is not { Count: > 0 }) return new List<Guid>();
+        var wanted = ids.Distinct().ToList();
+        var valid = await _db.Sellers.AsNoTracking()
+            .Where(s => wanted.Contains(s.Id) && s.IsActive)
+            .Select(s => s.Id)
+            .ToListAsync(ct);
+        return wanted.Where(valid.Contains).ToList();
+    }
+
+    private static List<string> CleanWords(List<string>? words) =>
+        (words ?? new List<string>())
+            .Select(w => (w ?? "").Trim())
+            .Where(w => w.Length > 1)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(100)
+            .ToList();
 
     private static readonly Regex NonSlug = new("[^a-z0-9]+", RegexOptions.Compiled);
 

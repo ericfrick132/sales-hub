@@ -118,6 +118,10 @@ public class LeadRebalancer
             .Where(l => l.SellerId != null && capableIds.Contains(l.SellerId.Value)
                      && l.Status == LeadStatus.Assigned
                      && l.SentAt == null && l.FirstReplyAt == null
+                     // Prospectos del historial de un teléfono: son para LLAMAR, no para que les
+                     // salga un opener solo (ver OutboxEnqueueHelper). Sin esto, el sweep les
+                     // arrancaría el guion de alta y los dejaría "En cola" sin nada encolado.
+                     && l.Source != LeadSource.Remarketing
                      && l.WhatsappPhone != null && l.WhatsappPhone != "")
             .OrderBy(l => l.AssignedAt)
             .Take(OrphanBatchPerTick)

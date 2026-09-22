@@ -40,6 +40,13 @@ public static class OutboxEnqueueHelper
         // estos leads son no-op; su seguimiento lo lleva el agente conversacional.
         if (db.Set<LeadOnboarding>().Any(o => o.LeadId == lead.Id)) return 0;
 
+        // Prospecto del historial de un teléfono (remarketing): se labura LLAMÁNDOLO desde el
+        // CRM. Escanear un celu mete de golpe miles de contactos viejos; si alguno de los
+        // caminos que reparten leads les encolara la cadencia, saldría un blast de openers a
+        // gente que habló con nosotros hace meses — el camino más corto a un ban (30/07/2026).
+        // El candado va acá, el punto más bajo por el que pasan los 16 llamadores.
+        if (lead.Source == LeadSource.Remarketing) return 0;
+
         // Número sin WhatsApp (lo detecta el bridge al ver la pantalla de "invitar"):
         // encolarle cadencia es tirar cupo de envío a la basura — cada intento gasta un
         // slot del techo diario de la línea y nunca va a entregar.

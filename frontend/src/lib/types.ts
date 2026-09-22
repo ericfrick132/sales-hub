@@ -84,6 +84,7 @@ export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   ManualInstagram: 'Instagram',
   ManualWhatsApp: 'WhatsApp',
   ManualWeb: 'Web',
+  Remarketing: 'Remarketing (historial WhatsApp)',
   BrowserCapture: 'Captura web',
   InstagramScraper: 'Instagram (scraper)',
   DemoSignup: 'Demo / alta producto',
@@ -111,7 +112,7 @@ export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
 export type LeadSource =
   | 'GooglePlaces' | 'ApifyGoogleMaps' | 'ApifyMetaAdsLibrary'
   | 'ApifyInstagram' | 'ApifyFacebookPages' | 'Manual'
-  | 'ManualMaps' | 'ManualInstagram' | 'ManualWhatsApp' | 'ManualWeb'
+  | 'ManualMaps' | 'ManualInstagram' | 'ManualWhatsApp' | 'ManualWeb' | 'Remarketing'
   | 'BrowserCapture' | 'InstagramScraper' | 'DemoSignup' | 'ProductReengage'
   | 'WhatsAppAd' | 'ProductOnboarding' | 'MetaLeadAd' | 'WhatsAppInbound';
 

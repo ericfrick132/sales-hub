@@ -42,7 +42,7 @@ public class LineHistoryImportWorker : BackgroundService
 
     private async Task TickAsync(CancellationToken ct)
     {
-        List<(Guid Id, string Name, int Pass, DateTimeOffset? ConnectedAt)> due;
+        List<(Guid Id, string Name, int Pass, DateTimeOffset? ConnectedAt, ChatHistoryImporter.ProspectRules? Prospects)> due;
         using (var scope = _scopes.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -50,16 +50,20 @@ public class LineHistoryImportWorker : BackgroundService
             var candidates = await db.EvolutionInstances.AsNoTracking()
                 .Where(i => i.ImportHistory && i.Status == InstanceStatus.Connected
                     && i.ConnectedAt != null && i.HistoryImportPasses < PassDelays.Length)
-                .Select(i => new { i.Id, i.InstanceName, i.HistoryImportPasses, i.ConnectedAt })
+                .Select(i => new { i.Id, i.InstanceName, i.HistoryImportPasses, i.ConnectedAt,
+                    i.ProspectSellerIds, i.ProspectSkipWords, i.ConnectedPhoneNumber })
                 .ToListAsync(ct);
             due = candidates
                 .Where(c => now >= c.ConnectedAt!.Value + PassDelays[c.HistoryImportPasses])
-                .Select(c => (c.Id, c.InstanceName, c.HistoryImportPasses, c.ConnectedAt))
+                .Select(c => (c.Id, c.InstanceName, c.HistoryImportPasses, c.ConnectedAt,
+                    c.ProspectSellerIds.Count > 0
+                        ? new ChatHistoryImporter.ProspectRules(c.ProspectSellerIds, c.ProspectSkipWords, c.ConnectedPhoneNumber)
+                        : null))
                 .ToList();
         }
 
         // De a un teléfono por vez: una importación grande ya le da trabajo de sobra a la DB.
-        foreach (var (id, name, pass, connectedAt) in due)
+        foreach (var (id, name, pass, connectedAt, prospects) in due)
         {
             var startedAt = DateTimeOffset.UtcNow;
             if (!await MarkAsync(id, i => i.HistoryImportStartedAt = startedAt, ct)) continue;
@@ -70,7 +74,7 @@ public class LineHistoryImportWorker : BackgroundService
             ChatHistoryImporter.Result result;
             try
             {
-                result = await importer.ImportAsync(name, cutoff: null, MaxPagesPerChat, muteHistoricLeads: true, ct);
+                result = await importer.ImportAsync(name, cutoff: null, MaxPagesPerChat, muteHistoricLeads: true, ct, prospects);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

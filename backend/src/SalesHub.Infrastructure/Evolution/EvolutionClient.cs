@@ -638,7 +638,10 @@ public class EvolutionClient : IEvolutionClient
             if (chat.TryGetProperty("updatedAt", out var up) && up.ValueKind == JsonValueKind.String
                 && DateTimeOffset.TryParse(up.GetString(), out var parsed))
                 updatedAt = parsed;
-            chats.Add(new EvolutionChatSummary(jid!, updatedAt));
+            var name = chat.TryGetProperty("pushName", out var pn) && pn.ValueKind == JsonValueKind.String
+                ? pn.GetString()
+                : chat.TryGetProperty("name", out var nm) && nm.ValueKind == JsonValueKind.String ? nm.GetString() : null;
+            chats.Add(new EvolutionChatSummary(jid!, updatedAt, string.IsNullOrWhiteSpace(name) ? null : name!.Trim()));
         }
         return chats;
     }

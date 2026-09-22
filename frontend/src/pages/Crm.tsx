@@ -48,6 +48,7 @@ type Detail = {
 type Device = { id: string; name: string };
 
 const SOURCES = [
+  { value: 'Remarketing', label: 'Remarketing (historial del celu)' },
   { value: 'MetaLeadAd', label: 'Meta Lead Ads' },
   { value: 'WhatsAppAd', label: 'Click to WhatsApp' },
   { value: 'WhatsAppInbound', label: 'Escribió al WhatsApp' },

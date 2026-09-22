@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { useAuthStore } from '../lib/auth';
 import QrConnectModal from './QrConnectModal';
 
 /** Teléfono vinculado por QR, sin vendedor (instancia de Evolution). */
@@ -27,11 +28,24 @@ interface PhoneLine {
   historyImportStartedAt?: string | null;
   historyImportedAt?: string | null;
   historyImportedMessages: number;
+  /** Vendedores que se reparten los contactos del historial como prospectos para llamar. */
+  prospectSellerIds: string[];
+  /** Palabras que dejan un chat afuera (delivery, bancos, familia...). */
+  prospectSkipWords: string[];
+  /** Prospectos de remarketing que ya cargó este teléfono. */
+  prospects: number;
 }
 interface Product { productKey: string; displayName: string }
+interface Seller { id: string; displayName: string; isActive?: boolean }
 
-type Draft = { label: string; productKey: string; extraProductKeys: string[]; listenOnly: boolean; importHistory: boolean };
-const EMPTY: Draft = { label: '', productKey: '', extraProductKeys: [], listenOnly: true, importHistory: true };
+type Draft = {
+  label: string; productKey: string; extraProductKeys: string[]; listenOnly: boolean; importHistory: boolean;
+  prospectSellerIds: string[]; prospectSkipWords: string;
+};
+const EMPTY: Draft = {
+  label: '', productKey: '', extraProductKeys: [], listenOnly: true, importHistory: true,
+  prospectSellerIds: [], prospectSkipWords: ''
+};
 
 /** En qué va la carga del historial de un teléfono (null si no se pidió). */
 function historyStatus(l: PhoneLine): string | null {
@@ -39,9 +53,10 @@ function historyStatus(l: PhoneLine): string | null {
   const running = !!l.historyImportStartedAt
     && (!l.historyImportedAt || l.historyImportStartedAt > l.historyImportedAt);
   const n = l.historyImportedMessages.toLocaleString('es-AR');
-  if (running) return l.historyImportPasses === 0 ? 'Cargando el historial…' : `Historial cargado (${n} mensajes) · repasando lo que llegó tarde…`;
-  if (l.historyImportPasses >= 2) return `Historial cargado (${n} mensajes)`;
-  if (l.historyImportPasses === 1) return `Historial cargado (${n} mensajes) · a la media hora repasa lo que llegue tarde`;
+  const p = l.prospects > 0 ? ` · ${l.prospects.toLocaleString('es-AR')} prospectos en el CRM` : '';
+  if (running) return l.historyImportPasses === 0 ? 'Cargando el historial…' : `Historial cargado (${n} mensajes)${p} · repasando lo que llegó tarde…`;
+  if (l.historyImportPasses >= 2) return `Historial cargado (${n} mensajes)${p}`;
+  if (l.historyImportPasses === 1) return `Historial cargado (${n} mensajes)${p} · a la media hora repasa lo que llegue tarde`;
   return l.status === 'Connected'
     ? 'El historial se empieza a cargar a los 3 minutos de conectar'
     : 'El historial se carga cuando escanees el QR';
@@ -57,6 +72,7 @@ const appName = (products: Product[], key?: string | null) =>
  */
 export default function PhoneLinesCard() {
   const qc = useQueryClient();
+  const me = useAuthStore(s => s.user?.sellerId) ?? null;
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(EMPTY);
@@ -67,6 +83,12 @@ export default function PhoneLinesCard() {
     queryKey: ['phone-lines'],
     queryFn: async () => (await api.get<PhoneLine[]>('/phone-lines')).data,
     refetchInterval: 15_000
+  });
+  const { data: sellers = [] } = useQuery({
+    queryKey: ['sellers-min'],
+    queryFn: async () => (await api.get<Seller[]>('/sellers')).data,
+    staleTime: 5 * 60_000,
+    select: (rows) => rows.filter(s => s.isActive !== false)
   });
   const { data: products = [] } = useQuery({
     queryKey: ['products-min'],
@@ -83,7 +105,12 @@ export default function PhoneLinesCard() {
 
   function startAdd() {
     setEditingId(null);
-    setDraft({ ...EMPTY, productKey: products[0]?.productKey ?? '' });
+    setDraft({
+      ...EMPTY,
+      productKey: products[0]?.productKey ?? '',
+      // Quien escanea el teléfono se lleva sus prospectos salvo que elija otra cosa.
+      prospectSellerIds: me ? [me] : []
+    });
     setAdding(true);
   }
 
@@ -94,7 +121,9 @@ export default function PhoneLinesCard() {
       productKey: l.productKey ?? products[0]?.productKey ?? '',
       extraProductKeys: l.extraProductKeys,
       listenOnly: l.listenOnly,
-      importHistory: l.importHistory
+      importHistory: l.importHistory,
+      prospectSellerIds: l.prospectSellerIds,
+      prospectSkipWords: l.prospectSkipWords.join(', ')
     });
     setEditingId(l.id);
   }
@@ -106,7 +135,12 @@ export default function PhoneLinesCard() {
   async function save() {
     if (!draft.label.trim()) return toast.error('Poné un nombre para reconocer el teléfono');
     if (!mainKey) return toast.error('Elegí qué app atiende');
-    const body = { ...draft, productKey: mainKey, extraProductKeys: draft.extraProductKeys.filter(k => k !== mainKey) };
+    const body = {
+      ...draft,
+      productKey: mainKey,
+      extraProductKeys: draft.extraProductKeys.filter(k => k !== mainKey),
+      prospectSkipWords: draft.prospectSkipWords.split(',').map(w => w.trim()).filter(Boolean)
+    };
     setSaving(true);
     try {
       if (editingId) {
@@ -221,6 +255,43 @@ export default function PhoneLinesCard() {
           </span>
         </span>
       </label>
+      <div className={draft.importHistory ? '' : 'opacity-50 pointer-events-none'}>
+        <div className="text-xs text-slate-600">
+          Los contactos del historial entran al CRM como prospectos de <b>remarketing</b> para llamar. Los toman:
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
+          {sellers.map(v => (
+            <label key={v.id} className="text-xs text-slate-600 flex items-center gap-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={draft.prospectSellerIds.includes(v.id)}
+                onChange={e => setDraft({
+                  ...draft,
+                  prospectSellerIds: e.target.checked
+                    ? [...draft.prospectSellerIds, v.id]
+                    : draft.prospectSellerIds.filter(id => id !== v.id)
+                })}
+              />
+              {v.displayName}
+            </label>
+          ))}
+        </div>
+        <div className="text-[11px] text-slate-400 mt-0.5">
+          {draft.prospectSellerIds.length === 0
+            ? 'Sin nadie tildado no se crean prospectos: los chats entran a Conversaciones y nada más.'
+            : 'Se reparten parejo entre los tildados y quedan listos en el modo llamadas del CRM. Por WhatsApp no les sale nada: estos leads no reciben cadencia.'}
+        </div>
+        <input
+          className="input mt-1.5 text-xs"
+          placeholder="Dejar afuera los chats que digan: delivery, banco, mamá…"
+          value={draft.prospectSkipWords}
+          onChange={e => setDraft({ ...draft, prospectSkipWords: e.target.value })}
+        />
+        <div className="text-[11px] text-slate-400 mt-0.5">
+          Separadas por coma. Si el nombre del contacto o alguno de sus mensajes tiene una de esas palabras, ese
+          chat no entra (ni prospecto ni conversación).
+        </div>
+      </div>
       <div className="flex gap-2">
         <button className="btn-primary text-xs" disabled={saving} onClick={save}>
           {editingId ? 'Guardar' : 'Agregar y escanear QR'}
@@ -267,6 +338,11 @@ export default function PhoneLinesCard() {
                   <div className="text-[11px] text-slate-500 truncate">
                     {[l.productKey, ...l.extraProductKeys].filter(Boolean).map(k => appName(products, k)).join(', ') || 'sin app'}
                     {l.listenOnly && <span className="text-emerald-700"> · solo escucha</span>}
+                    {l.prospectSellerIds.length > 0 && (
+                      <span> · prospectos para {l.prospectSellerIds
+                        .map(id => sellers.find(v => v.id === id)?.displayName ?? '?')
+                        .join(' y ')}</span>
+                    )}
                   </div>
                   {historyStatus(l) && (
                     <div className="text-[11px] text-slate-500 truncate">{historyStatus(l)}</div>

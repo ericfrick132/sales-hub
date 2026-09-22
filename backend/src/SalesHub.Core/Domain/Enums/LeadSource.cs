@@ -12,6 +12,13 @@ public enum LeadSource
     ManualInstagram = 101,
     ManualWhatsApp = 102,
     ManualWeb = 103,
+    // Contacto que ya estaba en el WhatsApp de un teléfono nuestro: lo cargó la importación
+    // del historial al escanear el QR (gente que nos escribió o a la que le escribimos hace
+    // tiempo). Se laburan LLAMÁNDOLOS desde el CRM, no mandándoles WhatsApp: por eso queda
+    // DEBAJO de 400 (el piso de los "calientes", que se saltean el techo de tráfico frío) y
+    // OutboxEnqueueHelper no les encola cadencia — son miles de contactos viejos y blastearlos
+    // es el camino más corto a un ban (ban del 30/07/2026).
+    Remarketing = 104,
     BrowserCapture = 200,
     InstagramScraper = 300,
     // Tenant/demo nuevo registrado en el propio producto (TurnosPro/GymHero) que entra

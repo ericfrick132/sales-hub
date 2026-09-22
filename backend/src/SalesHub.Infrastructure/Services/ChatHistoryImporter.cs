@@ -33,7 +33,17 @@ public class ChatHistoryImporter
     /// </summary>
     public static readonly TimeSpan HistoryAge = ConversationService.HistoryAge;
 
-    public record Result(int Chats, int Stored, int Truncated);
+    public record Result(int Chats, int Stored, int Truncated, int SkippedChats = 0);
+
+    /// <summary>
+    /// Prospectos del teléfono: a quiénes se les reparten los contactos del historial y qué
+    /// chats no entran. Null = carga sin prospectos (el chat entra a Conversaciones y nada más).
+    /// </summary>
+    /// <param name="OwnerIds">Vendedores que se reparten los contactos (round-robin por número).</param>
+    /// <param name="SkipWords">Si el nombre del contacto o alguno de sus mensajes tiene una de
+    /// estas palabras, el chat entero queda afuera: ni lead ni mensajes.</param>
+    /// <param name="OwnPhone">Número del propio teléfono, para no crear un prospecto de uno mismo.</param>
+    public record ProspectRules(IReadOnlyList<Guid> OwnerIds, IReadOnlyList<string> SkipWords, string? OwnPhone);
 
     /// <param name="cutoff">Solo mensajes desde esta fecha; null = todo lo que tenga Evolution.</param>
     /// <param name="maxPagesPerChat">Techo por chat (PageSize × esto); lo que pase queda sin importar y se loguea.</param>
@@ -42,8 +52,12 @@ public class ChatHistoryImporter
     /// viejo de esta línea se le apaga el bot, para que el re-enganche no le escriba por una
     /// charla de hace meses. Los leads que crea la importación ya nacen muteados.
     /// </param>
+    /// <param name="prospects">
+    /// Si el teléfono tiene prospectos prendidos, cada chat 1:1 se convierte en un lead de
+    /// remarketing asignado a uno de esos vendedores, listo para llamar desde el CRM.
+    /// </param>
     public async Task<Result> ImportAsync(string instanceName, DateTimeOffset? cutoff, int maxPagesPerChat,
-        bool muteHistoricLeads, CancellationToken ct)
+        bool muteHistoricLeads, CancellationToken ct, ProspectRules? prospects = null)
     {
         IReadOnlyList<EvolutionChatSummary> chats;
         using (var scope = _scopes.CreateScope())
@@ -59,8 +73,12 @@ public class ChatHistoryImporter
 
         var stored = 0;
         var truncated = 0;
+        var skippedChats = 0;
+        var ownSuffix = Suffix(prospects?.OwnPhone);
         foreach (var chat in eligible)
         {
+            // El chat con uno mismo (mensajes guardados, notas) no es un prospecto.
+            if (ownSuffix is not null && Suffix(chat.RemoteJid) == ownSuffix) continue;
             ct.ThrowIfCancellationRequested();
             // Scope por CHAT: con miles de mensajes el change-tracking de un solo DbContext
             // acumularía todo en memoria — el droplet tiene 1GB.
@@ -88,7 +106,9 @@ public class ChatHistoryImporter
                 continue;
             }
 
-            var ids = new List<string>();
+            // Se parsea TODO el chat antes de guardar nada: el filtro de palabras mira la
+            // conversación entera (basta con que una la nombre para que el chat no entre).
+            var parsed = new List<ConversationService.IncomingMessage>();
             foreach (var rec in records.Where(r => cutoff is null || TsOf(r) >= cutoff).OrderBy(TsOf))
             {
                 // Parse adentro del try: un record podrido (message null, key rara) no debe
@@ -101,6 +121,27 @@ public class ChatHistoryImporter
                     // payload.sender como fallback; acá no) → mejor saltear que inventar.
                     if (incoming.FromJid.EndsWith("@lid", StringComparison.Ordinal) && incoming.FromPhone is null)
                         continue;
+                    parsed.Add(prospects is null
+                        ? incoming
+                        : incoming with { ProspectOwners = prospects.OwnerIds, ContactName = chat.Name });
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _log.LogWarning(ex, "Importación: un mensaje de {Chat} en {Instance} falló", chat.RemoteJid, instanceName);
+                }
+            }
+
+            if (prospects is { SkipWords.Count: > 0 } && HasSkipWord(chat.Name, parsed, prospects.SkipWords))
+            {
+                skippedChats++;
+                continue;
+            }
+
+            var ids = new List<string>();
+            foreach (var incoming in parsed)
+            {
+                try
+                {
                     var handled = incoming.FromMe
                         ? await conv.HandleOwnMessageAsync(incoming, ct)
                         : await conv.HandleIncomingAsync(incoming, ct);
@@ -123,11 +164,12 @@ public class ChatHistoryImporter
             }
         }
 
-        if (stored > 0 || truncated > 0)
-            _log.LogInformation("Importación {Instance}: {Chats} chats, {Stored} mensajes procesados{Trunc}",
+        if (stored > 0 || truncated > 0 || skippedChats > 0)
+            _log.LogInformation("Importación {Instance}: {Chats} chats, {Stored} mensajes procesados{Skipped}{Trunc}",
                 instanceName, eligible.Count, stored,
+                skippedChats > 0 ? $", {skippedChats} chats afuera por el filtro de palabras" : "",
                 truncated > 0 ? $", {truncated} chats cortados en {PageSize * maxPagesPerChat} msgs" : "");
-        return new Result(eligible.Count, stored, truncated);
+        return new Result(eligible.Count, stored, truncated, skippedChats);
     }
 
     private static async Task MuteHistoricLeadsAsync(ApplicationDbContext db, string instanceName, List<string> messageIds, CancellationToken ct)
@@ -155,6 +197,36 @@ public class ChatHistoryImporter
             lead.UpdatedAt = DateTimeOffset.UtcNow;
         }
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Últimos 8 dígitos (el número de abonado): la parte estable en todos los formatos.</summary>
+    private static string? Suffix(string? phoneOrJid)
+    {
+        if (string.IsNullOrWhiteSpace(phoneOrJid)) return null;
+        var digits = new string(phoneOrJid.TakeWhile(c => c != '@').Where(char.IsDigit).ToArray());
+        return digits.Length >= 8 ? digits[^8..] : digits.Length > 0 ? digits : null;
+    }
+
+    /// <summary>
+    /// ¿El chat tiene alguna de las palabras que dejan afuera? Mira el nombre del contacto y
+    /// todos sus mensajes, sin tildes ni mayúsculas.
+    /// </summary>
+    private static bool HasSkipWord(string? chatName, IReadOnlyList<ConversationService.IncomingMessage> messages,
+        IReadOnlyList<string> skipWords)
+    {
+        var words = skipWords.Select(Norm).Where(w => w.Length > 0).ToList();
+        if (words.Count == 0) return false;
+        var haystack = Norm(chatName + " " + string.Join(" ", messages.Select(m => m.Text)));
+        return words.Any(w => haystack.Contains(w, StringComparison.Ordinal));
+    }
+
+    /// <summary>Minúsculas y sin tildes, para comparar como se escribe de verdad.</summary>
+    private static string Norm(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var d = s.Trim().ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+        return new string(d.Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+            != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
     }
 
     private static DateTimeOffset TsOf(JsonElement record) =>

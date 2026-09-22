@@ -64,6 +64,23 @@ public class EvolutionInstance
     /// <summary>Mensajes nuevos que entraron por la importación (suma de las pasadas).</summary>
     public int HistoryImportedMessages { get; set; }
 
+    /// <summary>
+    /// Vendedores que se reparten los PROSPECTOS del historial de este teléfono (round-robin
+    /// estable por número: el mismo contacto siempre cae en el mismo). Cada chat 1:1 que carga
+    /// la importación se convierte en un lead de origen <see cref="LeadSource.Remarketing"/>
+    /// asignado a uno de ellos y listo para llamar desde el CRM.
+    /// Vacío = comportamiento viejo (el chat entra a Conversaciones como WhatsApp entrante y
+    /// lo agarra el dueño de la app).
+    /// </summary>
+    public List<Guid> ProspectSellerIds { get; set; } = new();
+
+    /// <summary>
+    /// Filtro de basura: si el nombre del contacto o alguno de sus mensajes contiene alguna de
+    /// estas palabras, ese chat NO se carga (ni lead ni mensajes). Sirve para dejar afuera
+    /// delivery, bancos, familia, etc. Se compara sin tildes y sin distinguir mayúsculas.
+    /// </summary>
+    public List<string> ProspectSkipWords { get; set; } = new();
+
     public InstanceStatus Status { get; set; } = InstanceStatus.Disconnected;
     public DateTimeOffset? LastStatusCheckAt { get; set; }
     public DateTimeOffset? ConnectedAt { get; set; }
