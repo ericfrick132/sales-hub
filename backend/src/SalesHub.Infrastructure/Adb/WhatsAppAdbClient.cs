@@ -237,6 +237,12 @@ public class WhatsAppAdbClient : IEvolutionClient
     //  Chat history (para EvolutionChatSyncWorker)
     // ═══════════════════════════════════════════════════════════════
 
+    public Task<IReadOnlyList<EvolutionContactSummary>> FindContactsAsync(string instanceName, CancellationToken ct = default)
+    {
+        _log.LogDebug("FindContactsAsync: skip (no soportado en adb MVP)");
+        return Task.FromResult<IReadOnlyList<EvolutionContactSummary>>(Array.Empty<EvolutionContactSummary>());
+    }
+
     public async Task<IReadOnlyList<EvolutionChatSummary>> FindChatsAsync(string instanceName, CancellationToken ct = default)
     {
         // Leer la lista de chats vía uiautomator dump es posible pero frágil.

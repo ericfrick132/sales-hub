@@ -646,6 +646,28 @@ public class EvolutionClient : IEvolutionClient
         return chats;
     }
 
+    public async Task<IReadOnlyList<EvolutionContactSummary>> FindContactsAsync(string instanceName, CancellationToken ct = default)
+    {
+        var resp = await _http.PostAsJsonAsync($"chat/findContacts/{Uri.EscapeDataString(instanceName)}", new { }, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            _log.LogWarning("FindContacts {Instance} failed: {Status}", instanceName, resp.StatusCode);
+            return Array.Empty<EvolutionContactSummary>();
+        }
+        using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        if (doc.RootElement.ValueKind != JsonValueKind.Array) return Array.Empty<EvolutionContactSummary>();
+
+        var contacts = new List<EvolutionContactSummary>();
+        foreach (var c in doc.RootElement.EnumerateArray())
+        {
+            var jid = c.TryGetProperty("remoteJid", out var rj) && rj.ValueKind == JsonValueKind.String ? rj.GetString() : null;
+            if (string.IsNullOrWhiteSpace(jid)) continue;
+            var name = c.TryGetProperty("pushName", out var pn) && pn.ValueKind == JsonValueKind.String ? pn.GetString() : null;
+            contacts.Add(new EvolutionContactSummary(jid!, string.IsNullOrWhiteSpace(name) ? null : name!.Trim()));
+        }
+        return contacts;
+    }
+
     public async Task<EvolutionMessagesPage> FindMessagesAsync(
         string instanceName, string remoteJid, int page, int pageSize, CancellationToken ct = default)
     {

@@ -60,6 +60,13 @@ public interface IEvolutionClient
     /// el sync de conversaciones lo usa para saber qué chats tuvieron movimiento reciente.</summary>
     Task<IReadOnlyList<EvolutionChatSummary>> FindChatsAsync(string instanceName, CancellationToken ct = default);
 
+    /// <summary>
+    /// La agenda que el teléfono le sincronizó al dispositivo vinculado. Es la ÚNICA fuente
+    /// confiable de números: WhatsApp direcciona los chats por LID (un id opaco que no es un
+    /// teléfono) y no manda el número real en ningún lado del chat ni del mensaje.
+    /// </summary>
+    Task<IReadOnlyList<EvolutionContactSummary>> FindContactsAsync(string instanceName, CancellationToken ct = default);
+
     /// <summary>Mensajes de un chat (POST /chat/findMessages), paginados del más nuevo al más
     /// viejo. Cada record tiene la misma forma que el "data" del webhook messages.upsert
     /// (key + message + messageTimestamp + pushName).</summary>
@@ -69,6 +76,9 @@ public interface IEvolutionClient
 /// <param name="Name">Nombre con el que el contacto figura en la agenda/WhatsApp del teléfono
 /// (pushName). Es el único nombre que tenemos para un chat donde sólo escribimos nosotros.</param>
 public record EvolutionChatSummary(string RemoteJid, DateTimeOffset? UpdatedAt, string? Name = null);
+
+/// <param name="Name">Cómo está guardado en la agenda del teléfono (pushName).</param>
+public record EvolutionContactSummary(string RemoteJid, string? Name);
 
 public record EvolutionMessagesPage(int Total, int Pages, int CurrentPage, IReadOnlyList<System.Text.Json.JsonElement> Records);
 
