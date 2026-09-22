@@ -183,7 +183,7 @@ public class PhoneLinesController : ControllerBase
     }
 
     /// <summary>
-    /// Vuelve a recorrer el teléfono AHORA (agenda + chats) sin tener que re-escanear el QR:
+    /// Vuelve a recorrer los chats del teléfono AHORA sin tener que re-escanear el QR:
     /// deja las pasadas en cero y el worker lo agarra en el próximo minuto. Es idempotente —
     /// los números y mensajes que ya están no se duplican — así que sirve para forzar la carga
     /// cuando la sesión estuvo inestable o se acaba de elegir quién toma los prospectos.

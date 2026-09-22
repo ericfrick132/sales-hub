@@ -81,20 +81,21 @@ public class ChatHistoryImporter
             .ToList();
         if (eligible.Count == 0) return new Result(0, 0, 0);
 
-        // La AGENDA es la única fuente de números: WhatsApp direcciona los chats por LID (un id
-        // opaco que no es un teléfono) y no manda el número real ni en el chat ni en el mensaje,
-        // así que un celu moderno puede tener 1.000 chats y ningún número resoluble. Los
-        // contactos, en cambio, vienen con su teléfono.
-        IReadOnlyList<EvolutionContactSummary> contacts = Array.Empty<EvolutionContactSummary>();
+        // La agenda se usa SOLO para ponerle el nombre que tiene guardado el celu a un chat que
+        // ya entra por sus mensajes. Un contacto NO es un prospecto: prospecto es con quien
+        // hubo conversación.
+        var namesByPhone = new Dictionary<string, string>();
         if (prospects is not null)
         {
             using var scope = _scopes.CreateScope();
             try
             {
-                contacts = (await scope.ServiceProvider.GetRequiredService<IEvolutionClient>()
-                        .FindContactsAsync(instanceName, ct))
-                    .Where(c => c.RemoteJid.EndsWith("@s.whatsapp.net", StringComparison.Ordinal))
-                    .ToList();
+                foreach (var c in await scope.ServiceProvider.GetRequiredService<IEvolutionClient>()
+                             .FindContactsAsync(instanceName, ct))
+                {
+                    var key = Suffix(c.RemoteJid);
+                    if (key is not null && !string.IsNullOrWhiteSpace(c.Name)) namesByPhone[key] = c.Name!;
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -107,36 +108,9 @@ public class ChatHistoryImporter
         var skippedChats = 0;
         var createdProspects = 0;
         var done = 0;
-        var total = eligible.Count + contacts.Count;
+        var total = eligible.Count;
         var ownSuffix = Suffix(prospects?.OwnPhone);
         if (onProgress is not null) await onProgress(0, total, ct);
-
-        // Primero la agenda: son los números que se van a llamar, y entran en un par de minutos
-        // aunque el recorrido de los chats (uno por uno contra Evolution) tarde bastante más.
-        foreach (var contact in contacts)
-        {
-            done++;
-            if (onProgress is not null && done % ProgressEvery == 0) await onProgress(done, total, ct);
-            if (ownSuffix is not null && Suffix(contact.RemoteJid) == ownSuffix) continue;
-            if (prospects is { SkipWords.Count: > 0 }
-                && HasSkipWord(contact.Name, Array.Empty<ConversationService.IncomingMessage>(), prospects.SkipWords))
-            {
-                skippedChats++;
-                continue;
-            }
-            using var contactScope = _scopes.CreateScope();
-            try
-            {
-                if (await contactScope.ServiceProvider.GetRequiredService<ConversationService>()
-                        .EnsureProspectAsync(instanceName, contact.RemoteJid, contact.Name,
-                            prospects!.OwnerIds, lastActivity: null, ct))
-                    createdProspects++;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _log.LogWarning(ex, "Importación: no pude dar de alta el contacto {Jid}", contact.RemoteJid);
-            }
-        }
 
         foreach (var chat in eligible)
         {
@@ -212,14 +186,16 @@ public class ChatHistoryImporter
                 continue;
             }
 
-            // El número entra SIEMPRE, tenga o no mensajes sincronizados: WhatsApp le pasa al
-            // dispositivo la lista de chats mucho antes (y a veces en vez) del contenido, y
-            // para llamar alcanza con el teléfono.
-            if (prospects is not null)
+            // Prospecto = con quien hubo CONVERSACIÓN. Un chat del que WhatsApp todavía no bajó
+            // ningún mensaje no entra: se carga en una pasada siguiente, cuando tenga contenido.
+            if (prospects is not null && records.Count > 0)
             {
                 try
                 {
-                    if (await conv.EnsureProspectAsync(instanceName, chat.RemoteJid, chat.Name,
+                    var name = (Suffix(chat.RemoteJid) is { } key && namesByPhone.TryGetValue(key, out var agenda))
+                        ? agenda
+                        : chat.Name;
+                    if (await conv.EnsureProspectAsync(instanceName, chat.RemoteJid, name,
                             prospects.OwnerIds, chat.UpdatedAt, ct))
                         createdProspects++;
                 }
@@ -258,8 +234,8 @@ public class ChatHistoryImporter
 
         if (onProgress is not null) await onProgress(total, total, ct);
         if (stored > 0 || truncated > 0 || skippedChats > 0 || createdProspects > 0)
-            _log.LogInformation("Importación {Instance}: {Chats} chats + {Contacts} contactos, {Stored} mensajes procesados{Prospects}{Skipped}{Trunc}",
-                instanceName, eligible.Count, contacts.Count, stored,
+            _log.LogInformation("Importación {Instance}: {Chats} chats, {Stored} mensajes procesados{Prospects}{Skipped}{Trunc}",
+                instanceName, eligible.Count, stored,
                 createdProspects > 0 ? $", {createdProspects} prospectos nuevos" : "",
                 skippedChats > 0 ? $", {skippedChats} chats afuera por el filtro de palabras" : "",
                 truncated > 0 ? $", {truncated} chats cortados en {PageSize * maxPagesPerChat} msgs" : "");

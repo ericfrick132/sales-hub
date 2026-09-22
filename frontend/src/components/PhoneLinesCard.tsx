@@ -296,8 +296,8 @@ export default function PhoneLinesCard() {
             Cargar también los chats de antes (para atrás)
           </span>
           <span className="block text-slate-400">
-            Trae TODOS los números que tenga el celu (aunque WhatsApp todavía no haya bajado esa charla) con sus
-            últimos 10 mensajes de contexto. El bot no les escribe por esas charlas viejas.
+            Entra el que tuvo conversación: cada chat con mensajes, con sus últimos 10 para contexto. Los
+            contactos de la agenda sin charla NO entran. El bot no les escribe por esas charlas viejas.
           </span>
         </span>
       </label>
@@ -401,7 +401,7 @@ export default function PhoneLinesCard() {
                   )}
                   {l.connectedAt && !isImporting(l) && (
                     <button className="btn-secondary text-xs" onClick={() => importNow(l)}>
-                      Cargar contactos ahora
+                      Cargar chats ahora
                     </button>
                   )}
                   <button className="btn-secondary text-xs"
