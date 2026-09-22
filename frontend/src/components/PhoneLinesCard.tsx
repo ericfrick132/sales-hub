@@ -34,6 +34,9 @@ interface PhoneLine {
   prospectSkipWords: string[];
   /** Prospectos de remarketing que ya cargó este teléfono. */
   prospects: number;
+  /** Avance de la pasada en curso: chats a recorrer y chats recorridos. */
+  historyTotalChats: number;
+  historyDoneChats: number;
 }
 interface Product { productKey: string; displayName: string }
 interface Seller { id: string; displayName: string; isActive?: boolean }
@@ -47,19 +50,49 @@ const EMPTY: Draft = {
   prospectSellerIds: [], prospectSkipWords: ''
 };
 
+/** ¿La carga del historial está corriendo AHORA? */
+const isImporting = (l: PhoneLine) =>
+  l.importHistory && !!l.historyImportStartedAt
+  && (!l.historyImportedAt || l.historyImportStartedAt > l.historyImportedAt);
+
 /** En qué va la carga del historial de un teléfono (null si no se pidió). */
 function historyStatus(l: PhoneLine): string | null {
   if (!l.importHistory) return null;
-  const running = !!l.historyImportStartedAt
-    && (!l.historyImportedAt || l.historyImportStartedAt > l.historyImportedAt);
   const n = l.historyImportedMessages.toLocaleString('es-AR');
   const p = l.prospects > 0 ? ` · ${l.prospects.toLocaleString('es-AR')} prospectos en el CRM` : '';
-  if (running) return l.historyImportPasses === 0 ? 'Cargando el historial…' : `Historial cargado (${n} mensajes)${p} · repasando lo que llegó tarde…`;
-  if (l.historyImportPasses >= 2) return `Historial cargado (${n} mensajes)${p}`;
-  if (l.historyImportPasses === 1) return `Historial cargado (${n} mensajes)${p} · a la media hora repasa lo que llegue tarde`;
+  if (isImporting(l)) {
+    const chats = l.historyTotalChats > 0
+      ? `${l.historyDoneChats.toLocaleString('es-AR')} de ${l.historyTotalChats.toLocaleString('es-AR')} chats`
+      : 'buscando los chats…';
+    return l.historyImportPasses === 0
+      ? `Cargando el historial: ${chats}${p}`
+      : `Repasando por si llegaron más chats: ${chats}${p}`;
+  }
+  if (l.historyImportPasses >= 3) return `Historial cargado (${n} mensajes)${p}`;
+  if (l.historyImportPasses > 0)
+    return `Historial cargado (${n} mensajes)${p} · repasa de nuevo más tarde por si el celu manda más chats`;
   return l.status === 'Connected'
     ? 'El historial se empieza a cargar a los 3 minutos de conectar'
     : 'El historial se carga cuando escanees el QR';
+}
+
+/** Barra de avance de la carga (chats recorridos sobre el total del teléfono). */
+function HistoryProgress({ line }: { line: PhoneLine }) {
+  if (!isImporting(line)) return null;
+  const pct = line.historyTotalChats > 0
+    ? Math.min(100, Math.round((line.historyDoneChats / line.historyTotalChats) * 100))
+    : null;
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <div className="h-1.5 flex-1 rounded-full bg-slate-200 overflow-hidden max-w-xs">
+        <div
+          className={`h-full bg-emerald-500 transition-all duration-500 ${pct === null ? 'animate-pulse w-1/4' : ''}`}
+          style={pct === null ? undefined : { width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-[11px] text-slate-500 tabular-nums">{pct === null ? '…' : `${pct}%`}</span>
+    </div>
+  );
 }
 
 const appName = (products: Product[], key?: string | null) =>
@@ -82,7 +115,8 @@ export default function PhoneLinesCard() {
   const { data: lines, isLoading } = useQuery({
     queryKey: ['phone-lines'],
     queryFn: async () => (await api.get<PhoneLine[]>('/phone-lines')).data,
-    refetchInterval: 15_000
+    // Mientras una carga corre, la barra tiene que moverse: se pregunta más seguido.
+    refetchInterval: (q) => (q.state.data ?? []).some(isImporting) ? 4_000 : 15_000
   });
   const { data: sellers = [] } = useQuery({
     queryKey: ['sellers-min'],
@@ -250,8 +284,8 @@ export default function PhoneLinesCard() {
             Cargar también los chats de antes (para atrás)
           </span>
           <span className="block text-slate-400">
-            Trae el historial que WhatsApp le pasa al vincular: los contactos entran como leads con la fecha de su
-            primer mensaje y el bot no les escribe por esas charlas viejas.
+            Trae TODOS los números que tenga el celu (aunque WhatsApp todavía no haya bajado esa charla) con sus
+            últimos 10 mensajes de contexto. El bot no les escribe por esas charlas viejas.
           </span>
         </span>
       </label>
@@ -347,6 +381,7 @@ export default function PhoneLinesCard() {
                   {historyStatus(l) && (
                     <div className="text-[11px] text-slate-500 truncate">{historyStatus(l)}</div>
                   )}
+                  <HistoryProgress line={l} />
                 </div>
                 <div className="flex gap-1 shrink-0 flex-wrap justify-end">
                   {!connected && (

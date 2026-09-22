@@ -18,10 +18,18 @@ public class LineHistoryImportWorker : BackgroundService
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<LineHistoryImportWorker> _log;
 
-    private static readonly TimeSpan[] PassDelays = { TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(30) };
+    // Tres pasadas: WhatsApp le va pasando la lista de chats al dispositivo recién vinculado
+    // durante un buen rato, así que la última (2 h) es la que asegura que no quede ningún
+    // número afuera. El ingest deduplica, así que repasar no duplica nada.
+    private static readonly TimeSpan[] PassDelays =
+        { TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(30), TimeSpan.FromHours(2) };
     // 5.000 mensajes por chat: alcanza para encontrar el primer mensaje de casi cualquier
     // contacto sin que un chat gigante trabe la carga del resto.
     private const int MaxPagesPerChat = 100;
+    // Teléfono con prospectos: importan TODOS los números, no la charla entera de cada uno.
+    // Con los últimos 10 mensajes el que llama entra al chat sabiendo de qué venía hablando, y
+    // un celu de miles de chats se recorre en minutos en vez de horas.
+    private const int ProspectMessagesPerChat = 10;
 
     public LineHistoryImportWorker(IServiceScopeFactory scopes, ILogger<LineHistoryImportWorker> log)
     {
@@ -66,7 +74,12 @@ public class LineHistoryImportWorker : BackgroundService
         foreach (var (id, name, pass, connectedAt, prospects) in due)
         {
             var startedAt = DateTimeOffset.UtcNow;
-            if (!await MarkAsync(id, i => i.HistoryImportStartedAt = startedAt, ct)) continue;
+            if (!await MarkAsync(id, i =>
+            {
+                i.HistoryImportStartedAt = startedAt;
+                i.HistoryImportTotalChats = 0;
+                i.HistoryImportDoneChats = 0;
+            }, ct)) continue;
             _log.LogInformation("Cargando historial de {Instance} (pasada {Pass})", name, pass + 1);
 
             using var importScope = _scopes.CreateScope();
@@ -74,7 +87,14 @@ public class LineHistoryImportWorker : BackgroundService
             ChatHistoryImporter.Result result;
             try
             {
-                result = await importer.ImportAsync(name, cutoff: null, MaxPagesPerChat, muteHistoricLeads: true, ct, prospects);
+                result = await importer.ImportAsync(name, cutoff: null, MaxPagesPerChat, muteHistoricLeads: true, ct,
+                    prospects,
+                    messagesPerChat: prospects is null ? null : ProspectMessagesPerChat,
+                    onProgress: (chatsDone, total, c) => MarkAsync(id, i =>
+                    {
+                        i.HistoryImportTotalChats = total;
+                        i.HistoryImportDoneChats = chatsDone;
+                    }, c));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -95,12 +115,16 @@ public class LineHistoryImportWorker : BackgroundService
                     : pass + 1;
                 i.HistoryImportedAt = DateTimeOffset.UtcNow;
                 i.HistoryImportedMessages += result.Stored;
+                i.HistoryImportProspects += result.Prospects;
+                i.HistoryImportDoneChats = result.Chats;
+                i.HistoryImportTotalChats = result.Chats;
             }, ct);
-            _log.LogInformation("Historial de {Instance}: pasada {Pass} lista ({Chats} chats, {Stored} mensajes nuevos)",
-                name, pass + 1, result.Chats, result.Stored);
+            _log.LogInformation("Historial de {Instance}: pasada {Pass} lista ({Chats} chats, {Stored} mensajes nuevos, {Prospects} prospectos)",
+                name, pass + 1, result.Chats, result.Stored, result.Prospects);
         }
     }
 
+    /// <summary>Escribe un cambio puntual en la fila del teléfono (avance, contadores, estado).</summary>
     private async Task<bool> MarkAsync(Guid id, Action<SalesHub.Core.Domain.Entities.EvolutionInstance> change, CancellationToken ct)
     {
         using var scope = _scopes.CreateScope();

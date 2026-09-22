@@ -33,7 +33,10 @@ public class ChatHistoryImporter
     /// </summary>
     public static readonly TimeSpan HistoryAge = ConversationService.HistoryAge;
 
-    public record Result(int Chats, int Stored, int Truncated, int SkippedChats = 0);
+    public record Result(int Chats, int Stored, int Truncated, int SkippedChats = 0, int Prospects = 0);
+
+    /// <summary>Cada cuántos chats se avisa el avance (para la barra de progreso).</summary>
+    private const int ProgressEvery = 20;
 
     /// <summary>
     /// Prospectos del teléfono: a quiénes se les reparten los contactos del historial y qué
@@ -56,8 +59,15 @@ public class ChatHistoryImporter
     /// Si el teléfono tiene prospectos prendidos, cada chat 1:1 se convierte en un lead de
     /// remarketing asignado a uno de esos vendedores, listo para llamar desde el CRM.
     /// </param>
+    /// <param name="messagesPerChat">
+    /// Traer sólo los N mensajes más nuevos de cada chat, en un solo pedido. Es lo que hace
+    /// rápida la carga de prospectos: lo que importa es tener TODOS los números con algo de
+    /// contexto, no la charla completa de cada uno. Null = paginar hasta maxPagesPerChat.
+    /// </param>
+    /// <param name="onProgress">Avance (chats hechos, total) para la barra de progreso.</param>
     public async Task<Result> ImportAsync(string instanceName, DateTimeOffset? cutoff, int maxPagesPerChat,
-        bool muteHistoricLeads, CancellationToken ct, ProspectRules? prospects = null)
+        bool muteHistoricLeads, CancellationToken ct, ProspectRules? prospects = null,
+        int? messagesPerChat = null, Func<int, int, CancellationToken, Task>? onProgress = null)
     {
         IReadOnlyList<EvolutionChatSummary> chats;
         using (var scope = _scopes.CreateScope())
@@ -74,9 +84,14 @@ public class ChatHistoryImporter
         var stored = 0;
         var truncated = 0;
         var skippedChats = 0;
+        var createdProspects = 0;
+        var done = 0;
         var ownSuffix = Suffix(prospects?.OwnPhone);
+        if (onProgress is not null) await onProgress(0, eligible.Count, ct);
         foreach (var chat in eligible)
         {
+            done++;
+            if (onProgress is not null && done % ProgressEvery == 0) await onProgress(done, eligible.Count, ct);
             // El chat con uno mismo (mensajes guardados, notas) no es un prospecto.
             if (ownSuffix is not null && Suffix(chat.RemoteJid) == ownSuffix) continue;
             ct.ThrowIfCancellationRequested();
@@ -89,21 +104,31 @@ public class ChatHistoryImporter
             var records = new List<JsonElement>();
             try
             {
-                for (var page = 1; page <= maxPagesPerChat; page++)
+                if (messagesPerChat is > 0)
                 {
-                    var res = await evo.FindMessagesAsync(instanceName, chat.RemoteJid, page, PageSize, ct);
-                    if (res.Records.Count == 0) break;
+                    // Un solo pedido con los más nuevos: con miles de chats, paginar cada uno
+                    // hasta el fondo tarda horas y no aporta (para llamar alcanza el contexto).
+                    var res = await evo.FindMessagesAsync(instanceName, chat.RemoteJid, 1, messagesPerChat.Value, ct);
                     records.AddRange(res.Records);
-                    // Vienen del más nuevo al más viejo: si ya pasamos el cutoff, listo.
-                    if (cutoff is not null && res.Records.Min(TsOf) < cutoff) break;
-                    if (res.Pages > 0 && page >= res.Pages) break;
-                    if (page == maxPagesPerChat) truncated++;
+                }
+                else
+                {
+                    for (var page = 1; page <= maxPagesPerChat; page++)
+                    {
+                        var res = await evo.FindMessagesAsync(instanceName, chat.RemoteJid, page, PageSize, ct);
+                        if (res.Records.Count == 0) break;
+                        records.AddRange(res.Records);
+                        // Vienen del más nuevo al más viejo: si ya pasamos el cutoff, listo.
+                        if (cutoff is not null && res.Records.Min(TsOf) < cutoff) break;
+                        if (res.Pages > 0 && page >= res.Pages) break;
+                        if (page == maxPagesPerChat) truncated++;
+                    }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                // Sin los mensajes igual queremos el número: el prospecto se crea abajo.
                 _log.LogWarning(ex, "Importación: no pude leer {Chat} de {Instance}", chat.RemoteJid, instanceName);
-                continue;
             }
 
             // Se parsea TODO el chat antes de guardar nada: el filtro de palabras mira la
@@ -137,6 +162,23 @@ public class ChatHistoryImporter
                 continue;
             }
 
+            // El número entra SIEMPRE, tenga o no mensajes sincronizados: WhatsApp le pasa al
+            // dispositivo la lista de chats mucho antes (y a veces en vez) del contenido, y
+            // para llamar alcanza con el teléfono.
+            if (prospects is not null)
+            {
+                try
+                {
+                    if (await conv.EnsureProspectAsync(instanceName, chat.RemoteJid, chat.Name,
+                            prospects.OwnerIds, chat.UpdatedAt, ct))
+                        createdProspects++;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _log.LogWarning(ex, "Importación: no pude dar de alta el prospecto de {Chat}", chat.RemoteJid);
+                }
+            }
+
             var ids = new List<string>();
             foreach (var incoming in parsed)
             {
@@ -164,12 +206,14 @@ public class ChatHistoryImporter
             }
         }
 
-        if (stored > 0 || truncated > 0 || skippedChats > 0)
-            _log.LogInformation("Importación {Instance}: {Chats} chats, {Stored} mensajes procesados{Skipped}{Trunc}",
+        if (onProgress is not null) await onProgress(eligible.Count, eligible.Count, ct);
+        if (stored > 0 || truncated > 0 || skippedChats > 0 || createdProspects > 0)
+            _log.LogInformation("Importación {Instance}: {Chats} chats, {Stored} mensajes procesados{Prospects}{Skipped}{Trunc}",
                 instanceName, eligible.Count, stored,
+                createdProspects > 0 ? $", {createdProspects} prospectos nuevos" : "",
                 skippedChats > 0 ? $", {skippedChats} chats afuera por el filtro de palabras" : "",
                 truncated > 0 ? $", {truncated} chats cortados en {PageSize * maxPagesPerChat} msgs" : "");
-        return new Result(eligible.Count, stored, truncated, skippedChats);
+        return new Result(eligible.Count, stored, truncated, skippedChats, createdProspects);
     }
 
     private static async Task MuteHistoricLeadsAsync(ApplicationDbContext db, string instanceName, List<string> messageIds, CancellationToken ct)

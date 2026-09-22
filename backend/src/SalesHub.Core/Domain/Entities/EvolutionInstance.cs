@@ -64,6 +64,13 @@ public class EvolutionInstance
     /// <summary>Mensajes nuevos que entraron por la importación (suma de las pasadas).</summary>
     public int HistoryImportedMessages { get; set; }
 
+    /// <summary>Chats a recorrer y chats ya recorridos en la pasada en curso: la barra de progreso.</summary>
+    public int HistoryImportTotalChats { get; set; }
+    public int HistoryImportDoneChats { get; set; }
+
+    /// <summary>Prospectos que dio de alta la importación de este teléfono (suma de las pasadas).</summary>
+    public int HistoryImportProspects { get; set; }
+
     /// <summary>
     /// Vendedores que se reparten los PROSPECTOS del historial de este teléfono (round-robin
     /// estable por número: el mismo contacto siempre cae en el mismo). Cada chat 1:1 que carga

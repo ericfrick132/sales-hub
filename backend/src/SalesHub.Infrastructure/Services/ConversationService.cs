@@ -655,7 +655,66 @@ public class ConversationService
             ?? (incoming.FromMe ? null : ExtractPushName(incoming.RawJson))
             ?? "Contacto WhatsApp";
 
-        var lead = new Lead
+        // Si nos escribió, ya respondió (etapa "Respondieron"); si el chat lo arrancamos
+        // nosotros y nunca contestó, queda en "Nuevos". Las dos entran al modo llamadas.
+        var lead = BuildProspect(product, name, phone, owners, CreatedAtFor(incoming),
+            firstReplyAt: incoming.FromMe ? null : incoming.Timestamp);
+        _db.Leads.Add(lead);
+        _log.LogInformation("Prospecto de remarketing creado: {Lead} app={Product} tel={Phone} teléfono={I}",
+            lead.Id, lead.ProductKey, phone, instance.InstanceName);
+        return lead;
+    }
+
+    /// <summary>
+    /// Da de alta el contacto de un chat del historial como prospecto AUNQUE WhatsApp no haya
+    /// sincronizado ni un mensaje de esa charla: para llamarlo alcanza con el número, y el
+    /// dispositivo recién vinculado conoce todos sus chats mucho antes de recibir su contenido.
+    /// Devuelve true si lo creó ahora (ya existía el lead → false, no se toca nada).
+    /// </summary>
+    public async Task<bool> EnsureProspectAsync(string instanceName, string remoteJid, string? contactName,
+        IReadOnlyList<Guid> owners, DateTimeOffset? lastActivity, CancellationToken ct)
+    {
+        if (owners.Count == 0) return false;
+        // Chat LID: los dígitos del LID no son un número. Sin un mensaje que traiga el teléfono
+        // real no hay a quién llamar — si después llega uno, lo crea el camino de mensajes.
+        if (remoteJid.EndsWith("@lid", StringComparison.Ordinal)) return false;
+        var phone = ExtractPhone(remoteJid);
+        if (phone is null || phone.Length < 6) return false;
+
+        var instance = await _db.EvolutionInstances
+            .Include(i => i.Seller)
+            .FirstOrDefaultAsync(i => i.InstanceName == instanceName, ct);
+        if (instance is null) return false;
+
+        var suffix = phone.Length >= 8 ? phone[^8..] : phone;
+        var existing = await MatchLeadByPhoneAsync(null, suffix, ct, instance.ProductKey)
+            ?? await MatchLeadByPhoneAsync(null, suffix, ct);
+        if (existing is not null) return false;
+
+        var product = await ProductForInstanceAsync(instance, ct);
+        if (product is null) return false;
+
+        // Sin mensajes no sabemos quién escribió primero: queda en "Nuevos" para llamar. La
+        // fecha es la de la última actividad del chat, así no infla los "nuevos de hoy".
+        var now = DateTimeOffset.UtcNow;
+        var lead = BuildProspect(product, Trunc(contactName, 120) ?? "Contacto WhatsApp", phone, owners,
+            createdAt: lastActivity is not null && lastActivity < now ? lastActivity.Value : now,
+            firstReplyAt: null);
+        _db.Leads.Add(lead);
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    /// <summary>
+    /// El prospecto tal como tiene que nacer para que se pueda LLAMAR y no le salga nada solo:
+    /// teléfono validado, dueño fijo (ManualAssignedAt, que el rebalanceo respeta), bot muteado
+    /// y origen Remarketing, que OutboxEnqueueHelper no encola.
+    /// </summary>
+    private static Lead BuildProspect(Product product, string name, string phone, IReadOnlyList<Guid> owners,
+        DateTimeOffset createdAt, DateTimeOffset? firstReplyAt)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return new Lead
         {
             Id = Guid.NewGuid(),
             ProductKey = product.ProductKey,
@@ -664,20 +723,14 @@ public class ConversationService
             WhatsappPhone = phone,
             WhatsappValidated = true,
             SellerId = PickProspectOwner(owners, phone),
-            AssignedAt = DateTimeOffset.UtcNow,
-            ManualAssignedAt = DateTimeOffset.UtcNow,
-            // Si nos escribió, ya respondió (etapa "Respondieron"); si el chat lo arrancamos
-            // nosotros y nunca contestó, queda en "Nuevos". Las dos entran al modo llamadas.
-            Status = incoming.FromMe ? LeadStatus.Assigned : LeadStatus.Replied,
-            FirstReplyAt = incoming.FromMe ? null : incoming.Timestamp,
-            BotMutedAt = DateTimeOffset.UtcNow,
-            CreatedAt = CreatedAtFor(incoming),
-            UpdatedAt = DateTimeOffset.UtcNow,
+            AssignedAt = now,
+            ManualAssignedAt = now,
+            Status = firstReplyAt is null ? LeadStatus.Assigned : LeadStatus.Replied,
+            FirstReplyAt = firstReplyAt,
+            BotMutedAt = now,
+            CreatedAt = createdAt,
+            UpdatedAt = now,
         };
-        _db.Leads.Add(lead);
-        _log.LogInformation("Prospecto de remarketing creado: {Lead} app={Product} tel={Phone} teléfono={I}",
-            lead.Id, lead.ProductKey, phone, instance.InstanceName);
-        return lead;
     }
 
     /// <summary>

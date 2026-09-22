@@ -42,7 +42,8 @@ public class PhoneLinesController : ControllerBase
         DateTimeOffset? DisconnectedAt, DateTimeOffset CreatedAt, int LeadsToday, int Leads7d,
         bool ImportHistory, int HistoryImportPasses, DateTimeOffset? HistoryImportStartedAt,
         DateTimeOffset? HistoryImportedAt, int HistoryImportedMessages,
-        List<Guid> ProspectSellerIds, List<string> ProspectSkipWords, int Prospects);
+        List<Guid> ProspectSellerIds, List<string> ProspectSkipWords, int Prospects,
+        int HistoryTotalChats, int HistoryDoneChats);
 
     /// <param name="ImportHistory">Cargar también los chats de antes de escanear (por defecto sí).</param>
     /// <param name="ProspectSellerIds">Vendedores que se reparten los contactos del historial como
@@ -61,19 +62,9 @@ public class PhoneLinesController : ControllerBase
             .OrderBy(i => i.CreatedAt)
             .ToListAsync(ct);
 
-        // Prospectos cargados por cada teléfono: leads de remarketing con al menos un mensaje
-        // de esa línea. Una sola query para toda la lista.
-        var prospects = (await _db.ConversationMessages.AsNoTracking()
-                .Where(m => m.EvolutionInstance != null && m.Lead != null && m.Lead.Source == LeadSource.Remarketing)
-                .Select(m => new { Line = m.EvolutionInstance!, m.LeadId })
-                .Distinct()
-                .ToListAsync(ct))
-            .GroupBy(x => x.Line, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
-
         var today = LeadEntryService.TodayAr();
         var entries = await _entries.GetEntriesAsync(today.AddDays(-6), today, ct);
-        return lines.Select(i => ToDto(i, entries, prospects)).ToList();
+        return lines.Select(i => ToDto(i, entries)).ToList();
     }
 
     [HttpPost]
@@ -115,7 +106,7 @@ public class PhoneLinesController : ControllerBase
         }
 
         _listenOnly.Invalidate();
-        return ToDto(line, new List<LeadEntryService.Entry>(), null);
+        return ToDto(line, new List<LeadEntryService.Entry>());
     }
 
     [HttpPut("{id:guid}")]
@@ -148,7 +139,7 @@ public class PhoneLinesController : ControllerBase
         _listenOnly.Invalidate();
 
         var today = LeadEntryService.TodayAr();
-        return ToDto(line, await _entries.GetEntriesAsync(today.AddDays(-6), today, ct), null);
+        return ToDto(line, await _entries.GetEntriesAsync(today.AddDays(-6), today, ct));
     }
 
     /// <summary>
@@ -205,6 +196,8 @@ public class PhoneLinesController : ControllerBase
         line.ConnectedAt = null;
         // Si después se escanea otro celu, su historial se carga de nuevo.
         line.HistoryImportPasses = 0;
+        line.HistoryImportTotalChats = 0;
+        line.HistoryImportDoneChats = 0;
         line.LastQrCodeBase64 = null;
         line.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
@@ -229,8 +222,7 @@ public class PhoneLinesController : ControllerBase
         return NoContent();
     }
 
-    private static PhoneLineDto ToDto(EvolutionInstance i, List<LeadEntryService.Entry> entries,
-        IReadOnlyDictionary<string, int>? prospects)
+    private static PhoneLineDto ToDto(EvolutionInstance i, List<LeadEntryService.Entry> entries)
     {
         var today = LeadEntryService.TodayAr();
         var mine = entries.Where(e => string.Equals(e.Line, i.InstanceName, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -239,8 +231,8 @@ public class PhoneLinesController : ControllerBase
             i.ListenOnly, i.ProductKey, i.ExtraProductKeys, i.ConnectedAt, i.DisconnectedAt, i.CreatedAt,
             mine.Count(e => e.Day == today), mine.Count,
             i.ImportHistory, i.HistoryImportPasses, i.HistoryImportStartedAt, i.HistoryImportedAt, i.HistoryImportedMessages,
-            i.ProspectSellerIds, i.ProspectSkipWords,
-            prospects is not null && prospects.TryGetValue(i.InstanceName, out var n) ? n : 0);
+            i.ProspectSellerIds, i.ProspectSkipWords, i.HistoryImportProspects,
+            i.HistoryImportTotalChats, i.HistoryImportDoneChats);
     }
 
     /// <summary>
