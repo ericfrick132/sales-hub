@@ -33,8 +33,6 @@ const PORT = process.env.PORT || 8090;
 const API_URL = process.env.API_URL || 'http://saleshub-api:8080';
 const READER_KEY = process.env.READER_KEY || '';
 const DATA_DIR = process.env.DATA_DIR || '/data';
-/** Mensajes de contexto por chat (los más nuevos): para llamar alcanza con saber de qué venían hablando. */
-const MESSAGES_PER_CHAT = 10;
 /** El historial llega en tandas; si pasa este rato sin ninguna, se da por completo. */
 const IDLE_MS = 180_000;
 /** Un escaneo que nadie completa no puede quedar colgado para siempre. */
@@ -87,53 +85,62 @@ function textOf(m) {
 
 function remember(s, jid, patch) {
   if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast' || jid.endsWith('@newsletter')) return null;
-  const cur = s.chats.get(jid) || { jid, name: null, phone: null, lastAt: null, messages: [] };
+  const cur = s.chats.get(jid) || { jid, name: null, phone: null, lastAt: null, count: 0, skip: false };
   for (const [k, v] of Object.entries(patch)) if (v != null && v !== '') cur[k] = v;
   s.chats.set(jid, cur);
   return cur;
 }
 
+/**
+ * De cada mensaje sólo queda que EXISTIÓ (para saber si hubo conversación) y su fecha. El texto
+ * no se guarda ni se manda a ningún lado: se mira al pasar, y únicamente para el filtro de
+ * palabras del teléfono. Los chats no se descargan.
+ */
 function addMessage(s, jid, m) {
   const entry = remember(s, jid, {});
   if (!entry) return;
   const text = textOf(m);
   if (!text) return;
   const at = Number(m.messageTimestamp) || 0;
-  entry.messages.push({ text, fromMe: !!m.key?.fromMe, at, id: m.key?.id || null });
-  entry.messages.sort((a, b) => b.at - a.at);
-  if (entry.messages.length > MESSAGES_PER_CHAT) entry.messages.length = MESSAGES_PER_CHAT;
+  entry.count = (entry.count || 0) + 1;
   if (!entry.lastAt || at > entry.lastAt) entry.lastAt = at;
+  if (s.skipWords?.length && !entry.skip) {
+    const t = norm(text);
+    if (s.skipWords.some((w) => t.includes(w))) entry.skip = true;
+  }
 }
 
-/** Los chats listos para el CRM: con número y con conversación. */
+/** Minúsculas y sin tildes, para comparar como se escribe de verdad. */
+function norm(str) {
+  return (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Los chats listos para el CRM: número, nombre de la agenda y cuándo fue lo último. Nada del
+ * contenido — los que matchean el filtro de palabras del teléfono quedan afuera acá mismo.
+ */
 function snapshot(s) {
   const byPhone = new Map();
   for (const c of s.chats.values()) {
     const phone = phoneFor(s, c);
-    if (!phone || phone.length < 8 || !c.messages.length) continue;
+    if (!phone || phone.length < 8 || !c.count) continue;
+    if (c.skip || (s.skipWords?.length && c.name && s.skipWords.some((w) => norm(c.name).includes(w)))) continue;
     const row = {
       phone,
       name: c.name || null,
       lastMessageAt: c.lastAt ? new Date(c.lastAt * 1000).toISOString() : null,
-      messages: c.messages
-        .slice()
-        .sort((a, b) => a.at - b.at)
-        .map((m) => ({ text: m.text, fromMe: m.fromMe, at: new Date(m.at * 1000).toISOString(), id: m.id })),
     };
     // Un mismo contacto puede venir por LID y por número: se juntan.
     const prev = byPhone.get(phone);
     if (!prev) { byPhone.set(phone, row); continue; }
     prev.name = prev.name || row.name;
-    prev.messages = [...prev.messages, ...row.messages]
-      .sort((a, b) => new Date(a.at) - new Date(b.at))
-      .slice(-MESSAGES_PER_CHAT);
     if (!prev.lastMessageAt || (row.lastMessageAt && row.lastMessageAt > prev.lastMessageAt)) prev.lastMessageAt = row.lastMessageAt;
   }
   return [...byPhone.values()].sort((a, b) => (b.lastMessageAt || '').localeCompare(a.lastMessageAt || ''));
 }
 
 async function upload(lineId, rows) {
-  let created = 0, alreadyLeads = 0, filteredByWords = 0, messagesStored = 0;
+  let created = 0, alreadyLeads = 0, filteredByWords = 0;
   for (let i = 0; i < rows.length; i += 200) {
     const res = await fetch(`${API_URL}/api/phone-lines/${lineId}/chatlist`, {
       method: 'POST',
@@ -143,9 +150,9 @@ async function upload(lineId, rows) {
     if (!res.ok) throw new Error(`API ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const r = await res.json();
     created += r.created; alreadyLeads += r.alreadyLeads;
-    filteredByWords += r.filteredByWords; messagesStored += r.messagesStored;
+    filteredByWords += r.filteredByWords;
   }
-  return { created, alreadyLeads, filteredByWords, messagesStored, chats: rows.length };
+  return { created, alreadyLeads, filteredByWords, chats: rows.length };
 }
 
 /**
@@ -204,7 +211,7 @@ async function cleanup(s, { logout }) {
   try { fs.rmSync(path.join(DATA_DIR, s.lineId), { recursive: true, force: true }); } catch { /* no-op */ }
 }
 
-async function start(lineId) {
+async function start(lineId, skipWords = []) {
   const existing = sessions.get(lineId);
   if (existing && ['qr', 'syncing', 'uploading'].includes(existing.state)) return existing;
 
@@ -213,7 +220,7 @@ async function start(lineId) {
   const s = {
     lineId, state: 'starting', qrBase64: null, chats: new Map(), lidToPhone: new Map(),
     batches: 0, progress: null, lastBatchAt: 0, startedAt: new Date().toISOString(),
-    error: null, result: null, sock: null, timer: null,
+    error: null, result: null, sock: null, timer: null, skipWords,
   };
   sessions.set(lineId, s);
 
@@ -341,7 +348,10 @@ app.use((req, res, next) => {
 app.get('/health', (_req, res) => res.json({ status: 'healthy', sessions: sessions.size }));
 
 app.post('/sessions/:lineId', async (req, res) => {
-  try { res.json(publicState(await start(req.params.lineId))); }
+  try {
+    const words = (req.body?.skipWords || []).map(norm).filter((w) => w.length > 1);
+    res.json(publicState(await start(req.params.lineId, words)));
+  }
   catch (e) { log('start falló', e); res.status(500).json({ error: e.message }); }
 });
 

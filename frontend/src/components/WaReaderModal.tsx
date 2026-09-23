@@ -19,7 +19,7 @@ type ReaderState = {
   batches: number;
   progress?: number | null;
   error?: string | null;
-  result?: { chats: number; created: number; alreadyLeads: number; filteredByWords: number; messagesStored: number } | null;
+  result?: { chats: number; created: number; alreadyLeads: number; filteredByWords: number } | null;
 };
 
 const n = (v: number) => v.toLocaleString('es-AR');
@@ -111,7 +111,10 @@ export default function WaReaderModal({ lineId, title, onClose, onDone }: {
               {n(s.result.chats)} chats leídos · {n(s.result.alreadyLeads)} ya eran leads
               {s.result.filteredByWords > 0 && ` · ${n(s.result.filteredByWords)} fuera por el filtro de palabras`}
             </div>
-            <div className="text-[11px] text-slate-400">El celular ya quedó desvinculado del lector.</div>
+            <div className="text-[11px] text-slate-400">
+              El celular ya quedó desvinculado. De los chats se guardó sólo el número, el nombre y la fecha
+              del último mensaje: el contenido no se descarga.
+            </div>
           </div>
         )}
 

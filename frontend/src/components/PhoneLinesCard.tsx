@@ -302,8 +302,8 @@ export default function PhoneLinesCard() {
             Cargar también los chats de antes (para atrás)
           </span>
           <span className="block text-slate-400">
-            Entra el que tuvo conversación: cada chat con mensajes, con sus últimos 10 para contexto. Los
-            contactos de la agenda sin charla NO entran. El bot no les escribe por esas charlas viejas.
+            Entra el que tuvo conversación: nombre, teléfono y fecha del último mensaje. El contenido de los
+            chats NO se descarga ni se guarda. Los contactos de la agenda sin charla tampoco entran.
           </span>
         </span>
       </label>

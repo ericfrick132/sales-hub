@@ -211,8 +211,7 @@ public class PhoneLinesController : ControllerBase
         return Accepted(new { ok = true });
     }
 
-    public record ChatListMessage(string Text, bool FromMe, DateTimeOffset At, string? Id);
-    public record ChatListChat(string Phone, string? Name, DateTimeOffset? LastMessageAt, List<ChatListMessage>? Messages);
+    public record ChatListChat(string Phone, string? Name, DateTimeOffset? LastMessageAt);
     public record ChatListRequest(List<ChatListChat> Chats);
 
     /// <summary>
@@ -220,9 +219,11 @@ public class PhoneLinesController : ControllerBase
     /// baileys nueva) como prospectos de remarketing de este teléfono. Existe porque la Evolution
     /// del droplet corre baileys 7.0.0-rc.9: al sincronizar el historial tira el número real y
     /// deja sólo el LID, así que de ahí salen chats que nadie puede llamar.
-    /// Mismas reglas que la importación normal: reparto entre los vendedores del teléfono, filtro
-    /// de palabras, bot muteado y sin cadencia. Idempotente: un número que ya es lead no se toca
-    /// y los mensajes se deduplican por su id de WhatsApp.
+    /// Mismas reglas que la importación normal: reparto entre los vendedores del teléfono, bot
+    /// muteado y sin cadencia. Idempotente: un número que ya es lead no se toca.
+    /// De los chats entra el número, el nombre de la agenda y la fecha del último mensaje:
+    /// NADA del contenido. El filtro de palabras lo aplica el lector, que es el único que ve
+    /// los textos, y de paso nunca salen de ahí.
     /// </summary>
     [HttpPost("{id:guid}/chatlist")]
     [AllowAnonymous]
@@ -237,7 +238,7 @@ public class PhoneLinesController : ControllerBase
 
         var words = line.ProspectSkipWords.Select(Norm).Where(w => w.Length > 0).ToList();
         var own = line.ConnectedPhoneNumber is null ? null : Suffix(line.ConnectedPhoneNumber);
-        int created = 0, already = 0, filtered = 0, stored = 0;
+        int created = 0, already = 0, filtered = 0;
 
         foreach (var chat in req.Chats ?? new List<ChatListChat>())
         {
@@ -246,19 +247,17 @@ public class PhoneLinesController : ControllerBase
             if (phone.Length < 8) continue;
             if (own is not null && Suffix(phone) == own) continue;
 
-            var msgs = chat.Messages ?? new List<ChatListMessage>();
-            if (words.Count > 0)
+            // Segunda pasada del filtro por si el nombre lo delata (el lector ya filtró por texto).
+            if (words.Count > 0 && words.Any(w => Norm(chat.Name).Contains(w, StringComparison.Ordinal)))
             {
-                var haystack = Norm(chat.Name + " " + string.Join(" ", msgs.Select(m => m.Text)));
-                if (words.Any(w => haystack.Contains(w, StringComparison.Ordinal))) { filtered++; continue; }
+                filtered++;
+                continue;
             }
 
             var isNew = await _conversations.EnsureProspectAsync(
                 line.InstanceName, $"{phone}@s.whatsapp.net", chat.Name,
                 line.ProspectSellerIds, chat.LastMessageAt, ct);
             if (isNew) created++; else already++;
-
-            stored += await StoreChatMessagesAsync(line.InstanceName, phone, msgs, ct);
         }
 
         if (created > 0)
@@ -267,61 +266,9 @@ public class PhoneLinesController : ControllerBase
             line.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
         }
-        _log.LogInformation("Chatlist de {Line}: {Created} prospectos nuevos, {Already} ya eran leads, {Filtered} filtrados, {Stored} mensajes",
-            line.InstanceName, created, already, filtered, stored);
-        return Ok(new { created, alreadyLeads = already, filteredByWords = filtered, messagesStored = stored });
-    }
-
-    /// <summary>
-    /// Guarda los mensajes de contexto en la conversación del lead de ese teléfono. Van como
-    /// historia: no despiertan al bot ni al re-enganche (el lead está muteado y sin cadencia).
-    /// </summary>
-    private async Task<int> StoreChatMessagesAsync(string instanceName, string phone,
-        List<ChatListMessage> messages, CancellationToken ct)
-    {
-        if (messages.Count == 0) return 0;
-        var suffix = Suffix(phone);
-        var lead = await _db.Leads
-            .Where(l => l.WhatsappPhone != null && l.WhatsappPhone.EndsWith(suffix!))
-            .OrderByDescending(l => l.Source == LeadSource.Remarketing)
-            .FirstOrDefaultAsync(ct);
-        if (lead is null) return 0;
-
-        var ids = messages.Where(m => !string.IsNullOrWhiteSpace(m.Id)).Select(m => m.Id!).ToList();
-        var known = ids.Count == 0
-            ? new HashSet<string>()
-            : (await _db.ConversationMessages.AsNoTracking()
-                .Where(m => m.WhatsappMessageId != null && ids.Contains(m.WhatsappMessageId))
-                .Select(m => m.WhatsappMessageId!)
-                .ToListAsync(ct)).ToHashSet();
-
-        var added = 0;
-        foreach (var m in messages)
-        {
-            if (string.IsNullOrWhiteSpace(m.Text)) continue;
-            if (!string.IsNullOrWhiteSpace(m.Id) && !known.Add(m.Id!)) continue;
-            // Sin id de WhatsApp no hay dedup posible: se evita re-insertar el mismo texto.
-            if (string.IsNullOrWhiteSpace(m.Id)
-                && await _db.ConversationMessages.AnyAsync(x => x.LeadId == lead.Id && x.Text == m.Text && x.Timestamp == m.At, ct))
-                continue;
-
-            _db.ConversationMessages.Add(new ConversationMessage
-            {
-                Id = Guid.NewGuid(),
-                LeadId = lead.Id,
-                SellerId = lead.SellerId,
-                Direction = m.FromMe ? MessageDirection.Outbound : MessageDirection.Inbound,
-                Status = m.FromMe ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Received,
-                Text = m.Text.Length > 4000 ? m.Text[..4000] : m.Text,
-                WhatsappMessageId = m.Id,
-                EvolutionInstance = instanceName,
-                Timestamp = m.At,
-                IsRead = true,
-            });
-            added++;
-        }
-        if (added > 0) await _db.SaveChangesAsync(ct);
-        return added;
+        _log.LogInformation("Chatlist de {Line}: {Created} prospectos nuevos, {Already} ya eran leads, {Filtered} filtrados",
+            line.InstanceName, created, already, filtered);
+        return Ok(new { created, alreadyLeads = already, filteredByWords = filtered });
     }
 
     /// <summary>Últimos 8 dígitos: la parte estable del número en todos los formatos.</summary>
@@ -352,7 +299,9 @@ public class PhoneLinesController : ControllerBase
         if (line is null) return NotFound(new { error = "No existe ese teléfono." });
         if (line.ProspectSellerIds.Count == 0)
             return BadRequest(new { error = "Elegí primero quién toma los prospectos de este teléfono." });
-        return await _reader.ProxyAsync(HttpMethod.Post, $"sessions/{id}", ct);
+        // El filtro de palabras viaja al lector: es el único que ve los textos de los chats.
+        return await _reader.ProxyAsync(HttpMethod.Post, $"sessions/{id}", ct,
+            new { skipWords = line.ProspectSkipWords });
     }
 
     /// <summary>Cómo va la lectura: QR pendiente, sincronizando, o el resultado de la carga.</summary>

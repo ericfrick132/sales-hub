@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
 
 namespace SalesHub.Api.Services;
@@ -36,7 +37,7 @@ public class WaReaderClient
     /// Reenvía la llamada al lector tal cual y devuelve su respuesta. Si el servicio no está
     /// arriba se dice con todas las letras: es un contenedor aparte y puede faltar.
     /// </summary>
-    public async Task<IActionResult> ProxyAsync(HttpMethod method, string path, CancellationToken ct)
+    public async Task<IActionResult> ProxyAsync(HttpMethod method, string path, CancellationToken ct, object? body = null)
     {
         if (string.IsNullOrEmpty(_key))
             return new ObjectResult(new { error = "El lector de chats no está configurado (falta WaReader__Key)." }) { StatusCode = 503 };
@@ -45,12 +46,13 @@ public class WaReaderClient
         {
             using var req = new HttpRequestMessage(method, path);
             req.Headers.Add(ReaderHeader, _key);
+            if (body is not null) req.Content = JsonContent.Create(body);
             using var res = await _http.SendAsync(req, ct);
-            var body = await res.Content.ReadAsStringAsync(ct);
+            var payload = await res.Content.ReadAsStringAsync(ct);
             return new ContentResult
             {
                 StatusCode = (int)res.StatusCode,
-                Content = string.IsNullOrWhiteSpace(body) ? "{}" : body,
+                Content = string.IsNullOrWhiteSpace(payload) ? "{}" : payload,
                 ContentType = "application/json"
             };
         }
