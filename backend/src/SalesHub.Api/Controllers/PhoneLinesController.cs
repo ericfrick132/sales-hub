@@ -254,10 +254,13 @@ public class PhoneLinesController : ControllerBase
                 continue;
             }
 
-            var isNew = await _conversations.EnsureProspectAsync(
+            // adoptExisting: los que ya eran leads también entran a remarketing (decisión de Eric
+            // 23/09/2026), guardándose el origen viejo como etiqueta.
+            var outcome = await _conversations.EnsureProspectAsync(
                 line.InstanceName, $"{phone}@s.whatsapp.net", chat.Name,
-                line.ProspectSellerIds, chat.LastMessageAt, ct);
-            if (isNew) created++; else already++;
+                line.ProspectSellerIds, chat.LastMessageAt, ct, adoptExisting: true);
+            if (outcome == ConversationService.ProspectOutcome.Created) created++;
+            else if (outcome == ConversationService.ProspectOutcome.Adopted) already++;
         }
 
         if (created > 0)
@@ -266,7 +269,7 @@ public class PhoneLinesController : ControllerBase
             line.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
         }
-        _log.LogInformation("Chatlist de {Line}: {Created} prospectos nuevos, {Already} ya eran leads, {Filtered} filtrados",
+        _log.LogInformation("Chatlist de {Line}: {Created} prospectos nuevos, {Already} leads existentes pasados a remarketing, {Filtered} filtrados",
             line.InstanceName, created, already, filtered);
         return Ok(new { created, alreadyLeads = already, filteredByWords = filtered });
     }

@@ -665,34 +665,44 @@ public class ConversationService
         return lead;
     }
 
+    /// <summary>Qué pasó con el contacto de un chat del historial.</summary>
+    public enum ProspectOutcome { None, Created, Adopted }
+
     /// <summary>
     /// Da de alta el contacto de un chat del historial como prospecto AUNQUE WhatsApp no haya
     /// sincronizado ni un mensaje de esa charla: para llamarlo alcanza con el número, y el
     /// dispositivo recién vinculado conoce todos sus chats mucho antes de recibir su contenido.
-    /// Devuelve true si lo creó ahora (ya existía el lead → false, no se toca nada).
     /// </summary>
-    public async Task<bool> EnsureProspectAsync(string instanceName, string remoteJid, string? contactName,
-        IReadOnlyList<Guid> owners, DateTimeOffset? lastActivity, CancellationToken ct)
+    /// <param name="adoptExisting">
+    /// Qué hacer con un número que YA es lead. Con false no se toca (comportamiento viejo). Con
+    /// true se lo pasa a remarketing: se le guarda el origen anterior como etiqueta
+    /// (<c>origen:MetaLeadAd</c>), pasa a origen Remarketing, se lo asigna a quien toma los
+    /// prospectos del teléfono y se le cancela lo que tuviera encolado — un lead de remarketing
+    /// se trabaja LLAMANDO, no puede salirle un mensaje automático por atrás.
+    /// </param>
+    public async Task<ProspectOutcome> EnsureProspectAsync(string instanceName, string remoteJid, string? contactName,
+        IReadOnlyList<Guid> owners, DateTimeOffset? lastActivity, CancellationToken ct, bool adoptExisting = false)
     {
-        if (owners.Count == 0) return false;
+        if (owners.Count == 0) return ProspectOutcome.None;
         // Chat LID: los dígitos del LID no son un número. Sin un mensaje que traiga el teléfono
         // real no hay a quién llamar — si después llega uno, lo crea el camino de mensajes.
-        if (remoteJid.EndsWith("@lid", StringComparison.Ordinal)) return false;
+        if (remoteJid.EndsWith("@lid", StringComparison.Ordinal)) return ProspectOutcome.None;
         var phone = ExtractPhone(remoteJid);
-        if (phone is null || phone.Length < 6) return false;
+        if (phone is null || phone.Length < 6) return ProspectOutcome.None;
 
         var instance = await _db.EvolutionInstances
             .Include(i => i.Seller)
             .FirstOrDefaultAsync(i => i.InstanceName == instanceName, ct);
-        if (instance is null) return false;
+        if (instance is null) return ProspectOutcome.None;
 
         var suffix = phone.Length >= 8 ? phone[^8..] : phone;
         var existing = await MatchLeadByPhoneAsync(null, suffix, ct, instance.ProductKey)
             ?? await MatchLeadByPhoneAsync(null, suffix, ct);
-        if (existing is not null) return false;
+        if (existing is not null)
+            return adoptExisting ? await AdoptAsProspectAsync(existing, owners, phone, ct) : ProspectOutcome.None;
 
         var product = await ProductForInstanceAsync(instance, ct);
-        if (product is null) return false;
+        if (product is null) return ProspectOutcome.None;
 
         // Sin mensajes no sabemos quién escribió primero: queda en "Nuevos" para llamar. La
         // fecha es la de la última actividad del chat, así no infla los "nuevos de hoy".
@@ -702,7 +712,37 @@ public class ConversationService
             firstReplyAt: null);
         _db.Leads.Add(lead);
         await _db.SaveChangesAsync(ct);
-        return true;
+        return ProspectOutcome.Created;
+    }
+
+    /// <summary>
+    /// Un lead que YA existía y apareció en el celular: pasa a remarketing para llamarlo, sin
+    /// perder de dónde había venido (queda como etiqueta) y sin que le salga nada por atrás.
+    /// </summary>
+    private async Task<ProspectOutcome> AdoptAsProspectAsync(Lead lead, IReadOnlyList<Guid> owners, string phone, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (lead.Source != LeadSource.Remarketing)
+        {
+            var tag = $"origen:{lead.Source}";
+            if (!lead.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+                lead.Tags = lead.Tags.Append(tag).ToList();   // lista nueva: el change tracker no ve los Add in-place
+            lead.Source = LeadSource.Remarketing;
+        }
+        lead.SellerId = PickProspectOwner(owners, phone);
+        lead.AssignedAt ??= now;
+        // Lo eligió quien escaneó el teléfono: ni el rebalanceo ni "Reasignar todo" se lo sacan.
+        lead.ManualAssignedAt = now;
+        lead.UpdatedAt = now;
+
+        // Lo que tuviera encolado se cancela: pasa a trabajarse por llamada.
+        var pending = await _db.Outbox
+            .Where(o => o.LeadId == lead.Id && o.Status == OutboxStatus.Scheduled)
+            .ToListAsync(ct);
+        foreach (var o in pending) o.Status = OutboxStatus.Cancelled;
+
+        await _db.SaveChangesAsync(ct);
+        return ProspectOutcome.Adopted;
     }
 
     /// <summary>

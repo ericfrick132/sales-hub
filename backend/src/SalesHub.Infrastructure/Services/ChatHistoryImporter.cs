@@ -196,7 +196,7 @@ public class ChatHistoryImporter
                         ? agenda
                         : chat.Name;
                     if (await conv.EnsureProspectAsync(instanceName, chat.RemoteJid, name,
-                            prospects.OwnerIds, chat.UpdatedAt, ct))
+                            prospects.OwnerIds, chat.UpdatedAt, ct) == ConversationService.ProspectOutcome.Created)
                         createdProspects++;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
