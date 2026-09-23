@@ -1,0 +1,16 @@
+{
+  "name": "wa-chatlist",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lista los chats de un WhatsApp con el telefono real de cada uno (baileys rc14: el history sync trae pnJid y phoneNumberToLidMappings, que la Evolution del droplet descarta).",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "upload": "node index.js --upload"
+  },
+  "dependencies": {
+    "baileys": "7.0.0-rc14",
+    "pino": "^9.5.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
