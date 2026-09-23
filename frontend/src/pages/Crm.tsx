@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import { isAdmin, useAuthStore } from '../lib/auth';
 import { demoFollowUps, fmtDate, fmtDateTime, fmtPhone, hace, telHref, toLocalInput } from '../lib/crmFormat';
 import CrmCallMode from '../components/CrmCallMode';
+import { CRM_SOURCES as SOURCES } from '../lib/types';
 import type { Product, Seller } from '../lib/types';
 
 /**
@@ -46,18 +47,6 @@ type Detail = {
   }[];
 };
 type Device = { id: string; name: string };
-
-const SOURCES = [
-  { value: 'Remarketing', label: 'Remarketing (historial del celu)' },
-  { value: 'MetaLeadAd', label: 'Meta Lead Ads' },
-  { value: 'WhatsAppAd', label: 'Click to WhatsApp' },
-  { value: 'WhatsAppInbound', label: 'Escribió al WhatsApp' },
-  { value: 'ProductOnboarding', label: 'Onboarding del producto' },
-  { value: 'ProductReengage', label: 'Re-enganche' },
-  { value: 'GooglePlaces', label: 'Google Maps' },
-  { value: 'ApifyGoogleMaps', label: 'Maps (Apify)' },
-  { value: 'InstagramScraper', label: 'Instagram' },
-];
 
 /** Mismo agrupamiento que usa el backend (CrmController.Stages). */
 const STATUS_TO_STAGE: Record<string, string> = {

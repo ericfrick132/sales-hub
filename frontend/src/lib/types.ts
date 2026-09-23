@@ -95,6 +95,19 @@ export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   WhatsAppInbound: 'WhatsApp entrante'
 };
 
+/** Orígenes que se ofrecen como filtro en el CRM y en modo llamadas. */
+export const CRM_SOURCES = [
+  { value: 'Remarketing', label: 'Remarketing (historial del celu)' },
+  { value: 'MetaLeadAd', label: 'Meta Lead Ads' },
+  { value: 'WhatsAppAd', label: 'Click to WhatsApp' },
+  { value: 'WhatsAppInbound', label: 'Escribió al WhatsApp' },
+  { value: 'ProductOnboarding', label: 'Onboarding del producto' },
+  { value: 'ProductReengage', label: 'Re-enganche' },
+  { value: 'GooglePlaces', label: 'Google Maps' },
+  { value: 'ApifyGoogleMaps', label: 'Maps (Apify)' },
+  { value: 'InstagramScraper', label: 'Instagram' },
+];
+
 export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
   New: 'Nuevo',
   Assigned: 'Asignado',

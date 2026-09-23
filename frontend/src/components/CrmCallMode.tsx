@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import { api } from '../lib/api';
+import { CRM_SOURCES } from '../lib/types';
 import { fmtDateTime, fmtPhone, hace, telHref, toLocalInput } from '../lib/crmFormat';
 
 /**
@@ -66,6 +67,8 @@ export default function CrmCallMode({ filters, stages, onClose }: {
   const [phase, setPhase] = useState<'setup' | 'session' | 'done'>('setup');
   const [chosenStages, setChosenStages] = useState<string[]>(DEFAULT_STAGES);
   const [skipCalled, setSkipCalled] = useState('ever');
+  // Arranca con el origen que tenga puesto el tablero, pero se cambia acá sin salir de la ronda.
+  const [source, setSource] = useState<string>((filters.source as string) ?? '');
 
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [idx, setIdx] = useState(0);
@@ -80,7 +83,7 @@ export default function CrmCallMode({ filters, stages, onClose }: {
   const [stats, setStats] = useState<Partial<Record<Outcome, number>>>({});
   const noteRef = useRef<HTMLTextAreaElement>(null);
 
-  const params = { ...filters, stages: chosenStages.join(','), skipCalled, limit: 300 };
+  const params = { ...filters, source: source || undefined, stages: chosenStages.join(','), skipCalled, limit: 300 };
   const preview = useQuery({
     queryKey: ['crm-call-queue', params],
     enabled: phase === 'setup' && chosenStages.length > 0,
@@ -233,9 +236,18 @@ export default function CrmCallMode({ filters, stages, onClose }: {
         {phase === 'setup' && (
           <div className="p-4 space-y-4">
             <p className="text-sm text-slate-600">
-              Llama a los leads con teléfono que hoy muestra el tablero (con sus filtros), uno atrás del otro.
-              Después de cada llamada elegís cómo fue y se llama al siguiente.
+              Llama uno atrás del otro a los leads con teléfono del tablero. Cuando volvés de la llamada te
+              pregunta cómo salió, y al elegirlo marca al siguiente en el mismo toque.
             </p>
+            <div className="space-y-1.5">
+              <div className="text-sm font-semibold">Origen</div>
+              <select className="input text-sm w-full" value={source} onChange={(e) => setSource(e.target.value)}>
+                <option value="">Todos los orígenes</option>
+                {CRM_SOURCES.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-1.5">
               <div className="text-sm font-semibold">Etapas</div>
               <div className="flex flex-wrap gap-1.5">
