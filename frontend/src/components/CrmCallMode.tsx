@@ -70,6 +70,8 @@ export default function CrmCallMode({ filters, stages, onClose }: {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [idx, setIdx] = useState(0);
   const [dialedAt, setDialedAt] = useState<number | null>(null);
+  /** Cuándo volviste al navegador después de marcar: ahí se da la llamada por terminada. */
+  const [returnedAt, setReturnedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [note, setNote] = useState('');
   const [callbackOpen, setCallbackOpen] = useState(false);
@@ -93,23 +95,43 @@ export default function CrmCallMode({ filters, stages, onClose }: {
     queryFn: async () => (await api.get<LeadDetail>(`/crm/leads/${current!.id}`)).data,
   });
 
-  // Reloj de la llamada en curso.
+  // Reloj de la llamada en curso (se para cuando volvés).
   useEffect(() => {
-    if (dialedAt === null) return;
+    if (dialedAt === null || returnedAt !== null) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [dialedAt]);
+  }, [dialedAt, returnedAt]);
 
-  // Al cortar y volver al navegador, el cursor queda en la nota.
+  /**
+   * Marcar un tel: se lleva la pantalla al teléfono (o a FaceTime/Enlace Móvil). La web no puede
+   * saber cuándo termina la llamada, pero sí cuándo VOLVISTE: la pestaña pasa de oculta a
+   * visible. Ese es el momento de preguntar cómo salió, con la duración ya contada.
+   * El margen de 2 s evita el falso positivo de cuando el navegador no llega a ocultarse.
+   */
   useEffect(() => {
-    const onFocus = () => { if (dialedAt !== null) noteRef.current?.focus(); };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [dialedAt]);
+    if (dialedAt === null || returnedAt !== null) return;
+    const backFromCall = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - dialedAt < 2000) return;
+      setReturnedAt(Date.now());
+      setNow(Date.now());
+      navigator.vibrate?.(60);
+      setTimeout(() => noteRef.current?.focus(), 50);
+    };
+    document.addEventListener('visibilitychange', backFromCall);
+    window.addEventListener('pageshow', backFromCall);
+    window.addEventListener('focus', backFromCall);
+    return () => {
+      document.removeEventListener('visibilitychange', backFromCall);
+      window.removeEventListener('pageshow', backFromCall);
+      window.removeEventListener('focus', backFromCall);
+    };
+  }, [dialedAt, returnedAt]);
 
   function dial(item: QueueItem) {
     window.location.href = telHref(item.phone);
     setDialedAt(Date.now());
+    setReturnedAt(null);
     setNow(Date.now());
   }
 
@@ -120,6 +142,7 @@ export default function CrmCallMode({ filters, stages, onClose }: {
     setIdx(0);
     setStats({});
     setDialedAt(null);
+    setReturnedAt(null);
     setPhase('session');
   }
 
@@ -130,6 +153,7 @@ export default function CrmCallMode({ filters, stages, onClose }: {
     setCallbackOpen(false);
     setCallbackCustom('');
     setIdx(next);
+    setReturnedAt(null);
     if (next >= queue.length) {
       setDialedAt(null);
       setPhase('done');
@@ -297,7 +321,15 @@ export default function CrmCallMode({ filters, stages, onClose }: {
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-emerald-700 font-medium">Llamando · <span className="tabular-nums">{mmss(now - dialedAt)}</span></span>
+                  {returnedAt === null ? (
+                    <span className="text-emerald-700 font-medium">
+                      Llamando · <span className="tabular-nums">{mmss(now - dialedAt)}</span>
+                    </span>
+                  ) : (
+                    <span className="font-medium">
+                      ¿Cómo salió? · <span className="tabular-nums text-slate-500">{mmss(returnedAt - dialedAt)}</span>
+                    </span>
+                  )}
                   <button className="text-xs text-slate-500 underline" onClick={() => dial(current)}>volver a marcar</button>
                 </div>
                 <textarea
@@ -307,7 +339,8 @@ export default function CrmCallMode({ filters, stages, onClose }: {
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                 />
-                <div className="grid grid-cols-2 gap-2">
+                <div className={clsx('grid grid-cols-2 gap-2 rounded-lg transition',
+                  returnedAt !== null && 'ring-2 ring-emerald-300 ring-offset-2')}>
                   {OUTCOMES.map((o, i) => (
                     <button key={o.key}
                       onClick={() => (o.key === 'Callback' ? setCallbackOpen((v) => !v) : record(o.key))}
