@@ -177,17 +177,46 @@ async function start(lineId) {
   const existing = sessions.get(lineId);
   if (existing && ['qr', 'syncing', 'uploading'].includes(existing.state)) return existing;
 
-  const dir = path.join(DATA_DIR, lineId);
-  fs.rmSync(dir, { recursive: true, force: true });
-  const { state: auth, saveCreds } = await useMultiFileAuthState(dir);
-  const { version } = await fetchLatestBaileysVersion();
-
+  // Escaneo nuevo: se arranca sin credenciales viejas.
+  fs.rmSync(path.join(DATA_DIR, lineId), { recursive: true, force: true });
   const s = {
     lineId, state: 'starting', qrBase64: null, chats: new Map(), lidToPhone: new Map(),
     batches: 0, progress: null, lastBatchAt: 0, startedAt: new Date().toISOString(),
     error: null, result: null, sock: null, timer: null,
   };
   sessions.set(lineId, s);
+
+  s.timer = setInterval(() => {
+    const idle = Date.now() - s.lastBatchAt;
+    if (s.state === 'syncing' && s.batches > 0 && idle > IDLE_MS) finish(s);
+    // Vinculado pero WhatsApp no manda nada: no lo dejamos colgado para siempre.
+    if (s.state === 'syncing' && s.batches === 0 && idle > 10 * 60_000) {
+      s.state = 'error';
+      s.error = 'Se vinculó pero WhatsApp no mandó ningún chat. Probá de nuevo.';
+      cleanup(s, { logout: true });
+    }
+    if (Date.now() - new Date(s.startedAt).getTime() > SESSION_MAX_MS && ['starting', 'qr'].includes(s.state)) {
+      s.state = 'error';
+      s.error = 'Nadie escaneó el QR.';
+      cleanup(s, { logout: false });
+    }
+  }, 5000);
+
+  await openSocket(s);
+  return s;
+}
+
+/**
+ * Abre (o reabre) el socket de la sesión SIN tocar las credenciales. Reabrir es parte del
+ * flujo normal: apenas se escanea el QR, WhatsApp cierra con 515 (restartRequired) y hay que
+ * reconectar con las credenciales que quedaron de ese pairing — borrarlas ahí dejaba el
+ * escaneo trabado pidiendo un QR nuevo para siempre.
+ */
+async function openSocket(s) {
+  const lineId = s.lineId;
+  const dir = path.join(DATA_DIR, lineId);
+  const { state: auth, saveCreds } = await useMultiFileAuthState(dir);
+  const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
@@ -224,10 +253,18 @@ async function start(lineId) {
         await cleanup(s, { logout: false });
         return;
       }
-      // Caída de red mientras sincronizaba: lo que ya llegó no se pierde, se reintenta.
-      if (['qr', 'syncing'].includes(s.state)) {
-        log(`[${lineId}] conexión caída (${code ?? 's/código'}), reintentando`);
-        setTimeout(() => start(lineId).catch((e) => log('retry falló', e.message)), 3000);
+      if (['starting', 'qr', 'syncing'].includes(s.state)) {
+        // 515 = restartRequired: es lo que manda WhatsApp JUSTO al terminar de vincular.
+        if (code === DisconnectReason.restartRequired) {
+          s.state = 'syncing';
+          s.qrBase64 = null;
+          s.lastBatchAt = Date.now();
+        }
+        log(`[${lineId}] conexión caída (${code ?? 's/código'}), reconectando`);
+        setTimeout(() => openSocket(s).catch((e) => {
+          s.state = 'error';
+          s.error = `No pude reconectar: ${e.message}`;
+        }), 2000);
       }
     }
   });
@@ -258,15 +295,6 @@ async function start(lineId) {
       addMessage(s, jid, m);
     }
   });
-
-  s.timer = setInterval(() => {
-    if (s.state === 'syncing' && s.batches > 0 && Date.now() - s.lastBatchAt > IDLE_MS) finish(s);
-    if (Date.now() - new Date(s.startedAt).getTime() > SESSION_MAX_MS && ['starting', 'qr'].includes(s.state)) {
-      s.state = 'error';
-      s.error = 'Nadie escaneó el QR.';
-      cleanup(s, { logout: false });
-    }
-  }, 5000);
 
   return s;
 }
