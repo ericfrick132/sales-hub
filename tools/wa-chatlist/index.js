@@ -35,6 +35,9 @@ const {
 } = require('baileys');
 
 const UPLOAD = process.argv.includes('--upload');
+// El history sync llega UNA sola vez, al vincular. Si la subida al CRM falló (o se quiere
+// repetir), esto sube el chatlist.json ya guardado sin volver a conectarse a WhatsApp.
+const UPLOAD_ONLY = process.argv.includes('--upload-only');
 const OUT = path.join(__dirname, 'chatlist.json');
 const AUTH_DIR = path.join(__dirname, 'auth');
 /** Mensajes de contexto que se guardan por chat (los más nuevos). */
@@ -174,6 +177,13 @@ async function finish() {
   process.exit(process.exitCode || 0);
 }
 
+async function uploadSaved() {
+  if (!fs.existsSync(OUT)) throw new Error(`No existe ${OUT}: corré primero "node index.js" y escaneá el QR.`);
+  const rows = JSON.parse(fs.readFileSync(OUT, 'utf8'));
+  log(`Subiendo ${rows.length} chats guardados…`);
+  await upload(rows);
+}
+
 async function main() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   // Sin la versión actual de WhatsApp Web el server corta la conexión al toque (428) y ni
@@ -268,4 +278,4 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+(UPLOAD_ONLY ? uploadSaved() : main()).catch((e) => { console.error(e.message || e); process.exit(1); });
