@@ -69,6 +69,10 @@ function historyStatus(l: PhoneLine): string | null {
       ? `Cargando el historial: ${chats}${p}`
       : `Repasando por si llegaron más chats: ${chats}${p}`;
   }
+  // Evolution no puede resolver el teléfono de los chats que WhatsApp direcciona por LID: si
+  // cargó mensajes y no salió ningún prospecto, hay que decir para dónde ir.
+  if (l.historyImportPasses >= 3 && l.prospects === 0 && l.prospectSellerIds.length > 0)
+    return `Historial cargado (${n} mensajes) pero 0 prospectos: WhatsApp no manda el número en esos chats. Usá "Leer chats del celu".`;
   if (l.historyImportPasses >= 3) return `Historial cargado (${n} mensajes)${p}`;
   if (l.historyImportPasses > 0)
     return `Historial cargado (${n} mensajes)${p} · repasa de nuevo más tarde por si el celu manda más chats`;
@@ -403,7 +407,7 @@ export default function PhoneLinesCard() {
                   )}
                   {/* Lee los chats del celu con el lector propio: es lo único que trae el
                       teléfono real de cada chat (WhatsApp los direcciona por LID). */}
-                  <button className="btn-secondary text-xs" onClick={() => setReadFor(l)}>
+                  <button className="btn-primary text-xs" onClick={() => setReadFor(l)}>
                     Leer chats del celu
                   </button>
                   {l.connectedAt && !isImporting(l) && (
