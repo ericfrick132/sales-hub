@@ -36,7 +36,7 @@ const DATA_DIR = process.env.DATA_DIR || '/data';
 /** Mensajes de contexto por chat (los más nuevos): para llamar alcanza con saber de qué venían hablando. */
 const MESSAGES_PER_CHAT = 10;
 /** El historial llega en tandas; si pasa este rato sin ninguna, se da por completo. */
-const IDLE_MS = 90_000;
+const IDLE_MS = 180_000;
 /** Un escaneo que nadie completa no puede quedar colgado para siempre. */
 const SESSION_MAX_MS = 60 * 60_000;
 
@@ -148,10 +148,41 @@ async function upload(lineId, rows) {
   return { created, alreadyLeads, filteredByWords, messagesStored, chats: rows.length };
 }
 
+/**
+ * Traduce los chats @lid a su teléfono preguntándole al store de baileys.
+ *
+ * La tabla LID↔teléfono del history sync la guarda baileys en su propio store (ver
+ * Utils/process-message.js → storeLIDPNMappings) y NO la emite como evento, así que hay que
+ * ir a buscarla. Sin este paso sólo quedaban con número los chats que ya venían como
+ * @s.whatsapp.net: de 2.483 chats, 191.
+ */
+async function resolveLids(s) {
+  const store = s.sock?.signalRepository?.lidMapping;
+  if (!store?.getPNsForLIDs) return;
+  const pending = [...s.chats.values()]
+    .filter((c) => c.jid?.endsWith('@lid') && !phoneFor(s, c))
+    .map((c) => c.jid);
+  let found = 0;
+  for (let i = 0; i < pending.length; i += 500) {
+    try {
+      const pairs = await store.getPNsForLIDs(pending.slice(i, i + 500));
+      for (const p of pairs || []) {
+        if (!p?.lid || !p?.pn) continue;
+        s.lidToPhone.set(userOf(p.lid), userOf(p.pn));
+        found++;
+      }
+    } catch (e) {
+      log(`[${s.lineId}] no pude resolver un lote de LIDs: ${e.message}`);
+    }
+  }
+  log(`[${s.lineId}] LIDs traducidos: ${found} de ${pending.length}`);
+}
+
 async function finish(s) {
   if (s.state === 'uploading' || s.state === 'done') return;
   s.state = 'uploading';
   try {
+    await resolveLids(s);
     const rows = snapshot(s);
     log(`[${s.lineId}] historial completo: ${rows.length} chats con número, subiendo…`);
     s.result = await upload(s.lineId, rows);
