@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Api.Dtos;
+using SalesHub.Api.Services;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
@@ -29,12 +30,15 @@ public class PhoneLinesController : ControllerBase
     private readonly ListenOnlyLines _listenOnly;
     private readonly LeadEntryService _entries;
     private readonly ConversationService _conversations;
+    private readonly WaReaderClient _reader;
     private readonly ILogger<PhoneLinesController> _log;
 
     public PhoneLinesController(ApplicationDbContext db, IEvolutionClient evo, ListenOnlyLines listenOnly,
-        LeadEntryService entries, ConversationService conversations, ILogger<PhoneLinesController> log)
+        LeadEntryService entries, ConversationService conversations, WaReaderClient reader,
+        ILogger<PhoneLinesController> log)
     {
-        _db = db; _evo = evo; _listenOnly = listenOnly; _entries = entries; _conversations = conversations; _log = log;
+        _db = db; _evo = evo; _listenOnly = listenOnly; _entries = entries; _conversations = conversations;
+        _reader = reader; _log = log;
     }
 
     public record PhoneLineDto(
@@ -221,9 +225,11 @@ public class PhoneLinesController : ControllerBase
     /// y los mensajes se deduplican por su id de WhatsApp.
     /// </summary>
     [HttpPost("{id:guid}/chatlist")]
+    [AllowAnonymous]
     public async Task<IActionResult> ChatList(Guid id, [FromBody] ChatListRequest req, CancellationToken ct)
     {
-        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        // Lo llama el lector (servicio interno, con su clave) o un admin logueado.
+        if (!_reader.IsReader(Request) && !CurrentUser.IsAdmin(User)) return Forbid();
         var line = await _db.EvolutionInstances.FirstOrDefaultAsync(i => i.Id == id && i.SellerId == null, ct);
         if (line is null) return NotFound(new { error = "No existe ese teléfono." });
         if (line.ProspectSellerIds.Count == 0)
@@ -331,6 +337,38 @@ public class PhoneLinesController : ControllerBase
         if (string.IsNullOrWhiteSpace(s)) return "";
         var d = s.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
         return new string(d.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());
+    }
+
+    /// <summary>
+    /// Arranca la lectura de los chats de un celular: devuelve el QR para escanear. Lo hace el
+    /// servicio <c>wa-reader</c> (Node + Baileys nueva), porque la Evolution de producción
+    /// descarta el número real de los chats direccionados por LID.
+    /// </summary>
+    [HttpPost("{id:guid}/wa-read")]
+    public async Task<IActionResult> StartWaRead(Guid id, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var line = await _db.EvolutionInstances.AsNoTracking().FirstOrDefaultAsync(i => i.Id == id && i.SellerId == null, ct);
+        if (line is null) return NotFound(new { error = "No existe ese teléfono." });
+        if (line.ProspectSellerIds.Count == 0)
+            return BadRequest(new { error = "Elegí primero quién toma los prospectos de este teléfono." });
+        return await _reader.ProxyAsync(HttpMethod.Post, $"sessions/{id}", ct);
+    }
+
+    /// <summary>Cómo va la lectura: QR pendiente, sincronizando, o el resultado de la carga.</summary>
+    [HttpGet("{id:guid}/wa-read")]
+    public async Task<IActionResult> WaReadStatus(Guid id, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        return await _reader.ProxyAsync(HttpMethod.Get, $"sessions/{id}", ct);
+    }
+
+    /// <summary>Corta la lectura y desvincula el dispositivo (también se usa al terminar).</summary>
+    [HttpDelete("{id:guid}/wa-read")]
+    public async Task<IActionResult> StopWaRead(Guid id, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        return await _reader.ProxyAsync(HttpMethod.Delete, $"sessions/{id}", ct);
     }
 
     /// <summary>Cierra la sesión de WhatsApp del teléfono. Queda registrado: se reconecta con otro QR.</summary>

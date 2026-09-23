@@ -26,6 +26,8 @@ builder.Services.AddHttpClient(); // IHttpClientFactory para el LeadImportWorker
 // Bot de configuración por WhatsApp (menú numerado del maestro): ejecutor que pega a la propia API
 // con un JWT admin minteado + el relay navegador. Ver src/SalesHub.Api/AdminMenu/.
 builder.Services.AddHttpClient<SalesHub.Api.AdminMenu.AdminApiExecutor>();
+// Lector de chats de WhatsApp (servicio Node aparte, red interna).
+builder.Services.AddHttpClient<SalesHub.Api.Services.WaReaderClient>();
 builder.Services.AddScoped<SalesHub.Api.AdminMenu.AdminMenuRelay>();
 
 // WebSocket hub para devices Android

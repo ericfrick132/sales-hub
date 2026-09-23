@@ -38,6 +38,36 @@ services:
       retries: 3
       start_period: 60s
 
+  # Lector de chats de WhatsApp (Node + Baileys nuevo). No sale a internet por Caddy: sólo lo
+  # llama la API por la red interna. Existe porque el protocolo de WhatsApp Web sólo está en
+  # Node y la Evolution de producción empaqueta una baileys que descarta el número real de los
+  # chats (LID); esto corre la versión que sí lo trae, sin tocar el tráfico de las 6 apps.
+  wa-reader:
+    build:
+      context: ./services/wa-reader
+    image: wa-reader:latest
+    container_name: wa-reader
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      API_URL: http://saleshub-api:8080
+      TZ: America/Argentina/Buenos_Aires
+    volumes:
+      - wa-reader-data:/data
+    networks:
+      - evolution
+    mem_limit: 500m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  wa-reader-data:
+
 networks:
   caddy:
     external: true

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuthStore } from '../lib/auth';
 import QrConnectModal from './QrConnectModal';
+import WaReaderModal from './WaReaderModal';
 
 /** Teléfono vinculado por QR, sin vendedor (instancia de Evolution). */
 interface PhoneLine {
@@ -111,6 +112,7 @@ export default function PhoneLinesCard() {
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [qrFor, setQrFor] = useState<PhoneLine | null>(null);
+  const [readFor, setReadFor] = useState<PhoneLine | null>(null);
 
   const { data: lines, isLoading } = useQuery({
     queryKey: ['phone-lines'],
@@ -399,9 +401,14 @@ export default function PhoneLinesCard() {
                   {!connected && (
                     <button className="btn-primary text-xs" onClick={() => setQrFor(l)}>Escanear QR</button>
                   )}
+                  {/* Lee los chats del celu con el lector propio: es lo único que trae el
+                      teléfono real de cada chat (WhatsApp los direcciona por LID). */}
+                  <button className="btn-secondary text-xs" onClick={() => setReadFor(l)}>
+                    Leer chats del celu
+                  </button>
                   {l.connectedAt && !isImporting(l) && (
                     <button className="btn-secondary text-xs" onClick={() => importNow(l)}>
-                      Cargar chats ahora
+                      Repasar por Evolution
                     </button>
                   )}
                   <button className="btn-secondary text-xs"
@@ -422,6 +429,15 @@ export default function PhoneLinesCard() {
           <div className="py-3 text-slate-400 text-sm text-center">No hay teléfonos cargados</div>
         )}
       </div>
+
+      {readFor && (
+        <WaReaderModal
+          lineId={readFor.id}
+          title={readFor.label}
+          onClose={() => setReadFor(null)}
+          onDone={refresh}
+        />
+      )}
 
       {qrFor && (
         <QrConnectModal

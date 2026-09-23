@@ -1,0 +1,14 @@
+{
+  "name": "wa-reader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lee los chats de un WhatsApp (con el telefono real de cada uno) vinculando un dispositivo mas. Existe porque el protocolo solo esta en Node (Baileys) y la Evolution de produccion trae una version que descarta el numero.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "baileys": "7.0.0-rc14",
+    "express": "^4.21.2",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
+  }
+}
