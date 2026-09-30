@@ -53,6 +53,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<EvolutionChatSyncWorker>();          // TODOS los chats de cada línea vinculada → Conversaciones (backfill + baches de webhook; flag 'chat-sync')
     builder.Services.AddHostedService<SlaAlertWorker>();                   // avisa al maestro cuando un chat pasa el SLA sin respuesta (flag 'sla-alerts')
     builder.Services.AddHostedService<LeadEntryReportWorker>();            // reporte diario por WhatsApp: leads que entraron a cada teléfono (config en /entradas)
+    builder.Services.AddHostedService<RemarketingWorker>();                // remarketing con tope por línea por día (config en /remarketing, arranca apagado)
     builder.Services.AddHostedService<LineHistoryImportWorker>();          // historial de un teléfono recién escaneado ("cargar para atrás" en /devices)
 
     // Workers de Instagram. Corren acá (no en un contenedor aparte) porque la imagen

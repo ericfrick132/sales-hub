@@ -205,7 +205,8 @@ public class HubController : ControllerBase
                && o.ScheduledAt <= now
                && o.Lead != null && o.Lead.ProductKey == productKey
                && (o.LockedAt == null || o.LockedAt < claimCutoff)
-               && ((_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
+               && (o.CadenceCategory == MessageOutbox.RemarketingCategory   // tope e interruptor propios
+                   || (_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
                         && followupSources.Contains(o.Lead.Source))
                    || (!_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
                         && outreachSources.Contains(o.Lead.Source)))

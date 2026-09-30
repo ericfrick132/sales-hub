@@ -78,6 +78,8 @@ public class CrmController : ControllerBase
         public int? StalledDays { get; set; }
         public string? Due { get; set; }
         public bool ContactedToday { get; set; }
+        /// <summary>Etiqueta exacta (ej. "bot-remarketing").</summary>
+        public string? Tag { get; set; }
     }
 
     /// <summary>
@@ -111,6 +113,11 @@ public class CrmController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(f.ProductKey)) leadQ = leadQ.Where(l => l.ProductKey == f.ProductKey);
         if (f.Source is { Length: > 0 }) leadQ = leadQ.Where(l => f.Source.Contains(l.Source));
+        if (!string.IsNullOrWhiteSpace(f.Tag))
+        {
+            var tag = f.Tag.Trim().ToLowerInvariant();
+            leadQ = leadQ.Where(l => l.Tags.Contains(tag));
+        }
 
         if (!string.IsNullOrWhiteSpace(f.Q))
         {

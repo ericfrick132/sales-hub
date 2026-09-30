@@ -175,6 +175,8 @@ public class BridgeController : ControllerBase
                      && o.SellerId == sellerId
                      && (o.Lead.Source == LeadSource.MetaLeadAd
                          || o.Priority >= MessageOutbox.BridgeManualPriority
+                         // Remarketing: ya viene con su tope diario por línea (/remarketing).
+                         || o.CadenceCategory == MessageOutbox.RemarketingCategory
                          // Un frío sólo mientras nadie lo trabajó a mano: si la cold caller ya
                          // lo llamó y lo movió de etapa, el "hola, me pasaron tu número" sobra.
                          || (sendsCold && ColdCadenceStatuses.Contains(o.Lead.Status)))

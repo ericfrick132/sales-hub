@@ -41,6 +41,7 @@ export default function Layout() {
           { to: '/conversations', label: 'Conversaciones', badge: unread.data },
           { to: '/atencion', label: 'Atención' },
           { to: '/entradas', label: 'Entradas por teléfono' },
+          { to: '/remarketing', label: 'Remarketing' },
         ] },
         { title: 'Captación', items: [
           { to: '/leads/search', label: 'Capturar de Maps' },

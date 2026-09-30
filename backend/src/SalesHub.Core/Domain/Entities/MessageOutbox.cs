@@ -20,6 +20,13 @@ public class MessageOutbox
     /// </summary>
     public const int BridgeManualPriority = 100;
 
+    /// <summary>
+    /// <see cref="CadenceCategory"/> de las filas de la campaña de remarketing. Tienen su propio
+    /// tope por línea y su propio interruptor (/remarketing), así que la política de mensajería
+    /// por origen no las frena y el bridge las sirve aunque la prioridad sea &lt; 100.
+    /// </summary>
+    public const string RemarketingCategory = "remarketing";
+
     public Guid Id { get; set; }
 
     public Guid LeadId { get; set; }

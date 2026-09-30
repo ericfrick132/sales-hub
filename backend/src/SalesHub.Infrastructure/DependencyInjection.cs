@@ -137,6 +137,7 @@ public static class DependencyInjection
         services.AddScoped<LeadRebalancer>();
         services.AddScoped<ConversationService>();
         services.AddScoped<LeadEntryService>();
+        services.AddScoped<RemarketingService>();
         services.AddSingleton<ChatHistoryImporter>();          // chats de Evolution → ingest (sync periódico + historial de un teléfono nuevo)            // leads que entraron a cada teléfono (gráfico + reporte diario)
         services.AddScoped<PitchEngine>();                 // pitch por anuncio (pasos, follow-ups, avance por respuesta)
         services.AddScoped<ConversationFeedbackProvider>(); // 👍/👎 humanos → aprendizajes en el prompt

@@ -269,7 +269,9 @@ public class OutboxSender
                    // Política de mensajería por origen: un lead que nunca recibió nada es un
                    // MENSAJE NUEVO; si ya recibió algo, es SEGUIMIENTO. Cada uno se prende/apaga
                    // por separado y por origen (ej. cortar todo lo nuevo y seguir con Meta Lead Ads).
+                   // La campaña de remarketing tiene su propio interruptor y tope por línea.
                    && (o.Lead == null
+                       || o.CadenceCategory == MessageOutbox.RemarketingCategory
                        || (_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
                            && followupSources.Contains(o.Lead.Source))
                        || (!_db.Outbox.Any(x => x.LeadId == o.LeadId && x.Status == OutboxStatus.Sent)
@@ -340,8 +342,9 @@ public class OutboxSender
                 // y este step ya no existe, cancelamos la fila.
                 //
                 // Filas legacy (StepIndex == null, encoladas antes de este cambio) caen al
-                // path antiguo y se mandan con el snapshot tal cual.
-                if (next.StepIndex is not null)
+                // path antiguo y se mandan con el snapshot tal cual. Igual las de remarketing:
+                // su texto se escribió para ESE lead (no sale de la cadencia del producto).
+                if (next.StepIndex is not null && next.CadenceCategory != MessageOutbox.RemarketingCategory)
                 {
                     var leadCtx = await _db.Leads.AsNoTracking()
                         .Include(l => l.Product)

@@ -21,6 +21,7 @@ public class ConversationService
     private readonly ILeadAssigner _assigner;
     private readonly TakeoverSignal _takeover;
     private readonly PitchEngine _pitch;
+    private readonly RemarketingService _remarketing;
     private readonly ILogger<ConversationService> _log;
     private static readonly Regex NonDigit = new(@"\D", RegexOptions.Compiled);
 
@@ -32,9 +33,9 @@ public class ConversationService
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILeadAssigner assigner,
-        TakeoverSignal takeover, PitchEngine pitch, ILogger<ConversationService> log)
+        TakeoverSignal takeover, PitchEngine pitch, RemarketingService remarketing, ILogger<ConversationService> log)
     {
-        _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _pitch = pitch; _log = log;
+        _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _pitch = pitch; _remarketing = remarketing; _log = log;
     }
 
     public record IncomingMessage(
@@ -194,6 +195,10 @@ public class ConversationService
             lead.Status = LeadStatus.Replied;
         }
         lead.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // Respuesta a un mensaje de remarketing: métrica + "coordinar la llamada" en el CRM.
+        if (!incoming.FromSync && !IsHistory(incoming))
+            await _remarketing.OnReplyAsync(lead, incoming.Timestamp, ct);
 
         if (IsHistory(incoming))
         {
