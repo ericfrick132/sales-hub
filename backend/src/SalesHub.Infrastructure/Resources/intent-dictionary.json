@@ -4,7 +4,7 @@
  "corpus": {
   "sales_chats": 2692,
   "lead_turns": 9335,
-  "coverage_pct": 75.8
+  "coverage_pct": 76.2
  },
  "context_rules": [
   {
@@ -23,18 +23,18 @@
   {
    "key": "autorespuesta",
    "name": "Contestador automático de otro negocio",
-   "pattern": "gracias por (comunicarte|tu mensaje|ponerte en contacto|escribirnos|contactarnos|escribir)|asistente virtual|a la brevedad|lo antes posible|horarios? de atencion|lunes a viernes|(en que|como) (te |le )?podemos ayudar|haznos saber|dejanos tu consulta|te he conectado|no podemos responder|hemos pasado la conversacion|responderemos|revisara tu mensaje|mensaje automatico",
+   "pattern": "^(?!.*(pasanos|mandanos|pasame|mandame|enviame|te habla|habla \\w+ del|no (estaria|estamos|estoy) necesitando|por el momento no|lo vamos charlando))(?:.*)(gracias por (comunicarte|tu mensaje|ponerte en contacto|escribirnos|contactarnos|escribir)|asistente virtual|a la brevedad|lo antes posible|horarios? de atencion|lunes a viernes|(en que|como) (te |le )?podemos ayudar|haznos saber|dejanos tu consulta|te he conectado|no podemos responder|hemos pasado la conversacion|responderemos|revisara tu mensaje|mensaje automatico)",
    "action": "no_responder",
    "reply": null,
    "note": "no responder: es el contestador de otro negocio; esperar al humano. hoy le contestamos al 75%",
    "max_words": null,
    "metrics": {
-    "turns": 480,
-    "share_pct": 5.1,
-    "answered_pct": 75,
+    "turns": 470,
+    "share_pct": 5.0,
+    "answered_pct": 76,
     "continued_pct": 48,
     "continued_fast_pct": 52,
-    "continued_slow_pct": 46
+    "continued_slow_pct": 47
    },
    "examples": [
     "Hola",
@@ -153,9 +153,9 @@
    "note": "objeción: una sola pregunta sobre qué le molesta",
    "max_words": null,
    "metrics": {
-    "turns": 63,
+    "turns": 64,
     "share_pct": 0.7,
-    "answered_pct": 79,
+    "answered_pct": 78,
     "continued_pct": 62,
     "continued_fast_pct": 81,
     "continued_slow_pct": 0
@@ -172,7 +172,7 @@
   {
    "key": "equivocado",
    "name": "Número equivocado / no es del rubro / busca trabajo",
-   "pattern": "numero equivocado|te equivocaste|equivocado de|no tengo (mas )?(el )?(gym|gimnasio|negocio)|cerre el|lo vendi|no es un (gym|gimnasio)|no soy (el|la) (duen|encargad)|busco trabajo|buscando trabajo|soy (pintor|yesero|albanil|plomero|electricista|herrero)|ofrezco mis (trabajos|servicios)|estoy disponible para",
+   "pattern": "numero equivocado|te equivocaste|te confundiste|equivocado de|no tengo (mas )?(el )?(gym|gimnasio|negocio)|cerre el|lo vendi|no es un (gym|gimnasio)|no soy (el|la) (duen|encargad)|busco trabajo|buscando trabajo|soy (pintor|yesero|albanil|plomero|electricista|herrero)|ofrezco mis (trabajos|servicios)|estoy disponible para",
    "action": "cerrar",
    "reply": "perdon por la molestia, que andes bien",
    "note": "cerrar y excluir de toda cadencia",
@@ -247,7 +247,7 @@
   {
    "key": "pago",
    "name": "Quiere pagar / cómo pago",
-   "pattern": "como (pago|abono|hago el pago|te pago|contrato)|hacer el pago|necesito pagar|puedo pagar|\\btarjeta\\b|pasame (el |tu )?(alias|cbu|link de pago)|\\balias\\b|\\bcbu\\b|transferi|comprobante|quiero (pagar|abonar)|donde (pago|abono)|con tarjeta|mercado ?pago",
+   "pattern": "como (pago|abono|hago el pago|te pago|contrato)|quiero el (de|plan de) N (meses|mes)|renovar|hacer el pago|necesito pagar|puedo pagar|\\btarjeta\\b|pasame (el |tu )?(alias|cbu|link de pago)|\\balias\\b|\\bcbu\\b|transferi|comprobante|quiero (pagar|abonar)|donde (pago|abono)|con tarjeta|mercado ?pago",
    "action": "cerrar_venta",
    "reply": "genial. el alias es {alias}, me mandas el comprobante por aca y te la dejo activa en el momento",
    "note": "URGENTE a humano: <5 min sigue 89%, >1 h 27%",
@@ -297,18 +297,18 @@
   {
    "key": "pide_llamada",
    "name": "Pide llamada / demo / hablar con alguien",
-   "pattern": "(?<!se )llamame|me (llamas|podes llamar|podrias llamar)|llamada|llamar(me|te)?\\b|llama (ya|ahora)|^llamame|videollamada|video llamada|reunion|\\bdemo\\b|\\bmeet\\b|\\bzoom\\b|hablar con (alguien|una persona|un asesor|vos)|me podes llamar|te llamo",
+   "pattern": "(?<!se )llamame|me (llamas|podes llamar|podrias llamar)|llamada|llamar(me|te)?\\b|llama (ya|ahora)|^llamame|videollamada|video llamada|(hacer|tener|coordinar|armar|agendar|hagamos|tengamos) (una )?reunion|\\bdemo\\b|\\bmeet\\b|\\bzoom\\b|hablar con (alguien|una persona|un asesor|vos)|me podes llamar|te llamo",
    "action": "agendar_llamada",
    "reply": "dale, te llamo. te queda bien hoy {h1} o mañana {h2}?",
    "note": "pasar a humano / agenda con 2 horarios reales",
    "max_words": null,
    "metrics": {
-    "turns": 100,
-    "share_pct": 1.1,
-    "answered_pct": 96,
-    "continued_pct": 84,
+    "turns": 97,
+    "share_pct": 1.0,
+    "answered_pct": 97,
+    "continued_pct": 85,
     "continued_fast_pct": 91,
-    "continued_slow_pct": 50
+    "continued_slow_pct": 43
    },
    "examples": [
     "Buenas quería que compartan más info del servicio q ofrecen si tienen alguna demo donde pueda verlo",
@@ -371,10 +371,10 @@
    "note": "confirmar el horario y agendar la llamada",
    "max_words": 15,
    "metrics": {
-    "turns": 52,
+    "turns": 53,
     "share_pct": 0.6,
     "answered_pct": 92,
-    "continued_pct": 56,
+    "continued_pct": 55,
     "continued_fast_pct": 48,
     "continued_slow_pct": 78
    },
@@ -446,12 +446,12 @@
    "note": "preguntar fecha y programar el recontacto",
    "max_words": null,
    "metrics": {
-    "turns": 95,
+    "turns": 96,
     "share_pct": 1.0,
-    "answered_pct": 87,
-    "continued_pct": 77,
+    "answered_pct": 88,
+    "continued_pct": 76,
     "continued_fast_pct": 90,
-    "continued_slow_pct": 54
+    "continued_slow_pct": 50
    },
    "examples": [
     "Me dirías donde está instructores?",
@@ -490,17 +490,17 @@
   {
    "key": "soporte",
    "name": "Problema técnico / no puede entrar",
-   "pattern": "no me (deja|anda|funciona|carga|llega|llego|abre|aparece|toma|reconoce)|(pasame|mandame|reenviame) el (link|enlace|acceso)|no (m )?(deja|carga|llega)|se queda (ahi|cargando)|no carga|problemas? con la (app|pagina|cuenta)|me solucionen|no figura|no aparece|no puedo (entrar|ingresar|acceder|registrar|cargar)|\\berror\\b|contrasena|\\bclave\\b|\\bcodigo\\b|no (me )?llego|se trabo|no anda|como (hago|se hace) para|como (cargo|agrego|configuro|pongo)|no encuentro",
+   "pattern": "no me (deja|anda|funciona|carga|llega|llego|abre|aparece|toma|reconoce)|no (pude|puedo|pudo|podemos) (entrar|ingresar|acceder)|no estan cargad|aparece que|me dice que|le dice que|(pasame|mandame|reenviame) el (link|enlace|acceso)|no (m )?(deja|carga|llega)|se queda (ahi|cargando)|no carga|problemas? con la (app|pagina|cuenta)|me solucionen|no figura|no aparece|no puedo (entrar|ingresar|acceder|registrar|cargar)|\\berror\\b|contrasena|\\bclave\\b|\\bcodigo\\b|no (me )?llego|se trabo|no anda|como (hago|se hace) para|como (cargo|agrego|configuro|pongo)|no encuentro",
    "action": "soporte",
    "reply": null,
    "note": "reenviar link de acceso si es login; si no, humano (bot de soporte)",
    "max_words": null,
    "metrics": {
-    "turns": 151,
-    "share_pct": 1.6,
+    "turns": 155,
+    "share_pct": 1.7,
     "answered_pct": 93,
-    "continued_pct": 78,
-    "continued_fast_pct": 81,
+    "continued_pct": 77,
+    "continued_fast_pct": 80,
     "continued_slow_pct": 55
    },
    "examples": [
@@ -508,8 +508,8 @@
     "Hola buenas tatdes",
     "Me podrias decir donde entrar o si tengo que descargar una app?",
     "No no me deja entrar",
-    "Usuario y contraseña cuál sería?",
-    "Hola"
+    "Buenas, todo bien? Un profe me dice que no puede entrar a la página",
+    "Usuario y contraseña cuál sería?"
    ]
   },
   {
@@ -521,12 +521,12 @@
    "note": "avanzar al siguiente paso del guion (siguiente pregunta o crear cuenta)",
    "max_words": null,
    "metrics": {
-    "turns": 157,
+    "turns": 158,
     "share_pct": 1.7,
     "answered_pct": 94,
-    "continued_pct": 66,
+    "continued_pct": 65,
     "continued_fast_pct": 83,
-    "continued_slow_pct": 34
+    "continued_slow_pct": 33
    },
    "examples": [
     "Me gustaría implementar",
@@ -546,8 +546,8 @@
    "note": "respuesta de la FAQ del producto (o IA con el conocimiento del producto si no hay FAQ que coincida)",
    "max_words": null,
    "metrics": {
-    "turns": 239,
-    "share_pct": 2.6,
+    "turns": 238,
+    "share_pct": 2.5,
     "answered_pct": 99,
     "continued_pct": 69,
     "continued_fast_pct": 74,
@@ -571,8 +571,8 @@
    "note": "guardar el dato y hacer la siguiente pregunta del guion",
    "max_words": 25,
    "metrics": {
-    "turns": 1726,
-    "share_pct": 18.5,
+    "turns": 1771,
+    "share_pct": 19.0,
     "answered_pct": 100,
     "continued_pct": 84,
     "continued_fast_pct": 86,
@@ -615,7 +615,7 @@
   {
    "key": "ack",
    "name": "Confirmación / gracias",
-   "pattern": "^((ok|oka|okk|oki|okey|okay|oks|okok|dale|si|sisi|no|nono|tranqui|asi es|puede ser|por favor|si por favor|vamos|yendo|joya|genial|perfecto|listo|bueno|barbaro|joya|gracias|muchas gracias|mil gracias|buenisimo|excelente|voy|de nada|ja|jaja|jajaja|jajajaja|jeje|buen|bien|claro|obvio|sip|ah|aa|ahh|mm|mmm|okis|vale|super|re bien|todo bien|igualmente|a vos|abrazo|saludos|besos|dalee|ook))( (ok|oka|okk|oki|okey|okay|oks|okok|dale|si|sisi|no|nono|tranqui|asi es|puede ser|por favor|si por favor|vamos|yendo|joya|genial|perfecto|listo|bueno|barbaro|joya|gracias|muchas gracias|mil gracias|buenisimo|excelente|voy|de nada|ja|jaja|jajaja|jajajaja|jeje|buen|bien|claro|obvio|sip|ah|aa|ahh|mm|mmm|okis|vale|super|re bien|todo bien|igualmente|a vos|abrazo|saludos|besos|dalee|ook)){0,4}( (audio|image|video|sticker)message)*$",
+   "pattern": "^((grs|grax|graciass|ok|oka|okk|oki|okey|okay|oks|okok|dale|si|sisi|no|nono|tranqui|asi es|puede ser|por favor|si por favor|vamos|yendo|joya|genial|perfecto|listo|bueno|barbaro|joya|gracias|muchas gracias|mil gracias|buenisimo|excelente|voy|de nada|ja|jaja|jajaja|jajajaja|jeje|buen|bien|claro|obvio|sip|ah|aa|ahh|mm|mmm|okis|vale|super|re bien|todo bien|igualmente|a vos|abrazo|saludos|besos|dalee|ook))( (grs|grax|graciass|ok|oka|okk|oki|okey|okay|oks|okok|dale|si|sisi|no|nono|tranqui|asi es|puede ser|por favor|si por favor|vamos|yendo|joya|genial|perfecto|listo|bueno|barbaro|joya|gracias|muchas gracias|mil gracias|buenisimo|excelente|voy|de nada|ja|jaja|jajaja|jajajaja|jeje|buen|bien|claro|obvio|sip|ah|aa|ahh|mm|mmm|okis|vale|super|re bien|todo bien|igualmente|a vos|abrazo|saludos|besos|dalee|ook)){0,4}( (audio|image|video|sticker)message)*$",
    "action": "no_responder_o_seguir",
    "reply": null,
    "note": "si el guion tiene próximo paso, seguir; si no, no responder",

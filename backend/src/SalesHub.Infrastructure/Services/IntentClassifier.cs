@@ -28,6 +28,8 @@ public sealed class IntentMatcher
     private static readonly Regex AskedMail = new(@"(pasame|pasas|me pasas|dejame|decime) (tu |el )?mail", RegexOptions.Compiled, T);
     // "llanos.yohana": un usuario de mail sin el @ (con punto, guion bajo o números), sobre el texto crudo.
     private static readonly Regex RawHandle = new(@"^(?=.*[a-zA-Z])(?=.*[._\d])[\w.]{5,}$", RegexOptions.Compiled, T);
+    private static readonly Regex AskedCount = new(@"cuant(os|as) (alumnos|socios|clientes|obras|canchas|profesionales|personas)", RegexOptions.Compiled, T);
+    private static readonly Regex HasNumber = new(@"\bN\b", RegexOptions.Compiled, T);
     private static readonly Regex AskedName = new(@"como se llama|nombre (del|de tu|de la)|decime (solo )?el nombre", RegexOptions.Compiled, T);
     private static readonly Regex AskedAny = new(@"\?|como (llevas|cobras|tomas|manejas)|cuantos|que (usas|sistema|rubro)", RegexOptions.Compiled, T);
 
@@ -61,6 +63,7 @@ public sealed class IntentMatcher
             var p = IntentText.Normalize(previousOutbound);
             if (AskedMail.IsMatch(p) && RawHandle.IsMatch((text ?? "").Trim())) return IncompleteEmail;
             if (AskedName.IsMatch(p) && words <= 6) return Qualification;
+            if (AskedCount.IsMatch(p) && HasNumber.IsMatch(t) && words <= 15) return Qualification;
             if (AskedAny.IsMatch(p) && words <= 4) return Qualification;
         }
         return Other;
