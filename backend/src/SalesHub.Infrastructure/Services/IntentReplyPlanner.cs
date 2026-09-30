@@ -22,7 +22,12 @@ public static class IntentReplyPlanner
     /// <summary>Nuestro último mensaje cerró la charla: recién ahí un "ok/gracias" no se contesta.</summary>
     private static readonly Regex Closing = new(@"cualquier (cosa|duda)|(que )?andes bien|suerte|abrazo|exitos|a disposicion|estamos (aca|en contacto)|cuando lo necesites|buen (dia|finde|fin de semana)|saludos|nos hablamos|hablamos", RegexOptions.Compiled);
     /// <summary>Nuestro último mensaje le pedía algo (mail, datos): un "sí" ahí es un sí a eso, no un cierre.</summary>
-    private static readonly Regex AsksForSomething = new(@"(me )?pasas|pasame|dejame|decime|contame|mandame|tu mail|el mail|tu nombre|el nombre", RegexOptions.Compiled);
+    private static readonly Regex AsksForSomething = new(@"(me )?pasas|pasame|dejame|decime|contame|mandame|tu mail|el mail|tu nombre|el nombre|los primeros|te dejo|te armo|te paso|queres|te interesa|si queres", RegexOptions.Compiled);
+    /// <summary>
+    /// Contestador automático SIN duda (largo y con marcas de mensaje automático). Un "buenas, en qué
+    /// podemos ayudarte" corto puede ser la recepcionista esperando que le digamos algo: eso va a humano.
+    /// </summary>
+    private static readonly Regex ClearAutoReply = new(@"gracias por (comunicarte|tu mensaje|contactarnos|escribirnos) con|a la brevedad|lo antes posible|horario de atencion|lunes a viernes|asistente virtual|mensaje automatico|te responderemos|responderemos", RegexOptions.Compiled);
     /// <summary>Ya dio una fecha u horario: no se le vuelve a preguntar "para cuándo".</summary>
     private static readonly Regex HasWhen = new(@"\bN\b|manana|hoy|pasado|lunes|martes|miercoles|jueves|viernes|sabado|domingo|semana|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|fin de mes", RegexOptions.Compiled);
     /// <summary>Amenaza o insulto: no se contesta nada.</summary>
@@ -58,6 +63,10 @@ public static class IntentReplyPlanner
                 return null;
             case "no_audio":
                 return new(ToHuman, null, "hay que escribirle el contenido del audio");
+            case "autorespuesta":
+                if (IntentText.WordCount(normText) < 6 || !ClearAutoReply.IsMatch(normText))
+                    return new(ToHuman, null, "puede ser una persona esperando que le digamos algo");
+                return null;
             case "rechazo":
                 if (Hostile.IsMatch(normText)) return new(NoReply, null, "amenaza o insulto: no se contesta");
                 return null;
