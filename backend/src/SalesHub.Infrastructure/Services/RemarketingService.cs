@@ -93,7 +93,14 @@ public class RemarketingService
     private static readonly Regex NoRx = new(@"no (me )?interesa|no,? gracias|no necesito|no estoy interesad|borr[aá]me|no me escrib|dej[aá] de escrib|te voy a bloquear|denunci|\bspam\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex AlreadyRx = new(@"ya (tengo|uso|usamos|contamos|trabajo con|trabajamos con|estamos (usando|con)|contrat)|consegu[ií] otro", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex WrongRx = new(@"n[uú]mero equivocado|te equivocaste|no tengo m[aá]s (el )?(gym|gimnasio|negocio|local)|lo vend[ií]|no es (un )?(gym|gimnasio)|no soy (el|la) due", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex AutoRx = new(@"gracias por comunicarte|asistente virtual|te responderemos|a la brevedad|en este momento no (estamos|podemos)|horario de atenci|te he conectado con|revisar[aá] tu mensaje|mensaje autom", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex AutoRx = new(@"gracias por (comunicarte|escribirnos|escribir|contactarte|contactarnos|tu mensaje)|asistente virtual|te responder|responderemos|a la brevedad|en este momento no (estamos|podemos)|horario de atenci|te he conectado con|revisar[aá] tu mensaje|mensaje autom|vence en \d+ minutos|c[oó]digo de (verificaci|acceso)|tu c[oó]digo es", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Señales de que ya es CLIENTE (pagó, renueva, pide soporte de algo contratado): no es remarketing.
+    private static readonly Regex CustomerInRx = new(@"comprobante|te transfer|ya (te )?(pagu|abon|transfer)|me venci[oó]|se me venci|renov|mi suscripci|mis socios no", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex CustomerOutRx = new(@"\bactivad[oa]\b|ya qued[oó] activ|bienvenid[oa]s|pago recibido|recibimos (tu|el) pago", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>Una charla de prospecto que avanza tiene mediana ~12 mensajes; con más de esto es un cliente o un conocido.</summary>
+    private const int MaxInboundForProspect = 60;
     private static readonly Regex CallRx = new(@"ll[aá]m(a|ame|ada|ar|en)|videollamada|reuni[oó]n|\bdemo\b|hablar con (alguien|una persona)|\bmeet\b|\bzoom\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex LaterRx = new(@"m[aá]s adelante|todav[ií]a no (abr|arranc|empec|tengo)|estoy por abrir|voy a abrir|abro en|inaugur|el mes que viene|la semana que viene|a fin de mes|en (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex AckRx = new(@"^\W*(ok+|oka?y?|oki|dale+|genial|perfecto|listo|bueno|b[aá]rbaro|joya|gracias|muchas gracias|lo (veo|miro|reviso|analizo|pienso)|lo vemos|te aviso|voy a (ver|mirar|chusmear))\b.{0,50}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -226,7 +233,9 @@ public class RemarketingService
         var human = thread.Where(m => !m.Inbound || !AutoRx.IsMatch(m.Text)).ToList();
         var ins = human.Where(m => m.Inbound && !string.IsNullOrWhiteSpace(m.Text)).Select(m => m.Text).ToList();
         if (ins.Count == 0) return null;
-        if (ins.Any(t => WrongRx.IsMatch(t))) return null;
+        if (ins.Count > MaxInboundForProspect) return null;
+        if (ins.Any(t => WrongRx.IsMatch(t) || CustomerInRx.IsMatch(t))) return null;
+        if (human.Any(m => !m.Inbound && CustomerOutRx.IsMatch(m.Text))) return null;
 
         var lastTwo = ins.TakeLast(2).ToList();
         if (lastTwo.Any(t => NoRx.IsMatch(t))) return null;
@@ -345,9 +354,18 @@ public class RemarketingService
         // Todo en mayúscula suele ser el nombre del gimnasio ("FUERZA TAUCAP").
         if (n.Length > 3 && n.Any(char.IsLetter) && n.Where(char.IsLetter).All(char.IsUpper)) return null;
         var first = words[0];
-        if (first.Length < 2 || !first.All(char.IsLetter)) return null;
-        return first.ToLowerInvariant();
+        if (first.Length < 3 || !first.All(char.IsLetter)) return null;
+        var f = first.ToLowerInvariant();
+        return NotNames.Contains(f) ? null : f;
     }
+
+    private static readonly HashSet<string> NotNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "lead", "contacto", "cliente", "hola", "buenas", "gym", "gimnasio", "club", "centro", "estudio",
+        "escuela", "academia", "fitness", "crossfit", "pilates", "box", "sport", "sports", "team", "the",
+        "los", "las", "mis", "tus", "sus", "una", "uno", "info", "ventas", "admin", "recepcion", "recepción",
+        "bonos", "conectar", "mi", "yo", "sin", "con", "del", "por", "para", "casa", "espacio", "sala",
+    };
 
     private static string Trunc(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
