@@ -270,11 +270,23 @@ public class RemarketingService
     // ── Opener ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Escribe el opener. Con IA: Claude lo personaliza con la charla (nombra lo que había
-    /// preguntado). Si la IA falla o devuelve algo que rompe las reglas de tono, sale el
-    /// opener fijo de la etapa.
+    /// Resultado de armar el opener.
+    /// <para><c>Text</c> null + <c>Excluded</c>: la IA leyó la charla y no corresponde escribirle
+    /// (cliente, proveedor, conocido); <c>Reason</c> dice por qué.</para>
+    /// <para><c>Text</c> null sin <c>Excluded</c>: la IA no está disponible (sin crédito, error). Con
+    /// la personalización prendida la campaña espera: sin ese filtro se colaban clientes.</para>
     /// </summary>
-    public async Task<(string Text, bool Ai)> ComposeAsync(Candidate c, Seller seller, string productName,
+    public record Composed(string? Text, bool Ai, bool Excluded, string? Reason);
+
+    /// <summary>Etapa con la que se registra a quien la IA descartó (no se lo vuelve a evaluar).</summary>
+    public const string ExcludedStage = "descartado";
+
+    /// <summary>
+    /// Arma el opener. Con IA: Claude lee la charla, decide si corresponde escribirle y lo
+    /// personaliza (nombra lo que había preguntado). Si el texto rompe las reglas de tono sale
+    /// el opener fijo de la etapa. Sin IA: el opener fijo, solo con los filtros por reglas.
+    /// </summary>
+    public async Task<Composed> ComposeAsync(Candidate c, Seller seller, string productName,
         bool useAi, CancellationToken ct)
     {
         var st = StageOf(c.Stage);
@@ -284,12 +296,13 @@ public class RemarketingService
         var saludo = nombre is null ? "hola," : $"hola {nombre},";
         var fallback = st.Fallback.Replace("{saludo}", saludo).Replace("{vendedor}", vendedor).Replace("{producto}", producto);
 
-        if (!useAi || !_claude.IsConfigured) return (fallback, false);
+        if (!useAi) return new(fallback, false, false, null);
+        if (!_claude.IsConfigured || _claude.IsPaused) return new(null, false, false, "IA no disponible");
 
         var thread = await _db.ConversationMessages.AsNoTracking()
             .Where(m => m.LeadId == c.LeadId)
             .OrderByDescending(m => m.Timestamp)
-            .Take(25)
+            .Take(30)
             .Select(m => new { m.Direction, m.Text })
             .ToListAsync(ct);
         thread.Reverse();
@@ -297,9 +310,12 @@ public class RemarketingService
             (m.Direction == MessageDirection.Inbound ? "LEAD: " : "NOSOTROS: ") + Trunc((m.Text ?? "").Replace('\n', ' '), 300)));
 
         var system =
-            $"Escribís UN mensaje de WhatsApp para retomar una charla de venta que se enfrió hace {c.IdleDays} días. " +
-            $"Sos {vendedor}, del equipo de {producto}.\n" +
-            "REGLAS:\n" +
+            $"Vas a retomar por WhatsApp una charla de venta de {producto} que se enfrió hace {c.IdleDays} días. Sos {vendedor}, del equipo de {producto}.\n" +
+            "PASO 1, decidí si corresponde escribirle. escribir = true SOLO si del otro lado hay alguien que evaluó contratar " +
+            $"{producto} y no lo contrató. escribir = false si: ya es cliente (paga, usa el sistema, pide soporte o cambios de su cuenta), " +
+            "es un proveedor o alguien que nos quiere vender algo, es un conocido, un amigo o alguien del equipo, pidió que no le escriban, " +
+            "o la charla no es de venta.\n" +
+            "PASO 2, si escribir = true, escribí el mensaje con estas reglas:\n" +
             "- todo en minúscula. sin signos de apertura (nada de ¿ ni ¡). sin emojis.\n" +
             "- voseo argentino natural, sin muletillas (nada de che, capo, viste, boludo).\n" +
             "- máximo 3 oraciones y 350 caracteres.\n" +
@@ -307,22 +323,52 @@ public class RemarketingService
             "- nombrá en pocas palabras algo concreto de la charla (lo que preguntó o dónde quedó) para que se note que no es un mensaje masivo.\n" +
             "- no inventes datos, precios, descuentos ni funciones que no estén en la charla.\n" +
             "- terminá proponiendo una llamada corta esta semana y preguntando qué día y horario le queda cómodo.\n" +
-            $"OBJETIVO DE ESTE MENSAJE: {st.Goal}.\n" +
+            $"OBJETIVO DEL MENSAJE: {st.Goal}.\n" +
             $"EJEMPLO DE TONO (no lo copies literal, adaptalo a la charla): {fallback}\n" +
-            "Respondé SOLO con el texto del mensaje, sin comillas ni explicaciones.";
+            "Respondé SOLO un JSON, sin nada más: {\"escribir\": true|false, \"motivo\": \"máximo 12 palabras\", \"mensaje\": \"el texto, o vacío si escribir es false\"}";
 
+        string? raw;
         try
         {
-            var raw = await _claude.CompleteAsync(system, "CHARLA (la más vieja arriba):\n" + chat, 300, null, "remarketing", ct);
-            var clean = Sanitize(raw);
-            if (clean is not null && clean.StartsWith("hola")) return (clean, true);
-            _log.LogInformation("Remarketing: opener de IA descartado para {Lead}, sale el fijo", c.LeadId);
+            raw = await _claude.CompleteAsync(system, "CHARLA (la más vieja arriba):\n" + chat, 500, null, "remarketing", ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _log.LogWarning(ex, "Remarketing: falló la IA para {Lead}, sale el fijo", c.LeadId);
+            _log.LogWarning(ex, "Remarketing: falló la IA para {Lead}", c.LeadId);
+            return new(null, false, false, "IA no disponible");
         }
-        return (fallback, false);
+        if (raw is null) return new(null, false, false, "IA no disponible");
+
+        var (write, reason, message) = ParseDecision(raw);
+        if (write is null)
+        {
+            _log.LogInformation("Remarketing: respuesta de IA ilegible para {Lead}", c.LeadId);
+            return new(null, false, false, "IA no disponible");
+        }
+        if (write == false) return new(null, true, true, string.IsNullOrWhiteSpace(reason) ? "la IA lo descartó" : reason);
+
+        var clean = Sanitize(message);
+        if (clean is not null && clean.StartsWith("hola")) return new(clean, true, false, reason);
+        _log.LogInformation("Remarketing: el texto de la IA no pasó las reglas de tono para {Lead}, sale el fijo", c.LeadId);
+        return new(fallback, false, false, reason);
+    }
+
+    private static (bool? Write, string? Reason, string? Message) ParseDecision(string raw)
+    {
+        var a = raw.IndexOf('{');
+        var b = raw.LastIndexOf('}');
+        if (a < 0 || b <= a) return (null, null, null);
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw[a..(b + 1)]);
+            var r = doc.RootElement;
+            bool? write = r.TryGetProperty("escribir", out var e) && e.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                ? e.GetBoolean() : null;
+            var reason = r.TryGetProperty("motivo", out var m) ? m.GetString() : null;
+            var msg = r.TryGetProperty("mensaje", out var t) ? t.GetString() : null;
+            return (write, reason, msg);
+        }
+        catch (System.Text.Json.JsonException) { return (null, null, null); }
     }
 
     /// <summary>Aplica las reglas de tono a la salida de la IA; null si no se puede usar.</summary>
@@ -391,7 +437,7 @@ public class RemarketingService
     public Task<int> UsedTodayAsync(Guid sellerId, CancellationToken ct)
     {
         var dayStart = DayStartAr(DateTimeOffset.UtcNow);
-        return _db.RemarketingAttempts.CountAsync(a => a.SellerId == sellerId && a.EnqueuedAt >= dayStart, ct);
+        return _db.RemarketingAttempts.CountAsync(a => a.SellerId == sellerId && a.EnqueuedAt >= dayStart && a.OutboxId != null, ct);
     }
 
     /// <summary>
@@ -407,13 +453,14 @@ public class RemarketingService
         var remaining = Math.Max(0, s.PerLinePerDay) - await UsedTodayAsync(seller.Id, ct);
         if (remaining <= 0) return 0;
 
-        var candidates = await RankAsync(s, remaining, ct);
+        // Con buffer: parte de los candidatos los descarta la IA al leer la charla.
+        var candidates = await RankAsync(s, remaining * 3, ct);
         if (candidates.Count == 0) return 0;
 
         var products = await _db.Products.AsNoTracking().ToDictionaryAsync(p => p.ProductKey, p => p.DisplayName, ct);
         var windowEnd = new DateTimeOffset(nowAr.Date.AddHours(s.SendHourEnd), nowAr.Offset);
         var span = windowEnd - now;
-        var step = TimeSpan.FromTicks(span.Ticks / Math.Max(1, candidates.Count));
+        var step = TimeSpan.FromTicks(span.Ticks / Math.Max(1, remaining));
         var rnd = Random.Shared;
         var count = 0;
 
@@ -422,7 +469,24 @@ public class RemarketingService
             var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == c.LeadId, ct);
             if (lead is null || string.IsNullOrWhiteSpace(lead.WhatsappPhone)) continue;
 
-            var (text, ai) = await ComposeAsync(c, seller, products.GetValueOrDefault(lead.ProductKey, lead.ProductKey), s.PersonalizeWithAi, ct);
+            if (count >= remaining) break;
+            var composed = await ComposeAsync(c, seller, products.GetValueOrDefault(lead.ProductKey, lead.ProductKey), s.PersonalizeWithAi, ct);
+            if (composed.Excluded)
+            {
+                // Queda registrado para no volver a evaluarlo (ni gastar IA) todos los días.
+                _db.RemarketingAttempts.Add(new RemarketingAttempt
+                {
+                    Id = Guid.NewGuid(), LeadId = lead.Id, SellerId = seller.Id, Stage = ExcludedStage,
+                    Score = c.Score, Message = composed.Reason ?? "", PersonalizedWithAi = true, EnqueuedAt = now,
+                });
+                continue;
+            }
+            if (composed.Text is null)
+            {
+                _log.LogWarning("Remarketing: la IA no está disponible — no se encola nada hasta que vuelva ({Seller})", seller.DisplayName);
+                break;
+            }
+            var (text, ai) = (composed.Text, composed.Ai);
             // Primero sale enseguida; el resto repartido en la ventana, ±30% para no ser un reloj.
             var offset = count == 0 ? TimeSpan.Zero
                 : step * count + TimeSpan.FromTicks((long)(step.Ticks * (rnd.NextDouble() * 0.6 - 0.3)));

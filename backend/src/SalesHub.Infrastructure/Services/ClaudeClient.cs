@@ -45,6 +45,9 @@ public partial class ClaudeClient
     /// <summary>True si hay API key — los callers no procesan nada si está sin configurar.</summary>
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_opts.ApiKey);
 
+    /// <summary>True mientras está abierto el cortacircuitos por falta de crédito.</summary>
+    public bool IsPaused => IsCircuitOpen(out _);
+
     /// <summary>
     /// Una llamada: <paramref name="systemPrompt"/> va como bloque cacheado
     /// (ephemeral) — conviene que sea la parte estática (playbook + producto)

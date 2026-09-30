@@ -35,7 +35,8 @@ type Status = {
   settings: Settings;
   lines: Line[];
   pool: number;
-  totals: { enqueued: number; sent: number; replied: number };
+  totals: { enqueued: number; sent: number; replied: number; excluded: number };
+  aiPaused: boolean;
   byStage: StageRow[];
   products: { productKey: string; displayName: string }[];
 };
@@ -50,8 +51,10 @@ type PreviewItem = {
   inboundCount: number;
   idleDays: number;
   lastInbound: string;
-  message: string;
+  message: string | null;
   ai: boolean;
+  excluded: boolean;
+  reason: string | null;
 };
 
 const pct = (a: number, b: number) => (b > 0 ? `${Math.round((100 * a) / b)}%` : '—');
@@ -124,10 +127,18 @@ export default function Remarketing() {
             <div className="text-xs text-slate-500">
               {data.pool.toLocaleString('es-AR')} leads en la cola (aprox.) · enviados {data.totals.sent} · contestaron{' '}
               {data.totals.replied} ({pct(data.totals.replied, data.totals.sent)})
+              {data.totals.excluded > 0 && <> · la IA descartó {data.totals.excluded} (clientes, proveedores, conocidos)</>}
             </div>
           </div>
           <Switch on={form.enabled} onClick={() => set('enabled', !form.enabled)} title="Prender o apagar la campaña" />
         </div>
+
+        {data.aiPaused && (
+          <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+            La IA no está disponible (la cuenta de Anthropic está sin crédito). Con "personalizar con IA" prendido la
+            campaña espera y no manda nada: la IA es la que descarta a clientes y proveedores antes de escribir.
+          </div>
+        )}
 
         {selectedLines.length === 0 ? (
           <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -294,10 +305,18 @@ export default function Remarketing() {
                     <span>hace {it.idleDays} días</span>
                   </div>
                   <div className="mt-1 text-xs text-slate-500">último suyo: “{it.lastInbound.slice(0, 160)}”</div>
-                  <div className="mt-2 rounded bg-emerald-50 px-2.5 py-2 text-slate-800">
-                    {it.message}
-                    <span className="ml-2 text-[10px] text-slate-400">{it.ai ? 'IA' : 'fijo'}</span>
-                  </div>
+                  {it.excluded ? (
+                    <div className="mt-2 rounded bg-slate-100 px-2.5 py-2 text-slate-600">
+                      No se le escribe: {it.reason}
+                    </div>
+                  ) : it.message === null ? (
+                    <div className="mt-2 rounded bg-rose-50 px-2.5 py-2 text-rose-700">IA no disponible: con la IA prendida, a este no se le escribiría todavía.</div>
+                  ) : (
+                    <div className="mt-2 rounded bg-emerald-50 px-2.5 py-2 text-slate-800">
+                      {it.message}
+                      <span className="ml-2 text-[10px] text-slate-400">{it.ai ? 'IA' : 'fijo'}</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

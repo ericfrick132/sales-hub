@@ -20,10 +20,11 @@ public class RemarketingController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly RemarketingService _svc;
+    private readonly ClaudeClient _claude;
 
-    public RemarketingController(ApplicationDbContext db, RemarketingService svc)
+    public RemarketingController(ApplicationDbContext db, RemarketingService svc, ClaudeClient claude)
     {
-        _db = db; _svc = svc;
+        _db = db; _svc = svc; _claude = claude;
     }
 
     public record SettingsRequest(bool Enabled, int PerLinePerDay, int MinIdleDays, int? MaxIdleDays,
@@ -75,7 +76,9 @@ public class RemarketingController : ControllerBase
                 Sent = _db.Outbox.Any(o => o.Id == a.OutboxId && o.Status == OutboxStatus.Sent),
             })
             .ToListAsync(ct);
-        var byStage = attempts.GroupBy(a => a.Stage).Select(g => new
+        var excluded = attempts.Count(a => a.Stage == RemarketingService.ExcludedStage);
+        var real = attempts.Where(a => a.Stage != RemarketingService.ExcludedStage).ToList();
+        var byStage = real.GroupBy(a => a.Stage).Select(g => new
         {
             stage = g.Key,
             label = RemarketingService.StageOf(g.Key).Label,
@@ -98,10 +101,12 @@ public class RemarketingController : ControllerBase
             pool = await _svc.CountPoolAsync(s, ct),
             totals = new
             {
-                enqueued = attempts.Count,
-                sent = attempts.Count(a => a.Sent),
-                replied = attempts.Count(a => a.RepliedAt != null),
+                enqueued = real.Count,
+                sent = real.Count(a => a.Sent),
+                replied = real.Count(a => a.RepliedAt != null),
+                excluded,
             },
+            aiPaused = s.PersonalizeWithAi && (!_claude.IsConfigured || _claude.IsPaused),
             byStage,
             products,
             stages = RemarketingService.Stages.Select(x => new { x.Key, x.Label }),
@@ -163,13 +168,13 @@ public class RemarketingController : ControllerBase
         var items = new List<object>();
         foreach (var c in candidates)
         {
-            var (text, usedAi) = await _svc.ComposeAsync(c, seller, products.GetValueOrDefault(c.ProductKey, c.ProductKey), ai, ct);
+            var r = await _svc.ComposeAsync(c, seller, products.GetValueOrDefault(c.ProductKey, c.ProductKey), ai, ct);
             items.Add(new
             {
                 c.LeadId, c.Name, c.ProductKey, c.Stage,
                 stageLabel = RemarketingService.StageOf(c.Stage).Label,
                 c.Score, c.Owed, c.InboundCount, c.IdleDays, c.LastInbound,
-                message = text, ai = usedAi,
+                message = r.Text, ai = r.Ai, excluded = r.Excluded, reason = r.Reason,
             });
         }
         return Ok(new { seller = seller.DisplayName, items });
