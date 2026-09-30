@@ -20,7 +20,9 @@ public static class IntentReplyPlanner
     // Reglas que salieron de comparar la simulación con lo que respondió de verdad un vendedor
     // sobre 8.074 mensajes (2026-09-30). Todas sobre texto normalizado (IntentText).
     /// <summary>Nuestro último mensaje cerró la charla: recién ahí un "ok/gracias" no se contesta.</summary>
-    private static readonly Regex Closing = new(@"cualquier (cosa|duda)|(que )?andes bien|suerte|abrazo|exitos|a disposicion|estamos (aca|en contacto)|cuando (quieras|lo necesites)|buen (dia|finde|fin de semana)|saludos|nos hablamos|hablamos", RegexOptions.Compiled);
+    private static readonly Regex Closing = new(@"cualquier (cosa|duda)|(que )?andes bien|suerte|abrazo|exitos|a disposicion|estamos (aca|en contacto)|cuando lo necesites|buen (dia|finde|fin de semana)|saludos|nos hablamos|hablamos", RegexOptions.Compiled);
+    /// <summary>Nuestro último mensaje le pedía algo (mail, datos): un "sí" ahí es un sí a eso, no un cierre.</summary>
+    private static readonly Regex AsksForSomething = new(@"(me )?pasas|pasame|dejame|decime|contame|mandame|tu mail|el mail|tu nombre|el nombre", RegexOptions.Compiled);
     /// <summary>Ya dio una fecha u horario: no se le vuelve a preguntar "para cuándo".</summary>
     private static readonly Regex HasWhen = new(@"\bN\b|manana|hoy|pasado|lunes|martes|miercoles|jueves|viernes|sabado|domingo|semana|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|fin de mes", RegexOptions.Compiled);
     /// <summary>Amenaza o insulto: no se contesta nada.</summary>
@@ -40,7 +42,8 @@ public static class IntentReplyPlanner
         {
             case "ack":
                 // En medio de la charla el vendedor sigue con la próxima pregunta: callarse solo si ya se despidió.
-                if (normPrev is null || !Closing.IsMatch(normPrev)) return new(ToHuman, null, "la charla sigue: hay que continuar el guion");
+                if (normPrev is null || !Closing.IsMatch(normPrev) || AsksForSomething.IsMatch(normPrev))
+                    return new(ToHuman, null, "la charla sigue: hay que continuar el guion");
                 return new(NoReply, null, "confirmación después de un cierre");
             case "dato_calificacion":
                 return new(ToHuman, null, "hay que seguir con la próxima pregunta del guion");
