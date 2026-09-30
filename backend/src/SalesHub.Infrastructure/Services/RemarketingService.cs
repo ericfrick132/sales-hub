@@ -36,9 +36,11 @@ public class RemarketingService
     private readonly ClaudeClient _claude;
     private readonly ILogger<RemarketingService> _log;
 
-    public RemarketingService(ApplicationDbContext db, ClaudeClient claude, ILogger<RemarketingService> log)
+    private readonly PersonHandoffService _handoff;
+
+    public RemarketingService(ApplicationDbContext db, ClaudeClient claude, PersonHandoffService handoff, ILogger<RemarketingService> log)
     {
-        _db = db; _claude = claude; _log = log;
+        _db = db; _claude = claude; _handoff = handoff; _log = log;
     }
 
     // ── Etapas ─────────────────────────────────────────────────────────────
@@ -445,17 +447,49 @@ public class RemarketingService
         return _db.RemarketingAttempts.CountAsync(a => a.SellerId == sellerId && a.EnqueuedAt >= dayStart && a.OutboxId != null, ct);
     }
 
+    /// <summary>Franjas válidas ("9-12" → [9, 12)), ordenadas; si se superponen queda la primera.</summary>
+    public static List<(int Start, int End)> ParseWindows(IEnumerable<string>? raw)
+    {
+        var parsed = new List<(int Start, int End)>();
+        foreach (var w in raw ?? Array.Empty<string>())
+        {
+            var parts = (w ?? "").Split('-', StringSplitOptions.TrimEntries);
+            if (parts.Length == 2 && int.TryParse(parts[0], out var a) && int.TryParse(parts[1], out var b)
+                && a >= 0 && b <= 24 && a < b)
+                parsed.Add((a, b));
+        }
+        var result = new List<(int Start, int End)>();
+        foreach (var w in parsed.OrderBy(x => x.Start))
+            if (result.Count == 0 || w.Start >= result[^1].End) result.Add(w);
+        return result;
+    }
+
+    /// <summary>1 = lunes … 7 = domingo.</summary>
+    public static int IsoWeekday(DateTimeOffset ar) => ar.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)ar.DayOfWeek;
+
     /// <summary>
-    /// Encola lo que falta del cupo de hoy para una línea, repartido en lo que queda de la
-    /// ventana horaria (con jitter). Devuelve cuántos encoló.
+    /// Encola la parte del cupo de hoy que le toca a la franja actual (el cupo se reparte entre las
+    /// franjas que quedan en el día), espaciada en lo que queda de la franja con jitter. Fuera de los
+    /// días o franjas configurados no encola nada. Devuelve cuántos encoló.
     /// </summary>
     public async Task<int> EnqueueForSellerAsync(RemarketingSettings s, Seller seller, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
         var nowAr = TimeZoneInfo.ConvertTime(now, LeadEntryService.ArTz);
-        if (nowAr.Hour < s.SendHourStart || nowAr.Hour >= s.SendHourEnd) return 0;
+        if (!s.SendWeekdays.Contains(IsoWeekday(nowAr))) return 0;
+        var windows = ParseWindows(s.SendWindows);
+        var current = windows.FirstOrDefault(w => nowAr.Hour >= w.Start && nowAr.Hour < w.End);
+        if (current == default) return 0;
 
-        var remaining = Math.Max(0, s.PerLinePerDay) - await UsedTodayAsync(seller.Id, ct);
+        var dayStart = DayStartAr(now);
+        var windowStart = new DateTimeOffset(nowAr.Date.AddHours(current.Start), nowAr.Offset);
+        var usedBefore = await _db.RemarketingAttempts.CountAsync(a => a.SellerId == seller.Id && a.OutboxId != null
+            && a.EnqueuedAt >= dayStart && a.EnqueuedAt < windowStart, ct);
+        var usedHere = await _db.RemarketingAttempts.CountAsync(a => a.SellerId == seller.Id && a.OutboxId != null
+            && a.EnqueuedAt >= windowStart, ct);
+        var windowsLeft = windows.Count(w => w.Start >= current.Start);
+        var windowQuota = (int)Math.Ceiling(Math.Max(0, s.PerLinePerDay - usedBefore) / (double)Math.Max(1, windowsLeft));
+        var remaining = windowQuota - usedHere;
         if (remaining <= 0) return 0;
 
         // Con buffer: parte de los candidatos los descarta la IA al leer la charla.
@@ -463,7 +497,7 @@ public class RemarketingService
         if (candidates.Count == 0) return 0;
 
         var products = await _db.Products.AsNoTracking().ToDictionaryAsync(p => p.ProductKey, p => p.DisplayName, ct);
-        var windowEnd = new DateTimeOffset(nowAr.Date.AddHours(s.SendHourEnd), nowAr.Offset);
+        var windowEnd = new DateTimeOffset(nowAr.Date.AddHours(current.End), nowAr.Offset);
         var span = windowEnd - now;
         var step = TimeSpan.FromTicks(span.Ticks / Math.Max(1, remaining));
         var rnd = Random.Shared;
@@ -569,11 +603,12 @@ public class RemarketingService
     }
 
     /// <summary>
-    /// El lead contestó después de un mensaje de remarketing: queda registrado para la métrica
-    /// y se le pone una próxima acción "coordinar la llamada" para que aparezca hoy en el CRM.
-    /// No guarda: lo persiste quien llama, en la misma escritura que el mensaje entrante.
+    /// El lead contestó después de un mensaje de remarketing: queda registrado para la métrica, se
+    /// le pone una próxima acción "coordinar la llamada" y se le pasa a la persona configurada (Mateo)
+    /// con el resumen, igual que el bot de pre-calificación. No guarda: lo persiste quien llama, en la
+    /// misma escritura que el mensaje entrante.
     /// </summary>
-    public async Task OnReplyAsync(Lead lead, DateTimeOffset at, CancellationToken ct)
+    public async Task OnReplyAsync(Lead lead, DateTimeOffset at, CancellationToken ct, string? latestText = null)
     {
         if (!lead.Tags.Contains(Tag, StringComparer.OrdinalIgnoreCase)) return;
         var attempt = await _db.RemarketingAttempts
@@ -589,13 +624,8 @@ public class RemarketingService
         attempt.RepliedAt = at;
         lead.NextActionAt = DateTimeOffset.UtcNow;
         lead.NextActionNote = "Contestó al remarketing: coordinar la llamada";
-        _db.LeadNotes.Add(new LeadNote
-        {
-            Id = Guid.NewGuid(),
-            LeadId = lead.Id,
-            Kind = LeadNoteKind.System,
-            Text = "Contestó al mensaje de remarketing. Coordinar la llamada.",
-            CreatedAt = DateTimeOffset.UtcNow,
-        });
+        var settings = await GetSettingsAsync(ct);
+        await _handoff.HandoffAsync(lead, settings.HandoffSellerId, "contestó al remarketing", latestText,
+            $"le habiamos escrito: {attempt.Message}", ct);
     }
 }

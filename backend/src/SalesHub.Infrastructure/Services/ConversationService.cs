@@ -230,7 +230,7 @@ public class ConversationService
 
         // Respuesta a un mensaje de remarketing: métrica + "coordinar la llamada" en el CRM.
         if (!incoming.FromSync && !IsHistory(incoming))
-            await _remarketing.OnReplyAsync(lead, incoming.Timestamp, ct);
+            await _remarketing.OnReplyAsync(lead, incoming.Timestamp, ct, incoming.Text);
 
         if (IsHistory(incoming))
         {

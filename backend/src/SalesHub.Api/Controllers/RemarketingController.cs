@@ -28,7 +28,8 @@ public class RemarketingController : ControllerBase
     }
 
     public record SettingsRequest(bool Enabled, int PerLinePerDay, int MinIdleDays, int? MaxIdleDays,
-        int SendHourStart, int SendHourEnd, List<Guid>? SenderSellerIds, List<string>? ProductKeys, bool PersonalizeWithAi);
+        List<string>? SendWindows, List<int>? SendWeekdays, List<Guid>? SenderSellerIds, List<string>? ProductKeys,
+        bool PersonalizeWithAi, Guid? HandoffSellerId);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -94,7 +95,7 @@ public class RemarketingController : ControllerBase
         {
             settings = new
             {
-                s.Enabled, s.PerLinePerDay, s.MinIdleDays, s.MaxIdleDays, s.SendHourStart, s.SendHourEnd,
+                s.Enabled, s.PerLinePerDay, s.MinIdleDays, s.MaxIdleDays, s.SendWindows, s.SendWeekdays, s.HandoffSellerId,
                 s.SenderSellerIds, s.ProductKeys, s.PersonalizeWithAi, s.UpdatedAt,
             },
             lines,
@@ -121,8 +122,13 @@ public class RemarketingController : ControllerBase
         if (req.MinIdleDays is < 1 or > 365) return BadRequest(new { error = "Los días sin actividad van de 1 a 365." });
         if (req.MaxIdleDays is not null && req.MaxIdleDays <= req.MinIdleDays)
             return BadRequest(new { error = "La antigüedad máxima tiene que ser mayor que la mínima." });
-        if (req.SendHourStart is < 0 or > 23 || req.SendHourEnd is < 1 or > 24 || req.SendHourStart >= req.SendHourEnd)
-            return BadRequest(new { error = "La ventana horaria no es válida (inicio < fin, hora Argentina)." });
+        var windows = RemarketingService.ParseWindows(req.SendWindows);
+        if (windows.Count == 0 || windows.Count != (req.SendWindows ?? new()).Count(w => !string.IsNullOrWhiteSpace(w)))
+            return BadRequest(new { error = "Las franjas tienen que ser como 9-12 (hora Argentina, desde < hasta, sin superponerse)." });
+        var days = (req.SendWeekdays ?? new()).Where(d => d is >= 1 and <= 7).Distinct().OrderBy(d => d).ToList();
+        if (days.Count == 0) return BadRequest(new { error = "Elegí al menos un día." });
+        if (req.HandoffSellerId is not null && !await _db.Sellers.AnyAsync(x => x.Id == req.HandoffSellerId && x.IsActive, ct))
+            return BadRequest(new { error = "La persona a la que se pasa el lead tiene que ser un vendedor activo." });
 
         var s = await _svc.GetSettingsAsync(ct);
         var newSellers = (req.SenderSellerIds ?? new()).Distinct().ToList();
@@ -132,8 +138,9 @@ public class RemarketingController : ControllerBase
         s.PerLinePerDay = req.PerLinePerDay;
         s.MinIdleDays = req.MinIdleDays;
         s.MaxIdleDays = req.MaxIdleDays;
-        s.SendHourStart = req.SendHourStart;
-        s.SendHourEnd = req.SendHourEnd;
+        s.SendWindows = windows.Select(w => $"{w.Start}-{w.End}").ToList();
+        s.SendWeekdays = days;
+        s.HandoffSellerId = req.HandoffSellerId;
         s.SenderSellerIds = newSellers;
         s.ProductKeys = (req.ProductKeys ?? new()).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct().ToList();
         s.PersonalizeWithAi = req.PersonalizeWithAi;

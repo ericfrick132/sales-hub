@@ -9,8 +9,9 @@ type Settings = {
   perLinePerDay: number;
   minIdleDays: number;
   maxIdleDays: number | null;
-  sendHourStart: number;
-  sendHourEnd: number;
+  sendWindows: string[];
+  sendWeekdays: number[];
+  handoffSellerId: string | null;
   senderSellerIds: string[];
   productKeys: string[];
   personalizeWithAi: boolean;
@@ -115,7 +116,7 @@ export default function Remarketing() {
           charla, para <b>coordinar una llamada</b>. Primero van a los que les debíamos respuesta, después los
           que más escribieron; la antigüedad desempata. Cada uno recibe un solo mensaje y queda etiquetado{' '}
           <code className="text-xs bg-slate-100 px-1 rounded">bot-remarketing</code>. Si contesta, aparece en el
-          CRM con la próxima acción "coordinar la llamada".
+          CRM con la próxima acción "coordinar la llamada" y se le pasa a la persona elegida con un resumen.
         </p>
       </div>
 
@@ -200,14 +201,34 @@ export default function Remarketing() {
               onChange={(e) => set('maxIdleDays', e.target.value === '' ? null : Number(e.target.value))} />
           </label>
           <label className="space-y-1">
-            <div className="text-slate-600">Desde (hora AR)</div>
-            <input type="number" min={0} max={23} className="input w-full" value={form.sendHourStart}
-              onChange={(e) => set('sendHourStart', Number(e.target.value))} />
+            <div className="text-slate-600">Franjas (hora AR, ej. 9-12, 17-20)</div>
+            <input className="input w-full" value={form.sendWindows.join(', ')}
+              onChange={(e) => set('sendWindows', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} />
+            <div className="text-[11px] text-slate-400">El primer contacto de 8 a 12 h contesta 36% contra 26% al mediodía y a la tarde.</div>
           </label>
+          <div className="space-y-1">
+            <div className="text-slate-600">Días</div>
+            <div className="flex flex-wrap gap-1.5">
+              {['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'].map((d, i) => (
+                <label key={d} className="flex items-center gap-1 text-xs">
+                  <input type="checkbox" checked={form.sendWeekdays.includes(i + 1)}
+                    onChange={() => set('sendWeekdays', form.sendWeekdays.includes(i + 1)
+                      ? form.sendWeekdays.filter((x) => x !== i + 1)
+                      : [...form.sendWeekdays, i + 1].sort())} />
+                  {d}
+                </label>
+              ))}
+            </div>
+            <div className="text-[11px] text-slate-400">Lunes a jueves ~31% contra ~26% viernes y fin de semana.</div>
+          </div>
           <label className="space-y-1">
-            <div className="text-slate-600">Hasta (hora AR)</div>
-            <input type="number" min={1} max={24} className="input w-full" value={form.sendHourEnd}
-              onChange={(e) => set('sendHourEnd', Number(e.target.value))} />
+            <div className="text-slate-600">Si contesta, pasar a</div>
+            <select className="input w-full" value={form.handoffSellerId ?? ''}
+              onChange={(e) => set('handoffSellerId', e.target.value || null)}>
+              <option value="">número maestro</option>
+              {data.lines.map((l) => <option key={l.sellerId} value={l.sellerId}>{l.name}</option>)}
+            </select>
+            <div className="text-[11px] text-slate-400">Le llega el resumen por WhatsApp y el bot se calla en esa charla.</div>
           </label>
           <label className="flex items-center gap-2 pt-6">
             <input type="checkbox" checked={form.personalizeWithAi}

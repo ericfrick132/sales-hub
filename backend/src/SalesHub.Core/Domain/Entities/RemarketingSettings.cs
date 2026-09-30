@@ -23,9 +23,17 @@ public class RemarketingSettings
     /// <summary>Tope de antigüedad (días desde el último mensaje). null = sin tope.</summary>
     public int? MaxIdleDays { get; set; }
 
-    /// <summary>Ventana de envío, hora Argentina [start, end).</summary>
-    public int SendHourStart { get; set; } = 10;
-    public int SendHourEnd { get; set; } = 19;
+    /// <summary>
+    /// Franjas de envío, hora Argentina, "desde-hasta" ([desde, hasta)). Medido sobre 9.332 intentos:
+    /// el primer contacto de 8 a 12 h contesta 36% contra 26% al mediodía/tarde y 11% de noche.
+    /// </summary>
+    public List<string> SendWindows { get; set; } = new() { "9-12" };
+
+    /// <summary>Días de envío (1 = lunes … 7 = domingo). Lunes a jueves ~31% contra ~26% viernes y fin de semana.</summary>
+    public List<int> SendWeekdays { get; set; } = new() { 1, 2, 3, 4 };
+
+    /// <summary>A quién se le pasa el lead cuando contesta (resumen por WhatsApp). null = aviso al maestro.</summary>
+    public Guid? HandoffSellerId { get; set; }
 
     /// <summary>
     /// Por qué vendedores (líneas) sale. El lead pasa a ser de ese vendedor: el dueño original

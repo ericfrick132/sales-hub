@@ -13,6 +13,8 @@ public class RemarketingSettingsConfiguration : IEntityTypeConfiguration<Remarke
         b.Property(x => x.Id).ValueGeneratedNever(); // fila única (Id = 1)
         b.Property(x => x.SenderSellerIds).HasDefaultValueSql("'{}'");
         b.Property(x => x.ProductKeys).HasDefaultValueSql("'{}'");
+        b.Property(x => x.SendWindows).HasDefaultValueSql("'{9-12}'");
+        b.Property(x => x.SendWeekdays).HasDefaultValueSql("'{1,2,3,4}'");
     }
 }
 
