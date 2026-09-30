@@ -103,7 +103,8 @@ public class ConversationsController : ControllerBase
     {
         // TODOS ven TODOS los chats. La atención dejó de ser "cada vendedor con sus leads":
         // hay una línea compartida y quien atiende necesita la bandeja completa.
-        var leadQ = _db.Leads.AsNoTracking().Include(l => l.Product).Include(l => l.Seller).AsQueryable();
+        var leadQ = _db.Leads.AsNoTracking().Include(l => l.Product).Include(l => l.Seller)
+            .Where(l => !l.Tags.Contains(SandboxController.Tag)).AsQueryable();
         if (sellerId is not null) leadQ = leadQ.Where(l => l.SellerId == sellerId);
 
         // Filtrar por celular = filtrar por la línea a la que ese celular está asignado.

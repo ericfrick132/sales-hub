@@ -56,22 +56,7 @@ public class PersonHandoffService
             CreatedAt = now,
         });
 
-        // Resumen: lo último que escribió el lead + el contexto del pase.
-        var previous = await _db.ConversationMessages.AsNoTracking()
-            .Where(m => m.LeadId == lead.Id && m.Direction == MessageDirection.Inbound)
-            .OrderByDescending(m => m.Timestamp).Take(4).Select(m => m.Text).ToListAsync(ct);
-        previous.Reverse();
-        if (!string.IsNullOrWhiteSpace(latestInbound) && (previous.Count == 0 || previous[^1] != latestInbound))
-            previous.Add(latestInbound);
-        var lines = previous.Where(t => !string.IsNullOrWhiteSpace(t)).TakeLast(4)
-            .Select(t => "- " + (t.Length > 160 ? t[..160] + "…" : t).Replace('\n', ' '));
-        var app = await _db.Products.AsNoTracking().Where(p => p.ProductKey == lead.ProductKey)
-            .Select(p => p.DisplayName).FirstOrDefaultAsync(ct) ?? lead.ProductKey;
-        var summary = $"lead para vos de {app}: {lead.Name} ({lead.WhatsappPhone})\n" +
-                      $"motivo: {reason}\n" +
-                      (string.IsNullOrWhiteSpace(context) ? "" : context.Trim() + "\n") +
-                      "lo que escribio:\n" + string.Join("\n", lines) + "\n" +
-                      "seguilo en el mismo chat (el bot ya no le contesta).";
+        var summary = await BuildSummaryAsync(lead, reason, latestInbound, context, ct);
 
         var instance = lead.SellerId is null ? null : await _db.EvolutionInstances.AsNoTracking()
             .Where(i => i.SellerId == lead.SellerId).Select(i => i.InstanceName).FirstOrDefaultAsync(ct);
@@ -88,5 +73,27 @@ public class PersonHandoffService
             await _alerter.AlertAsync(summary, ct);
         }
         _log.LogInformation("Lead {Lead} pasado a {Person} ({Reason})", lead.Id, person?.DisplayName, reason);
+    }
+
+    /// <summary>El texto del resumen que le llega a la persona (sin mandar nada; lo usa también el simulador).</summary>
+    public async Task<string> BuildSummaryAsync(Lead lead, string reason, string? latestInbound, string? context, CancellationToken ct)
+    {
+        // Resumen: lo último que escribió el lead + el contexto del pase.
+        var previous = await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.LeadId == lead.Id && m.Direction == MessageDirection.Inbound)
+            .OrderByDescending(m => m.Timestamp).Take(4).Select(m => m.Text).ToListAsync(ct);
+        previous.Reverse();
+        if (!string.IsNullOrWhiteSpace(latestInbound) && (previous.Count == 0 || previous[^1] != latestInbound))
+            previous.Add(latestInbound);
+        var lines = previous.Where(t => !string.IsNullOrWhiteSpace(t)).TakeLast(4)
+            .Select(t => "- " + (t.Length > 160 ? t[..160] + "…" : t).Replace('\n', ' '));
+        var app = await _db.Products.AsNoTracking().Where(p => p.ProductKey == lead.ProductKey)
+            .Select(p => p.DisplayName).FirstOrDefaultAsync(ct) ?? lead.ProductKey;
+        var summary = $"lead para vos de {app}: {lead.Name} ({lead.WhatsappPhone})\n" +
+                      $"motivo: {reason}\n" +
+                      (string.IsNullOrWhiteSpace(context) ? "" : context.Trim() + "\n") +
+                      "lo que escribio:\n" + string.Join("\n", lines) + "\n" +
+                      "seguilo en el mismo chat (el bot ya no le contesta).";
+        return summary;
     }
 }

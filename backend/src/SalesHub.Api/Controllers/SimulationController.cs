@@ -33,7 +33,8 @@ public class SimulationController : ControllerBase
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
         var leads = _db.Leads.AsNoTracking()
-            .Where(l => _db.ConversationMessages.Any(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound));
+            .Where(l => !l.Tags.Contains(SandboxController.Tag)
+                     && _db.ConversationMessages.Any(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound));
         if (!string.IsNullOrWhiteSpace(product)) leads = leads.Where(l => l.ProductKey == product);
         if (!string.IsNullOrWhiteSpace(q)) { var t = q.Trim().ToLower(); leads = leads.Where(l => l.Name.ToLower().Contains(t)); }
         leads = filter switch

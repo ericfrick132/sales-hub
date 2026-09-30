@@ -73,6 +73,7 @@ export default function Layout() {
           { to: '/products', label: 'Aplicaciones' },
           { to: '/diccionario', label: 'Diccionario de respuestas' },
           { to: '/simulacion', label: 'Simulación del bot' },
+          { to: '/probar-bot', label: 'Probar el bot' },
           { to: '/reglas-ia', label: 'Reglas IA' },
           { to: '/onboarding-apps', label: 'Onboarding apps' },
           { to: '/transcripcion', label: 'Transcripción' },

@@ -89,9 +89,11 @@ public class CrmController : ControllerBase
     /// </summary>
     private IQueryable<Lead> VisibleLeads()
     {
-        if (CurrentUser.IsAdmin(User)) return _db.Leads;
+        // Los leads del simulador (/probar-bot) no son leads reales: no aparecen en el CRM.
+        var leads = _db.Leads.Where(l => !l.Tags.Contains(SandboxController.Tag));
+        if (CurrentUser.IsAdmin(User)) return leads;
         var callerId = CurrentUser.Id(User);
-        return _db.Leads.Where(l => l.SellerId == callerId);
+        return leads.Where(l => l.SellerId == callerId);
     }
 
     /// <summary>La query de leads con los filtros aplicados; null si el filtro no puede matchear nada.</summary>

@@ -55,6 +55,12 @@ public class OnboardingService
 
     private readonly CalendlyClient _calendly;
 
+    /// <summary>Simulador (/probar-bot): la reserva en Calendly se simula (no se crea nada).</summary>
+    public bool DryRunBooking { get; set; }
+
+    /// <summary>Simulador (/probar-bot): el alta no crea la cuenta en la app ni manda el mail.</summary>
+    public bool DryRunProvision { get; set; }
+
     /// <summary>
     /// Fin de la pre-calificación con demo: ofrece 2 horarios libres reales de Calendly. Si no hay
     /// Calendly o no hay horarios, null (el caller hace el pase normal con el cierre).
@@ -86,7 +92,9 @@ public class OnboardingService
         var slot = ob.ChosenSlot!.Value;
         var phone = string.IsNullOrWhiteSpace(lead.WhatsappPhone) ? null : "+" + new string(lead.WhatsappPhone.Where(char.IsDigit).ToArray());
         var name = MessageRenderer.FirstName(ob.ContactName) is { Length: > 0 } fn ? fn : (ob.GymName ?? lead.Name);
-        var res = await _calendly.BookAsync(cfg.DemoEventTypeUri!, slot, name, email, LeadEntryService.ArTz.Id, phone, ct);
+        var res = DryRunBooking
+            ? new CalendlyClient.Booking(true, "simulado", null)
+            : await _calendly.BookAsync(cfg.DemoEventTypeUri!, slot, name, email, LeadEntryService.ArTz.Id, phone, ct);
         ob.Email ??= email;
         if (!res.Ok)
         {
@@ -494,7 +502,7 @@ public class OnboardingService
             else
             {
                 ob.Email = FixEmailTypos(email.Value.Trim());
-                var url = await _provision.RegisterAsync(provisionUrl, provisionNameField,
+                var url = DryRunProvision ? "https://simulado.invalid/acceso" : await _provision.RegisterAsync(provisionUrl, provisionNameField,
                     PresentableBusinessName(ob.GymName, lead.Name), ob.Email, ob.ContactName, cfg.ProductKey, ct, provisionExtra, lead);
                 if (string.IsNullOrWhiteSpace(url))
                 {
@@ -512,7 +520,7 @@ public class OnboardingService
                     // 2026-07-28). Si el mail no sale, el link NUNCA cae al chat — se avisa al
                     // maestro para reenviarlo a mano (queda guardado en ob.AccessUrl).
                     var appName = lead.Product?.DisplayName ?? cfg.ProductKey;
-                    var mailed = await SendAccessEmailAsync(ob.Email!, appName, url, ct);
+                    var mailed = DryRunProvision || await SendAccessEmailAsync(ob.Email!, appName, url, ct);
                     if (!mailed)
                     {
                         _log.LogError("Mail de acceso a {Email} falló (lead {Lead}, {Product}) — avisando al maestro", ob.Email, lead.Id, cfg.ProductKey);
