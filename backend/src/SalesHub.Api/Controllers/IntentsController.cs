@@ -99,6 +99,22 @@ public class IntentsController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>
+    /// Reemplaza el diccionario por la versión del análisis que viene con el deploy (recurso
+    /// embebido). Pisa las ediciones hechas a mano: la pantalla pide confirmación.
+    /// </summary>
+    [HttpPost("reset")]
+    public async Task<IActionResult> Reset(CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var seed = IntentClassifier.LoadSeed();
+        await _db.ReplyIntents.ExecuteDeleteAsync(ct);
+        _db.ReplyIntents.AddRange(seed);
+        await _db.SaveChangesAsync(ct);
+        _classifier.Invalidate();
+        return Ok(new { ok = true, count = seed.Count });
+    }
+
     public record TestRequest(string Text, string? Previous);
 
     /// <summary>Probador: qué tipo le asigna el diccionario a un texto.</summary>

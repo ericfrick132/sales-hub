@@ -4,7 +4,7 @@
  "corpus": {
   "sales_chats": 2692,
   "lead_turns": 9335,
-  "coverage_pct": 76.2
+  "coverage_pct": 75.8
  },
  "context_rules": [
   {
@@ -27,6 +27,7 @@
    "action": "no_responder",
    "reply": null,
    "note": "no responder: es el contestador de otro negocio; esperar al humano. hoy le contestamos al 75%",
+   "max_words": null,
    "metrics": {
     "turns": 480,
     "share_pct": 5.1,
@@ -42,8 +43,7 @@
     "Gracias!!por comunicarte con Intensas Box women! Pronto  Me pondre en contacto ✨💪🍑",
     "Gracias por comunicarte con Academia Aerodance. ¿Cómo podemos ayudarte?",
     "Gracias por tu mensaje. En este momento no podemos responder, pero lo haremos lo antes posible."
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "multimedia",
@@ -52,6 +52,7 @@
    "action": "transcribir_o_humano",
    "reply": null,
    "note": "audio: transcribir y reclasificar el texto. imagen/documento: pasar a humano",
+   "max_words": null,
    "metrics": {
     "turns": 665,
     "share_pct": 7.1,
@@ -66,8 +67,7 @@
     "[documentMessage]",
     "[videoMessage]",
     "[stickerMessage]"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "email",
@@ -76,6 +76,7 @@
    "action": "avanzar_guion",
    "reply": "listo, te cree la cuenta. entra de aca, es acceso directo: {link}",
    "note": "crear la cuenta y avisar; seguimiento humano a las 24 h (\"entraste?\")",
+   "max_words": null,
    "metrics": {
     "turns": 475,
     "share_pct": 5.1,
@@ -91,8 +92,7 @@
     "https://www.instagram.com/reel/DZ8jgRdszZL/?igsi=YTRzMmJ1dGxmZzR2",
     "Nombre: Pirouette Dance",
     "Siii, está en funcionamiento"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "anuncio",
@@ -101,6 +101,7 @@
    "action": "arrancar_guion",
    "reply": "buenas! soy {vendedor} de {producto}. te hago un par de preguntas rapidas para ver como te ayudo",
    "note": "opener corto + primera pregunta del guion. el mensaje largo con lista de funciones retiene 4 veces menos",
+   "max_words": null,
    "metrics": {
     "turns": 1536,
     "share_pct": 16.5,
@@ -116,23 +117,23 @@
     "Hola! Quiero el seguimiento de obra para clientes",
     "¡Hola, me gustaría activar Gym Hero para mi escuela de danzas",
     "¡Hola! Quiero más información"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "rechazo",
    "name": "No le interesa / que no le escriban",
-   "pattern": "no (me )?interesa|^no,? gracias|^no te agradezco|^chau$|no chau|no voy a (querer|contratar|seguir)|imposible pagar|no (puedo|podemos) (ocuparme|pagar)|me estoy enfocando en otro|no por ahora|por ahora no|no necesito|no estoy interesad|no quiero|dejame de|deja de escribir|no me escribas|borrame|dame de baja|no molest",
+   "pattern": "no (me )?interesa|^no,? gracias|no ?me mand(es|en)|no ?me escrib|denunci|^no te agradezco|^chau$|no chau|no voy a (querer|contratar|seguir)|imposible pagar|no (puedo|podemos) (ocuparme|pagar)|me estoy enfocando en otro|no por ahora|por ahora no|no necesito|no estoy interesad|no quiero|dejame de|deja de escribir|no me escribas|borrame|dame de baja|no molest",
    "action": "cerrar",
    "reply": "dale, sin drama. si mas adelante te sirve, escribime por aca",
    "note": "cerrar y no volver a escribir",
+   "max_words": null,
    "metrics": {
-    "turns": 74,
+    "turns": 76,
     "share_pct": 0.8,
-    "answered_pct": 80,
-    "continued_pct": 56,
+    "answered_pct": 79,
+    "continued_pct": 55,
     "continued_fast_pct": 64,
-    "continued_slow_pct": 12
+    "continued_slow_pct": 11
    },
    "examples": [
     "Te entiendo el aumento",
@@ -141,33 +142,32 @@
     "La verdad no me interesa el tema del pago me interesa el tema de los cambios de turnos y cancelaciones y asistencias",
     "por ahora no se puede",
     "por ahora no, si queres capturamos de gymhero y turnos pro por ahora"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "ya_tiene",
    "name": "Ya tiene otro sistema",
-   "pattern": "ya (tengo|tenemos|uso|usamos|contamos|trabajo|trabajamos|contrate|contratamos)|estoy con otra app|tengo otra app|tengo un (sistema|programa|software)|tenemos un (sistema|programa|software)|estamos (usando|con un)|consegui otro|uso otro",
+   "pattern": "ya (tengo|tenemos|uso|usamos|contamos con|trabajo con|trabajamos con|contrate|contratamos) (un |una |el |la |otro |otra )?(sistema|app|aplicacion|programa|software|plataforma|servicio|con)|ya (contrate|contratamos|consegui)|(?<!no )(estoy|estamos) usando(?! (ningun|nada|nigun))|actualmente (uso|usamos|estoy con|trabajo con)|(trabajamos|trabajo) con una app|usamos una app|estoy con otra app|tengo otra app|tengo un (sistema|programa|software)|tenemos un (sistema|programa|software)|estamos (usando|con un)|consegui otro|uso otro",
    "action": "objecion",
    "reply": "buenisimo. y que es lo que mas te molesta del que usas hoy? si es algo que resolvemos te muestro solo eso, si no no te hago perder tiempo",
    "note": "objeción: una sola pregunta sobre qué le molesta",
+   "max_words": null,
    "metrics": {
-    "turns": 76,
-    "share_pct": 0.8,
-    "answered_pct": 78,
-    "continued_pct": 69,
-    "continued_fast_pct": 80,
-    "continued_slow_pct": 50
+    "turns": 63,
+    "share_pct": 0.7,
+    "answered_pct": 79,
+    "continued_pct": 62,
+    "continued_fast_pct": 81,
+    "continued_slow_pct": 0
    },
    "examples": [
     "si esta en funcionamiento, 100, musculacion y clases de salon, actualmente tenemos un sistema",
     "Tengo\nUn sistema y no me está funcionando",
+    "Estoy usando agendapro",
     "Si si. Ya trabajo con una sistema",
-    "Hola buen dia",
-    "Hola cómo estas?\nAhora sí ya estaría para activar la cuenta",
-    "Estamos con un sistema viejo q se llama manager"
-   ],
-   "max_words": null
+    "Estamos con un sistema viejo q se llama manager",
+    "Ya contraté otra app. Mil gracias"
+   ]
   },
   {
    "key": "equivocado",
@@ -176,13 +176,14 @@
    "action": "cerrar",
    "reply": "perdon por la molestia, que andes bien",
    "note": "cerrar y excluir de toda cadencia",
+   "max_words": null,
    "metrics": {
-    "turns": 20,
+    "turns": 18,
     "share_pct": 0.2,
-    "answered_pct": 60,
-    "continued_pct": 67,
+    "answered_pct": 61,
+    "continued_pct": 73,
     "continued_fast_pct": 73,
-    "continued_slow_pct": 0
+    "continued_slow_pct": null
    },
    "examples": [
     "Si algo\nSi",
@@ -191,58 +192,32 @@
     "Hola! Me parece que te equivocaste!",
     "No te equivocaste de numero ya van 2 veces que me preguntan con vos son 3 yo no tengo ningun gimnacio",
     "buenas"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "desconfianza",
    "name": "¿Quién sos? / sos un bot",
-   "pattern": "quien (sos|habla|te (dio|paso))|no se quien|quien es$|de donde (me|sacaste|tenes|sos)|como (conseguiste|tenes) mi|no te (tengo|conozco)|te conozco|sos (un )?bot|es un bot|sos real|sos una persona|\\bspam\\b",
+   "pattern": "quien (sos|habla|te (dio|paso)|me escribe)|por ?que (tema )?me (escrib|habl)|que es esto|no se quien|quien es$|de donde (me|sacaste|tenes|sos)|como (conseguiste|tenes) mi|no te (tengo|conozco)|te conozco|sos (un )?bot|es un bot|sos real|sos una persona|\\bspam\\b",
    "action": "presentarse",
    "reply": "soy {vendedor} de {producto}, un sistema para cobrar cuotas y controlar el acceso en gimnasios. te escribi porque dejaste tus datos en el anuncio. si no te interesa lo dejamos aca",
    "note": "presentación en una línea con el motivo real del contacto",
+   "max_words": null,
    "metrics": {
-    "turns": 16,
+    "turns": 21,
     "share_pct": 0.2,
     "answered_pct": 81,
-    "continued_pct": 92,
+    "continued_pct": 82,
     "continued_fast_pct": 92,
     "continued_slow_pct": 100
    },
    "examples": [
     "Yo no tengo información no se quien  son adios",
+    "Que es esto norntiendo",
+    "Hola Éric buen día",
+    "Hola por que Tema me escribe?",
     "Te conozco ?",
-    "Hola buen día",
-    "Claramente sos un bot",
-    "No sé quién sos",
-    "Hola perdón no se quién sos"
-   ],
-   "max_words": null
-  },
-  {
-   "key": "pago",
-   "name": "Quiere pagar / cómo pago",
-   "pattern": "como (pago|abono|hago el pago|te pago|contrato)|pasame (el |tu )?(alias|cbu|link de pago)|\\balias\\b|\\bcbu\\b|transferi|comprobante|quiero (pagar|abonar)|donde (pago|abono)|con tarjeta|mercado ?pago",
-   "action": "cerrar_venta",
-   "reply": "genial. el alias es {alias}, me mandas el comprobante por aca y te la dejo activa en el momento",
-   "note": "URGENTE a humano: <5 min sigue 89%, >1 h 27%",
-   "metrics": {
-    "turns": 59,
-    "share_pct": 0.6,
-    "answered_pct": 95,
-    "continued_pct": 75,
-    "continued_fast_pct": 89,
-    "continued_slow_pct": 27
-   },
-   "examples": [
-    "Hola",
-    "Hola , cómo va ? Quiero pagar y no le reconoce el mail",
-    "Hola buenas tardes",
-    "Buenas no me deja abonar la suscripción",
-    "Buenas no pude hacerlo me dijeron y no pude ver cómo se usa",
-    "Bueno ok como hago para pagar los $20000"
-   ],
-   "max_words": null
+    "Hola buen día"
+   ]
   },
   {
    "key": "precio",
@@ -251,13 +226,14 @@
    "action": "responder_precio",
    "reply": "son {precio} por mes, sin limite de alumnos. con que no pierdas una cuota por mes ya se paga solo. tenes 7 dias gratis, te dejo la cuenta armada?",
    "note": "precio leído de la API del producto, nunca escrito a mano; no pedir el mail antes",
+   "max_words": null,
    "metrics": {
-    "turns": 359,
-    "share_pct": 3.8,
+    "turns": 367,
+    "share_pct": 3.9,
     "answered_pct": 96,
     "continued_pct": 61,
     "continued_fast_pct": 71,
-    "continued_slow_pct": 27
+    "continued_slow_pct": 29
    },
    "examples": [
     "Buenas tardes soy independiente M.M.O",
@@ -265,9 +241,33 @@
     "A la noche lo hago",
     "Osea pago $5.000 mas?",
     "Hola",
-    "Hola buenos dias!!!"
-   ],
-   "max_words": null
+    "Hola buenas tardes"
+   ]
+  },
+  {
+   "key": "pago",
+   "name": "Quiere pagar / cómo pago",
+   "pattern": "como (pago|abono|hago el pago|te pago|contrato)|hacer el pago|necesito pagar|puedo pagar|\\btarjeta\\b|pasame (el |tu )?(alias|cbu|link de pago)|\\balias\\b|\\bcbu\\b|transferi|comprobante|quiero (pagar|abonar)|donde (pago|abono)|con tarjeta|mercado ?pago",
+   "action": "cerrar_venta",
+   "reply": "genial. el alias es {alias}, me mandas el comprobante por aca y te la dejo activa en el momento",
+   "note": "URGENTE a humano: <5 min sigue 89%, >1 h 27%",
+   "max_words": null,
+   "metrics": {
+    "turns": 61,
+    "share_pct": 0.7,
+    "answered_pct": 95,
+    "continued_pct": 78,
+    "continued_fast_pct": 89,
+    "continued_slow_pct": 30
+   },
+   "examples": [
+    "Hola",
+    "Hola , cómo va ? Quiero pagar y no le reconoce el mail",
+    "Buenas no me deja abonar la suscripción",
+    "Buenas no pude hacerlo me dijeron y no pude ver cómo se usa",
+    "Listo ya pude hacer el pago",
+    "Alma Estudio"
+   ]
   },
   {
    "key": "de_donde",
@@ -276,6 +276,7 @@
    "action": "respuesta_fija",
    "reply": "somos de buenos aires, argentina. todo en pesos",
    "note": "respuesta fija",
+   "max_words": null,
    "metrics": {
     "turns": 18,
     "share_pct": 0.2,
@@ -291,8 +292,7 @@
     "Pesos",
     "Son de argentina ?",
     "Excel"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "pide_llamada",
@@ -301,6 +301,7 @@
    "action": "agendar_llamada",
    "reply": "dale, te llamo. te queda bien hoy {h1} o mañana {h2}?",
    "note": "pasar a humano / agenda con 2 horarios reales",
+   "max_words": null,
    "metrics": {
     "turns": 100,
     "share_pct": 1.1,
@@ -316,8 +317,7 @@
     "SE PUEDE HACER DESDE L A VERSION DEMO?",
     "Se puede tener una reunión con alguien ?",
     "Perfecto"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "no_audio",
@@ -326,6 +326,7 @@
    "action": "pasar_a_texto",
    "reply": "dale, te lo escribo cortito",
    "note": "marcar el lead como \"sin audios\" y pasar a texto",
+   "max_words": null,
    "metrics": {
     "turns": 8,
     "share_pct": 0.1,
@@ -341,22 +342,40 @@
     "Hola, no puedo escuchar audios",
     "No logro escucharlos",
     "Buenas tardes, no podemos escuchar audios"
-   ],
-   "max_words": null
+   ]
+  },
+  {
+   "key": "no_decisor",
+   "name": "No es el dueño / no decide",
+   "pattern": "(trabajo|estoy trabajando) (en|para) (otro|un|una|el|la)|soy (empleado|empleada|recepcionista|la secretaria|el secretario)|no soy (el|la) (duen|encargad|que decide)|(el|la) (duen|duena|dueno) es|le paso (tu|el) contacto|tendrias que hablar con",
+   "action": "pedir_contacto_decisor",
+   "reply": "dale, gracias. me pasas el contacto de quien decide asi le escribo directo?",
+   "note": "no decide (empleado, trabaja en otro gym): pedir el contacto del dueño y crear el lead",
+   "max_words": null,
+   "metrics": {
+    "turns": 0,
+    "share_pct": 0.0,
+    "answered_pct": 0,
+    "continued_pct": 0,
+    "continued_fast_pct": null,
+    "continued_slow_pct": null
+   },
+   "examples": []
   },
   {
    "key": "horario",
    "name": "Horario / disponibilidad",
-   "pattern": "\\b(manana|hoy|pasado|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\\b.*\\b(puedo|podria|puede|te va|me va|a la (manana|tarde|noche)|a las|N ?hs|temprano|tarde)\\b|a la (manana|tarde|noche) (puedo|podria|te)|\\bN ?hs\\b|\\bN N ?hs\\b|a las N|despues de las N|en un rato|estoy (en el banco|trabajando|manejando|ocupad|con un cliente|dando clase)|ahora no puedo|me desocupo|mas tarde (te|hablamos)|a que hora",
+   "pattern": "\\b(manana|hoy|pasado|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\\b.*\\b(puedo|podria|puede|te va|me va|a la (manana|tarde|noche)|a las|N ?hs|temprano|tarde)\\b|a la (manana|tarde|noche) (puedo|podria|te)|\\bN ?hs\\b|\\bN N ?hs\\b|a las N|despues de las N|en un rato|estoy (en el banco|trabajando(?! (en|para|de|con))|manejando|ocupad|con un cliente|con (una )?clase|dando clase)|ahora no puedo|me desocupo|mas tarde (te|hablamos)|a que hora",
    "action": "agendar_llamada",
    "reply": "perfecto, te llamo {horario}. cualquier cosa me avisas por aca",
    "note": "confirmar el horario y agendar la llamada",
+   "max_words": 15,
    "metrics": {
-    "turns": 50,
-    "share_pct": 0.5,
+    "turns": 52,
+    "share_pct": 0.6,
     "answered_pct": 92,
-    "continued_pct": 59,
-    "continued_fast_pct": 52,
+    "continued_pct": 56,
+    "continued_fast_pct": 48,
     "continued_slow_pct": 78
    },
    "examples": [
@@ -366,8 +385,7 @@
     "Después hablamos ..ahora estoy trabajando",
     "Dale",
     "Genial bueno hoy a la tarde noche empiezo a cargar todo"
-   ],
-   "max_words": 15
+   ]
   },
   {
    "key": "pide_material",
@@ -376,6 +394,7 @@
    "action": "enviar_material",
    "reply": "aca tenes un video corto de como funciona: {video}. cualquier duda me decis",
    "note": "mandar el video del producto",
+   "max_words": null,
    "metrics": {
     "turns": 46,
     "share_pct": 0.5,
@@ -391,8 +410,7 @@
     "Pasame el video así miro que comprende por ahora sin huella",
     "Tenes algún tutorial de como armar y enviarla",
     "hola como estas ??"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "prueba",
@@ -401,6 +419,7 @@
    "action": "crear_cuenta",
    "reply": "tenes 7 dias gratis para probar todo. pasame tu mail y te dejo la cuenta armada ahora",
    "note": "crear cuenta de prueba",
+   "max_words": null,
    "metrics": {
     "turns": 29,
     "share_pct": 0.3,
@@ -416,22 +435,22 @@
     "Como haria pra probarlo",
     "Si necesito recuperar mi cuenta de la prueba gratis donde es el ingreso y había creado el usuario",
     "Cómo se hace la prueba gratis?"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "mas_adelante",
    "name": "Más adelante / todavía no abrió",
-   "pattern": "mas adelante|todavia no (abri|arranque|empece|tengo|estoy)|estoy por abrir|voy a abrir|abro en|abrimos en|inaugur|el mes que viene|la semana que viene|a fin de mes|ahora no|en otro momento|por el momento no|cuando (abra|tenga|arranque)|el ano que viene|despues de las fiestas",
+   "pattern": "mas adelante|todavia no (abri|arranque|empece|tengo|estoy)|en N (meses|semanas)|estoy por abrir|voy a abrir|abro en|abrimos en|inaugur|el mes que viene|la semana que viene|a fin de mes|ahora no|en otro momento|por el momento no|cuando (abra|tenga|arranque)|el ano que viene|despues de las fiestas",
    "action": "agendar_recontacto",
    "reply": "dale, perfecto. para cuando mas o menos? te escribo unos dias antes y te lo dejo armado",
    "note": "preguntar fecha y programar el recontacto",
+   "max_words": null,
    "metrics": {
-    "turns": 91,
+    "turns": 95,
     "share_pct": 1.0,
     "answered_pct": 87,
-    "continued_pct": 76,
-    "continued_fast_pct": 89,
+    "continued_pct": 77,
+    "continued_fast_pct": 90,
     "continued_slow_pct": 54
    },
    "examples": [
@@ -441,8 +460,7 @@
     "Serán 50 pero estoy por abrir otra sede por eso es que necesito ordenarme",
     "Hola, buen dia! Por el momento no estamos interesados, gracias!",
     "Hola. Correcto! Ahora no tengo centro😓"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "lo_veo",
@@ -451,12 +469,13 @@
    "action": "seguimiento_programado",
    "reply": null,
    "note": "no responder al toque: seguimiento programado a las 24-48 h",
+   "max_words": null,
    "metrics": {
-    "turns": 85,
+    "turns": 82,
     "share_pct": 0.9,
-    "answered_pct": 80,
+    "answered_pct": 79,
     "continued_pct": 49,
-    "continued_fast_pct": 45,
+    "continued_fast_pct": 46,
     "continued_slow_pct": 43
    },
    "examples": [
@@ -466,22 +485,22 @@
     "Mañana lo veo a todo",
     "ok Genial te Aviso",
     "Si, si me podés enviar el link para probar otra vez ?"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "soporte",
    "name": "Problema técnico / no puede entrar",
-   "pattern": "no me (deja|anda|funciona|carga|llega|llego|abre|aparece|toma|reconoce)|no (m )?(deja|carga|llega)|se queda (ahi|cargando)|no carga|problemas? con la (app|pagina|cuenta)|me solucionen|no figura|no aparece|no puedo (entrar|ingresar|acceder|registrar|cargar)|\\berror\\b|contrasena|\\bclave\\b|\\bcodigo\\b|no (me )?llego|se trabo|no anda|como (hago|se hace) para|como (cargo|agrego|configuro|pongo)|no encuentro",
+   "pattern": "no me (deja|anda|funciona|carga|llega|llego|abre|aparece|toma|reconoce)|(pasame|mandame|reenviame) el (link|enlace|acceso)|no (m )?(deja|carga|llega)|se queda (ahi|cargando)|no carga|problemas? con la (app|pagina|cuenta)|me solucionen|no figura|no aparece|no puedo (entrar|ingresar|acceder|registrar|cargar)|\\berror\\b|contrasena|\\bclave\\b|\\bcodigo\\b|no (me )?llego|se trabo|no anda|como (hago|se hace) para|como (cargo|agrego|configuro|pongo)|no encuentro",
    "action": "soporte",
    "reply": null,
    "note": "reenviar link de acceso si es login; si no, humano (bot de soporte)",
+   "max_words": null,
    "metrics": {
-    "turns": 148,
+    "turns": 151,
     "share_pct": 1.6,
     "answered_pct": 93,
-    "continued_pct": 80,
-    "continued_fast_pct": 83,
+    "continued_pct": 78,
+    "continued_fast_pct": 81,
     "continued_slow_pct": 55
    },
    "examples": [
@@ -491,8 +510,7 @@
     "No no me deja entrar",
     "Usuario y contraseña cuál sería?",
     "Hola"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "interes",
@@ -501,11 +519,12 @@
    "action": "avanzar_guion",
    "reply": null,
    "note": "avanzar al siguiente paso del guion (siguiente pregunta o crear cuenta)",
+   "max_words": null,
    "metrics": {
-    "turns": 156,
+    "turns": 157,
     "share_pct": 1.7,
     "answered_pct": 94,
-    "continued_pct": 65,
+    "continued_pct": 66,
     "continued_fast_pct": 83,
     "continued_slow_pct": 34
    },
@@ -516,48 +535,48 @@
     "Hola buenas , está bueno solo que deberían de explicarme a usarlo pq yo entiendo nada la verdad !!!",
     "Holaa estamos por abrir uno si dios quiere en unos meses",
     "¡Hola, me gustaría a\nRecibir más información!"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "como_funciona",
    "name": "Cómo funciona / qué incluye",
-   "pattern": "como funciona|como es (el|la)|que me ofrecen|que ofrecen|en espanol|es mensual|una sola vez|que (hace|incluye|tiene|ofrece|trae)|de que se trata|(mas|mayor) (info|informacion|detalle)|explica|como seria|tiene (app|aplicacion)|sirve para|se puede|funciona con|hay (app|aplicacion)|como se (usa|maneja)",
+   "pattern": "^(y )?(como(?! (estas|va|andas|estan|anda|te va|les va))|se puede|puede|hay forma|que pasa)\\b|puede ser con|se puede|como hago|puedo (hacer|poner|usar|cargar)|como funciona|como es (el|la)|que me ofrecen|que ofrecen|en espanol|es mensual|una sola vez|que (hace|incluye|tiene|ofrece|trae)|de que se trata|(mas|mayor) (info|informacion|detalle)|explica|como seria|tiene (app|aplicacion)|sirve para|se puede|funciona con|hay (app|aplicacion)|como se (usa|maneja)",
    "action": "faq",
    "reply": null,
    "note": "respuesta de la FAQ del producto (o IA con el conocimiento del producto si no hay FAQ que coincida)",
+   "max_words": null,
    "metrics": {
-    "turns": 197,
-    "share_pct": 2.1,
-    "answered_pct": 98,
-    "continued_pct": 65,
-    "continued_fast_pct": 71,
+    "turns": 239,
+    "share_pct": 2.6,
+    "answered_pct": 99,
+    "continued_pct": 69,
+    "continued_fast_pct": 74,
     "continued_slow_pct": 46
    },
    "examples": [
     "Hola cómo estás todo bien",
     "Buenas me darias mas informacion por favor.",
+    "Cómo puedo ingresar de nuevo ya que se me fue el link donde ingresé",
     "Sirve para centros de pilates?",
-    "Buenisimo",
-    "Hola!! \nYo tengo un Inst de danzas! \nCómo funciona? \nSe cargan los datos en la compu? Celu? Como es?",
-    "Te hago una consulta, por ejemplo para pilates, se puede reservar clases?"
-   ],
-   "max_words": null
+    "Perfecto!!!",
+    "Ahh entonces primero tengo que cargar las clases con los alumnos"
+   ]
   },
   {
    "key": "dato_calificacion",
    "name": "Responde una pregunta del guion",
-   "pattern": "\\bpapel\\b|\\bexcel\\b|\\bword\\b|documento|cuaderno|planilla|a mano|agenda|no uso nada|no usamos nada|desde cero|de cero|\\bN obras?\\b|alrededor de N|al rededor de N|unos N|mas o menos N|\\bN (a|o) N\\b|\\bN (socios|alumnos|clientes|personas|miembros|chicos)\\b|^N( aprox| mas o menos| masomenos)?$|pase libre|\\bclases\\b|funcional|crossfit|pilates|musculacion|estetica|peluqueria|barberia|consultorio|no tengo (socios|alumnos)|ningun sistema|por whatsapp|efectivo|transferencia",
+   "pattern": "\\bpapel\\b|\\bexcel\\b|\\bword\\b|cuaderno|nunca tuve|aprox|aproximad|planilla|a mano|agenda|no uso nada|no usamos nada|desde cero|de cero|\\bN obras?\\b|alrededor de N|al rededor de N|unos N|mas o menos N|\\bN (a|o) N\\b|\\bN (socios|alumnos|clientes|personas|miembros|chicos)\\b|^N( aprox| mas o menos| masomenos)?$|pase libre|\\bclases\\b|funcional|crossfit|pilates|musculacion|estetica|peluqueria|barberia|consultorio|no tengo (socios|alumnos)|ningun sistema|por whatsapp|efectivo|transferencia",
    "action": "avanzar_guion",
    "reply": "ok, anotado",
    "note": "guardar el dato y hacer la siguiente pregunta del guion",
+   "max_words": 25,
    "metrics": {
-    "turns": 1813,
-    "share_pct": 19.4,
-    "answered_pct": 99,
-    "continued_pct": 83,
+    "turns": 1726,
+    "share_pct": 18.5,
+    "answered_pct": 100,
+    "continued_pct": 84,
     "continued_fast_pct": 86,
-    "continued_slow_pct": 48
+    "continued_slow_pct": 51
    },
    "examples": [
     "Hola Eric yo tengo un estudio chico de pilates reformer en San justo barrio San Nicolás",
@@ -566,8 +585,7 @@
     "Hola !\nEsta activo.\n90aprox\nCrossfit\nPapel",
     "1 si\n\n2. 60\n3. Mosculacion \n Personalizados \n4 cuadernos 🤦‍♀️",
     "4"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "saludo",
@@ -576,6 +594,7 @@
    "action": "saludar_y_seguir",
    "reply": null,
    "note": "saludar y seguir con el paso del guion en el mismo mensaje",
+   "max_words": null,
    "metrics": {
     "turns": 164,
     "share_pct": 1.8,
@@ -591,8 +610,7 @@
     "Hola buen dia",
     "Hola buen día!",
     "Hola buenas tardes"
-   ],
-   "max_words": null
+   ]
   },
   {
    "key": "ack",
@@ -601,6 +619,7 @@
    "action": "no_responder_o_seguir",
    "reply": null,
    "note": "si el guion tiene próximo paso, seguir; si no, no responder",
+   "max_words": null,
    "metrics": {
     "turns": 445,
     "share_pct": 4.8,
@@ -616,8 +635,22 @@
     "Genial",
     "Bueno bien",
     "Dale gracias"
-   ],
-   "max_words": null
+   ]
+  },
+  {
+   "key": "email_incompleto",
+   "name": "Mail incompleto",
+   "pattern": "(?!x)x",
+   "action": "pedir_mail",
+   "reply": "me lo pasas completo? con el @ y lo que sigue",
+   "note": "se detecta por contexto: le pedimos el mail y mando algo sin @; pedirlo completo",
+   "max_words": null,
+   "metrics": {
+    "turns": 0
+   },
+   "examples": [
+    "llanos.yohana"
+   ]
   }
  ]
 }

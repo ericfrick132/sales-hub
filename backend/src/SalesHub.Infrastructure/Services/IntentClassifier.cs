@@ -18,12 +18,16 @@ public sealed class IntentMatcher
     public const string Other = "otro";
     public const string Empty = "vacio";
     public const string Qualification = "dato_calificacion";
+    public const string IncompleteEmail = "email_incompleto";
 
     public record Rule(string Key, Regex Pattern, int? MaxWords);
 
     private static readonly TimeSpan T = TimeSpan.FromMilliseconds(200);
 
     // Contexto: si nuestro último mensaje hizo una pregunta del guion, una respuesta corta es la respuesta.
+    private static readonly Regex AskedMail = new(@"(pasame|pasas|me pasas|dejame|decime) (tu |el )?mail", RegexOptions.Compiled, T);
+    // "llanos.yohana": un usuario de mail sin el @ (con punto, guion bajo o números), sobre el texto crudo.
+    private static readonly Regex RawHandle = new(@"^(?=.*[a-zA-Z])(?=.*[._\d])[\w.]{5,}$", RegexOptions.Compiled, T);
     private static readonly Regex AskedName = new(@"como se llama|nombre (del|de tu|de la)|decime (solo )?el nombre", RegexOptions.Compiled, T);
     private static readonly Regex AskedAny = new(@"\?|como (llevas|cobras|tomas|manejas)|cuantos|que (usas|sistema|rubro)", RegexOptions.Compiled, T);
 
@@ -55,6 +59,7 @@ public sealed class IntentMatcher
         if (!string.IsNullOrWhiteSpace(previousOutbound))
         {
             var p = IntentText.Normalize(previousOutbound);
+            if (AskedMail.IsMatch(p) && RawHandle.IsMatch((text ?? "").Trim())) return IncompleteEmail;
             if (AskedName.IsMatch(p) && words <= 6) return Qualification;
             if (AskedAny.IsMatch(p) && words <= 4) return Qualification;
         }

@@ -81,6 +81,13 @@ export default function Diccionario() {
     }
   }
 
+  async function resetDict() {
+    if (!window.confirm('Reemplaza los patrones y respuestas por los del último análisis (se pierden las ediciones a mano). ¿Seguir?')) return;
+    const r = (await api.post<{ count: number }>('/intents/reset')).data;
+    toast.success(`Diccionario restaurado: ${r.count} tipos. Reclasificando…`);
+    await backfill(true);
+  }
+
   if (isLoading || !data) return <div className="text-sm text-slate-400">Cargando…</div>;
   const nameOf = (k: string) => data.intents.find((i) => i.key === k)?.name ?? k;
 
@@ -122,6 +129,7 @@ export default function Diccionario() {
               {backfilling ? 'Clasificando…' : `Clasificar ${data.unclassified.toLocaleString('es-AR')} mensajes viejos`}
             </button>
           )}
+          <button className="btn-secondary" disabled={backfilling} onClick={resetDict}>Restaurar diccionario del análisis</button>
           <button className="btn-secondary" disabled={backfilling} onClick={() => backfill(true)}>Reclasificar todo</button>
         </div>
         <div className="w-full text-[11px] text-slate-400">
