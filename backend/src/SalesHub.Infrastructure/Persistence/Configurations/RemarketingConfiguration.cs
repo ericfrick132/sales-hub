@@ -29,3 +29,18 @@ public class RemarketingAttemptConfiguration : IEntityTypeConfiguration<Remarket
         b.HasIndex(x => new { x.SellerId, x.EnqueuedAt });
     }
 }
+
+public class ReplyIntentConfiguration : IEntityTypeConfiguration<ReplyIntent>
+{
+    public void Configure(EntityTypeBuilder<ReplyIntent> b)
+    {
+        b.ToTable("reply_intents");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Key).HasMaxLength(40).IsRequired();
+        b.HasIndex(x => x.Key).IsUnique();
+        b.Property(x => x.Name).HasMaxLength(120).IsRequired();
+        b.Property(x => x.Pattern).IsRequired();
+        b.Property(x => x.Action).HasMaxLength(40).IsRequired();
+        b.Property(x => x.Examples).HasDefaultValueSql("'{}'");
+    }
+}

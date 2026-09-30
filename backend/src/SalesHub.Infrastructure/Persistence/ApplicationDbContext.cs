@@ -65,6 +65,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<RemarketingSettings> RemarketingSettings => Set<RemarketingSettings>();
     public DbSet<RemarketingAttempt> RemarketingAttempts => Set<RemarketingAttempt>();
 
+    // Diccionario de tipos de mensaje del lead (respuestas sin IA), editable en /diccionario.
+    public DbSet<ReplyIntent> ReplyIntents => Set<ReplyIntent>();
+
     // Follow-up de abandono unificado y AGNÓSTICO: secuencias genéricas por (app, trigger) +
     // telemetría que reportan las apps, para reportes centralizados por app.
     public DbSet<FollowupSequence> FollowupSequences => Set<FollowupSequence>();

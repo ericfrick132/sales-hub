@@ -37,6 +37,7 @@ import OnboardingApps from './pages/OnboardingApps';
 import Transcripcion from './pages/Transcripcion';
 import Mensajeria from './pages/Mensajeria';
 import Remarketing from './pages/Remarketing';
+import Diccionario from './pages/Diccionario';
 import Seguimientos from './pages/Seguimientos';
 import Pitches from './pages/Pitches';
 import Soporte from './pages/Soporte';
@@ -88,6 +89,7 @@ export default function App() {
             <Route path="/transcripcion" element={<Transcripcion />} />
             <Route path="/mensajeria" element={<Mensajeria />} />
             <Route path="/remarketing" element={<Remarketing />} />
+            <Route path="/diccionario" element={<Diccionario />} />
             <Route path="/voice-test" element={<VoiceTest />} />
             <Route path="/seguimientos" element={<Seguimientos />} />
             <Route path="/pitches" element={<Pitches />} />

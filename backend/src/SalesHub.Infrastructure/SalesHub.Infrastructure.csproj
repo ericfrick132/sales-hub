@@ -5,6 +5,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Diccionario de tipos de mensaje (docs/conversaciones/v2/build_dict.py): semilla de reply_intents. -->
+    <EmbeddedResource Include="Resources\intent-dictionary.json" LogicalName="intent-dictionary.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="Markdig" Version="0.37.0" />
     <PackageReference Include="EFCore.NamingConventions" Version="8.0.3" />

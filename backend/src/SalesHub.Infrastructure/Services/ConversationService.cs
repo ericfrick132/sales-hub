@@ -22,6 +22,7 @@ public class ConversationService
     private readonly TakeoverSignal _takeover;
     private readonly PitchEngine _pitch;
     private readonly RemarketingService _remarketing;
+    private readonly IntentClassifier _intents;
     private readonly ILogger<ConversationService> _log;
     private static readonly Regex NonDigit = new(@"\D", RegexOptions.Compiled);
 
@@ -33,9 +34,11 @@ public class ConversationService
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILeadAssigner assigner,
-        TakeoverSignal takeover, PitchEngine pitch, RemarketingService remarketing, ILogger<ConversationService> log)
+        TakeoverSignal takeover, PitchEngine pitch, RemarketingService remarketing, IntentClassifier intents,
+        ILogger<ConversationService> log)
     {
-        _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _pitch = pitch; _remarketing = remarketing; _log = log;
+        _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _pitch = pitch; _remarketing = remarketing;
+        _intents = intents; _log = log;
     }
 
     public record IncomingMessage(
@@ -172,6 +175,17 @@ public class ConversationService
             lead.LastInboundAt = incoming.Timestamp;
         if (!incoming.FromSync) lead.ConversationClosedAt = null;
 
+        // Tipo de mensaje según el diccionario (modo sombra: se guarda para medir, no cambia la
+        // respuesta). En vivo mira nuestro último mensaje para entender respuestas cortas al guion.
+        string? previousOutbound = null;
+        if (!incoming.FromSync && !createdNow)
+            previousOutbound = await _db.ConversationMessages.AsNoTracking()
+                .Where(m => m.LeadId == lead.Id && m.Direction == MessageDirection.Outbound && m.Timestamp <= incoming.Timestamp)
+                .OrderByDescending(m => m.Timestamp)
+                .Select(m => m.Text)
+                .FirstOrDefaultAsync(ct);
+        var intentKey = await _intents.ClassifyAsync(incoming.Text, previousOutbound, ct);
+
         _db.ConversationMessages.Add(new ConversationMessage
         {
             Id = Guid.NewGuid(),
@@ -184,7 +198,8 @@ public class ConversationService
             EvolutionInstance = incoming.InstanceName,
             Timestamp = incoming.Timestamp,
             IsRead = false,
-            RawJson = incoming.RawJson
+            RawJson = incoming.RawJson,
+            IntentKey = intentKey,
         });
 
         // Update lead state: first reply triggers status transition.

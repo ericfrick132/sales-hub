@@ -42,4 +42,10 @@ public class ConversationMessage
     /// <summary>Cuántas veces se intentó transcribir este mensaje (si es nota de
     /// voz). Tope para no reintentar infinito un audio que falla.</summary>
     public int TranscriptionAttempts { get; set; }
+
+    /// <summary>
+    /// Tipo de mensaje del lead según el diccionario (reply_intents), ej. "precio", "anuncio".
+    /// null = sin clasificar todavía; "otro" = ningún patrón coincidió (lo que iría a la IA).
+    /// </summary>
+    public string? IntentKey { get; set; }
 }

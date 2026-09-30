@@ -14,6 +14,8 @@ public class ConversationMessageConfiguration : IEntityTypeConfiguration<Convers
         b.Property(x => x.Text).HasColumnType("text").IsRequired();
         b.Property(x => x.WhatsappMessageId).HasMaxLength(128);
         b.Property(x => x.EvolutionInstance).HasMaxLength(128);
+        b.Property(x => x.IntentKey).HasMaxLength(40);
+        b.HasIndex(x => x.IntentKey);
         b.Property(x => x.RawJson).HasColumnType("jsonb");
 
         b.Property(x => x.Direction).HasConversion<int>();

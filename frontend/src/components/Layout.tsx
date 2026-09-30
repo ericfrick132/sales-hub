@@ -71,6 +71,7 @@ export default function Layout() {
           { to: '/devices', label: 'Dispositivos' },
           { to: '/objetivos', label: 'Objetivos' },
           { to: '/products', label: 'Aplicaciones' },
+          { to: '/diccionario', label: 'Diccionario de respuestas' },
           { to: '/reglas-ia', label: 'Reglas IA' },
           { to: '/onboarding-apps', label: 'Onboarding apps' },
           { to: '/transcripcion', label: 'Transcripción' },

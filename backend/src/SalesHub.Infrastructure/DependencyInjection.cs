@@ -151,6 +151,7 @@ public static class DependencyInjection
         services.AddSingleton<TranscriptionBatchAccumulator>();
         // Reglas duras de la IA (cache 30s, leídas vía scope) — inyectadas al system prompt.
         services.AddSingleton<AiRulesProvider>();
+        services.AddSingleton<IntentClassifier>();
         // Tono de conversación editable (global + override por producto) — base de estilo de
         // TODO lo que compone la IA (venta, nudges, soporte, asides). Cache 30s.
         services.AddSingleton<ToneProvider>();
