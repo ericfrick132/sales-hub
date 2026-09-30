@@ -133,6 +133,12 @@ public class OnboardingConfig
     /// </summary>
     public string? DemoEventTypeUri { get; set; }
 
+    /// <summary>
+    /// Antes de los horarios: qué le resuelve la app + si quiere verlo con sus datos. Va después de
+    /// una reacción automática a su última respuesta. Admite {a|b} y [NUEVO_MENSAJE]. Vacío = genérico.
+    /// </summary>
+    public string DemoPitch { get; set; } = string.Empty;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

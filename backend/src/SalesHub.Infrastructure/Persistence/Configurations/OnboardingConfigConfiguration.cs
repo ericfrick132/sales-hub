@@ -14,6 +14,7 @@ public class OnboardingConfigConfiguration : IEntityTypeConfiguration<Onboarding
         // Pre-calificación: 2 preguntas por defecto (también para las apps que ya existían).
         b.Property(x => x.HandoffAfterQuestions).HasDefaultValue(2);
         b.Property(x => x.PresentAs).HasMaxLength(40);
+        b.Property(x => x.DemoPitch).HasDefaultValue(string.Empty);
         b.Property(x => x.ProductKey).HasMaxLength(60);
         b.Property(x => x.ProvisionNameField).HasMaxLength(60);
         // Questions (List<string>) → text[] nativo de Npgsql, sin converter.

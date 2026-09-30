@@ -214,6 +214,17 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
               </div>
               {preview && <div className="text-xs text-slate-600">{preview}</div>}
             </div>
+            {form.demoEventTypeUri && (
+              <label className="space-y-0.5 sm:col-span-3">
+                <div className="text-slate-600">
+                  Antes de los horarios: el bot reacciona a su última respuesta ("uf, a mano es donde mas se escapan las cosas") y
+                  después dice esto. Los horarios van recién si contesta que sí. Admite {'{a|b}'} y [NUEVO_MENSAJE].
+                </div>
+                <textarea className="input w-full h-20" value={form.demoPitch ?? ''}
+                  placeholder="gymhero les cobra la cuota solo por mercado pago y te avisa quien se atraso, asi no perseguis a nadie[NUEVO_MENSAJE]si queres te lo muestro andando con tus datos, son 15 minutos por videollamada. te sirve?"
+                  onChange={(e) => setForm((f) => ({ ...f, demoPitch: e.target.value }))} />
+              </label>
+            )}
             <label className="space-y-0.5 sm:col-span-3">
               <div className="text-slate-600">Lo que dice el bot antes de que siga la persona (admite {'{a|b}'}; vacío = no dice nada)</div>
               <textarea className="input w-full h-16" value={form.handoffMessage ?? ''}

@@ -444,6 +444,8 @@ export interface OnboardingAppConfig {
   handoffMessage?: string;
   /** Evento de Calendly de la demo: el bot ofrece 2 horarios libres y reserva el que elija. */
   demoEventTypeUri?: string;
+  /** Antes de los horarios: qué le resuelve + si quiere verlo con sus datos (tras una reacción a su respuesta). */
+  demoPitch?: string;
 }
 
 export interface OnboardingAudioVariant {

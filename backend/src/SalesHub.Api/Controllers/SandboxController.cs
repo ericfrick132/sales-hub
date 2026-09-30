@@ -43,7 +43,7 @@ public class SandboxController : ControllerBase
     /// preguntas y el evento de Calendly. Vacíos = los de la app.
     /// </summary>
     public record Overrides(bool? Handoff, Guid? HandoffSellerId, int? AfterQuestions, string? PresentAs, string? DemoEventTypeUri,
-        string? HandoffMessage);
+        string? HandoffMessage, string? DemoPitch = null);
 
     public record StartRequest(string ProductKey, string? LeadName, Overrides? Overrides);
     public record MessageRequest(string Text, Overrides? Overrides);
@@ -135,6 +135,7 @@ public class SandboxController : ControllerBase
         if (o.PresentAs is not null) cfg.PresentAs = string.IsNullOrWhiteSpace(o.PresentAs) ? null : o.PresentAs.Trim().ToLowerInvariant();
         if (o.DemoEventTypeUri is not null) cfg.DemoEventTypeUri = string.IsNullOrWhiteSpace(o.DemoEventTypeUri) ? null : o.DemoEventTypeUri;
         if (o.HandoffMessage is not null) cfg.HandoffMessage = o.HandoffMessage;
+        if (!string.IsNullOrWhiteSpace(o.DemoPitch)) cfg.DemoPitch = o.DemoPitch;
         return cfg;
     }
 

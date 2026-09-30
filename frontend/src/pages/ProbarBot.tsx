@@ -52,6 +52,11 @@ export default function ProbarBot() {
     if (calendly.data?.items?.length && !eventType) setEventType(calendly.data.items[0].uri);
   }, [calendly.data, eventType]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth' }); }, [lines]);
+  // Por defecto hace TODAS las preguntas del guion de la app (la última suele ser la que saca el dolor).
+  useEffect(() => {
+    const n = configs.data?.find((c) => c.productKey === product)?.questions.length;
+    if (n) setAfter(n);
+  }, [configs.data, product]);
 
   const overrides = () => ({
     handoff, handoffSellerId: handoff ? handoffSeller || null : null, afterQuestions: after,

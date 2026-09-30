@@ -40,6 +40,13 @@ public class OnboardingService
     /// <summary>Eligió horario pero no tenemos su mail: esperamos el mail para reservar.</summary>
     public const int StepAwaitSlotEmail = -21;
 
+    /// <summary>
+    /// Terminó las preguntas: le reaccionamos a lo que contó, le dijimos qué le resuelve y le
+    /// preguntamos si quiere verlo con sus datos. Recién si dice que sí van los horarios (en las
+    /// charlas reales, proponer el cierre después de 1 turno del lead sigue 43%; después de 4, 82%).
+    /// </summary>
+    public const int StepAwaitDemoOk = -22;
+
     private readonly ApplicationDbContext _db;
     private readonly IOnboardingProvisionClient _provision;
     private readonly IEmailSender _email;
@@ -67,7 +74,7 @@ public class OnboardingService
     /// </summary>
     private async Task<string?> OfferSlotsAsync(LeadOnboarding ob, OnboardingConfig cfg, Guid leadId, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(cfg.DemoEventTypeUri) || !_calendly.IsConfigured) return null;
+        if (!DemoEnabled(cfg)) return null;
         var now = DateTimeOffset.UtcNow;
         var free = await _calendly.GetAvailableTimesAsync(cfg.DemoEventTypeUri, now.AddMinutes(5), now.AddDays(6), ct);
         if (free is null || free.Count == 0) return null;
@@ -79,8 +86,39 @@ public class OnboardingService
         var options = two.Count == 2
             ? $"{DemoScheduling.Say(two[0], now)} o {DemoScheduling.Say(two[1], now)}"
             : DemoScheduling.Say(two[0], now);
-        return Spin("{perfecto|genial}, con eso ya tengo lo que necesito. te lo dejo armado con tus datos en una llamada corta asi lo ves andando. te queda ", leadId, 91)
-               + options + "?";
+        return two.Count == 2
+            ? Spin("{dale|genial}. tengo ", leadId, 91) + options + Spin(", {cual te queda mejor|te sirve alguno}?", leadId, 94)
+            : Spin("{dale|genial}. tengo ", leadId, 91) + options + ", te sirve?";
+    }
+
+    private bool DemoEnabled(OnboardingConfig cfg) => !string.IsNullOrWhiteSpace(cfg.DemoEventTypeUri) && _calendly.IsConfigured;
+
+    private const string DefaultDemoPitch =
+        "{si queres te lo muestro andando con tus datos, son 15 minutos por videollamada|te lo puedo mostrar andando con tus datos en una videollamada de 15 minutos}. te sirve?";
+
+    private static readonly Regex DemoYesRx = new(
+        @"^(hola |ah |bueno |uh )?(si+|sisi|dale+|ok|oka|okey|bueno|perfecto|genial|de una|obvio|joya|claro|buenisimo|me sirve|me interesa|me encantaria|me gustaria|puede ser|por que no|mostrame|vamos|va)\b",
+        RegexOptions.Compiled);
+    private static readonly Regex DemoNoRx = new(@"\bno\b|ahora no|mas adelante|despues|no puedo|no tengo tiempo|mandame info|por (aca|escrito)", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Reacción a cómo maneja hoy el negocio (la última respuesta del guion), como hacía la persona
+    /// en las charlas que vendieron: algo sobre SU caso antes de proponer nada. Genérica entre apps.
+    /// </summary>
+    private static string ReactTo(string answer, Guid leadId)
+    {
+        var t = IntentText.Normalize(answer);
+        if (Regex.IsMatch(t, @"cuaderno|papel|anotador|libreta|a mano|agenda de papel"))
+            return Spin("{uf|uh}, a mano es donde mas se {escapan|pierden} las cosas", leadId, 95);
+        if (Regex.IsMatch(t, @"excel|planilla|drive|sheets"))
+            return Spin("{el excel|la planilla} anda bien hasta que {crece|se llena} y hay que estar encima de todo", leadId, 95);
+        if (Regex.IsMatch(t, @"whatsapp|wpp|whats|mensaje"))
+            return Spin("{uf|uh}, por whatsapp se te va {medio dia|un monton de tiempo} contestando", leadId, 95);
+        if (Regex.IsMatch(t, @"\bnada\b|ninguno|todavia|recien|por abrir|no abr|arranco|empiezo|empezando|desde cero|de cero"))
+            return Spin("{mejor|buenisimo}, asi arrancas ordenado desde el principio", leadId, 95);
+        if (Regex.IsMatch(t, @"sistema|\bapp\b|programa|software|fitco|uso |usamos"))
+            return Spin("{ah mira|buenisimo}, entonces ya sabes bien lo que te sirve y lo que no", leadId, 95);
+        return Spin("{buenisimo|joya|genial}", leadId, 95);
     }
 
     /// <summary>
@@ -259,6 +297,26 @@ public class OnboardingService
 
         var msg = (lastMessage ?? string.Empty).Trim();
         var lower = msg.ToLowerInvariant();
+
+        // ── Le preguntamos si quiere verlo con sus datos: sí → horarios; otra cosa → la persona ──
+        if (ob.Step == StepAwaitDemoOk)
+        {
+            var t = IntentText.Normalize(msg);
+            var yes = DemoYesRx.IsMatch(t) && !DemoNoRx.IsMatch(t) && !msg.Contains('?') && IntentText.WordCount(t) <= 12;
+            var offer = yes ? await OfferSlotsAsync(ob, cfg, lead.Id, ct) : null;
+            if (offer is not null)
+            {
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult(PresentAs(offer, cfg), OffScript: false, Provisioned: false);
+            }
+            ob.Step = StepHumanHandoff;
+            ob.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                Handoff: yes ? "dijo que si a la demo pero Calendly no tiene horarios: coordinalo a mano"
+                             : "le propusimos verlo con sus datos y no dijo que si de una");
+        }
 
         // ── Agendado de demo (Calendly): esperando que elija horario o que pase el mail ──────────
         if (ob.Step is StepAwaitSlot or StepAwaitSlotEmail)
@@ -463,14 +521,17 @@ public class OnboardingService
                 }
                 if (handoffMode && k >= Math.Clamp(cfg.HandoffAfterQuestions, 1, n))
                 {
-                    // Pre-calificación completa. Con Calendly: ofrece 2 horarios reales y espera.
-                    var offer = await OfferSlotsAsync(ob, cfg, lead.Id, ct);
-                    if (offer is not null)
+                    // Pre-calificación completa. Con Calendly: reacciona a lo que contó, le dice qué le
+                    // resuelve y le pregunta si quiere verlo; los horarios van recién si dice que sí.
+                    if (DemoEnabled(cfg))
                     {
+                        var pitch = string.IsNullOrWhiteSpace(cfg.DemoPitch) ? DefaultDemoPitch : cfg.DemoPitch;
                         lead.Status = LeadStatus.Interested;
+                        ob.Step = StepAwaitDemoOk;
                         ob.UpdatedAt = DateTimeOffset.UtcNow;
                         await _db.SaveChangesAsync(ct);
-                        return new OnboardingResult(PresentAs(offer, cfg), OffScript: false, Provisioned: false);
+                        return new OnboardingResult(PresentAs(ReactTo(msg, lead.Id) + "[NUEVO_MENSAJE]" + Spin(pitch, lead.Id, 96), cfg),
+                            OffScript: false, Provisioned: false);
                     }
                     // Sin Calendly: el bot cierra su parte y sigue la persona en la misma línea.
                     reply = Spin(cfg.HandoffMessage ?? string.Empty, lead.Id, k);
