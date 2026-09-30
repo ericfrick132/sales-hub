@@ -123,7 +123,7 @@ public static class OutboxEnqueueHelper
                     // sender va a re-renderizar desde la config del producto al momento de
                     // mandar (ver OutboxSender). Si la cadencia cambia entre enqueue y
                     // envío, sale lo nuevo.
-                    Message = rendered,
+                    Message = CopyStyle.Clean(rendered),
                     MediaAssetId = mediaAssetId,
                     StepIndex = i,
                     CadenceCategory = cadenceCategory,

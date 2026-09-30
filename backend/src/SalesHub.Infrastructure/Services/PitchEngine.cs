@@ -448,7 +448,7 @@ public class PitchEngine
             {
                 Id = Guid.NewGuid(), LeadId = lead.Id, SellerId = lead.SellerId!.Value,
                 Channel = MessageChannel.Instagram, EvolutionInstance = string.Empty, WhatsappPhone = lead.WhatsappPhone ?? string.Empty,
-                Message = rendered, StepIndex = idx, CadenceCategory = OutboxTag(p.Id),
+                Message = CopyStyle.Clean(rendered), StepIndex = idx, CadenceCategory = OutboxTag(p.Id),
                 ScheduledAt = when, Status = OutboxStatus.Scheduled, Priority = 60,
             });
             queued++;
@@ -477,7 +477,7 @@ public class PitchEngine
         {
             Id = Guid.NewGuid(), LeadId = lead.Id, SellerId = lead.SellerId.Value,
             Channel = MessageChannel.Instagram, EvolutionInstance = string.Empty, WhatsappPhone = lead.WhatsappPhone ?? string.Empty,
-            Message = rendered, StepIndex = stepIdx, CadenceCategory = OutboxTag(p.Id) + ":fu",
+            Message = CopyStyle.Clean(rendered), StepIndex = stepIdx, CadenceCategory = OutboxTag(p.Id) + ":fu",
             ScheduledAt = now, Status = OutboxStatus.Scheduled, Priority = 60,
         });
         return true;

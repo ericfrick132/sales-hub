@@ -159,9 +159,10 @@ public class RemarketingController : ControllerBase
         var s = await _svc.GetSettingsAsync(ct);
         take = Math.Clamp(take, 1, ai ? 10 : 50);
 
-        var sid = sellerId ?? s.SenderSellerIds.FirstOrDefault();
+        // Con el nombre de quien va a mandar; si todavía no hay líneas elegidas, con el de quien mira.
+        var sid = sellerId ?? (s.SenderSellerIds.Count > 0 ? s.SenderSellerIds[0] : CurrentUser.Id(User));
         var seller = await _db.Sellers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == sid, ct)
-                     ?? new Seller { DisplayName = "Vendedor" };
+                     ?? new Seller { DisplayName = "" };
         var products = await _db.Products.AsNoTracking().ToDictionaryAsync(p => p.ProductKey, p => p.DisplayName, ct);
 
         var candidates = await _svc.RankAsync(s, take, ct);

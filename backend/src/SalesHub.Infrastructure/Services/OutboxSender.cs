@@ -404,6 +404,9 @@ public class OutboxSender
                     await _db.SaveChangesAsync(ct);
                 }
 
+                // Sin tildes, sin ¿ ¡ ni emojis en todo lo automático (ver CopyStyle).
+                next.Message = CopyStyle.Clean(next.Message);
+
                 // ─── Anti-duplicado textual ──────────────────────────────────
                 // El MISMO texto ya le salió a este lead hace poco — lo haya mandado este
                 // sender, el bridge, o una fila zombie re-despachada tras un crash o una

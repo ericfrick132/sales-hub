@@ -290,11 +290,13 @@ public class RemarketingService
         bool useAi, CancellationToken ct)
     {
         var st = StageOf(c.Stage);
-        var vendedor = FirstWord(seller.DisplayName);
+        // Se presenta con su nombre de pila ("soy mateo"), nunca "vendedor": sin nombre no se manda.
+        var vendedor = SellerFirstName(seller.DisplayName);
+        if (vendedor is null) return new(null, false, false, "el vendedor no tiene un nombre de pila cargado");
         var producto = productName.ToLowerInvariant();
         var nombre = FriendlyName(c.Name);
         var saludo = nombre is null ? "hola," : $"hola {nombre},";
-        var fallback = st.Fallback.Replace("{saludo}", saludo).Replace("{vendedor}", vendedor).Replace("{producto}", producto);
+        var fallback = CopyStyle.Clean(st.Fallback.Replace("{saludo}", saludo).Replace("{vendedor}", vendedor).Replace("{producto}", producto));
 
         if (!useAi) return new(fallback, false, false, null);
         if (!_claude.IsConfigured || _claude.IsPaused) return new(null, false, false, "IA no disponible");
@@ -316,7 +318,7 @@ public class RemarketingService
             "es un proveedor o alguien que nos quiere vender algo, es un conocido, un amigo o alguien del equipo, pidió que no le escriban, " +
             "o la charla no es de venta.\n" +
             "PASO 2, si escribir = true, escribí el mensaje con estas reglas:\n" +
-            "- todo en minúscula. sin signos de apertura (nada de ¿ ni ¡). sin emojis.\n" +
+            "- todo en minúscula. sin tildes (escribí mas, cuanto, habias). sin signos de apertura (nada de ¿ ni ¡). sin emojis.\n" +
             "- voseo argentino natural, sin muletillas (nada de che, capo, viste, boludo).\n" +
             "- máximo 3 oraciones y 350 caracteres.\n" +
             $"- empezá exactamente con: \"{saludo} soy {vendedor} de {producto}.\"\n" +
@@ -376,17 +378,20 @@ public class RemarketingService
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var t = raw.Trim().Trim('"', '“', '”', '\'').Trim();
-        t = EmojiRx.Replace(t, "").Replace("¿", "").Replace("¡", "");
+        t = CopyStyle.Clean(EmojiRx.Replace(t, ""));
         t = Regex.Replace(t, @"[ \t]{2,}", " ").Trim().ToLowerInvariant();
         if (t.Length is < 60 or > 450) return null;
         if (t.Contains('{') || Regex.IsMatch(t, @"bolud|\bche\b|x{3,}", RegexOptions.IgnoreCase)) return null;
         return t;
     }
 
-    private static string FirstWord(string s)
+    /// <summary>Nombre de pila del vendedor ("Eric ventas efcloud" → "eric"); null si no hay uno usable.</summary>
+    public static string? SellerFirstName(string? displayName)
     {
-        var w = (s ?? "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
-        return w.Length == 0 ? "el equipo" : w.ToLowerInvariant();
+        var w = (displayName ?? "").Trim().Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+        if (w.Length < 2 || !w.All(char.IsLetter)) return null;
+        var n = CopyStyle.Clean(w).ToLowerInvariant();
+        return n is "vendedor" or "equipo" or "ventas" or "admin" ? null : n;
     }
 
     /// <summary>Nombre de pila si el nombre del lead parece de persona; null si es un negocio o basura.</summary>
@@ -483,7 +488,7 @@ public class RemarketingService
             }
             if (composed.Text is null)
             {
-                _log.LogWarning("Remarketing: la IA no está disponible — no se encola nada hasta que vuelva ({Seller})", seller.DisplayName);
+                _log.LogWarning("Remarketing: no se encola nada por {Seller}: {Reason}", seller.DisplayName, composed.Reason);
                 break;
             }
             var (text, ai) = (composed.Text, composed.Ai);

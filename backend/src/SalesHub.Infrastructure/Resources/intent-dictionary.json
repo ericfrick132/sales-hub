@@ -74,7 +74,7 @@
    "name": "Pasó su mail",
    "pattern": "\\bEMAIL\\b",
    "action": "avanzar_guion",
-   "reply": "listo, te creé la cuenta. entrá de acá, es acceso directo: {link}",
+   "reply": "listo, te cree la cuenta. entra de aca, es acceso directo: {link}",
    "note": "crear la cuenta y avisar; seguimiento humano a las 24 h (\"entraste?\")",
    "metrics": {
     "turns": 475,
@@ -99,7 +99,7 @@
    "name": "Texto precargado del anuncio",
    "pattern": "gustaria activar|quiero (info|informacion|mas informacion|mas info)|quiero contratar|quiero bajar la morosidad|quiero cobrar las cuotas|quiero el seguimiento de obra|dejar el excel|quiero ordenar|quiero organizar",
    "action": "arrancar_guion",
-   "reply": "buenas! soy {vendedor} de {producto}. te hago un par de preguntas rápidas para ver cómo te ayudo",
+   "reply": "buenas! soy {vendedor} de {producto}. te hago un par de preguntas rapidas para ver como te ayudo",
    "note": "opener corto + primera pregunta del guion. el mensaje largo con lista de funciones retiene 4 veces menos",
    "metrics": {
     "turns": 1536,
@@ -124,7 +124,7 @@
    "name": "No le interesa / que no le escriban",
    "pattern": "no (me )?interesa|^no,? gracias|^no te agradezco|^chau$|no chau|no voy a (querer|contratar|seguir)|imposible pagar|no (puedo|podemos) (ocuparme|pagar)|me estoy enfocando en otro|no por ahora|por ahora no|no necesito|no estoy interesad|no quiero|dejame de|deja de escribir|no me escribas|borrame|dame de baja|no molest",
    "action": "cerrar",
-   "reply": "dale, sin drama. si más adelante te sirve, escribime por acá",
+   "reply": "dale, sin drama. si mas adelante te sirve, escribime por aca",
    "note": "cerrar y no volver a escribir",
    "metrics": {
     "turns": 74,
@@ -149,7 +149,7 @@
    "name": "Ya tiene otro sistema",
    "pattern": "ya (tengo|tenemos|uso|usamos|contamos|trabajo|trabajamos|contrate|contratamos)|estoy con otra app|tengo otra app|tengo un (sistema|programa|software)|tenemos un (sistema|programa|software)|estamos (usando|con un)|consegui otro|uso otro",
    "action": "objecion",
-   "reply": "buenísimo. y qué es lo que más te molesta del que usás hoy? si es algo que resolvemos te muestro solo eso, si no no te hago perder tiempo",
+   "reply": "buenisimo. y que es lo que mas te molesta del que usas hoy? si es algo que resolvemos te muestro solo eso, si no no te hago perder tiempo",
    "note": "objeción: una sola pregunta sobre qué le molesta",
    "metrics": {
     "turns": 76,
@@ -174,7 +174,7 @@
    "name": "Número equivocado / no es del rubro / busca trabajo",
    "pattern": "numero equivocado|te equivocaste|equivocado de|no tengo (mas )?(el )?(gym|gimnasio|negocio)|cerre el|lo vendi|no es un (gym|gimnasio)|no soy (el|la) (duen|encargad)|busco trabajo|buscando trabajo|soy (pintor|yesero|albanil|plomero|electricista|herrero)|ofrezco mis (trabajos|servicios)|estoy disponible para",
    "action": "cerrar",
-   "reply": "perdón por la molestia, que andes bien",
+   "reply": "perdon por la molestia, que andes bien",
    "note": "cerrar y excluir de toda cadencia",
    "metrics": {
     "turns": 20,
@@ -199,7 +199,7 @@
    "name": "¿Quién sos? / sos un bot",
    "pattern": "quien (sos|habla|te (dio|paso))|no se quien|quien es$|de donde (me|sacaste|tenes|sos)|como (conseguiste|tenes) mi|no te (tengo|conozco)|te conozco|sos (un )?bot|es un bot|sos real|sos una persona|\\bspam\\b",
    "action": "presentarse",
-   "reply": "soy {vendedor} de {producto}, un sistema para cobrar cuotas y controlar el acceso en gimnasios. te escribí porque dejaste tus datos en el anuncio. si no te interesa lo dejamos acá",
+   "reply": "soy {vendedor} de {producto}, un sistema para cobrar cuotas y controlar el acceso en gimnasios. te escribi porque dejaste tus datos en el anuncio. si no te interesa lo dejamos aca",
    "note": "presentación en una línea con el motivo real del contacto",
    "metrics": {
     "turns": 16,
@@ -224,7 +224,7 @@
    "name": "Quiere pagar / cómo pago",
    "pattern": "como (pago|abono|hago el pago|te pago|contrato)|pasame (el |tu )?(alias|cbu|link de pago)|\\balias\\b|\\bcbu\\b|transferi|comprobante|quiero (pagar|abonar)|donde (pago|abono)|con tarjeta|mercado ?pago",
    "action": "cerrar_venta",
-   "reply": "genial. el alias es {alias}, me mandás el comprobante por acá y te la dejo activa en el momento",
+   "reply": "genial. el alias es {alias}, me mandas el comprobante por aca y te la dejo activa en el momento",
    "note": "URGENTE a humano: <5 min sigue 89%, >1 h 27%",
    "metrics": {
     "turns": 59,
@@ -249,7 +249,7 @@
    "name": "Pregunta el precio",
    "pattern": "precio|presupuesto|que vale|cuanto (sale|cuesta|es|seria|cobran|vale|queda|me sale|saldria|costaria)|tengo que pagar|que valor|el valor|valores|costo|tarifa|\\bPRECIO\\b|cuanto por mes|tiene (algun )?costo|se paga",
    "action": "responder_precio",
-   "reply": "son {precio} por mes, sin límite de alumnos. con que no pierdas una cuota por mes ya se paga solo. tenés 7 días gratis, te dejo la cuenta armada?",
+   "reply": "son {precio} por mes, sin limite de alumnos. con que no pierdas una cuota por mes ya se paga solo. tenes 7 dias gratis, te dejo la cuenta armada?",
    "note": "precio leído de la API del producto, nunca escrito a mano; no pedir el mail antes",
    "metrics": {
     "turns": 359,
@@ -349,7 +349,7 @@
    "name": "Horario / disponibilidad",
    "pattern": "\\b(manana|hoy|pasado|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\\b.*\\b(puedo|podria|puede|te va|me va|a la (manana|tarde|noche)|a las|N ?hs|temprano|tarde)\\b|a la (manana|tarde|noche) (puedo|podria|te)|\\bN ?hs\\b|\\bN N ?hs\\b|a las N|despues de las N|en un rato|estoy (en el banco|trabajando|manejando|ocupad|con un cliente|dando clase)|ahora no puedo|me desocupo|mas tarde (te|hablamos)|a que hora",
    "action": "agendar_llamada",
-   "reply": "perfecto, te llamo {horario}. cualquier cosa me avisás por acá",
+   "reply": "perfecto, te llamo {horario}. cualquier cosa me avisas por aca",
    "note": "confirmar el horario y agendar la llamada",
    "metrics": {
     "turns": 50,
@@ -374,7 +374,7 @@
    "name": "Pide video / tutorial / material",
    "pattern": "(pasa|pasame|pasas|manda|mandame|mandas|tenes|tendrias|tienen|hay|envia|enviame|mande|ver el).{0,30}(video|tutorial|manual|instructivo|folleto|presentacion|catalogo)|^(video|el video|mandame el video)",
    "action": "enviar_material",
-   "reply": "acá tenés un video corto de cómo funciona: {video}. cualquier duda me decís",
+   "reply": "aca tenes un video corto de como funciona: {video}. cualquier duda me decis",
    "note": "mandar el video del producto",
    "metrics": {
     "turns": 46,
@@ -399,7 +399,7 @@
    "name": "Cómo lo pruebo",
    "pattern": "como (hago|haria|hacer|pra|para) (para )?prob|la puedo probar|lo puedo probar|quiero probar|como pruebo|probarlo|probar(lo)? (desde|en)|prueba gratis|periodo de prueba|dias (de prueba|gratis)",
    "action": "crear_cuenta",
-   "reply": "tenés 7 días gratis para probar todo. pasame tu mail y te dejo la cuenta armada ahora",
+   "reply": "tenes 7 dias gratis para probar todo. pasame tu mail y te dejo la cuenta armada ahora",
    "note": "crear cuenta de prueba",
    "metrics": {
     "turns": 29,
@@ -424,7 +424,7 @@
    "name": "Más adelante / todavía no abrió",
    "pattern": "mas adelante|todavia no (abri|arranque|empece|tengo|estoy)|estoy por abrir|voy a abrir|abro en|abrimos en|inaugur|el mes que viene|la semana que viene|a fin de mes|ahora no|en otro momento|por el momento no|cuando (abra|tenga|arranque)|el ano que viene|despues de las fiestas",
    "action": "agendar_recontacto",
-   "reply": "dale, perfecto. para cuándo más o menos? te escribo unos días antes y te lo dejo armado",
+   "reply": "dale, perfecto. para cuando mas o menos? te escribo unos dias antes y te lo dejo armado",
    "note": "preguntar fecha y programar el recontacto",
    "metrics": {
     "turns": 91,

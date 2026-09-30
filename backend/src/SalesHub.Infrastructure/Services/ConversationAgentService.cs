@@ -691,7 +691,8 @@ public class ConversationAgentService
         t = Regex.Replace(t, @"[ \t]+([,.;:!?])", "$1");     // espacio huérfano antes de puntuación
         t = Regex.Replace(t, @"(^|\n)[ \t]*,[ \t]*", "$1");  // coma que quedó abriendo una línea
         t = Regex.Replace(t, @"[ \t]{2,}", " ");
-        return t.Trim();
+        // Sin tildes, sin ¿ ¡ y sin emojis en todo lo que manda el bot (ver CopyStyle).
+        return CopyStyle.Clean(t);
     }
 
     /// <summary>
