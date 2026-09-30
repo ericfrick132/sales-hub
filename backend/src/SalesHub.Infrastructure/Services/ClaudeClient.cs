@@ -20,7 +20,7 @@ namespace SalesHub.Infrastructure.Services;
 /// <summary>Imagen para un turno con visión (JPEG/PNG/WebP/GIF).</summary>
 public record ClaudeImage(string MimeType, byte[] Data);
 
-public class ClaudeClient
+public partial class ClaudeClient
 {
     private readonly HttpClient _http;
     private readonly ClaudeOptions _opts;
