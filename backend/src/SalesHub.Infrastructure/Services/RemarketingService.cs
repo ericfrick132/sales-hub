@@ -116,7 +116,18 @@ public class RemarketingService
     public record Candidate(Guid LeadId, string Name, string ProductKey, Guid? CurrentSellerId,
         string Stage, int Score, bool Owed, int InboundCount, int IdleDays, DateTimeOffset LastAt, string LastInbound);
 
-    private record Row(Guid Id, string Name, string ProductKey, Guid? SellerId, DateTimeOffset? LastAt, int Nin, MessageDirection? LastDir);
+    // Clase con init (no record posicional): EF solo puede seguir filtrando/ordenando en SQL
+    // sobre una proyección member-init.
+    private sealed class Row
+    {
+        public Guid Id { get; init; }
+        public string Name { get; init; } = "";
+        public string ProductKey { get; init; } = "";
+        public Guid? SellerId { get; init; }
+        public DateTimeOffset? LastAt { get; init; }
+        public int Nin { get; init; }
+        public MessageDirection? LastDir { get; init; }
+    }
 
     // ── Config ─────────────────────────────────────────────────────────────
 
@@ -193,12 +204,14 @@ public class RemarketingService
                      && (l.NextActionAt == null || l.NextActionAt < now)
                      && !_db.RemarketingAttempts.Any(a => a.LeadId == l.Id)
                      && !_db.Outbox.Any(o => o.LeadId == l.Id && o.Status == OutboxStatus.Scheduled))
-            .Select(l => new Row(
-                l.Id, l.Name, l.ProductKey, l.SellerId,
-                _db.ConversationMessages.Where(m => m.LeadId == l.Id).Max(m => (DateTimeOffset?)m.Timestamp),
-                _db.ConversationMessages.Count(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound),
-                _db.ConversationMessages.Where(m => m.LeadId == l.Id).OrderByDescending(m => m.Timestamp)
-                    .Select(m => (MessageDirection?)m.Direction).FirstOrDefault()))
+            .Select(l => new Row
+            {
+                Id = l.Id, Name = l.Name, ProductKey = l.ProductKey, SellerId = l.SellerId,
+                LastAt = _db.ConversationMessages.Where(m => m.LeadId == l.Id).Max(m => (DateTimeOffset?)m.Timestamp),
+                Nin = _db.ConversationMessages.Count(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound),
+                LastDir = _db.ConversationMessages.Where(m => m.LeadId == l.Id).OrderByDescending(m => m.Timestamp)
+                    .Select(m => (MessageDirection?)m.Direction).FirstOrDefault(),
+            })
             .Where(x => x.Nin > 0 && x.LastAt < minCut && (maxCut == null || x.LastAt >= maxCut));
     }
 
