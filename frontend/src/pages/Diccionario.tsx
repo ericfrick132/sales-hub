@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import type { Product } from '../lib/types';
 import Switch from '../components/Switch';
 
 type Intent = {
@@ -12,6 +13,7 @@ type Intent = {
   maxWords: number | null;
   action: string;
   reply: string | null;
+  replyByProduct: Record<string, string>;
   note: string | null;
   examples: string[];
   sortOrder: number;
@@ -22,6 +24,22 @@ type Intent = {
 
 type Data = { days: number; total: number; covered: number; other: number; unclassified: number; intents: Intent[] };
 type Msg = { leadId: string; text: string; timestamp: string; lead: string };
+
+type SimRow = {
+  id: string; leadId: string; lead: string; product: string; seller: string | null; text: string; timestamp: string;
+  intentKey: string; intentConfident: boolean | null; intentAction: string; intentSimulatedReply: string | null;
+  actualReply: string | null; actualAfterMin: number | null;
+};
+type Sim = {
+  byProduct: { product: string; total: number; reply: number; noReply: number; toHuman: number }[];
+  rows: SimRow[];
+};
+
+const ACTION_LABEL: Record<string, string> = {
+  respuesta: 'respondería',
+  sin_respuesta: 'no respondería',
+  ia_humano: 'a humano / IA',
+};
 
 const pct = (a: number, b: number) => (b > 0 ? `${((100 * a) / b).toFixed(1)}%` : '—');
 
@@ -43,6 +61,20 @@ export default function Diccionario() {
     enabled: !!openKey,
     queryFn: async () => (await api.get<Msg[]>(`/intents/${openKey}/messages`)).data,
   });
+
+  const products = useQuery({
+    queryKey: ['products'],
+    queryFn: async () => (await api.get<Product[]>('/products')).data,
+  });
+  const [simProduct, setSimProduct] = useState('');
+  const [simAction, setSimAction] = useState('respuesta');
+  const sim = useQuery({
+    queryKey: ['intent-sim', days, simProduct, simAction],
+    queryFn: async () => (await api.get<Sim>('/intents/simulation', {
+      params: { days, product: simProduct || undefined, action: simAction || undefined, take: 80 },
+    })).data,
+  });
+  const [editProduct, setEditProduct] = useState('');
 
   const [editing, setEditing] = useState<Intent | null>(null);
   const save = useMutation({
@@ -215,6 +247,75 @@ export default function Diccionario() {
         </section>
       )}
 
+      <section className="rounded-xl border bg-white p-4 space-y-3">
+        <div>
+          <div className="font-semibold">Simulación en vivo</div>
+          <div className="text-xs text-slate-500">
+            Qué habría hecho el bot con cada mensaje real (no se manda nada) al lado de lo que se respondió de verdad
+            en las 2 horas siguientes. Sirve para decidir qué tipos prender en "responde solo".
+          </div>
+        </div>
+        {sim.data && sim.data.byProduct.length > 0 && (
+          <table className="w-full text-sm">
+            <thead className="text-left text-slate-500">
+              <tr><th className="py-1">App</th><th>Mensajes</th><th>Respondería</th><th>No respondería</th><th>A humano / IA</th></tr>
+            </thead>
+            <tbody>
+              {sim.data.byProduct.map((p) => (
+                <tr key={p.product} className="border-t">
+                  <td className="py-1.5">{p.product}</td><td>{p.total}</td>
+                  <td>{p.reply} ({pct(p.reply, p.total)})</td><td>{p.noReply} ({pct(p.noReply, p.total)})</td>
+                  <td>{p.toHuman} ({pct(p.toHuman, p.total)})</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div className="flex flex-wrap gap-2 text-sm">
+          <select className="input" value={simProduct} onChange={(e) => setSimProduct(e.target.value)}>
+            <option value="">todas las apps</option>
+            {(products.data ?? []).map((p) => <option key={p.productKey} value={p.productKey}>{p.displayName}</option>)}
+          </select>
+          <select className="input" value={simAction} onChange={(e) => setSimAction(e.target.value)}>
+            <option value="respuesta">respondería</option>
+            <option value="sin_respuesta">no respondería</option>
+            <option value="ia_humano">a humano / IA</option>
+            <option value="">todo</option>
+          </select>
+        </div>
+        {sim.isLoading ? <div className="text-sm text-slate-400">Cargando…</div> : (
+          <div className="space-y-2">
+            {(sim.data?.rows ?? []).map((r) => (
+              <div key={r.id} className="rounded-lg border p-3 text-sm">
+                <div className="flex flex-wrap gap-x-3 text-xs text-slate-500">
+                  <span className="font-medium text-slate-800">{r.lead}</span>
+                  <span>{r.product}</span>
+                  {r.seller && <span>línea: {r.seller}</span>}
+                  <span>{new Date(r.timestamp).toLocaleString('es-AR')}</span>
+                  <span className="rounded bg-slate-100 px-1.5">{nameOf(r.intentKey)}</span>
+                  <span className={r.intentAction === 'ia_humano' ? 'text-slate-500' : 'text-emerald-700'}>
+                    {ACTION_LABEL[r.intentAction] ?? r.intentAction}
+                  </span>
+                </div>
+                <div className="mt-1">lead: “{r.text.slice(0, 200)}”</div>
+                <div className="mt-1 grid gap-2 sm:grid-cols-2">
+                  <div className="rounded bg-emerald-50 px-2 py-1.5">
+                    <div className="text-[11px] text-slate-500">el bot</div>
+                    {r.intentAction === 'respuesta' ? r.intentSimulatedReply : ACTION_LABEL[r.intentAction]}
+                  </div>
+                  <div className="rounded bg-slate-50 px-2 py-1.5">
+                    <div className="text-[11px] text-slate-500">
+                      de verdad{r.actualAfterMin !== null ? ` (a los ${r.actualAfterMin} min)` : ''}
+                    </div>
+                    {r.actualReply ? r.actualReply.slice(0, 220) : <span className="text-slate-400">nadie respondió en 2 h</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {editing && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50" onClick={() => setEditing(null)}>
           <div className="bg-white rounded-xl p-5 w-full max-w-2xl space-y-3" onClick={(e) => e.stopPropagation()}>
@@ -248,6 +349,24 @@ export default function Diccionario() {
               <div className="text-slate-600">Respuesta sugerida ({'{vendedor}'}, {'{producto}'}, {'{precio}'}…)</div>
               <textarea className="input w-full h-20" value={editing.reply ?? ''} onChange={(e) => setEditing({ ...editing, reply: e.target.value })} />
             </label>
+            <div className="block text-sm space-y-1">
+              <div className="text-slate-600">Respuesta propia de una app (pisa a la general para esa línea)</div>
+              <div className="flex gap-2">
+                <select className="input" value={editProduct} onChange={(e) => setEditProduct(e.target.value)}>
+                  <option value="">elegí una app…</option>
+                  {(products.data ?? []).map((p) => (
+                    <option key={p.productKey} value={p.productKey}>
+                      {p.displayName}{editing.replyByProduct?.[p.productKey] ? ' ✓' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {editProduct && (
+                <textarea className="input w-full h-20" placeholder="vacío = usa la respuesta general"
+                  value={editing.replyByProduct?.[editProduct] ?? ''}
+                  onChange={(e) => setEditing({ ...editing, replyByProduct: { ...(editing.replyByProduct ?? {}), [editProduct]: e.target.value } })} />
+              )}
+            </div>
             <label className="block text-sm space-y-1">
               <div className="text-slate-600">Nota</div>
               <input className="input w-full" value={editing.note ?? ''} onChange={(e) => setEditing({ ...editing, note: e.target.value })} />

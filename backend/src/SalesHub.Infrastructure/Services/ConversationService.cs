@@ -184,11 +184,24 @@ public class ConversationService
                 .OrderByDescending(m => m.Timestamp)
                 .Select(m => m.Text)
                 .FirstOrDefaultAsync(ct);
-        var intentKey = await _intents.ClassifyAsync(incoming.Text, previousOutbound, ct);
+        var (intentKey, intentConfident) = (await _intents.GetMatcherAsync(ct)).ClassifyWithConfidence(incoming.Text, previousOutbound);
+        // Simulación en vivo: qué haría el bot con este mensaje (NO se manda nada; se compara con lo
+        // que se respondió de verdad en /diccionario). Solo en vivo, no en el replay del historial.
+        var messageId = Guid.NewGuid();
+        IntentReplyPlanner.Plan? plan = null;
+        if (!incoming.FromSync && !IsHistory(incoming))
+        {
+            var sellerName = lead.SellerId is null ? null : await _db.Sellers.AsNoTracking()
+                .Where(s => s.Id == lead.SellerId).Select(s => s.DisplayName).FirstOrDefaultAsync(ct);
+            var productName = await _db.Products.AsNoTracking()
+                .Where(p => p.ProductKey == lead.ProductKey).Select(p => p.DisplayName).FirstOrDefaultAsync(ct);
+            plan = IntentReplyPlanner.Decide(intentKey, intentConfident, await _intents.GetRuleAsync(intentKey, ct),
+                previousOutbound, messageId, sellerName, lead.ProductKey, productName);
+        }
 
         _db.ConversationMessages.Add(new ConversationMessage
         {
-            Id = Guid.NewGuid(),
+            Id = messageId,
             LeadId = lead.Id,
             SellerId = lead.SellerId,
             Direction = MessageDirection.Inbound,
@@ -200,6 +213,9 @@ public class ConversationService
             IsRead = false,
             RawJson = incoming.RawJson,
             IntentKey = intentKey,
+            IntentConfident = intentConfident,
+            IntentAction = plan?.Action,
+            IntentSimulatedReply = plan?.Text,
         });
 
         // Update lead state: first reply triggers status transition.

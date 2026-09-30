@@ -26,6 +26,7 @@
    "pattern": "soy (el|la) asistente (virtual )?de|bienvenid[oa] a \\w+|te invitamos a|he pasado tu mensaje|(hay )?algo mas en (lo )?que te (pueda|puedo) ayudar|en que te (puedo|podemos) ayudar hoy|en cuanto me sea posible|chequea (primero )?mis estados|el valor de la cuota es|(trabajamos|contamos) con (clases|pase libre|sesiones)|^(?!.*(pasanos|mandanos|pasame|mandame|enviame|te habla|habla \\w+ del|no (estaria|estamos|estoy) necesitando|por el momento no|lo vamos charlando))(?:.*)(gracias por (comunicarte|tu mensaje|ponerte en contacto|escribirnos|contactarnos|escribir)|asistente virtual|a la brevedad|lo antes posible|horarios? de atencion|lunes a viernes|(en que|como) (te |le )?podemos ayudar|haznos saber|dejanos tu consulta|te he conectado|no podemos responder|hemos pasado la conversacion|responderemos|revisara tu mensaje|mensaje automatico)",
    "action": "no_responder",
    "reply": null,
+   "reply_by_product": {},
    "note": "no responder: es el contestador de otro negocio; esperar al humano. hoy le contestamos al 75%",
    "max_words": null,
    "metrics": {
@@ -51,6 +52,7 @@
    "pattern": "^((audio|image|sticker|video|document|ptv)message\\s*)+$",
    "action": "transcribir_o_humano",
    "reply": null,
+   "reply_by_product": {},
    "note": "audio: transcribir y reclasificar el texto. imagen/documento: pasar a humano",
    "max_words": null,
    "metrics": {
@@ -75,6 +77,7 @@
    "pattern": "^(?!.*(contrasena|no me deja|no puedo|me pide|no me llega|no llego))(?:.*)\\bEMAIL\\b",
    "action": "avanzar_guion",
    "reply": "{listo|genial|perfecto}, {ya te cree la cuenta|te deje la cuenta armada}. {entra de aca|te dejo el acceso}, es directo: {link}",
+   "reply_by_product": {},
    "note": "crear la cuenta y avisar; seguimiento humano a las 24 h (\"entraste?\")",
    "max_words": null,
    "metrics": {
@@ -100,6 +103,7 @@
    "pattern": "gustaria activar|quiero activar (el sistema|la app|gym ?hero|turnos ?pro)|me gustaria saber mas sobre|quiero recibir (mas )?informacion|quiero (info|informacion) sobre|quiero (info|informacion|mas informacion|mas info)|quiero contratar|quiero bajar la morosidad|quiero cobrar las cuotas|quiero el seguimiento de obra|dejar el excel|quiero ordenar|quiero organizar",
    "action": "arrancar_guion",
    "reply": "{buenas|hola|buen dia}! soy {vendedor} de {producto}. {te hago un par de preguntas rapidas para ver como te ayudo|te hago dos preguntas asi te ayudo mejor}",
+   "reply_by_product": {},
    "note": "opener corto + primera pregunta del guion. el mensaje largo con lista de funciones retiene 4 veces menos",
    "max_words": null,
    "metrics": {
@@ -125,6 +129,7 @@
    "pattern": "no (me )?interesa|^no,? gracias|no es lo que (esperaba|buscaba)|no me sirve|te (voy a )?bloque|^ninguna,? que tengas|estamos bien con (nuestro|el|nuestra) (sistema|app)|^te agradezco,? (un )?saludo|lo dejamos para (otro momento|mas adelante)|estamos cubiertos|mil gracias igual|por el culo|a la mierda|pelotud|\\bforro\\b|la concha|no ?me mand(es|en)|no ?me escrib|denunci|^no te agradezco|^chau$|no chau|no voy a (querer|contratar|seguir)|imposible pagar|no (puedo|podemos) (ocuparme|pagar)|me estoy enfocando en otro|no por ahora|por ahora no|no necesito|no estoy interesad|no quiero|dejame de|deja de escribir|no me escribas|borrame|dame de baja|no molest",
    "action": "cerrar",
    "reply": "{dale|perfecto|ok}, {sin drama|no hay problema}. {si mas adelante te sirve, escribime por aca|cualquier cosa me escribis}",
+   "reply_by_product": {},
    "note": "cerrar y no volver a escribir",
    "max_words": null,
    "metrics": {
@@ -150,6 +155,7 @@
    "pattern": "ya (tengo|tenemos|uso|usamos|contamos con|trabajo con|trabajamos con|contrate|contratamos) (un |una |el |la |otro |otra )?(sistema|app|aplicacion|programa|software|plataforma|servicio|con)|ya (contrate|contratamos|consegui)|ya cuento con|contamos con (un|una) (sistema|app|programa|software)|estamos sistematizados|estamos bien con (nuestro|el|nuestra) (sistema|app)|sistema q(ue)? ya tengo|(?<!no )(estoy|estamos) usando(?! (ningun|nada|nigun))|actualmente (uso|usamos|estoy con|trabajo con)|(trabajamos|trabajo) con una app|usamos una app|estoy con otra app|tengo otra app|tengo un (sistema|programa|software)|tenemos un (sistema|programa|software)|estamos (usando|con un)|consegui otro|uso otro",
    "action": "objecion",
    "reply": "{buenisimo|genial}. {y que es lo que mas te molesta del que usas hoy|hay algo que no te convenza del que usas}? si es algo que resolvemos te muestro solo eso, si no no te hago perder tiempo",
+   "reply_by_product": {},
    "note": "objeción: una sola pregunta sobre qué le molesta",
    "max_words": null,
    "metrics": {
@@ -175,6 +181,7 @@
    "pattern": "numero equivocado|te equivocaste|te confundiste|me confundi|esto es para gimnasio|no somos un (gimnasio|gym)|cerro en N|cerramos|equivocado de|no tengo (mas )?(el )?(gym|gimnasio|negocio)|cerre el|lo vendi|no es un (gym|gimnasio)|no soy (el|la) (duen|encargad)|busco trabajo|buscando trabajo|soy (pintor|yesero|albanil|plomero|electricista|herrero)|ofrezco mis (trabajos|servicios)|estoy disponible para",
    "action": "cerrar",
    "reply": "{perdon|disculpa} {la molestia|por el mensaje}, que andes bien",
+   "reply_by_product": {},
    "note": "cerrar y excluir de toda cadencia",
    "max_words": null,
    "metrics": {
@@ -199,7 +206,11 @@
    "name": "¿Quién sos? / sos un bot",
    "pattern": "quien (sos|habla|te (dio|paso)|me escribe)|sos (un|una) (asesor|asistente|robot|ia)|sos humano|por ?que (tema )?me (escrib|habl)|que es esto|no se quien|quien es$|de donde (me|sacaste|tenes|sos)|como (conseguiste|tenes) mi|no te (tengo|conozco)|te conozco|sos (un )?bot|es un bot|sos real|sos una persona|\\bspam\\b",
    "action": "presentarse",
-   "reply": "soy {vendedor} de {producto}, un sistema para cobrar cuotas y controlar el acceso en gimnasios. te escribi porque dejaste tus datos en el anuncio. si no te interesa lo dejamos aca",
+   "reply": "soy {vendedor} de {producto}. te escribi porque dejaste tus datos en el anuncio. {si no te interesa lo dejamos aca|si no es para vos no te escribo mas}",
+   "reply_by_product": {
+    "gymhero": "soy {vendedor} de gymhero, un sistema para cobrar cuotas y controlar el acceso en gimnasios. te escribi porque dejaste tus datos en el anuncio. {si no te interesa lo dejamos aca|si no es para vos no te escribo mas}",
+    "turnospro": "soy {vendedor} de turnospro, un sistema de turnos online con recordatorios y seña. te escribi porque dejaste tus datos en el anuncio. {si no te interesa lo dejamos aca|si no es para vos no te escribo mas}"
+   },
    "note": "presentación en una línea con el motivo real del contacto",
    "max_words": null,
    "metrics": {
@@ -225,6 +236,7 @@
    "pattern": "precio|presupuesto|cuanto me saldria|en que moneda|que moneda|despues de (los|esos|la) (N dias|prueba)|\\babonas\\b|se abona|hay que pagar|que vale|cuanto (sale|cuesta|es|seria|cobran|vale|queda|me sale|saldria|costaria)|tengo que pagar|que valor|el valor|valores|costo|tarifa|\\bPRECIO\\b|cuanto por mes|tiene (algun )?costo|se paga",
    "action": "responder_precio",
    "reply": "son {precio} por mes, sin limite de alumnos. {con que no pierdas una cuota por mes ya se paga solo|se paga solo con una cuota que no se te escape}. tenes 7 dias gratis, {te dejo la cuenta armada|te la armo}?",
+   "reply_by_product": {},
    "note": "precio leído de la API del producto, nunca escrito a mano; no pedir el mail antes",
    "max_words": null,
    "metrics": {
@@ -250,6 +262,7 @@
    "pattern": "como (pago|abono|hago el pago|te pago|contrato)|quiero el (de|plan de) N (meses|mes)|renovar|voy a (pagar|abonar|transferir)|para (la )?transferencia|quiero abonar|hacer el pago|necesito pagar|puedo pagar|\\btarjeta\\b|pasame (el |tu )?(alias|cbu|link de pago)|\\balias\\b|\\bcbu\\b|transferi|comprobante|quiero (pagar|abonar)|donde (pago|abono)|con tarjeta|mercado ?pago",
    "action": "cerrar_venta",
    "reply": "{genial|buenisimo}. el alias es {alias}, me mandas el comprobante por aca y te la dejo activa {en el momento|al toque}",
+   "reply_by_product": {},
    "note": "URGENTE a humano: <5 min sigue 89%, >1 h 27%",
    "max_words": null,
    "metrics": {
@@ -275,6 +288,7 @@
    "pattern": "de (que|donde) (pais|son|sos|provincia|ciudad)|son de (argentina|cordoba|buenos aires|capital|aca)|de que pais|donde estan ubicados|son argentinos",
    "action": "respuesta_fija",
    "reply": "{somos de buenos aires|somos de aca, de buenos aires}, {argentina|capital}. todo en pesos",
+   "reply_by_product": {},
    "note": "respuesta fija",
    "max_words": null,
    "metrics": {
@@ -300,6 +314,7 @@
    "pattern": "(?<!se )llamame|lo podriamos hacer a las|me (llamas|podes llamar|podrias llamar)|llamada|llamar(me|te)?\\b|llama (ya|ahora)|^llamame|videollamada|video llamada|(hacer|tener|coordinar|armar|agendar|hagamos|tengamos) (una )?reunion|\\bdemo\\b|\\bmeet\\b|\\bzoom\\b|hablar con (alguien|una persona|un asesor|vos)|me podes llamar|te llamo",
    "action": "agendar_llamada",
    "reply": "{dale|obvio}, te llamo. {te queda bien|te sirve} hoy {h1} o mañana {h2}?",
+   "reply_by_product": {},
    "note": "pasar a humano / agenda con 2 horarios reales",
    "max_words": null,
    "metrics": {
@@ -325,6 +340,7 @@
    "pattern": "no (puedo |podemos |logro )?(escuchar|reproducir|abrir)(los)? ?(audios?|el audio)?$|no logro escuchar|no escucho audios|audios no|escribime (porfa|por favor)?$|no se escucha",
    "action": "pasar_a_texto",
    "reply": "{dale|perdon}, te lo escribo {cortito|por aca}",
+   "reply_by_product": {},
    "note": "marcar el lead como \"sin audios\" y pasar a texto",
    "max_words": null,
    "metrics": {
@@ -349,6 +365,7 @@
    "pattern": "(trabajo|estoy trabajando) (en|para) (otro|un|una|el|la)|soy (empleado|empleada|recepcionista|la secretaria|el secretario)|no soy (el|la) (duen|encargad|que decide)|(el|la) (duen|duena|dueno) es|le paso (tu|el) contacto|tendrias que hablar con",
    "action": "pedir_contacto_decisor",
    "reply": "{dale, gracias|ah perfecto, gracias}. {me pasas el contacto de quien decide|me pasarias el numero del dueño} asi le escribo directo?",
+   "reply_by_product": {},
    "note": "no decide (empleado, trabaja en otro gym): pedir el contacto del dueño y crear el lead",
    "max_words": null,
    "metrics": {
@@ -367,6 +384,7 @@
    "pattern": "\\b(manana|hoy|pasado|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\\b.*\\b(puedo|podria|puede|te va|me va|a la (manana|tarde|noche)|a las|N ?hs|temprano|tarde)\\b|a la (manana|tarde|noche) (puedo|podria|te)|\\bN ?hs\\b|\\bN N ?hs\\b|a las N|despues de las N|en un rato|dame un rato|dame un toque|termino (una|la) clase|tipo N|puedo antes de las|mismo horario|estoy (justo )?con (turnos|clientes|clase|alumnos)|estoy (en el banco|trabajando(?! (en|para|de|con))|manejando|ocupad|con un cliente|con (una )?clase|dando clase)|ahora no puedo|me desocupo|mas tarde (te|hablamos)|a que hora",
    "action": "agendar_llamada",
    "reply": "{dale|joya|perfecto}, {sin drama|tranqui}. a que hora te queda comodo que te llame?",
+   "reply_by_product": {},
    "note": "confirmar el horario y agendar la llamada",
    "max_words": 35,
    "metrics": {
@@ -392,6 +410,7 @@
    "pattern": "(pasa|pasame|pasas|manda|mandame|mandas|tenes|tendrias|tienen|hay|envia|enviame|mande|ver el).{0,30}(video|videito|tutorial|manual|instructivo|folleto|presentacion|catalogo)|pasamelo|mandamelo|^(video|el video|mandame el video)|^(dale|si|bueno|ok) ?(pasame|mandame|pasa|manda)( (la )?(info|todo))?$",
    "action": "enviar_material",
    "reply": "{aca tenes|te paso} un video corto de como funciona: {video}. {cualquier duda me decis|si te surge algo me escribis}",
+   "reply_by_product": {},
    "note": "mandar el video del producto",
    "max_words": null,
    "metrics": {
@@ -417,6 +436,7 @@
    "pattern": "como (hago|haria|hacer|pra|para) (para )?prob|(dar|doy) de baja la prueba|se corta (sola|solo)|automaticamente se corta|la puedo probar|lo puedo probar|quiero probar|como pruebo|probarlo|probar(lo)? (desde|en)|prueba gratis|periodo de prueba|dias (de prueba|gratis)",
    "action": "crear_cuenta",
    "reply": "tenes 7 dias gratis para probar todo. {pasame tu mail y te dejo la cuenta armada ahora|si me pasas tu mail te la armo al toque}",
+   "reply_by_product": {},
    "note": "crear cuenta de prueba",
    "max_words": null,
    "metrics": {
@@ -442,6 +462,7 @@
    "pattern": "mas adelante|todavia no (abri|arranque|empece|tengo|estoy)|en N (meses|semanas)|estoy por abrir|voy a abrir|abro en|abrimos en|inaugur|el mes que viene|la semana que viene|a fin de mes|ahora no|en otro momento|por el momento no|cuando (abra|tenga|arranque)|el ano que viene|despues de las fiestas",
    "action": "agendar_recontacto",
    "reply": "{dale|perfecto|buenisimo}. para cuando mas o menos? te escribo unos dias antes y te lo dejo armado",
+   "reply_by_product": {},
    "note": "preguntar fecha y programar el recontacto",
    "max_words": null,
    "metrics": {
@@ -467,6 +488,7 @@
    "pattern": "no me (deja|anda|funciona|carga|llega|llego|abre|aparece|toma|reconoce)|no (pude|puedo|pudo|podemos) (entrar|ingresar|acceder)|me sale (esto|con deuda|que|otra vez|abonar)|no hay caso|no me permite|no (pudo|pude)\\b|me pide (suscripcion|una contrasena|contrasena|pagar)|no me da la opcion|donde lo puedo encontrar|no estan cargad|aparece que|me dice que|le dice que|(pasame|mandame|reenviame) el (link|enlace|acceso)|no (m )?(deja|carga|llega)|se queda (ahi|cargando)|no carga|problemas? con la (app|pagina|cuenta)|me solucionen|no figura|no aparece|no puedo (entrar|ingresar|acceder|registrar|cargar)|\\berror\\b|contrasena|\\bclave\\b|\\bcodigo\\b|no (me )?llego|se trabo|no anda|como (hago|se hace) para|como (cargo|agrego|configuro|pongo)|no encuentro",
    "action": "soporte",
    "reply": null,
+   "reply_by_product": {},
    "note": "reenviar link de acceso si es login; si no, humano (bot de soporte)",
    "max_words": null,
    "metrics": {
@@ -492,6 +514,7 @@
    "pattern": "te confirmo|lo (veo|miro|reviso|analizo|pienso|charlo|consulto|evaluo|chusmeo)|lo voy a (ver|mirar|pensar|revisar|analizar|probar)|te aviso|voy a (ver|mirar|chusmear|probar|revisar)|lo vemos|dejame (ver|pensar|chequear)|con mi (socio|socia|marido|mujer|esposa|esposo|pareja|jefe)|lo hablo",
    "action": "seguimiento_programado",
    "reply": null,
+   "reply_by_product": {},
    "note": "no responder al toque: seguimiento programado a las 24-48 h",
    "max_words": null,
    "metrics": {
@@ -517,6 +540,7 @@
    "pattern": "me interesa|quiero verlo|mande nomas|me encanta|me gusta(?!ria)|vamo a meterle|arrancar lo mas pronto|quiero implementar|me sirve|esta (muy )?(bueno|buena|interesante)|que bueno|re interesante|suena bien|esta genial",
    "action": "avanzar_guion",
    "reply": null,
+   "reply_by_product": {},
    "note": "avanzar al siguiente paso del guion (siguiente pregunta o crear cuenta)",
    "max_words": null,
    "metrics": {
@@ -542,6 +566,7 @@
    "pattern": "^(y )?(como(?! (estas|va|andas|estan|anda|te va|les va|me decis|quieras|vos))|se puede|puede|hay forma|que pasa)\\b|tendria que (cargar|pagar|hacer|poner)|con molinete|facturacion|\\bfactura|\\barca\\b|(contame|cuentame|contanos) (un poco )?(mas|sobre|de) |para pedir turnos|esto seria con|le aparece|puede ser con|se puede|como hago|puedo (hacer|poner|usar|cargar)|como funciona|como es (el|la)|^que (me )?ofrecen|tengo que (cargar|mandar|abonar|pedir|ingresar|pagar)|es (una )?app o (es )?web|en espanol|es mensual|una sola vez|^(y )?que (hace|incluye|tiene|ofrece|trae)|que (hace|incluye|trae) (el|la|tu|su) (sistema|app|plataforma)|de que se trata|(mas|mayor) (info|informacion|detalle)|explica|como seria|tiene (app|aplicacion)|sirve para|se puede|funciona con|hay (app|aplicacion)|como se (usa|maneja)",
    "action": "faq",
    "reply": null,
+   "reply_by_product": {},
    "note": "respuesta de la FAQ del producto (o IA con el conocimiento del producto si no hay FAQ que coincida)",
    "max_words": null,
    "metrics": {
@@ -567,6 +592,7 @@
    "pattern": "\\bpapel\\b|\\bexcel\\b|\\bword\\b|cuaderno|nunca tuve|aprox|aproximad|\\bmanual\\b|se llama|mi (gym|gimnasio|estudio|local|negocio) es|planilla|a mano|agenda|no uso nada|no usamos nada|desde cero|de cero|\\bN obras?\\b|alrededor de N|al rededor de N|unos N|mas o menos N|\\bN (a|o) N\\b|\\bN (socios|alumnos|clientes|personas|miembros|chicos)\\b|^N( aprox| mas o menos| masomenos)?$|pase libre|clases (fijas|por hora|grupales|con turno)|turnos fijos|por hora|por turnos|combinado|\\bN (asistentes|empleados|profes|profesores)\\b|tengo (un|una) (gimnasio|gym|estudio|cancha)|soy independiente|es un estudio|es chiquito|\\bninguno\\b|cero con|seran N|funcional|crossfit|pilates|musculacion|estetica|peluqueria|barberia|consultorio|no tengo (socios|alumnos)|ningun sistema|por whatsapp",
    "action": "avanzar_guion",
    "reply": "{ok|dale|perfecto|genial}, {anotado|ya lo tengo|listo}",
+   "reply_by_product": {},
    "note": "guardar el dato y hacer la siguiente pregunta del guion",
    "max_words": 25,
    "metrics": {
@@ -592,6 +618,7 @@
    "pattern": "^(hola|holis|buenas|buen dia|buenos dias|buenas tardes|buenas noches|que tal|como estas|como va|como andas)( (hola|buenas|buen dia|buenos dias|buenas tardes|que tal|como estas|como va|como andas|como estan|todo bien|bien|y vos|eric|mateo|si|dale|gracias)){0,5}$",
    "action": "saludar_y_seguir",
    "reply": null,
+   "reply_by_product": {},
    "note": "saludar y seguir con el paso del guion en el mismo mensaje",
    "max_words": null,
    "metrics": {
@@ -617,6 +644,7 @@
    "pattern": "^((grs|grax|graciass|ok|oka|okk|oki|okey|okay|oks|okok|dale|si|sisi|no|nono|tranqui|asi es|puede ser|por favor|si por favor|vamos|yendo|joya|genial|perfecto|listo|bueno|barbaro|joya|gracias|muchas gracias|mil gracias|buenisimo|excelente|voy|de nada|ja|jaja|jajaja|jajajaja|jeje|buen|bien|claro|obvio|sip|ah|aa|ahh|mm|mmm|okis|vale|super|re bien|todo bien|igualmente|a vos|abrazo|saludos|besos|dalee|ook))( (grs|grax|graciass|ok|oka|okk|oki|okey|okay|oks|okok|dale|si|sisi|no|nono|tranqui|asi es|puede ser|por favor|si por favor|vamos|yendo|joya|genial|perfecto|listo|bueno|barbaro|joya|gracias|muchas gracias|mil gracias|buenisimo|excelente|voy|de nada|ja|jaja|jajaja|jajajaja|jeje|buen|bien|claro|obvio|sip|ah|aa|ahh|mm|mmm|okis|vale|super|re bien|todo bien|igualmente|a vos|abrazo|saludos|besos|dalee|ook)){0,4}( (audio|image|video|sticker)message)*$|^(perfecto |dale |si |ok )?(ahora me pongo( con eso)?|estoy cargando|me pongo con eso|(ya )?lo estoy (cargando|haciendo))$",
    "action": "no_responder_o_seguir",
    "reply": null,
+   "reply_by_product": {},
    "note": "si el guion tiene próximo paso, seguir; si no, no responder",
    "max_words": null,
    "metrics": {
@@ -649,7 +677,8 @@
    },
    "examples": [
     "llanos.yohana"
-   ]
+   ],
+   "reply_by_product": {}
   }
  ]
 }

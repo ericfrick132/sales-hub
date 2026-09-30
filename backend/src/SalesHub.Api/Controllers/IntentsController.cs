@@ -52,7 +52,7 @@ public class IntentsController : ControllerBase
             unclassified,
             intents = intents.Select(i => new
             {
-                i.Id, i.Key, i.Name, i.Pattern, i.MaxWords, i.Action, i.Reply, i.Note, i.Examples,
+                i.Id, i.Key, i.Name, i.Pattern, i.MaxWords, i.Action, i.Reply, i.ReplyByProduct, i.Note, i.Examples,
                 i.SortOrder, i.Enabled, i.AutoReply,
                 count = counts.GetValueOrDefault(i.Key),
             }),
@@ -73,7 +73,8 @@ public class IntentsController : ControllerBase
         return Ok(rows);
     }
 
-    public record UpdateRequest(string Name, string Pattern, int? MaxWords, string Action, string? Reply, string? Note, bool Enabled, int SortOrder);
+    public record UpdateRequest(string Name, string Pattern, int? MaxWords, string Action, string? Reply, string? Note, bool Enabled, int SortOrder,
+        Dictionary<string, string>? ReplyByProduct);
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateRequest req, CancellationToken ct)
@@ -92,6 +93,10 @@ public class IntentsController : ControllerBase
         i.Reply = string.IsNullOrWhiteSpace(req.Reply) ? null : req.Reply.Trim();
         i.Note = string.IsNullOrWhiteSpace(req.Note) ? null : req.Note.Trim();
         i.Enabled = req.Enabled;
+        if (req.ReplyByProduct is not null)
+            i.ReplyByProduct = req.ReplyByProduct
+                .Where(kv => !string.IsNullOrWhiteSpace(kv.Key) && !string.IsNullOrWhiteSpace(kv.Value))
+                .ToDictionary(kv => kv.Key.Trim(), kv => kv.Value.Trim());
         i.SortOrder = req.SortOrder;
         i.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
@@ -113,6 +118,60 @@ public class IntentsController : ControllerBase
         await _db.SaveChangesAsync(ct);
         _classifier.Invalidate();
         return Ok(new { ok = true, count = seed.Count });
+    }
+
+    /// <summary>
+    /// Simulación en vivo: por cada mensaje del lead, qué habría hecho el bot (nada se manda) y qué
+    /// se le respondió de verdad después (el siguiente mensaje nuestro dentro de 2 h). Resumen por app.
+    /// </summary>
+    [HttpGet("simulation")]
+    public async Task<IActionResult> Simulation([FromQuery] int days = 30, [FromQuery] string? product = null,
+        [FromQuery] string? action = null, [FromQuery] int take = 60, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var since = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(days, 1, 3650));
+        var q = _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.Direction == MessageDirection.Inbound && m.Timestamp >= since && m.IntentAction != null);
+        if (!string.IsNullOrWhiteSpace(product)) q = q.Where(m => m.Lead!.ProductKey == product);
+
+        var summary = await q.GroupBy(m => new { m.Lead!.ProductKey, m.IntentAction })
+            .Select(g => new { g.Key.ProductKey, g.Key.IntentAction, N = g.Count() })
+            .ToListAsync(ct);
+
+        if (!string.IsNullOrWhiteSpace(action)) q = q.Where(m => m.IntentAction == action);
+        var rows = await q.OrderByDescending(m => m.Timestamp).Take(Math.Clamp(take, 1, 200))
+            .Select(m => new
+            {
+                m.Id, m.LeadId, lead = m.Lead!.Name, product = m.Lead.ProductKey,
+                seller = m.Lead.Seller != null ? m.Lead.Seller.DisplayName : null,
+                m.Text, m.Timestamp, m.IntentKey, m.IntentConfident, m.IntentAction, m.IntentSimulatedReply,
+                actual = _db.ConversationMessages
+                    .Where(o => o.LeadId == m.LeadId && o.Direction == MessageDirection.Outbound
+                             && o.Timestamp > m.Timestamp && o.Timestamp <= m.Timestamp.AddHours(2))
+                    .OrderBy(o => o.Timestamp)
+                    .Select(o => new { o.Text, o.Timestamp })
+                    .FirstOrDefault(),
+            })
+            .ToListAsync(ct);
+
+        return Ok(new
+        {
+            byProduct = summary.GroupBy(s => s.ProductKey).Select(g => new
+            {
+                product = g.Key,
+                total = g.Sum(x => x.N),
+                reply = g.Where(x => x.IntentAction == IntentReplyPlanner.Reply).Sum(x => x.N),
+                noReply = g.Where(x => x.IntentAction == IntentReplyPlanner.NoReply).Sum(x => x.N),
+                toHuman = g.Where(x => x.IntentAction == IntentReplyPlanner.ToHuman).Sum(x => x.N),
+            }).OrderByDescending(x => x.total),
+            rows = rows.Select(r => new
+            {
+                r.Id, r.LeadId, r.lead, r.product, r.seller, r.Text, r.Timestamp, r.IntentKey, r.IntentConfident,
+                r.IntentAction, r.IntentSimulatedReply,
+                actualReply = r.actual?.Text,
+                actualAfterMin = r.actual is null ? (int?)null : (int)(r.actual.Timestamp - r.Timestamp).TotalMinutes,
+            }),
+        });
     }
 
     public record TestRequest(string Text, string? Previous);
@@ -139,7 +198,11 @@ public class IntentsController : ControllerBase
         if (all)
         {
             await _db.ConversationMessages.Where(m => m.Direction == MessageDirection.Inbound && m.IntentKey != null)
-                .ExecuteUpdateAsync(s => s.SetProperty(m => m.IntentKey, (string?)null), ct);
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(m => m.IntentKey, (string?)null)
+                    .SetProperty(m => m.IntentConfident, (bool?)null)
+                    .SetProperty(m => m.IntentAction, (string?)null)
+                    .SetProperty(m => m.IntentSimulatedReply, (string?)null), ct);
         }
 
         var leadIds = await _db.ConversationMessages.AsNoTracking()
@@ -148,8 +211,12 @@ public class IntentsController : ControllerBase
             .ToListAsync(ct);
 
         var updated = 0;
+        var productNames = await _db.Products.AsNoTracking().ToDictionaryAsync(p => p.ProductKey, p => p.DisplayName, ct);
         foreach (var chunk in leadIds.Chunk(100))
         {
+            var leadInfo = await _db.Leads.AsNoTracking().Where(l => chunk.Contains(l.Id))
+                .Select(l => new { l.Id, l.ProductKey, Seller = l.Seller != null ? l.Seller.DisplayName : null })
+                .ToDictionaryAsync(l => l.Id, ct);
             var msgs = await _db.ConversationMessages
                 .Where(m => chunk.Contains(m.LeadId))
                 .OrderBy(m => m.LeadId).ThenBy(m => m.Timestamp)
@@ -161,7 +228,15 @@ public class IntentsController : ControllerBase
                 {
                     if (m.Direction == MessageDirection.Outbound) { lastOut = m.Text; continue; }
                     if (m.IntentKey is not null) continue;
-                    m.IntentKey = matcher.Classify(m.Text, lastOut);
+                    var (key, confident) = matcher.ClassifyWithConfidence(m.Text, lastOut);
+                    m.IntentKey = key;
+                    m.IntentConfident = confident;
+                    // Simulación sobre el historial: qué habría hecho el bot (se compara con lo que se respondió).
+                    var info = leadInfo.GetValueOrDefault(m.LeadId);
+                    var plan = IntentReplyPlanner.Decide(key, confident, await _classifier.GetRuleAsync(key, ct), lastOut, m.Id,
+                        info?.Seller, info?.ProductKey, info is null ? null : productNames.GetValueOrDefault(info.ProductKey));
+                    m.IntentAction = plan.Action;
+                    m.IntentSimulatedReply = plan.Text;
                     updated++;
                 }
             }

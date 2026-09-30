@@ -27,6 +27,12 @@ public class ReplyIntent
     /// <summary>Respuesta sugerida con placeholders ({vendedor}, {producto}, {precio}...). null = depende del guion.</summary>
     public string? Reply { get; set; }
 
+    /// <summary>
+    /// Respuesta propia de una app (productKey → texto), que pisa a <see cref="Reply"/>: cada app
+    /// tiene su línea y su guion ("un sistema para gimnasios" no le sirve a TurnosPro).
+    /// </summary>
+    public Dictionary<string, string> ReplyByProduct { get; set; } = new();
+
     public string? Note { get; set; }
 
     /// <summary>Ejemplos reales (para la pantalla).</summary>

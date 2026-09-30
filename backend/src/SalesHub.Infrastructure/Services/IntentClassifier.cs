@@ -37,7 +37,7 @@ public sealed class IntentMatcher
     /// <summary>Tope de palabras para responder solo (medido: hasta 8 palabras, 95%+ de precisión en mensajes nuevos).</summary>
     public const int ConfidentMaxWords = 8;
 
-    private static readonly Regex OfferedCall = new(@"llamada|te llamo|te llamamos|videollamada|\bmeet\b|\bzoom\b|hacerlo ya|te muestro en vivo|hablamos por telefono", RegexOptions.Compiled, T);
+    public static readonly Regex OfferedCall = new(@"llamada|te llamo|te llamamos|videollamada|\bmeet\b|\bzoom\b|hacerlo ya|te muestro en vivo|hablamos por telefono", RegexOptions.Compiled, T);
     private static readonly Regex Yes = new(@"^(hola )?(si|sisi|dale|ok|oka|bueno|perfecto|genial|de una|obvio|joya|claro)( (dale|si|claro|de una|obvio|perfecto))*$|^(dale |si |ok )?(pasame|mandame|pasa|manda) (el )?link$", RegexOptions.Compiled, T);
     private static readonly Regex AskedHowPay = new(@"como (llevas|cobras|manejas|registras|administran|llevan)|excel papel", RegexOptions.Compiled, T);
     private static readonly Regex PayMethod = new(@"\b(excel|papel|cuaderno|planilla|manual|a mano)\b", RegexOptions.Compiled, T);
@@ -119,6 +119,7 @@ public class IntentClassifier
     private readonly ILogger<IntentClassifier> _log;
     private readonly SemaphoreSlim _lock = new(1, 1);
     private IntentMatcher? _matcher;
+    private Dictionary<string, ReplyIntent> _rules = new();
     private DateTimeOffset _expires = DateTimeOffset.MinValue;
 
     public IntentClassifier(IServiceScopeFactory scopes, ILogger<IntentClassifier> log)
@@ -130,6 +131,13 @@ public class IntentClassifier
 
     public async Task<string> ClassifyAsync(string? text, string? previousOutbound, CancellationToken ct = default)
         => (await GetMatcherAsync(ct)).Classify(text, previousOutbound);
+
+    /// <summary>La fila del diccionario de un tipo (respuesta, acción), de la misma caché que el clasificador.</summary>
+    public async Task<ReplyIntent?> GetRuleAsync(string key, CancellationToken ct = default)
+    {
+        await GetMatcherAsync(ct);
+        return _rules.GetValueOrDefault(key);
+    }
 
     public async Task<IntentMatcher> GetMatcherAsync(CancellationToken ct = default)
     {
@@ -144,9 +152,9 @@ public class IntentClassifier
             var rows = await db.ReplyIntents.AsNoTracking()
                 .Where(i => i.Enabled)
                 .OrderBy(i => i.SortOrder)
-                .Select(i => new { i.Key, i.Pattern, i.MaxWords })
                 .ToListAsync(ct);
             _matcher = new IntentMatcher(rows.Select(r => (r.Key, r.Pattern, r.MaxWords)), _log);
+            _rules = rows.GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.First());
             _expires = DateTimeOffset.UtcNow.AddSeconds(60);
             return _matcher;
         }
@@ -157,6 +165,12 @@ public class IntentClassifier
         }
         finally { _lock.Release(); }
     }
+
+    /// <summary>
+    /// Tipos que responden solos desde el arranque. Vacío a propósito: primero se mira la simulación
+    /// en vivo (/diccionario) y recién ahí se prende cada tipo a mano.
+    /// </summary>
+    public static readonly HashSet<string> DefaultAutoReply = new();
 
     /// <summary>Diccionario del análisis (docs/conversaciones/v2/build_dict.py) embebido en el ensamblado.</summary>
     public static List<ReplyIntent> LoadSeed()
@@ -179,12 +193,16 @@ public class IntentClassifier
                 Action = Str("action") ?? "",
                 Reply = Str("reply"),
                 Note = Str("note"),
+                ReplyByProduct = i.TryGetProperty("reply_by_product", out var rbp) && rbp.ValueKind == JsonValueKind.Object
+                    ? rbp.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String)
+                        .ToDictionary(p => p.Name, p => p.Value.GetString()!)
+                    : new(),
                 Examples = i.TryGetProperty("examples", out var ex) && ex.ValueKind == JsonValueKind.Array
                     ? ex.EnumerateArray().Select(e => e.GetString() ?? "").Where(e => e.Length > 0).ToList()
                     : new(),
                 SortOrder = (order += 10),
                 Enabled = true,
-                AutoReply = false,
+                AutoReply = DefaultAutoReply.Contains(Str("key")!),
             });
         }
         return result;

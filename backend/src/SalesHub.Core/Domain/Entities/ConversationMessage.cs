@@ -48,4 +48,16 @@ public class ConversationMessage
     /// null = sin clasificar todavía; "otro" = ningún patrón coincidió (lo que iría a la IA).
     /// </summary>
     public string? IntentKey { get; set; }
+
+    /// <summary>Si el tipo es "seguro" (un solo tipo, corto, sin pregunta mezclada): solo esos puede contestar el bot solo.</summary>
+    public bool? IntentConfident { get; set; }
+
+    /// <summary>
+    /// Qué haría (o hizo) el diccionario con este mensaje: "sin_respuesta", "respuesta" o "ia_humano".
+    /// Con "responde solo" apagado es una simulación: no se manda nada.
+    /// </summary>
+    public string? IntentAction { get; set; }
+
+    /// <summary>La respuesta que mandaría el diccionario (simulada), para compararla con la real.</summary>
+    public string? IntentSimulatedReply { get; set; }
 }

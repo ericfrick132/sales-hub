@@ -42,5 +42,17 @@ public class ReplyIntentConfiguration : IEntityTypeConfiguration<ReplyIntent>
         b.Property(x => x.Pattern).IsRequired();
         b.Property(x => x.Action).HasMaxLength(40).IsRequired();
         b.Property(x => x.Examples).HasDefaultValueSql("'{}'");
+        b.Property(x => x.ReplyByProduct)
+            .HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => string.IsNullOrWhiteSpace(v)
+                    ? new Dictionary<string, string>()
+                    : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(v, (System.Text.Json.JsonSerializerOptions?)null)!,
+                new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<Dictionary<string, string>>(
+                    (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(),
+                    v => new Dictionary<string, string>(v)))
+            .HasColumnType("jsonb")
+            .HasDefaultValueSql("'{}'::jsonb");
     }
 }

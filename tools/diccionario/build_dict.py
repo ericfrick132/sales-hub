@@ -17,7 +17,7 @@ REPLY = {
  'ya_tiene': '{buenisimo|genial}. {y que es lo que mas te molesta del que usas hoy|hay algo que no te convenza del que usas}? si es algo que resolvemos te muestro solo eso, si no no te hago perder tiempo',
  'equivocado': '{perdon|disculpa} {la molestia|por el mensaje}, que andes bien',
  'no_decisor': '{dale, gracias|ah perfecto, gracias}. {me pasas el contacto de quien decide|me pasarias el numero del dueño} asi le escribo directo?',
- 'desconfianza': 'soy {vendedor} de {producto}, un sistema para cobrar cuotas y controlar el acceso en gimnasios. te escribi porque dejaste tus datos en el anuncio. si no te interesa lo dejamos aca',
+ 'desconfianza': 'soy {vendedor} de {producto}. te escribi porque dejaste tus datos en el anuncio. {si no te interesa lo dejamos aca|si no es para vos no te escribo mas}',
  'pago': '{genial|buenisimo}. el alias es {alias}, me mandas el comprobante por aca y te la dejo activa {en el momento|al toque}',
  'precio': 'son {precio} por mes, sin limite de alumnos. {con que no pierdas una cuota por mes ya se paga solo|se paga solo con una cuota que no se te escape}. tenes 7 dias gratis, {te dejo la cuenta armada|te la armo}?',
  'de_donde': '{somos de buenos aires|somos de aca, de buenos aires}, {argentina|capital}. todo en pesos',
@@ -34,6 +34,13 @@ REPLY = {
  'dato_calificacion': '{ok|dale|perfecto|genial}, {anotado|ya lo tengo|listo}',
  'saludo': None,
  'ack': None,
+}
+# Respuesta propia por app (pisa a REPLY): una linea por app, cada una con su guion.
+REPLY_BY_PRODUCT = {
+ 'desconfianza': {
+  'gymhero': 'soy {vendedor} de gymhero, un sistema para cobrar cuotas y controlar el acceso en gimnasios. te escribi porque dejaste tus datos en el anuncio. {si no te interesa lo dejamos aca|si no es para vos no te escribo mas}',
+  'turnospro': 'soy {vendedor} de turnospro, un sistema de turnos online con recordatorios y seña. te escribi porque dejaste tus datos en el anuncio. {si no te interesa lo dejamos aca|si no es para vos no te escribo mas}',
+ },
 }
 NOTE = {
  'autorespuesta': 'no responder: es el contestador de otro negocio; esperar al humano. hoy le contestamos al 75%',
@@ -73,7 +80,7 @@ for k,name,pat,action in INTENTS:
         if '@' in t or len(t)>120 or t in ex: continue
         ex.append(t)
         if len(ex)>=6: break
-    out.append({'key':k,'name':name,'pattern':pat,'action':action,'reply':REPLY.get(k),'note':NOTE.get(k),
+    out.append({'key':k,'name':name,'pattern':pat,'action':action,'reply':REPLY.get(k),'reply_by_product':REPLY_BY_PRODUCT.get(k,{}),'note':NOTE.get(k),
         'max_words':25 if k=='dato_calificacion' else 35 if k=='horario' else None,
         'metrics':{'turns':len(ps),'share_pct':round(100*len(ps)/N,1),'answered_pct':round(100*len(ans)/max(1,len(ps))),
                    'continued_pct':round(100*sum(p['continued'] for p in ans)/max(1,len(ans))),
@@ -97,6 +104,7 @@ T = str.maketrans('áéíóúüÁÉÍÓÚÜ', 'aeiouuAEIOUU')
 d = json.load(open('diccionario.json'))
 for i in d['intents']:
     if i.get('reply'): i['reply'] = i['reply'].translate(T)
+    i['reply_by_product'] = {p: r.translate(T) for p, r in (i.get('reply_by_product') or {}).items()}
     i['examples'] = [e for e in i['examples'] if '@' not in e]
 json.dump(d, open('diccionario.json', 'w'), ensure_ascii=False, indent=1)
 json.dump(d, open(_os.path.join(_p.REPO, 'backend/src/SalesHub.Infrastructure/Resources/intent-dictionary.json'), 'w'), ensure_ascii=False, indent=1)
