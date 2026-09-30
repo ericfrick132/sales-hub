@@ -434,6 +434,14 @@ export interface OnboardingAppConfig {
   reengageQuestions: string[];
   /** Adjuntos (video demo / precios) que acompañan al reengageIntro. */
   reengageMediaAssetIds: string[];
+  /** Pre-calificación: después de N preguntas (o una señal caliente) el lead pasa a una persona. */
+  handoffEnabled?: boolean;
+  handoffSellerId?: string | null;
+  handoffAfterQuestions?: number;
+  /** Cómo se presenta el bot en {seller} ("mateo"). */
+  presentAs?: string;
+  /** Lo que dice el bot antes de que siga la persona. */
+  handoffMessage?: string;
 }
 
 export interface OnboardingAudioVariant {

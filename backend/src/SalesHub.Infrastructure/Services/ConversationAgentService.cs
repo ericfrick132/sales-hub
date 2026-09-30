@@ -408,6 +408,15 @@ public class ConversationAgentService
             if (runOnboarding)
             {
                 var ob = await _onboarding.ProcessAsync(lead, last, onbCfg!, ct, recentBurst);
+                if (ob.Handoff is not null)
+                {
+                    // Pre-calificación: el bot cierra su parte y sigue la persona en la misma línea.
+                    if (!string.IsNullOrWhiteSpace(ob.Reply)) await OnboardingSendAsync(lead, ob.Reply!, ct);
+                    await HandoffToPersonAsync(lead, onbCfg!, ob.Handoff, thread, ct);
+                    await _db.SaveChangesAsync(ct);
+                    done++;
+                    continue;
+                }
                 if (!ob.OffScript)
                 {
                     // Audio del pitch (nota de voz, variante al azar). En autoservicio el audio precede al
@@ -693,6 +702,59 @@ public class ConversationAgentService
         t = Regex.Replace(t, @"[ \t]{2,}", " ");
         // Sin tildes, sin ¿ ¡ y sin emojis en todo lo que manda el bot (ver CopyStyle).
         return CopyStyle.Clean(t);
+    }
+
+    /// <summary>Etiqueta de los leads que el bot pre-calificó y pasó a una persona.</summary>
+    public const string HandoffTag = "para-mateo";
+
+    /// <summary>
+    /// Pase de un lead pre-calificado a la persona configurada en la app (Mateo): el bot se silencia en
+    /// esa charla, el lead queda etiquetado y a la persona le llega un resumen por WhatsApp desde la
+    /// MISMA línea (la que acaba de recibir el mensaje, así que está viva). No cambia el dueño del lead:
+    /// la persona sigue en el mismo chat y el lead no ve cambiar de número.
+    /// </summary>
+    private async Task HandoffToPersonAsync(Lead lead, OnboardingConfig cfg, string reason,
+        List<ConversationMessage> thread, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        lead.BotMutedAt ??= now;
+        if (!lead.Tags.Contains(HandoffTag, StringComparer.OrdinalIgnoreCase))
+            lead.Tags = lead.Tags.Append(HandoffTag).ToList();   // lista nueva: el change tracker no ve los Add in-place
+        if (lead.Status is LeadStatus.New or LeadStatus.Assigned or LeadStatus.Queued or LeadStatus.Sent or LeadStatus.Replied)
+            lead.Status = LeadStatus.Interested;
+        lead.UpdatedAt = now;
+
+        var person = await _db.Sellers.AsNoTracking().Where(s => s.Id == cfg.HandoffSellerId)
+            .Select(s => new { s.DisplayName, s.WhatsappPhone }).FirstOrDefaultAsync(ct);
+        _db.LeadNotes.Add(new LeadNote
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            Kind = LeadNoteKind.System,
+            Text = $"Pre-calificado por el bot y pasado a {person?.DisplayName ?? "la persona de la app"} ({reason}).",
+            CreatedAt = now,
+        });
+
+        // Resumen: lo que contestó el lead (sus últimos mensajes) + por qué se pasó ahora.
+        var answers = thread.Where(m => m.Direction == MessageDirection.Inbound && !string.IsNullOrWhiteSpace(m.Text))
+            .TakeLast(4).Select(m => "- " + (m.Text.Length > 160 ? m.Text[..160] + "…" : m.Text.Replace('\n', ' ')));
+        var app = lead.Product?.DisplayName ?? lead.ProductKey;
+        var summary = $"lead pre-calificado de {app}: {lead.Name} ({lead.WhatsappPhone})\n" +
+                      $"motivo: {reason}\n" +
+                      "lo que escribio:\n" + string.Join("\n", answers) + "\n" +
+                      "seguilo en el mismo chat (el bot ya no le contesta).";
+
+        var sent = false;
+        if (!string.IsNullOrWhiteSpace(person?.WhatsappPhone))
+            sent = await _lineSender.SendTextAsync(lead.SellerId, lead.Seller?.EvolutionInstance?.InstanceName,
+                person.WhatsappPhone!, summary, ct);
+        if (!sent)
+        {
+            // Sin número cargado o sin línea: al número maestro, así no se pierde.
+            _log.LogWarning("Pase a persona: no pude avisar a {Person} por su WhatsApp, va al maestro (lead {Lead})", person?.DisplayName, lead.Id);
+            await _alerter.AlertAsync(summary, ct);
+        }
+        _log.LogInformation("Lead {Lead} pre-calificado → {Person} ({Reason})", lead.Id, person?.DisplayName, reason);
     }
 
     /// <summary>

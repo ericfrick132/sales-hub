@@ -111,6 +111,10 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(cfg);
+  const sellers = useQuery({
+    queryKey: ['sellers-list'],
+    queryFn: async () => (await api.get<{ id: string; displayName: string; isActive: boolean }[]>('/sellers')).data,
+  });
   useEffect(() => setForm(cfg), [cfg]);
 
   const save = useMutation({
@@ -151,6 +155,48 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
             {form.enabled ? 'Activo' : 'Inactivo'}
           </span>
         </label>
+      </div>
+
+      <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-2 text-sm">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={!!form.handoffEnabled}
+            onChange={(e) => setForm((f) => ({ ...f, handoffEnabled: e.target.checked }))} />
+          <span className="font-medium">Pre-calificar y pasar a una persona</span>
+        </label>
+        <div className="text-xs text-slate-500">
+          El bot hace las primeras preguntas y le pasa el lead a la persona, que sigue en el mismo chat (misma línea).
+          Si antes el lead pregunta algo, pide precio o llamada, o se sale del guion, el pase es inmediato. El bot se
+          calla en esa charla, el lead queda etiquetado <code>para-mateo</code> y a la persona le llega un resumen por
+          WhatsApp (tiene que tener su número cargado en Vendedores).
+        </div>
+        {form.handoffEnabled && (
+          <div className="grid gap-2 sm:grid-cols-3">
+            <label className="space-y-0.5">
+              <div className="text-slate-600">Pasar a</div>
+              <select className="input w-full" value={form.handoffSellerId ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, handoffSellerId: e.target.value || null }))}>
+                <option value="">elegí…</option>
+                {(sellers.data ?? []).filter((s) => s.isActive).map((s) => <option key={s.id} value={s.id}>{s.displayName}</option>)}
+              </select>
+            </label>
+            <label className="space-y-0.5">
+              <div className="text-slate-600">Después de cuántas preguntas</div>
+              <input type="number" min={1} max={10} className="input w-full" value={form.handoffAfterQuestions ?? 2}
+                onChange={(e) => setForm((f) => ({ ...f, handoffAfterQuestions: Number(e.target.value) }))} />
+            </label>
+            <label className="space-y-0.5">
+              <div className="text-slate-600">El bot se presenta como ({'{seller}'})</div>
+              <input className="input w-full" placeholder="mateo" value={form.presentAs ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, presentAs: e.target.value }))} />
+            </label>
+            <label className="space-y-0.5 sm:col-span-3">
+              <div className="text-slate-600">Lo que dice el bot antes de que siga la persona (admite {'{a|b}'}; vacío = no dice nada)</div>
+              <textarea className="input w-full h-16" value={form.handoffMessage ?? ''}
+                placeholder="{genial|perfecto}, con eso ya me doy una idea. {dame un rato y te cuento como lo resolvemos|en un rato te muestro como quedaria}"
+                onChange={(e) => setForm((f) => ({ ...f, handoffMessage: e.target.value }))} />
+            </label>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 text-sm">

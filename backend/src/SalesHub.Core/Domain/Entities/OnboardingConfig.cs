@@ -108,6 +108,25 @@ public class OnboardingConfig
     /// </summary>
     public string FirstStepsMessage { get; set; } = string.Empty;
 
+    // ── Pre-calificación con pase a una persona (Mateo) ────────────────────────
+    // Con HandoffSellerId cargado, el guion hace HandoffAfterQuestions preguntas y le pasa el lead
+    // a esa persona, que sigue la charla en la MISMA línea (no cambia el dueño del lead: si lo
+    // cambiara, las respuestas saldrían por otro número). Si en el medio el lead pregunta algo,
+    // pide precio/llamada o se sale del guion, el pase es inmediato (no hay IA en el medio).
+    // Vacío = comportamiento de siempre (alta autoservicio o venta asistida).
+
+    /// <summary>A quién se le pasa el lead (recibe el resumen por WhatsApp en su número).</summary>
+    public Guid? HandoffSellerId { get; set; }
+
+    /// <summary>Cuántas preguntas del guion antes del pase (medido: menos preguntas = menos abandono).</summary>
+    public int HandoffAfterQuestions { get; set; } = 2;
+
+    /// <summary>Cómo se presenta el bot en {seller} ("mateo"). Vacío = el vendedor dueño de la línea.</summary>
+    public string? PresentAs { get; set; }
+
+    /// <summary>Lo que dice el bot al terminar las preguntas, antes de que siga la persona. Admite {a|b}.</summary>
+    public string HandoffMessage { get; set; } = string.Empty;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

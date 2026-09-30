@@ -27,7 +27,10 @@ public class OnboardingConfigController : ControllerBase
         // estos campos NO los pise con vacío en el Upsert.
         string? ReengageIntro = null, List<string>? ReengageQuestions = null,
         List<Guid>? ReengageMediaAssetIds = null, List<string>? ReengageMediaCaptions = null,
-        string? PostSignupCheckin = null, string? TrialDiscountNudge = null, string? FirstStepsMessage = null);
+        string? PostSignupCheckin = null, string? TrialDiscountNudge = null, string? FirstStepsMessage = null,
+        // Pre-calificación con pase a una persona (Mateo). HandoffEnabled null = no tocar (frontend viejo).
+        bool? HandoffEnabled = null, Guid? HandoffSellerId = null, int? HandoffAfterQuestions = null,
+        string? PresentAs = null, string? HandoffMessage = null);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -50,7 +53,9 @@ public class OnboardingConfigController : ControllerBase
                 c?.UsePitchAudio ?? false, c?.ReplyDelayMinSec ?? 0, c?.ReplyDelayMaxSec ?? 0, ac,
                 c?.ReengageIntro ?? "", c?.ReengageQuestions ?? new(), c?.ReengageMediaAssetIds ?? new(),
                 c?.ReengageMediaCaptions ?? new(), c?.PostSignupCheckin ?? "", c?.TrialDiscountNudge ?? "",
-                c?.FirstStepsMessage ?? "");
+                c?.FirstStepsMessage ?? "",
+                c?.HandoffSellerId is not null, c?.HandoffSellerId, c?.HandoffAfterQuestions ?? 2,
+                c?.PresentAs ?? "", c?.HandoffMessage ?? "");
         });
         return Ok(result);
     }
@@ -87,6 +92,19 @@ public class OnboardingConfigController : ControllerBase
         if (dto.PostSignupCheckin is not null) c.PostSignupCheckin = dto.PostSignupCheckin;
         if (dto.TrialDiscountNudge is not null) c.TrialDiscountNudge = dto.TrialDiscountNudge;
         if (dto.FirstStepsMessage is not null) c.FirstStepsMessage = dto.FirstStepsMessage;
+        if (dto.HandoffEnabled is not null)
+        {
+            if (dto.HandoffEnabled == true)
+            {
+                if (dto.HandoffSellerId is null || !await _db.Sellers.AnyAsync(s => s.Id == dto.HandoffSellerId && s.IsActive, ct))
+                    return BadRequest(new { error = "Elegí a quién se le pasa el lead (un vendedor activo)." });
+                c.HandoffSellerId = dto.HandoffSellerId;
+            }
+            else c.HandoffSellerId = null;
+        }
+        if (dto.HandoffAfterQuestions is not null) c.HandoffAfterQuestions = Math.Clamp(dto.HandoffAfterQuestions.Value, 1, 10);
+        if (dto.PresentAs is not null) c.PresentAs = string.IsNullOrWhiteSpace(dto.PresentAs) ? null : dto.PresentAs.Trim().ToLowerInvariant();
+        if (dto.HandoffMessage is not null) c.HandoffMessage = dto.HandoffMessage.Trim();
         c.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true });

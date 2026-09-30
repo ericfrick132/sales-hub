@@ -11,9 +11,12 @@ namespace SalesHub.Infrastructure.Services;
 /// <summary>Resultado de procesar un turno de onboarding. PendingQuestion (solo en off-script
 /// durante el alta) es la pregunta del guion a reenviar después de la respuesta de la IA.
 /// MediaAssetIds + PostMediaText (solo reenganche): adjuntos a mandar DESPUÉS de Reply y el
-/// texto que va después de los adjuntos (la 1ª pregunta) — orden reacción → media → pregunta.</summary>
+/// texto que va después de los adjuntos (la 1ª pregunta) — orden reacción → media → pregunta.
+///
+/// Handoff (modo pre-calificación): el motivo del pase a la persona; el caller manda Reply (si hay),
+/// silencia el bot en la charla y le avisa a la persona con el resumen.</summary>
 public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, string? PendingQuestion = null, bool WithPitchAudio = false,
-    List<Guid>? MediaAssetIds = null, string? PostMediaText = null, List<string>? MediaCaptions = null);
+    List<Guid>? MediaAssetIds = null, string? PostMediaText = null, List<string>? MediaCaptions = null, string? Handoff = null);
 
 /// <summary>
 /// Motor de onboarding de ads GENÉRICO y multi-app. Lee la <see cref="OnboardingConfig"/> de cada
@@ -36,12 +39,37 @@ public class OnboardingService
     private readonly IEmailSender _email;
     private readonly IAdminAlerter _alerter;
     private readonly ILogger<OnboardingService> _log;
+    private readonly IntentClassifier _intents;
 
     public OnboardingService(ApplicationDbContext db, IOnboardingProvisionClient provision, IEmailSender email,
-        IAdminAlerter alerter, ILogger<OnboardingService> log)
+        IAdminAlerter alerter, ILogger<OnboardingService> log, IntentClassifier intents)
     {
-        _db = db; _provision = provision; _email = email; _alerter = alerter; _log = log;
+        _db = db; _provision = provision; _email = email; _alerter = alerter; _log = log; _intents = intents;
     }
+
+    /// <summary>
+    /// Tipos del diccionario que, en modo pre-calificación, disparan el pase inmediato: el lead pidió o
+    /// preguntó algo que tiene que contestar la persona (y rápido: el precio respondido en menos de 5
+    /// minutos sigue el 71% vs 27% a la hora).
+    /// </summary>
+    private static readonly HashSet<string> HandoffNowTypes = new()
+    {
+        "precio", "pago", "pide_llamada", "pide_material", "prueba", "como_funciona", "interes", "desconfianza",
+        "ya_tiene", "no_decisor", "mas_adelante", "lo_veo", "soporte", "horario", "de_donde", "no_audio", "rechazo",
+    };
+
+    private static readonly Regex SpinRx = new(@"\{([^{}]*\|[^{}]*)\}", RegexOptions.Compiled);
+
+    /// <summary>Elige una variante de {a|b} por lead+paso (estable si se reprocesa el mismo turno).</summary>
+    private static string Spin(string text, Guid leadId, int step)
+    {
+        var rnd = new Random(leadId.GetHashCode() ^ step);
+        return SpinRx.Replace(text, m => { var o = m.Groups[1].Value.Split('|'); return o[rnd.Next(o.Length)].Trim(); });
+    }
+
+    /// <summary>"{seller}" → el nombre con el que se presenta el bot en esta app ("mateo"), si está configurado.</summary>
+    private static string? PresentAs(string? text, OnboardingConfig cfg)
+        => text is null || string.IsNullOrWhiteSpace(cfg.PresentAs) ? text : text.Replace("{seller}", cfg.PresentAs.Trim());
 
     /// <summary>
     /// Manda el link de acceso por MAIL (canal único para links: WhatsApp está restringido
@@ -242,6 +270,21 @@ public class OnboardingService
         var isDoubt = atEmailStep
             ? (!EmailRx.IsMatch(burst) && (KeywordRx.IsMatch(burstLower) || DoubtRx.IsMatch(burst)))
             : (KeywordRx.IsMatch(burstLower) || DoubtRx.IsMatch(burst) || OffTopicRx.IsMatch(burstLower));
+        var handoffMode = cfg.HandoffSellerId is not null;
+        if (handoffMode && inCollect && !atEmailStep)
+        {
+            // Pre-calificación: cualquier cosa que no sea responder la pregunta la contesta la persona.
+            var lastQuestion = ob.Step >= 1 && ob.Step <= n ? questions[ob.Step - 1] : null;
+            var (key, confident) = (await _intents.GetMatcherAsync(ct)).ClassifyWithConfidence(msg, lastQuestion);
+            if (isDoubt || (confident && HandoffNowTypes.Contains(key)))
+            {
+                ob.Step = StepHumanHandoff;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                    Handoff: isDoubt ? "preguntó o se salió del guion" : $"señal: {key}");
+            }
+        }
         if (inCollect && isDoubt)
             return new OnboardingResult(null, OffScript: true, Provisioned: false,
                 PendingQuestion: atEmailStep ? null : PendingQuestion(ob.Step, n, questions, emailPrompt));
@@ -303,6 +346,17 @@ public class OnboardingService
                     // (el renderer usa lead.Name en los mensajes: "Hola hola!" es el caso real).
                     if (!string.IsNullOrWhiteSpace(ob.GymName) && !IsBusinessNameSuspicious(ob.GymName!))
                         lead.Name = ob.GymName!; // el negocio/persona es el lead
+                }
+                if (handoffMode && k >= Math.Clamp(cfg.HandoffAfterQuestions, 1, n))
+                {
+                    // Pre-calificación completa: el bot cierra su parte y sigue la persona en la misma línea.
+                    reply = Spin(cfg.HandoffMessage ?? string.Empty, lead.Id, k);
+                    lead.Status = LeadStatus.Interested;
+                    ob.Step = StepHumanHandoff;
+                    ob.UpdatedAt = DateTimeOffset.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                    return new OnboardingResult(string.IsNullOrWhiteSpace(reply) ? null : PresentAs(reply, cfg),
+                        OffScript: false, Provisioned: false, Handoff: $"respondió {k} preguntas");
                 }
                 if (k < n) { reply = questions[k]; ob.Step = k + 1; }
                 else if (cfg.SelfServe) // última pregunta → audio del pitch (si hay) + pide mail
@@ -375,7 +429,7 @@ public class OnboardingService
 
         ob.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return new OnboardingResult(reply, OffScript: false, Provisioned: provisioned, WithPitchAudio: withAudio);
+        return new OnboardingResult(PresentAs(reply, cfg), OffScript: false, Provisioned: provisioned, WithPitchAudio: withAudio);
     }
 
     /// <summary>
