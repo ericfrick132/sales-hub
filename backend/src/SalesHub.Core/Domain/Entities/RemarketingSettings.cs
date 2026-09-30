@@ -36,8 +36,11 @@ public class RemarketingSettings
     /// <summary>Productos incluidos. Vacío = todos.</summary>
     public List<string> ProductKeys { get; set; } = new();
 
-    /// <summary>Si true, Claude personaliza el opener con la charla (≈US$0,001 por mensaje).</summary>
-    public bool PersonalizeWithAi { get; set; } = true;
+    /// <summary>
+    /// Si true, Claude lee la charla, descarta clientes/proveedores y personaliza el opener. Apagado por
+    /// defecto: la etapa se detecta por palabras y sale el opener fijo (mínima IA).
+    /// </summary>
+    public bool PersonalizeWithAi { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
