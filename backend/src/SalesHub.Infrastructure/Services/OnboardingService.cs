@@ -166,6 +166,9 @@ public class OnboardingService
         "ya_tiene", "no_decisor", "mas_adelante", "lo_veo", "soporte", "horario", "de_donde", "no_audio", "rechazo",
     };
 
+    private static readonly Regex OpeningSoonRx = new(@"\babr(o|imos|e|iendo)\b|inaugur|por abrir|no abr|recien (arranco|empiezo|abr)|todavia no (arranque|empece)|estoy armando", RegexOptions.Compiled);
+    private static readonly Regex AsksToolRx = new(@"sistema|como (llevas|tomas|manejas|cobras|registras)|que usas", RegexOptions.Compiled);
+
     private static readonly Regex WantsToPayRx = new(
         @"quiero (pagar|abonar|contratar|el plan)|como (te )?(pago|abono|contrato)|hago el pago|hacer el pago|voy a (pagar|abonar|transferir)|puedo pagar|necesito pagar|donde (pago|abono)|pasame (el |tu )?(alias|cbu|link)|comprobante|ya (te )?(pague|transferi|abone)",
         RegexOptions.Compiled);
@@ -448,6 +451,15 @@ public class OnboardingService
             // "pago" suelto ("efectivo y mercado pago", "con tarjeta") en la pre-calificación es cómo
             // les cobra el negocio a SUS clientes, no que quiera pagarnos: solo es señal con intención.
             if (key == "pago" && !WantsToPayRx.IsMatch(IntentText.Normalize(msg))) key = "dato_calificacion";
+            // Contestar la pregunta con su situación no es una objeción: "nada todavia, abro el mes que
+            // viene" (en las charlas que vendieron, "aun no abrimos" compró) o "uso fitco" cuando le
+            // preguntamos qué sistema usa. Sin signo de pregunta, eso es la respuesta.
+            if (!msg.Contains('?'))
+            {
+                var nm = IntentText.Normalize(msg);
+                if (key == "mas_adelante" && OpeningSoonRx.IsMatch(nm)) key = "dato_calificacion";
+                if (key == "ya_tiene" && lastQuestion is not null && AsksToolRx.IsMatch(IntentText.Normalize(lastQuestion))) key = "dato_calificacion";
+            }
             if (isDoubt || (confident && HandoffNowTypes.Contains(key)))
             {
                 ob.Step = StepHumanHandoff;
