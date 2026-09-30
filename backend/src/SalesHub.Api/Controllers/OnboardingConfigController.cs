@@ -30,7 +30,7 @@ public class OnboardingConfigController : ControllerBase
         string? PostSignupCheckin = null, string? TrialDiscountNudge = null, string? FirstStepsMessage = null,
         // Pre-calificación con pase a una persona (Mateo). HandoffEnabled null = no tocar (frontend viejo).
         bool? HandoffEnabled = null, Guid? HandoffSellerId = null, int? HandoffAfterQuestions = null,
-        string? PresentAs = null, string? HandoffMessage = null);
+        string? PresentAs = null, string? HandoffMessage = null, string? DemoEventTypeUri = null);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -55,7 +55,7 @@ public class OnboardingConfigController : ControllerBase
                 c?.ReengageMediaCaptions ?? new(), c?.PostSignupCheckin ?? "", c?.TrialDiscountNudge ?? "",
                 c?.FirstStepsMessage ?? "",
                 c?.HandoffSellerId is not null, c?.HandoffSellerId, c?.HandoffAfterQuestions ?? 2,
-                c?.PresentAs ?? "", c?.HandoffMessage ?? "");
+                c?.PresentAs ?? "", c?.HandoffMessage ?? "", c?.DemoEventTypeUri ?? "");
         });
         return Ok(result);
     }
@@ -105,6 +105,8 @@ public class OnboardingConfigController : ControllerBase
         if (dto.HandoffAfterQuestions is not null) c.HandoffAfterQuestions = Math.Clamp(dto.HandoffAfterQuestions.Value, 1, 10);
         if (dto.PresentAs is not null) c.PresentAs = string.IsNullOrWhiteSpace(dto.PresentAs) ? null : dto.PresentAs.Trim().ToLowerInvariant();
         if (dto.HandoffMessage is not null) c.HandoffMessage = dto.HandoffMessage.Trim();
+        if (dto.DemoEventTypeUri is not null)
+            c.DemoEventTypeUri = string.IsNullOrWhiteSpace(dto.DemoEventTypeUri) ? null : dto.DemoEventTypeUri.Trim();
         c.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true });

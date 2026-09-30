@@ -9,6 +9,8 @@ public class LeadOnboardingConfiguration : IEntityTypeConfiguration<LeadOnboardi
     public void Configure(EntityTypeBuilder<LeadOnboarding> b)
     {
         b.ToTable("lead_onboardings");
+        b.Property(x => x.OfferedSlots).HasDefaultValueSql("'{}'");
+        b.Property(x => x.DemoEventUri).HasMaxLength(300);
         b.HasKey(x => x.Id);
         b.HasIndex(x => x.LeadId).IsUnique();
         b.Property(x => x.ContactName).HasMaxLength(160);

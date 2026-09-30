@@ -38,6 +38,16 @@ public class LeadOnboarding
     public DateTimeOffset? DiscountNudgeSentAt { get; set; }
     public string? AccessUrl { get; set; }
 
+    /// <summary>Turnos de demo que le ofreció el bot (UTC), en el orden en que se los dijo.</summary>
+    public List<DateTimeOffset> OfferedSlots { get; set; } = new();
+
+    /// <summary>El turno que eligió, mientras se le pide el mail para reservarlo.</summary>
+    public DateTimeOffset? ChosenSlot { get; set; }
+
+    /// <summary>Turno de demo reservado en Calendly.</summary>
+    public DateTimeOffset? DemoBookedAt { get; set; }
+    public string? DemoEventUri { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

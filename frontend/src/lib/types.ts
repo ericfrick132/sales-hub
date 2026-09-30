@@ -442,6 +442,8 @@ export interface OnboardingAppConfig {
   presentAs?: string;
   /** Lo que dice el bot antes de que siga la persona. */
   handoffMessage?: string;
+  /** Evento de Calendly de la demo: el bot ofrece 2 horarios libres y reserva el que elija. */
+  demoEventTypeUri?: string;
 }
 
 export interface OnboardingAudioVariant {

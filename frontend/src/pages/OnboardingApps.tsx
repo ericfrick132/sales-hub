@@ -111,6 +111,18 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(cfg);
+  const calendly = useQuery({
+    queryKey: ['calendly-event-types'],
+    queryFn: async () => (await api.get<{ configured: boolean; items: { uri: string; name: string; duration: number }[] }>('/calendly/event-types')).data,
+  });
+  const [preview, setPreview] = useState<string | null>(null);
+  async function previewSlots() {
+    if (!form.demoEventTypeUri) return;
+    try {
+      const r = (await api.get<{ free: number; offer: string[] }>('/calendly/preview', { params: { eventType: form.demoEventTypeUri } })).data;
+      setPreview(r.offer.length ? `ofreceria: ${r.offer.join(' o ')} (${r.free} libres en 6 dias)` : 'no hay horarios libres en los proximos 6 dias');
+    } catch { setPreview('no pude leer Calendly'); }
+  }
   const sellers = useQuery({
     queryKey: ['sellers-list'],
     queryFn: async () => (await api.get<{ id: string; displayName: string; isActive: boolean }[]>('/sellers')).data,
@@ -189,10 +201,23 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
               <input className="input w-full" placeholder="mateo" value={form.presentAs ?? ''}
                 onChange={(e) => setForm((f) => ({ ...f, presentAs: e.target.value }))} />
             </label>
+            <div className="space-y-0.5 sm:col-span-3">
+              <div className="text-slate-600">Agendar demo en Calendly (el bot ofrece 2 horarios libres, reserva el que elija y recién ahí pasa)</div>
+              <div className="flex flex-wrap gap-2 items-center">
+                <select className="input" value={form.demoEventTypeUri ?? ''}
+                  onChange={(e) => { setPreview(null); setForm((f) => ({ ...f, demoEventTypeUri: e.target.value })); }}>
+                  <option value="">sin Calendly (usa el mensaje de abajo)</option>
+                  {(calendly.data?.items ?? []).map((ev) => <option key={ev.uri} value={ev.uri}>{ev.name} ({ev.duration} min)</option>)}
+                </select>
+                {form.demoEventTypeUri && <button type="button" className="text-xs text-slate-500 hover:underline" onClick={previewSlots}>ver qué horarios ofrecería</button>}
+                {calendly.data && !calendly.data.configured && <span className="text-xs text-amber-700">Calendly sin token en el servidor</span>}
+              </div>
+              {preview && <div className="text-xs text-slate-600">{preview}</div>}
+            </div>
             <label className="space-y-0.5 sm:col-span-3">
               <div className="text-slate-600">Lo que dice el bot antes de que siga la persona (admite {'{a|b}'}; vacío = no dice nada)</div>
               <textarea className="input w-full h-16" value={form.handoffMessage ?? ''}
-                placeholder="{genial|perfecto}, con eso ya me doy una idea. {dame un rato y te cuento como lo resolvemos|en un rato te muestro como quedaria}"
+                placeholder="{perfecto|genial}, con eso ya tengo lo que necesito. te lo dejo armado con tus datos asi lo ves andando, {te llamo 10 minutos|hacemos una llamada corta} o preferis que lo veamos por aca?"
                 onChange={(e) => setForm((f) => ({ ...f, handoffMessage: e.target.value }))} />
             </label>
           </div>

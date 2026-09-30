@@ -127,6 +127,12 @@ public class OnboardingConfig
     /// <summary>Lo que dice el bot al terminar las preguntas, antes de que siga la persona. Admite {a|b}.</summary>
     public string HandoffMessage { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Evento de Calendly de la demo (URI de la API). Con esto, en vez del cierre, el bot ofrece 2
+    /// horarios libres reales, reserva el que elija el lead y recién ahí se lo pasa a la persona.
+    /// </summary>
+    public string? DemoEventTypeUri { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

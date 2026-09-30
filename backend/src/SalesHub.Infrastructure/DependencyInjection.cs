@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.Configure<JwtOptions>(config.GetSection("Jwt"));
         services.Configure<GroqOptions>(config.GetSection("Groq"));
         services.Configure<ClaudeOptions>(config.GetSection("Claude"));
+        services.Configure<CalendlyOptions>(config.GetSection("Calendly"));
         services.Configure<InstagramOptions>(config.GetSection("Instagram"));
         // Varios servicios IG (InstagramClient, InstagramLeadScraper, InstagramAccountsController…)
         // inyectan InstagramOptions DIRECTO (no IOptions<>). Sin esta línea no resuelven en runtime
@@ -53,6 +54,7 @@ public static class DependencyInjection
         services.AddHttpClient<EvolutionClient>();
         services.AddHttpClient<GroqWhisperClient>();
         services.AddHttpClient<ClaudeClient>();
+        services.AddHttpClient<CalendlyClient>();
         services.AddHttpClient<BufferClient>();
         services.AddScoped<ISocialPublisher>(sp => sp.GetRequiredService<BufferClient>());
         services.AddScoped<SocialContentGenerator>();

@@ -34,6 +34,12 @@ public class OnboardingService
     /// </summary>
     public const int StepHumanHandoff = -9;
 
+    /// <summary>Le ofrecimos 2 horarios de demo (Calendly) y esperamos que elija uno.</summary>
+    public const int StepAwaitSlot = -20;
+
+    /// <summary>Eligió horario pero no tenemos su mail: esperamos el mail para reservar.</summary>
+    public const int StepAwaitSlotEmail = -21;
+
     private readonly ApplicationDbContext _db;
     private readonly IOnboardingProvisionClient _provision;
     private readonly IEmailSender _email;
@@ -42,9 +48,65 @@ public class OnboardingService
     private readonly IntentClassifier _intents;
 
     public OnboardingService(ApplicationDbContext db, IOnboardingProvisionClient provision, IEmailSender email,
-        IAdminAlerter alerter, ILogger<OnboardingService> log, IntentClassifier intents)
+        IAdminAlerter alerter, ILogger<OnboardingService> log, IntentClassifier intents, CalendlyClient calendly)
     {
-        _db = db; _provision = provision; _email = email; _alerter = alerter; _log = log; _intents = intents;
+        _db = db; _provision = provision; _email = email; _alerter = alerter; _log = log; _intents = intents; _calendly = calendly;
+    }
+
+    private readonly CalendlyClient _calendly;
+
+    /// <summary>
+    /// Fin de la pre-calificación con demo: ofrece 2 horarios libres reales de Calendly. Si no hay
+    /// Calendly o no hay horarios, null (el caller hace el pase normal con el cierre).
+    /// </summary>
+    private async Task<string?> OfferSlotsAsync(LeadOnboarding ob, OnboardingConfig cfg, Guid leadId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(cfg.DemoEventTypeUri) || !_calendly.IsConfigured) return null;
+        var now = DateTimeOffset.UtcNow;
+        var free = await _calendly.GetAvailableTimesAsync(cfg.DemoEventTypeUri, now.AddMinutes(5), now.AddDays(6), ct);
+        if (free is null || free.Count == 0) return null;
+        var two = DemoScheduling.PickTwo(free, now);
+        if (two.Count == 0) return null;
+        ob.OfferedSlots = two;
+        ob.ChosenSlot = null;
+        ob.Step = StepAwaitSlot;
+        var options = two.Count == 2
+            ? $"{DemoScheduling.Say(two[0], now)} o {DemoScheduling.Say(two[1], now)}"
+            : DemoScheduling.Say(two[0], now);
+        return Spin("{perfecto|genial}, con eso ya tengo lo que necesito. te lo dejo armado con tus datos en una llamada corta asi lo ves andando. te queda ", leadId, 91)
+               + options + "?";
+    }
+
+    /// <summary>
+    /// Reserva el turno elegido y arma la confirmación. Si Calendly falla (ej. alguien lo tomó en el
+    /// medio), pasa a la persona para que lo coordine a mano.
+    /// </summary>
+    private async Task<OnboardingResult> BookChosenAsync(Lead lead, LeadOnboarding ob, OnboardingConfig cfg, string email, CancellationToken ct)
+    {
+        var slot = ob.ChosenSlot!.Value;
+        var phone = string.IsNullOrWhiteSpace(lead.WhatsappPhone) ? null : "+" + new string(lead.WhatsappPhone.Where(char.IsDigit).ToArray());
+        var name = MessageRenderer.FirstName(ob.ContactName) is { Length: > 0 } fn ? fn : (ob.GymName ?? lead.Name);
+        var res = await _calendly.BookAsync(cfg.DemoEventTypeUri!, slot, name, email, LeadEntryService.ArTz.Id, phone, ct);
+        ob.Email ??= email;
+        if (!res.Ok)
+        {
+            ob.Step = StepHumanHandoff;
+            ob.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                Handoff: $"eligio {DemoScheduling.Say(slot, DateTimeOffset.UtcNow)} pero Calendly no dejo reservar ({res.Error}); coordinalo a mano");
+        }
+        ob.DemoBookedAt = slot;
+        ob.DemoEventUri = res.EventUri;
+        ob.Step = StepHumanHandoff;
+        ob.UpdatedAt = DateTimeOffset.UtcNow;
+        lead.Status = LeadStatus.DemoScheduled;
+        lead.DemoScheduledAt = slot;
+        await _db.SaveChangesAsync(ct);
+        var when = DemoScheduling.Say(slot, DateTimeOffset.UtcNow);
+        return new OnboardingResult(
+            Spin("{listo|buenisimo}, quedo agendado para " + when + ". te llega la invitacion al mail con el link de la llamada", lead.Id, 92),
+            OffScript: false, Provisioned: false, Handoff: $"demo agendada {when} (Calendly)");
     }
 
     /// <summary>
@@ -185,6 +247,43 @@ public class OnboardingService
 
         var msg = (lastMessage ?? string.Empty).Trim();
         var lower = msg.ToLowerInvariant();
+
+        // ── Agendado de demo (Calendly): esperando que elija horario o que pase el mail ──────────
+        if (ob.Step is StepAwaitSlot or StepAwaitSlotEmail)
+        {
+            var burstText = string.IsNullOrWhiteSpace(recentBurst) ? msg : recentBurst!;
+            if (ob.Step == StepAwaitSlot)
+            {
+                var pick = DemoScheduling.ParseChoice(msg, ob.OfferedSlots, DateTimeOffset.UtcNow);
+                if (pick is null)
+                {
+                    // Otro horario, una pregunta o no se entiende: lo coordina la persona.
+                    ob.Step = StepHumanHandoff;
+                    ob.UpdatedAt = DateTimeOffset.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                    return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                        Handoff: "le ofrecimos horarios de demo y no eligio uno claro");
+                }
+                ob.ChosenSlot = ob.OfferedSlots[pick.Value];
+                var known = ob.Email ?? (EmailRx.Match(burstText) is { Success: true } m1 ? FixEmailTypos(m1.Value.Trim()) : null);
+                if (known is not null) return await BookChosenAsync(lead, ob, cfg, known, ct);
+                ob.Step = StepAwaitSlotEmail;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult(Spin("{genial|perfecto}. pasame tu mail asi te llega la invitacion con el link de la llamada", lead.Id, 93),
+                    OffScript: false, Provisioned: false);
+            }
+            var em = EmailRx.Match(burstText);
+            if (!em.Success)
+            {
+                ob.Step = StepHumanHandoff;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                    Handoff: $"eligio {DemoScheduling.Say(ob.ChosenSlot!.Value, DateTimeOffset.UtcNow)} pero no paso el mail");
+            }
+            return await BookChosenAsync(lead, ob, cfg, FixEmailTypos(em.Value.Trim()), ct);
+        }
         // El mail puede venir en un mensaje y el lead seguir escribiendo (ráfaga). Buscamos el
         // mail en TODA la ráfaga desde nuestra última respuesta, no solo en el último mensaje.
         var burst = string.IsNullOrWhiteSpace(recentBurst) ? msg : recentBurst;
@@ -349,7 +448,16 @@ public class OnboardingService
                 }
                 if (handoffMode && k >= Math.Clamp(cfg.HandoffAfterQuestions, 1, n))
                 {
-                    // Pre-calificación completa: el bot cierra su parte y sigue la persona en la misma línea.
+                    // Pre-calificación completa. Con Calendly: ofrece 2 horarios reales y espera.
+                    var offer = await OfferSlotsAsync(ob, cfg, lead.Id, ct);
+                    if (offer is not null)
+                    {
+                        lead.Status = LeadStatus.Interested;
+                        ob.UpdatedAt = DateTimeOffset.UtcNow;
+                        await _db.SaveChangesAsync(ct);
+                        return new OnboardingResult(PresentAs(offer, cfg), OffScript: false, Provisioned: false);
+                    }
+                    // Sin Calendly: el bot cierra su parte y sigue la persona en la misma línea.
                     reply = Spin(cfg.HandoffMessage ?? string.Empty, lead.Id, k);
                     lead.Status = LeadStatus.Interested;
                     ob.Step = StepHumanHandoff;
