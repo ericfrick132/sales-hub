@@ -234,7 +234,7 @@ public class IntentsController : ControllerBase
                     // Simulación sobre el historial: qué habría hecho el bot (se compara con lo que se respondió).
                     var info = leadInfo.GetValueOrDefault(m.LeadId);
                     var plan = IntentReplyPlanner.Decide(key, confident, await _classifier.GetRuleAsync(key, ct), lastOut, m.Id,
-                        info?.Seller, info?.ProductKey, info is null ? null : productNames.GetValueOrDefault(info.ProductKey));
+                        info?.Seller, info?.ProductKey, info is null ? null : productNames.GetValueOrDefault(info.ProductKey), m.Text);
                     m.IntentAction = plan.Action;
                     m.IntentSimulatedReply = plan.Text;
                     updated++;

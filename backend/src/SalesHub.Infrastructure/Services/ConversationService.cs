@@ -196,7 +196,7 @@ public class ConversationService
             var productName = await _db.Products.AsNoTracking()
                 .Where(p => p.ProductKey == lead.ProductKey).Select(p => p.DisplayName).FirstOrDefaultAsync(ct);
             plan = IntentReplyPlanner.Decide(intentKey, intentConfident, await _intents.GetRuleAsync(intentKey, ct),
-                previousOutbound, messageId, sellerName, lead.ProductKey, productName);
+                previousOutbound, messageId, sellerName, lead.ProductKey, productName, incoming.Text);
         }
 
         _db.ConversationMessages.Add(new ConversationMessage
