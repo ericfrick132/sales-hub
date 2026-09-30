@@ -6,8 +6,10 @@ var items = JsonDocument.Parse(File.ReadAllText(args[0])).RootElement.EnumerateA
 int same = 0; var diffs = new Dictionary<string,int>(); var ex = new List<string>();
 foreach (var it in items)
 {
-    var cs = m.Classify(it.GetProperty("in").GetString(), it.GetProperty("prev").ValueKind == JsonValueKind.Null ? null : it.GetProperty("prev").GetString());
-    var py = it.GetProperty("py").GetString();
+    var prevTxt = it.GetProperty("prev").ValueKind == JsonValueKind.Null ? null : it.GetProperty("prev").GetString();
+    var (key, conf) = m.ClassifyWithConfidence(it.GetProperty("in").GetString(), prevTxt);
+    var cs = key + (conf ? "+seguro" : "");
+    var py = it.GetProperty("py").GetString() + (it.TryGetProperty("conf", out var c) && c.GetBoolean() ? "+seguro" : "");
     if (cs == py) { same++; continue; }
     var k = $"{py} -> {cs}"; diffs[k] = diffs.GetValueOrDefault(k) + 1;
     if (ex.Count < 15) ex.Add($"{k}: {it.GetProperty("in").GetString()![..Math.Min(90, it.GetProperty("in").GetString()!.Length)]}");

@@ -28,6 +28,17 @@ public sealed class IntentMatcher
     private static readonly Regex AskedMail = new(@"(pasame|pasas|me pasas|dejame|decime) (tu |el )?mail", RegexOptions.Compiled, T);
     // "llanos.yohana": un usuario de mail sin el @ (con punto, guion bajo o números), sobre el texto crudo.
     private static readonly Regex RawHandle = new(@"^(?=.*[a-zA-Z])(?=.*[._\d])[\w.]{5,}$", RegexOptions.Compiled, T);
+    private static readonly Regex MediaToken = new(@"(audio|image|video|sticker|document)message", RegexOptions.Compiled, T);
+
+    /// <summary>Tipos que son una pregunta del lead: pueden ser "seguros" aunque el mensaje traiga '?'.</summary>
+    private static readonly HashSet<string> QuestionTypes = new()
+        { "precio", "como_funciona", "prueba", "de_donde", "desconfianza", "pago", "pide_llamada", "pide_material" };
+
+    /// <summary>Tope de palabras para responder solo (medido: hasta 8 palabras, 95%+ de precisión en mensajes nuevos).</summary>
+    public const int ConfidentMaxWords = 8;
+
+    private static readonly Regex OfferedCall = new(@"llamada|te llamo|te llamamos|videollamada|\bmeet\b|\bzoom\b|hacerlo ya|te muestro en vivo|hablamos por telefono", RegexOptions.Compiled, T);
+    private static readonly Regex Yes = new(@"^(hola )?(si|sisi|dale|ok|oka|bueno|perfecto|genial|de una|obvio|joya|claro)( (dale|si|claro|de una|obvio|perfecto))*$|^(dale |si |ok )?(pasame|mandame|pasa|manda) (el )?link$", RegexOptions.Compiled, T);
     private static readonly Regex AskedHowPay = new(@"como (llevas|cobras|manejas|registras|administran|llevan)|excel papel", RegexOptions.Compiled, T);
     private static readonly Regex PayMethod = new(@"\b(excel|papel|cuaderno|planilla|manual|a mano)\b", RegexOptions.Compiled, T);
     private static readonly Regex AskedCount = new(@"cuant(os|as) (alumnos|socios|clientes|obras|canchas|profesionales|personas)", RegexOptions.Compiled, T);
@@ -55,6 +66,9 @@ public sealed class IntentMatcher
         if (t.Length == 0) return Empty;
         var words = IntentText.WordCount(t);
         var p = string.IsNullOrWhiteSpace(previousOutbound) ? null : IntentText.Normalize(previousOutbound);
+        var isQuestion = (text ?? "").Contains('?');
+        // Si NOSOTROS propusimos una llamada y contesta que sí (o pide el link), es aceptar la llamada.
+        if (p is not null && OfferedCall.IsMatch(p) && words <= 6 && Yes.IsMatch(t)) return "pide_llamada";
         // Si le preguntamos cómo cobra y contesta con su método, es la respuesta aunque agregue algo más.
         if (p is not null && AskedHowPay.IsMatch(p) && words <= 40 && PayMethod.IsMatch(t)) return Qualification;
         foreach (var r in _rules)
@@ -63,14 +77,35 @@ public sealed class IntentMatcher
             try { if (r.Pattern.IsMatch(t)) return r.Key; }
             catch (RegexMatchTimeoutException) { /* patrón patológico con este texto: se saltea */ }
         }
-        if (p is not null)
+        if (p is not null && !MediaToken.IsMatch(t))
         {
             if (AskedMail.IsMatch(p) && RawHandle.IsMatch((text ?? "").Trim())) return IncompleteEmail;
-            if (AskedName.IsMatch(p) && words <= 6) return Qualification;
-            if (AskedCount.IsMatch(p) && HasNumber.IsMatch(t) && words <= 15 && !(text ?? "").Contains('?')) return Qualification;
-            if (AskedAny.IsMatch(p) && words <= 4) return Qualification;
+            if (AskedName.IsMatch(p) && words <= 6 && !isQuestion) return Qualification;
+            if (AskedCount.IsMatch(p) && HasNumber.IsMatch(t) && words <= 15 && !isQuestion) return Qualification;
+            if (AskedAny.IsMatch(p) && words <= 4 && !isQuestion) return Qualification;
         }
         return Other;
+    }
+
+    /// <summary>
+    /// Tipo + si el bot puede responder solo. "Seguro" = coincide con UN solo tipo, tiene hasta
+    /// <see cref="ConfidentMaxWords"/> palabras y, si trae una pregunta, el tipo es una pregunta.
+    /// Lo que no es seguro va a un humano o a la IA (tools/diccionario/confianza.py).
+    /// </summary>
+    public (string Key, bool Confident) ClassifyWithConfidence(string? text, string? previousOutbound)
+    {
+        var key = Classify(text, previousOutbound);
+        if (key is Other or Empty) return (key, false);
+        var t = IntentText.Normalize(text);
+        if (IntentText.WordCount(t) > ConfidentMaxWords) return (key, false);
+        foreach (var r in _rules)
+        {
+            if (r.Key == key) continue;
+            try { if (r.Pattern.IsMatch(t)) return (key, false); }
+            catch (RegexMatchTimeoutException) { return (key, false); }
+        }
+        if ((text ?? "").Contains('?') && !QuestionTypes.Contains(key)) return (key, false);
+        return (key, true);
     }
 }
 

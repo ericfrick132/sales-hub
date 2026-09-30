@@ -33,6 +33,9 @@ if cmd == 'sample':
 elif cmd == 'score':
     R = [json.loads(l) for l in open('a_etiquetar.jsonl')]
     R = [r for r in R if r['expected']]
+    for r in R:  # 'vacio' y 'otro' son lo mismo: van a IA/humano
+        if r['predicted'] == 'vacio': r['predicted'] = 'otro'
+        if 'vacio' in r['expected'] and 'otro' not in r['expected']: r['expected'] = r['expected'] + ['otro']
     ok = sum(r['predicted'] in r['expected'] for r in R)
     err = [r for r in R if r['predicted'] not in r['expected'] and r['predicted'] != 'otro']
     esc = [r for r in R if r['predicted'] == 'otro' and 'otro' not in r['expected']]

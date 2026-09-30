@@ -69,7 +69,8 @@ G = [json.loads(l) for l in open('gold.jsonl')] if os.path.exists('gold.jsonl') 
 gold = []
 for g in G:
     got = classify(g['text'], g.get('prev'))
-    exp = g['expected']
+    if got == 'vacio': got = 'otro'  # vacio y otro van igual a IA/humano
+    exp = g['expected'] + (['otro'] if 'vacio' in g['expected'] else [])
     if got in exp: verdict = 'ok'
     elif got == 'otro': verdict = 'escape'
     else: verdict = 'error'
@@ -82,6 +83,7 @@ precision = round(100 * sum(1 for x in gold if x['verdict'] == 'ok' and x['got']
 prev_runs = sorted(f for f in os.listdir(RUNS) if f.endswith('.json') and not f.startswith('labels_'))
 base = json.load(open(os.path.join(RUNS, prev_runs[-1]))) if prev_runs else None
 regressions = []
+precision_only = []   # baja de precisión sin ningún caso individual empeorado (ej. cambió cómo se puntúa)
 if base:
     base_gold = {x['id']: x for x in base.get('gold', [])}
     for x in gold:
@@ -96,7 +98,7 @@ if base:
     now_same = prec(same, 'got')
     before_same = prec([dict(base_gold[x['id']], expected=x['expected']) for x in same], 'got')
     if now_same is not None and before_same is not None and now_same < before_same:
-        regressions.append(f"precisión sobre los mismos {len(same)} casos bajó: {before_same}% → {now_same}%")
+        precision_only.append(f"precisión sobre los mismos {len(same)} casos bajó: {before_same}% → {now_same}%")
 flips = []
 if base and os.path.exists(os.path.join(RUNS, 'labels_' + prev_runs[-1])):
     old = json.load(open(os.path.join(RUNS, 'labels_' + prev_runs[-1])))
@@ -163,6 +165,10 @@ for pr in proposals:
 open('propuestas.md', 'w').write('\n'.join(PR))
 
 print('\n'.join(R[:3]))
+if precision_only and not regressions and '--accept' not in sys.argv:
+    regressions += precision_only   # sin --accept también frena
+elif precision_only:
+    print('aceptado con --accept:', *precision_only)
 print(f'regresiones: {len(regressions)}')
 for r in regressions: print('  ✗', r)
 if regressions:
@@ -170,8 +176,11 @@ if regressions:
 # Paridad: el clasificador de C# (el de producción) tiene que dar lo mismo que intents.py.
 if '--parity' in sys.argv or '--save' in sys.argv:
     subprocess.run([sys.executable, os.path.join(paths.TOOLS, 'build_dict.py')], check=True)
-    items = [{'in': p['in'], 'prev': p.get('prev'), 'py': p['intent']} for p in P] + \
-            [{'in': g['text'], 'prev': g.get('prev'), 'py': classify(g['text'], g.get('prev'))} for g in G]
+    from confianza import is_confident
+    def item(text, prev):
+        k, conf = is_confident(text, prev, 8)
+        return {'in': text, 'prev': prev, 'py': k, 'conf': conf}
+    items = [item(p['in'], p.get('prev')) for p in P] + [item(g['text'], g.get('prev')) for g in G]
     json.dump(items, open('parity_input.json', 'w'), ensure_ascii=False)
     out = subprocess.run(['dotnet', 'run', '-c', 'Release', '--project', os.path.join(paths.TOOLS, 'parity'), '--',
                           os.path.abspath('parity_input.json')], capture_output=True, text=True)
