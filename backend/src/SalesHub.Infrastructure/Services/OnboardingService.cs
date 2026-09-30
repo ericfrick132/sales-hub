@@ -128,6 +128,10 @@ public class OnboardingService
         "ya_tiene", "no_decisor", "mas_adelante", "lo_veo", "soporte", "horario", "de_donde", "no_audio", "rechazo",
     };
 
+    private static readonly Regex WantsToPayRx = new(
+        @"quiero (pagar|abonar|contratar|el plan)|como (te )?(pago|abono|contrato)|hago el pago|hacer el pago|voy a (pagar|abonar|transferir)|puedo pagar|necesito pagar|donde (pago|abono)|pasame (el |tu )?(alias|cbu|link)|comprobante|ya (te )?(pague|transferi|abone)",
+        RegexOptions.Compiled);
+
     private static readonly Regex SpinRx = new(@"\{([^{}]*\|[^{}]*)\}", RegexOptions.Compiled);
 
     /// <summary>Elige una variante de {a|b} por lead+paso (estable si se reprocesa el mismo turno).</summary>
@@ -383,6 +387,9 @@ public class OnboardingService
             // Pre-calificación: cualquier cosa que no sea responder la pregunta la contesta la persona.
             var lastQuestion = ob.Step >= 1 && ob.Step <= n ? questions[ob.Step - 1] : null;
             var (key, confident) = (await _intents.GetMatcherAsync(ct)).ClassifyWithConfidence(msg, lastQuestion);
+            // "pago" suelto ("efectivo y mercado pago", "con tarjeta") en la pre-calificación es cómo
+            // les cobra el negocio a SUS clientes, no que quiera pagarnos: solo es señal con intención.
+            if (key == "pago" && !WantsToPayRx.IsMatch(IntentText.Normalize(msg))) key = "dato_calificacion";
             if (isDoubt || (confident && HandoffNowTypes.Contains(key)))
             {
                 ob.Step = StepHumanHandoff;
