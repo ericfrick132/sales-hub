@@ -216,6 +216,7 @@ public class ConversationService
             IntentConfident = intentConfident,
             IntentAction = plan?.Action,
             IntentSimulatedReply = plan?.Text,
+            IntentWhy = plan?.Why,
         });
 
         // Update lead state: first reply triggers status transition.

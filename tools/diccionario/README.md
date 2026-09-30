@@ -6,6 +6,14 @@ reales. Los patrones viven en `intents.py`; producción usa la misma lógica en 
 
 Los datos (chats reales de leads) quedan en `docs/conversaciones/v2/`, **fuera de git**.
 
+## Opiniones desde la app
+
+En **/simulacion** se ven las conversaciones reales con lo que habría hecho el bot en cada mensaje
+del lead. Cada decisión se marca **bien / mal** (con el tipo y la acción correctos y lo que habría
+respondido la persona). `export.sh` baja esas opiniones (`feedback.csv.gz`) y `backtest.py` las usa
+como casos etiquetados del set de oro; las correcciones de acción y las respuestas sugeridas salen en
+`reporte.md`.
+
 ## El ciclo
 
 ```bash

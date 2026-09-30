@@ -56,3 +56,19 @@ public class ReplyIntentConfiguration : IEntityTypeConfiguration<ReplyIntent>
             .HasDefaultValueSql("'{}'::jsonb");
     }
 }
+
+public class IntentFeedbackConfiguration : IEntityTypeConfiguration<IntentFeedback>
+{
+    public void Configure(EntityTypeBuilder<IntentFeedback> b)
+    {
+        b.ToTable("intent_feedback");
+        b.HasKey(x => x.Id);
+        b.HasIndex(x => x.MessageId).IsUnique();
+        b.HasIndex(x => x.LeadId);
+        b.Property(x => x.IntentKey).HasMaxLength(40);
+        b.Property(x => x.IntentAction).HasMaxLength(40);
+        b.Property(x => x.Verdict).HasMaxLength(10).IsRequired();
+        b.Property(x => x.CorrectKey).HasMaxLength(40);
+        b.Property(x => x.CorrectAction).HasMaxLength(40);
+    }
+}

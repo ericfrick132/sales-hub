@@ -60,4 +60,7 @@ public class ConversationMessage
 
     /// <summary>La respuesta que mandaría el diccionario (simulada), para compararla con la real.</summary>
     public string? IntentSimulatedReply { get; set; }
+
+    /// <summary>Por qué el diccionario decidió eso (ej. "ya dijo cuándo", "la charla sigue").</summary>
+    public string? IntentWhy { get; set; }
 }

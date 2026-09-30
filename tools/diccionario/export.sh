@@ -16,5 +16,8 @@ ssh "$HOST" "docker cp /tmp/export_evo.sql evolution-postgres:/tmp/export_evo.sq
 ssh "$HOST" "P=\$(grep -oP 'Password=\K[^;\"]+' /opt/sales-hub/.env | head -1); \
   docker exec evolution-postgres sh -c \"psql '$HUB password='\$P -c '\\\\copy (select m.lead_id, m.direction, m.timestamp, m.text, m.evolution_instance, m.whatsapp_message_id from conversation_messages m) to stdout with csv header' | gzip\" > /tmp/hub_msgs.csv.gz && \
   docker exec evolution-postgres sh -c \"psql '$HUB password='\$P -c '\\\\copy (select * from leads) to stdout with csv header' | gzip\" > /tmp/hub_leads.csv.gz"
-scp -q "$HOST:/tmp/evo.csv.gz" "$HOST:/tmp/hub_msgs.csv.gz" "$HOST:/tmp/hub_leads.csv.gz" .
-ls -la evo.csv.gz hub_msgs.csv.gz hub_leads.csv.gz
+# Opiniones de /simulacion (bien/mal, tipo correcto, lo que habría respondido la persona) con el mensaje y el anterior nuestro.
+ssh "$HOST" "P=\$(grep -oP 'Password=\K[^;\"]+' /opt/sales-hub/.env | head -1); \
+  docker exec evolution-postgres sh -c \"psql '$HUB password='\$P -c '\\\\copy (select f.message_id, f.verdict, f.intent_key, f.intent_action, f.correct_key, f.correct_action, f.better_reply, m.text, (select o.text from conversation_messages o where o.lead_id=m.lead_id and o.direction=0 and o.timestamp<m.timestamp order by o.timestamp desc limit 1) as prev from intent_feedback f join conversation_messages m on m.id=f.message_id) to stdout with csv header' | gzip\" > /tmp/feedback.csv.gz"
+scp -q "$HOST:/tmp/evo.csv.gz" "$HOST:/tmp/hub_msgs.csv.gz" "$HOST:/tmp/hub_leads.csv.gz" "$HOST:/tmp/feedback.csv.gz" .
+ls -la evo.csv.gz hub_msgs.csv.gz hub_leads.csv.gz feedback.csv.gz

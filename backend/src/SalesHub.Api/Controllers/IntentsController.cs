@@ -202,7 +202,8 @@ public class IntentsController : ControllerBase
                     .SetProperty(m => m.IntentKey, (string?)null)
                     .SetProperty(m => m.IntentConfident, (bool?)null)
                     .SetProperty(m => m.IntentAction, (string?)null)
-                    .SetProperty(m => m.IntentSimulatedReply, (string?)null), ct);
+                    .SetProperty(m => m.IntentSimulatedReply, (string?)null)
+                    .SetProperty(m => m.IntentWhy, (string?)null), ct);
         }
 
         var leadIds = await _db.ConversationMessages.AsNoTracking()
@@ -237,6 +238,7 @@ public class IntentsController : ControllerBase
                         info?.Seller, info?.ProductKey, info is null ? null : productNames.GetValueOrDefault(info.ProductKey), m.Text);
                     m.IntentAction = plan.Action;
                     m.IntentSimulatedReply = plan.Text;
+                    m.IntentWhy = plan.Why;
                     updated++;
                 }
             }

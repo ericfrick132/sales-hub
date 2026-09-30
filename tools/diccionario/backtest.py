@@ -66,6 +66,18 @@ for k, ps in defaultdict(list, {k: [p for p in P if p['intent'] == k] for k in c
 
 # ── 2. Gold ───────────────────────────────────────────────────────────────
 G = [json.loads(l) for l in open('gold.jsonl')] if os.path.exists('gold.jsonl') else []
+# Opiniones de /simulacion: "bien" confirma el tipo del bot; "mal" con tipo correcto lo corrige.
+# (Las que solo corrigen la ACCIÓN no cambian la clasificación: se ven en reporte.md aparte.)
+FB = []
+if os.path.exists('feedback.csv.gz'):
+    import csv, gzip
+    with gzip.open('feedback.csv.gz', 'rt') as f:
+        FB = list(csv.DictReader(f))
+    for r in FB:
+        exp = [r['intent_key']] if r['verdict'] == 'bien' else ([r['correct_key']] if r['correct_key'] else None)
+        if exp and r['text']:
+            G.append({'id': 'fb-' + r['message_id'], 'text': r['text'], 'prev': r['prev'] or None,
+                      'expected': exp, 'source': 'opinion en /simulacion'})
 gold = []
 for g in G:
     got = classify(g['text'], g.get('prev'))
@@ -150,6 +162,11 @@ R = [f'# Backtest del diccionario — {stamp}\n',
      '', '## Cobertura por mes (última actividad del chat)', *[f'- {k}: {cov(v)}% ({len(v)})' for k, v in sorted(by_month.items())],
      '', '## Por tipo', '| tipo | turnos | % | contestamos | siguió |', '|---|---|---|---|---|',
      *[f"| {NAMES.get(k, k)} | {v['n']} | {v['pct']}% | {v['answered_pct']}% | {v['continued_pct']}% |" for k, v in sorted(per_type.items(), key=lambda x: -x[1]['n'])]]
+if FB:
+    bad_action = [r for r in FB if r['verdict'] == 'mal' and r['correct_action'] and r['correct_action'] != r['intent_action']]
+    R += ['', f'## Opiniones de /simulacion ({len(FB)}: {sum(r["verdict"]=="bien" for r in FB)} bien, {sum(r["verdict"]=="mal" for r in FB)} mal)',
+          *[f"- acción: el bot {r['intent_action']} → debía {r['correct_action']} ({r['intent_key']}): {r['text'][:90]}" for r in bad_action[:30]],
+          *[f"- respuesta sugerida ({r['intent_key']}): {r['better_reply'][:120]}" for r in FB if r['better_reply']][:30]]
 if flips:
     R += ['', '## Cambios de tipo vs la corrida anterior', *[f'- {v} {k}' for k, v in flips.most_common(20)]]
 open('reporte.md', 'w').write('\n'.join(R) + '\n')
