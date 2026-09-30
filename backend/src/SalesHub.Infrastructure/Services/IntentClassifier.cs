@@ -28,6 +28,8 @@ public sealed class IntentMatcher
     private static readonly Regex AskedMail = new(@"(pasame|pasas|me pasas|dejame|decime) (tu |el )?mail", RegexOptions.Compiled, T);
     // "llanos.yohana": un usuario de mail sin el @ (con punto, guion bajo o números), sobre el texto crudo.
     private static readonly Regex RawHandle = new(@"^(?=.*[a-zA-Z])(?=.*[._\d])[\w.]{5,}$", RegexOptions.Compiled, T);
+    private static readonly Regex AskedHowPay = new(@"como (llevas|cobras|manejas|registras|administran|llevan)|excel papel", RegexOptions.Compiled, T);
+    private static readonly Regex PayMethod = new(@"\b(excel|papel|cuaderno|planilla|manual|a mano)\b", RegexOptions.Compiled, T);
     private static readonly Regex AskedCount = new(@"cuant(os|as) (alumnos|socios|clientes|obras|canchas|profesionales|personas)", RegexOptions.Compiled, T);
     private static readonly Regex HasNumber = new(@"\bN\b", RegexOptions.Compiled, T);
     private static readonly Regex AskedName = new(@"como se llama|nombre (del|de tu|de la)|decime (solo )?el nombre", RegexOptions.Compiled, T);
@@ -52,18 +54,20 @@ public sealed class IntentMatcher
         var t = IntentText.Normalize(text);
         if (t.Length == 0) return Empty;
         var words = IntentText.WordCount(t);
+        var p = string.IsNullOrWhiteSpace(previousOutbound) ? null : IntentText.Normalize(previousOutbound);
+        // Si le preguntamos cómo cobra y contesta con su método, es la respuesta aunque agregue algo más.
+        if (p is not null && AskedHowPay.IsMatch(p) && words <= 40 && PayMethod.IsMatch(t)) return Qualification;
         foreach (var r in _rules)
         {
             if (r.MaxWords is { } max && words > max) continue;
             try { if (r.Pattern.IsMatch(t)) return r.Key; }
             catch (RegexMatchTimeoutException) { /* patrón patológico con este texto: se saltea */ }
         }
-        if (!string.IsNullOrWhiteSpace(previousOutbound))
+        if (p is not null)
         {
-            var p = IntentText.Normalize(previousOutbound);
             if (AskedMail.IsMatch(p) && RawHandle.IsMatch((text ?? "").Trim())) return IncompleteEmail;
             if (AskedName.IsMatch(p) && words <= 6) return Qualification;
-            if (AskedCount.IsMatch(p) && HasNumber.IsMatch(t) && words <= 15) return Qualification;
+            if (AskedCount.IsMatch(p) && HasNumber.IsMatch(t) && words <= 15 && !(text ?? "").Contains('?')) return Qualification;
             if (AskedAny.IsMatch(p) && words <= 4) return Qualification;
         }
         return Other;

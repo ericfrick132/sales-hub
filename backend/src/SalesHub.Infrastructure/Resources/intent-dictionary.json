@@ -4,7 +4,7 @@
  "corpus": {
   "sales_chats": 2692,
   "lead_turns": 9335,
-  "coverage_pct": 76.2
+  "coverage_pct": 77.4
  },
  "context_rules": [
   {
@@ -23,17 +23,17 @@
   {
    "key": "autorespuesta",
    "name": "Contestador automático de otro negocio",
-   "pattern": "^(?!.*(pasanos|mandanos|pasame|mandame|enviame|te habla|habla \\w+ del|no (estaria|estamos|estoy) necesitando|por el momento no|lo vamos charlando))(?:.*)(gracias por (comunicarte|tu mensaje|ponerte en contacto|escribirnos|contactarnos|escribir)|asistente virtual|a la brevedad|lo antes posible|horarios? de atencion|lunes a viernes|(en que|como) (te |le )?podemos ayudar|haznos saber|dejanos tu consulta|te he conectado|no podemos responder|hemos pasado la conversacion|responderemos|revisara tu mensaje|mensaje automatico)",
+   "pattern": "soy (el|la) asistente (virtual )?de|^(?!.*(pasanos|mandanos|pasame|mandame|enviame|te habla|habla \\w+ del|no (estaria|estamos|estoy) necesitando|por el momento no|lo vamos charlando))(?:.*)(gracias por (comunicarte|tu mensaje|ponerte en contacto|escribirnos|contactarnos|escribir)|asistente virtual|a la brevedad|lo antes posible|horarios? de atencion|lunes a viernes|(en que|como) (te |le )?podemos ayudar|haznos saber|dejanos tu consulta|te he conectado|no podemos responder|hemos pasado la conversacion|responderemos|revisara tu mensaje|mensaje automatico)",
    "action": "no_responder",
    "reply": null,
    "note": "no responder: es el contestador de otro negocio; esperar al humano. hoy le contestamos al 75%",
    "max_words": null,
    "metrics": {
-    "turns": 470,
-    "share_pct": 5.0,
+    "turns": 474,
+    "share_pct": 5.1,
     "answered_pct": 76,
-    "continued_pct": 48,
-    "continued_fast_pct": 52,
+    "continued_pct": 49,
+    "continued_fast_pct": 53,
     "continued_slow_pct": 47
    },
    "examples": [
@@ -103,37 +103,37 @@
    "note": "opener corto + primera pregunta del guion. el mensaje largo con lista de funciones retiene 4 veces menos",
    "max_words": null,
    "metrics": {
-    "turns": 1536,
-    "share_pct": 16.5,
+    "turns": 1535,
+    "share_pct": 16.4,
     "answered_pct": 96,
     "continued_pct": 51,
     "continued_fast_pct": 63,
     "continued_slow_pct": 37
    },
    "examples": [
-    "Hola! Quiero cobrar las cuotas en automático",
     "¡Hola, me gustaría activar Gym Hero para mi gimnasio!",
-    "¡Hola! Quiero info de GymHero",
-    "Hola! Quiero el seguimiento de obra para clientes",
     "¡Hola, me gustaría activar Gym Hero para mi escuela de danzas",
-    "¡Hola! Quiero más información"
+    "¡Hola! Quiero más información",
+    "Quiero contratar GymHero y dejar el Excel",
+    "¡Hola, me gustaría activar Gym Hero para mi escuelita de ballet, sirve para pocos alumnos?",
+    "¡Hola, me gustaría activar G ym Hero para mi gimnasio!"
    ]
   },
   {
    "key": "rechazo",
    "name": "No le interesa / que no le escriban",
-   "pattern": "no (me )?interesa|^no,? gracias|no ?me mand(es|en)|no ?me escrib|denunci|^no te agradezco|^chau$|no chau|no voy a (querer|contratar|seguir)|imposible pagar|no (puedo|podemos) (ocuparme|pagar)|me estoy enfocando en otro|no por ahora|por ahora no|no necesito|no estoy interesad|no quiero|dejame de|deja de escribir|no me escribas|borrame|dame de baja|no molest",
+   "pattern": "no (me )?interesa|^no,? gracias|lo dejamos para (otro momento|mas adelante)|estamos cubiertos|mil gracias igual|por el culo|a la mierda|pelotud|\\bforro\\b|la concha|no ?me mand(es|en)|no ?me escrib|denunci|^no te agradezco|^chau$|no chau|no voy a (querer|contratar|seguir)|imposible pagar|no (puedo|podemos) (ocuparme|pagar)|me estoy enfocando en otro|no por ahora|por ahora no|no necesito|no estoy interesad|no quiero|dejame de|deja de escribir|no me escribas|borrame|dame de baja|no molest",
    "action": "cerrar",
    "reply": "dale, sin drama. si mas adelante te sirve, escribime por aca",
    "note": "cerrar y no volver a escribir",
    "max_words": null,
    "metrics": {
-    "turns": 76,
-    "share_pct": 0.8,
-    "answered_pct": 79,
-    "continued_pct": 55,
-    "continued_fast_pct": 64,
-    "continued_slow_pct": 11
+    "turns": 85,
+    "share_pct": 0.9,
+    "answered_pct": 81,
+    "continued_pct": 57,
+    "continued_fast_pct": 65,
+    "continued_slow_pct": 0
    },
    "examples": [
     "Te entiendo el aumento",
@@ -147,17 +147,17 @@
   {
    "key": "ya_tiene",
    "name": "Ya tiene otro sistema",
-   "pattern": "ya (tengo|tenemos|uso|usamos|contamos con|trabajo con|trabajamos con|contrate|contratamos) (un |una |el |la |otro |otra )?(sistema|app|aplicacion|programa|software|plataforma|servicio|con)|ya (contrate|contratamos|consegui)|(?<!no )(estoy|estamos) usando(?! (ningun|nada|nigun))|actualmente (uso|usamos|estoy con|trabajo con)|(trabajamos|trabajo) con una app|usamos una app|estoy con otra app|tengo otra app|tengo un (sistema|programa|software)|tenemos un (sistema|programa|software)|estamos (usando|con un)|consegui otro|uso otro",
+   "pattern": "ya (tengo|tenemos|uso|usamos|contamos con|trabajo con|trabajamos con|contrate|contratamos) (un |una |el |la |otro |otra )?(sistema|app|aplicacion|programa|software|plataforma|servicio|con)|ya (contrate|contratamos|consegui)|ya cuento con|contamos con (un|una) (sistema|app|programa|software)|estamos sistematizados|sistema q(ue)? ya tengo|(?<!no )(estoy|estamos) usando(?! (ningun|nada|nigun))|actualmente (uso|usamos|estoy con|trabajo con)|(trabajamos|trabajo) con una app|usamos una app|estoy con otra app|tengo otra app|tengo un (sistema|programa|software)|tenemos un (sistema|programa|software)|estamos (usando|con un)|consegui otro|uso otro",
    "action": "objecion",
    "reply": "buenisimo. y que es lo que mas te molesta del que usas hoy? si es algo que resolvemos te muestro solo eso, si no no te hago perder tiempo",
    "note": "objeción: una sola pregunta sobre qué le molesta",
    "max_words": null,
    "metrics": {
-    "turns": 64,
+    "turns": 70,
     "share_pct": 0.7,
-    "answered_pct": 78,
-    "continued_pct": 62,
-    "continued_fast_pct": 81,
+    "answered_pct": 77,
+    "continued_pct": 65,
+    "continued_fast_pct": 83,
     "continued_slow_pct": 0
    },
    "examples": [
@@ -211,53 +211,53 @@
     "continued_slow_pct": 100
    },
    "examples": [
-    "Yo no tengo información no se quien  son adios",
-    "Que es esto norntiendo",
     "Hola Éric buen día",
     "Hola por que Tema me escribe?",
     "Te conozco ?",
-    "Hola buen día"
+    "Hola buen día",
+    "Claramente sos un bot",
+    "No sé quién sos"
    ]
   },
   {
    "key": "precio",
    "name": "Pregunta el precio",
-   "pattern": "precio|presupuesto|que vale|cuanto (sale|cuesta|es|seria|cobran|vale|queda|me sale|saldria|costaria)|tengo que pagar|que valor|el valor|valores|costo|tarifa|\\bPRECIO\\b|cuanto por mes|tiene (algun )?costo|se paga",
+   "pattern": "precio|presupuesto|despues de (los|esos|la) (N dias|prueba)|\\babonas\\b|se abona|hay que pagar|que vale|cuanto (sale|cuesta|es|seria|cobran|vale|queda|me sale|saldria|costaria)|tengo que pagar|que valor|el valor|valores|costo|tarifa|\\bPRECIO\\b|cuanto por mes|tiene (algun )?costo|se paga",
    "action": "responder_precio",
    "reply": "son {precio} por mes, sin limite de alumnos. con que no pierdas una cuota por mes ya se paga solo. tenes 7 dias gratis, te dejo la cuenta armada?",
    "note": "precio leído de la API del producto, nunca escrito a mano; no pedir el mail antes",
    "max_words": null,
    "metrics": {
-    "turns": 367,
-    "share_pct": 3.9,
+    "turns": 379,
+    "share_pct": 4.1,
     "answered_pct": 96,
-    "continued_pct": 61,
-    "continued_fast_pct": 71,
+    "continued_pct": 62,
+    "continued_fast_pct": 72,
     "continued_slow_pct": 29
    },
    "examples": [
-    "Buenas tardes soy independiente M.M.O",
     "Buen dia, quería saber cuánto es el monto que debe pagar Osaka?!?",
     "A la noche lo hago",
     "Osea pago $5.000 mas?",
     "Hola",
-    "Hola buenas tardes"
+    "Hola buenas tardes",
+    "Hola buenos dias!!!"
    ]
   },
   {
    "key": "pago",
    "name": "Quiere pagar / cómo pago",
-   "pattern": "como (pago|abono|hago el pago|te pago|contrato)|quiero el (de|plan de) N (meses|mes)|renovar|hacer el pago|necesito pagar|puedo pagar|\\btarjeta\\b|pasame (el |tu )?(alias|cbu|link de pago)|\\balias\\b|\\bcbu\\b|transferi|comprobante|quiero (pagar|abonar)|donde (pago|abono)|con tarjeta|mercado ?pago",
+   "pattern": "como (pago|abono|hago el pago|te pago|contrato)|quiero el (de|plan de) N (meses|mes)|renovar|voy a (pagar|abonar|transferir)|para (la )?transferencia|quiero abonar|hacer el pago|necesito pagar|puedo pagar|\\btarjeta\\b|pasame (el |tu )?(alias|cbu|link de pago)|\\balias\\b|\\bcbu\\b|transferi|comprobante|quiero (pagar|abonar)|donde (pago|abono)|con tarjeta|mercado ?pago",
    "action": "cerrar_venta",
    "reply": "genial. el alias es {alias}, me mandas el comprobante por aca y te la dejo activa en el momento",
    "note": "URGENTE a humano: <5 min sigue 89%, >1 h 27%",
    "max_words": null,
    "metrics": {
-    "turns": 61,
-    "share_pct": 0.7,
+    "turns": 57,
+    "share_pct": 0.6,
     "answered_pct": 95,
-    "continued_pct": 78,
-    "continued_fast_pct": 89,
+    "continued_pct": 74,
+    "continued_fast_pct": 85,
     "continued_slow_pct": 30
    },
    "examples": [
@@ -278,11 +278,11 @@
    "note": "respuesta fija",
    "max_words": null,
    "metrics": {
-    "turns": 18,
-    "share_pct": 0.2,
+    "turns": 14,
+    "share_pct": 0.1,
     "answered_pct": 100,
-    "continued_pct": 89,
-    "continued_fast_pct": 88,
+    "continued_pct": 100,
+    "continued_fast_pct": 100,
     "continued_slow_pct": null
    },
    "examples": [
@@ -291,7 +291,7 @@
     "De donde son ?",
     "Pesos",
     "Son de argentina ?",
-    "Excel"
+    "Hola de donde son?"
    ]
   },
   {
@@ -303,7 +303,7 @@
    "note": "pasar a humano / agenda con 2 horarios reales",
    "max_words": null,
    "metrics": {
-    "turns": 97,
+    "turns": 95,
     "share_pct": 1.0,
     "answered_pct": 97,
     "continued_pct": 85,
@@ -311,12 +311,12 @@
     "continued_slow_pct": 43
    },
    "examples": [
-    "Buenas quería que compartan más info del servicio q ofrecen si tienen alguna demo donde pueda verlo",
     "Hola",
     "Esto sería un demo?",
     "SE PUEDE HACER DESDE L A VERSION DEMO?",
     "Se puede tener una reunión con alguien ?",
-    "Perfecto"
+    "Perfecto",
+    "en unos minutos te llamo estoy atrasado"
    ]
   },
   {
@@ -365,32 +365,32 @@
   {
    "key": "horario",
    "name": "Horario / disponibilidad",
-   "pattern": "\\b(manana|hoy|pasado|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\\b.*\\b(puedo|podria|puede|te va|me va|a la (manana|tarde|noche)|a las|N ?hs|temprano|tarde)\\b|a la (manana|tarde|noche) (puedo|podria|te)|\\bN ?hs\\b|\\bN N ?hs\\b|a las N|despues de las N|en un rato|estoy (en el banco|trabajando(?! (en|para|de|con))|manejando|ocupad|con un cliente|con (una )?clase|dando clase)|ahora no puedo|me desocupo|mas tarde (te|hablamos)|a que hora",
+   "pattern": "\\b(manana|hoy|pasado|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\\b.*\\b(puedo|podria|puede|te va|me va|a la (manana|tarde|noche)|a las|N ?hs|temprano|tarde)\\b|a la (manana|tarde|noche) (puedo|podria|te)|\\bN ?hs\\b|\\bN N ?hs\\b|a las N|despues de las N|en un rato|dame un rato|estoy (justo )?con (turnos|clientes|clase|alumnos)|estoy (en el banco|trabajando(?! (en|para|de|con))|manejando|ocupad|con un cliente|con (una )?clase|dando clase)|ahora no puedo|me desocupo|mas tarde (te|hablamos)|a que hora",
    "action": "agendar_llamada",
    "reply": "perfecto, te llamo {horario}. cualquier cosa me avisas por aca",
    "note": "confirmar el horario y agendar la llamada",
    "max_words": 15,
    "metrics": {
-    "turns": 53,
+    "turns": 55,
     "share_pct": 0.6,
-    "answered_pct": 92,
-    "continued_pct": 55,
+    "answered_pct": 93,
+    "continued_pct": 53,
     "continued_fast_pct": 48,
     "continued_slow_pct": 78
    },
    "examples": [
-    "Buenas, como andamos? \nDale dale buenísimo a las 19hs podrás?",
     "Pongo una contraseña cualquiera??",
     "Buen dia",
     "Después hablamos ..ahora estoy trabajando",
     "Dale",
-    "Genial bueno hoy a la tarde noche empiezo a cargar todo"
+    "Genial bueno hoy a la tarde noche empiezo a cargar todo",
+    "Obras de construcción?"
    ]
   },
   {
    "key": "pide_material",
    "name": "Pide video / tutorial / material",
-   "pattern": "(pasa|pasame|pasas|manda|mandame|mandas|tenes|tendrias|tienen|hay|envia|enviame|mande|ver el).{0,30}(video|tutorial|manual|instructivo|folleto|presentacion|catalogo)|^(video|el video|mandame el video)",
+   "pattern": "(pasa|pasame|pasas|manda|mandame|mandas|tenes|tendrias|tienen|hay|envia|enviame|mande|ver el).{0,30}(video|tutorial|manual|instructivo|folleto|presentacion|catalogo)|^(video|el video|mandame el video)|^(dale|si|bueno|ok) ?(pasame|mandame|pasa|manda)( (la )?(info|todo))?$",
    "action": "enviar_material",
    "reply": "aca tenes un video corto de como funciona: {video}. cualquier duda me decis",
    "note": "mandar el video del producto",
@@ -399,8 +399,8 @@
     "turns": 46,
     "share_pct": 0.5,
     "answered_pct": 96,
-    "continued_pct": 55,
-    "continued_fast_pct": 50,
+    "continued_pct": 50,
+    "continued_fast_pct": 44,
     "continued_slow_pct": null
    },
    "examples": [
@@ -490,26 +490,26 @@
   {
    "key": "soporte",
    "name": "Problema técnico / no puede entrar",
-   "pattern": "no me (deja|anda|funciona|carga|llega|llego|abre|aparece|toma|reconoce)|no (pude|puedo|pudo|podemos) (entrar|ingresar|acceder)|no estan cargad|aparece que|me dice que|le dice que|(pasame|mandame|reenviame) el (link|enlace|acceso)|no (m )?(deja|carga|llega)|se queda (ahi|cargando)|no carga|problemas? con la (app|pagina|cuenta)|me solucionen|no figura|no aparece|no puedo (entrar|ingresar|acceder|registrar|cargar)|\\berror\\b|contrasena|\\bclave\\b|\\bcodigo\\b|no (me )?llego|se trabo|no anda|como (hago|se hace) para|como (cargo|agrego|configuro|pongo)|no encuentro",
+   "pattern": "no me (deja|anda|funciona|carga|llega|llego|abre|aparece|toma|reconoce)|no (pude|puedo|pudo|podemos) (entrar|ingresar|acceder)|me sale (esto|con deuda|que|otra vez|abonar)|no hay caso|no me permite|no estan cargad|aparece que|me dice que|le dice que|(pasame|mandame|reenviame) el (link|enlace|acceso)|no (m )?(deja|carga|llega)|se queda (ahi|cargando)|no carga|problemas? con la (app|pagina|cuenta)|me solucionen|no figura|no aparece|no puedo (entrar|ingresar|acceder|registrar|cargar)|\\berror\\b|contrasena|\\bclave\\b|\\bcodigo\\b|no (me )?llego|se trabo|no anda|como (hago|se hace) para|como (cargo|agrego|configuro|pongo)|no encuentro",
    "action": "soporte",
    "reply": null,
    "note": "reenviar link de acceso si es login; si no, humano (bot de soporte)",
    "max_words": null,
    "metrics": {
-    "turns": 155,
+    "turns": 163,
     "share_pct": 1.7,
-    "answered_pct": 93,
+    "answered_pct": 92,
     "continued_pct": 77,
-    "continued_fast_pct": 80,
-    "continued_slow_pct": 55
+    "continued_fast_pct": 81,
+    "continued_slow_pct": 54
    },
    "examples": [
     "2do error que detecto",
     "Hola buenas tatdes",
     "Me podrias decir donde entrar o si tengo que descargar una app?",
-    "No no me deja entrar",
-    "Buenas, todo bien? Un profe me dice que no puede entrar a la página",
-    "Usuario y contraseña cuál sería?"
+    "Lo hice el otro dia perome sale otra vez registrarme",
+    "Cuando hago el ingreso a pagar me sale abonar 75 mil directo no me dejo abonar 25 mil",
+    "OK xq necesito utilizar la aplicación"
    ]
   },
   {
@@ -521,70 +521,70 @@
    "note": "avanzar al siguiente paso del guion (siguiente pregunta o crear cuenta)",
    "max_words": null,
    "metrics": {
-    "turns": 158,
+    "turns": 155,
     "share_pct": 1.7,
-    "answered_pct": 94,
+    "answered_pct": 95,
     "continued_pct": 65,
-    "continued_fast_pct": 83,
+    "continued_fast_pct": 82,
     "continued_slow_pct": 33
    },
    "examples": [
-    "Me gustaría implementar",
     "Hola Eric, si claro",
     "Buenas me gustaria mas info",
     "Hola buenas , está bueno solo que deberían de explicarme a usarlo pq yo entiendo nada la verdad !!!",
     "Holaa estamos por abrir uno si dios quiere en unos meses",
-    "¡Hola, me gustaría a\nRecibir más información!"
+    "¡Hola, me gustaría a\nRecibir más información!",
+    "Perfecto"
    ]
   },
   {
    "key": "como_funciona",
    "name": "Cómo funciona / qué incluye",
-   "pattern": "^(y )?(como(?! (estas|va|andas|estan|anda|te va|les va))|se puede|puede|hay forma|que pasa)\\b|puede ser con|se puede|como hago|puedo (hacer|poner|usar|cargar)|como funciona|como es (el|la)|que me ofrecen|que ofrecen|en espanol|es mensual|una sola vez|que (hace|incluye|tiene|ofrece|trae)|de que se trata|(mas|mayor) (info|informacion|detalle)|explica|como seria|tiene (app|aplicacion)|sirve para|se puede|funciona con|hay (app|aplicacion)|como se (usa|maneja)",
+   "pattern": "^(y )?(como(?! (estas|va|andas|estan|anda|te va|les va))|se puede|puede|hay forma|que pasa)\\b|puede ser con|se puede|como hago|puedo (hacer|poner|usar|cargar)|como funciona|como es (el|la)|^que (me )?ofrecen|tengo que (cargar|mandar|abonar|pedir|ingresar|pagar)|es (una )?app o (es )?web|en espanol|es mensual|una sola vez|que (hace|incluye|tiene|ofrece|trae)|de que se trata|(mas|mayor) (info|informacion|detalle)|explica|como seria|tiene (app|aplicacion)|sirve para|se puede|funciona con|hay (app|aplicacion)|como se (usa|maneja)",
    "action": "faq",
    "reply": null,
    "note": "respuesta de la FAQ del producto (o IA con el conocimiento del producto si no hay FAQ que coincida)",
    "max_words": null,
    "metrics": {
-    "turns": 238,
-    "share_pct": 2.5,
+    "turns": 249,
+    "share_pct": 2.7,
     "answered_pct": 99,
     "continued_pct": 69,
-    "continued_fast_pct": 74,
+    "continued_fast_pct": 75,
     "continued_slow_pct": 46
    },
    "examples": [
-    "Hola cómo estás todo bien",
     "Buenas me darias mas informacion por favor.",
     "Cómo puedo ingresar de nuevo ya que se me fue el link donde ingresé",
     "Sirve para centros de pilates?",
     "Perfecto!!!",
-    "Ahh entonces primero tengo que cargar las clases con los alumnos"
+    "Ahh entonces primero tengo que cargar las clases con los alumnos",
+    "Ok! Y si quiero cargar los alumnos yo uno por uno para todo el mes. Tmb puedo hacerlo ?"
    ]
   },
   {
    "key": "dato_calificacion",
    "name": "Responde una pregunta del guion",
-   "pattern": "\\bpapel\\b|\\bexcel\\b|\\bword\\b|cuaderno|nunca tuve|aprox|aproximad|planilla|a mano|agenda|no uso nada|no usamos nada|desde cero|de cero|\\bN obras?\\b|alrededor de N|al rededor de N|unos N|mas o menos N|\\bN (a|o) N\\b|\\bN (socios|alumnos|clientes|personas|miembros|chicos)\\b|^N( aprox| mas o menos| masomenos)?$|pase libre|\\bclases\\b|funcional|crossfit|pilates|musculacion|estetica|peluqueria|barberia|consultorio|no tengo (socios|alumnos)|ningun sistema|por whatsapp|efectivo|transferencia",
+   "pattern": "\\bpapel\\b|\\bexcel\\b|\\bword\\b|cuaderno|nunca tuve|aprox|aproximad|\\bmanual\\b|se llama|mi (gym|gimnasio|estudio|local|negocio) es|planilla|a mano|agenda|no uso nada|no usamos nada|desde cero|de cero|\\bN obras?\\b|alrededor de N|al rededor de N|unos N|mas o menos N|\\bN (a|o) N\\b|\\bN (socios|alumnos|clientes|personas|miembros|chicos)\\b|^N( aprox| mas o menos| masomenos)?$|pase libre|\\bclases\\b|funcional|crossfit|pilates|musculacion|estetica|peluqueria|barberia|consultorio|no tengo (socios|alumnos)|ningun sistema|por whatsapp|efectivo|transferencia",
    "action": "avanzar_guion",
    "reply": "ok, anotado",
    "note": "guardar el dato y hacer la siguiente pregunta del guion",
    "max_words": 25,
    "metrics": {
-    "turns": 1771,
-    "share_pct": 19.0,
+    "turns": 1845,
+    "share_pct": 19.8,
     "answered_pct": 100,
     "continued_pct": 84,
     "continued_fast_pct": 86,
-    "continued_slow_pct": 51
+    "continued_slow_pct": 50
    },
    "examples": [
-    "Hola Eric yo tengo un estudio chico de pilates reformer en San justo barrio San Nicolás",
-    "Tengo ya un estudio de pilates hace 3 meses y estoy con el WhatsApp",
     "Hola?",
     "Hola !\nEsta activo.\n90aprox\nCrossfit\nPapel",
     "1 si\n\n2. 60\n3. Mosculacion \n Personalizados \n4 cuadernos 🤦‍♀️",
-    "4"
+    "4",
+    "1 ahora de vacaciones \n2 doy zumba y en otro lugar doy folclore\n3 30 personas y 60\n4) en papel",
+    "Buenas! Queríamos saber cómo los alumnos pueden eliminar sus reservas de clases"
    ]
   },
   {
