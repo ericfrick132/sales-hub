@@ -22,7 +22,7 @@ public class LineBotsController : ControllerBase
     public record LineBotDto(Guid SellerId, string Name, string? Phone, string? App, string? Status, bool BotEnabled,
         DateTimeOffset? PausedAt, string? PausedBy);
 
-    /// <summary>Las líneas activas (vendedor con WhatsApp conectado por Evolution o por celu).</summary>
+    /// <summary>Las líneas activas (vendedor con WhatsApp por Evolution).</summary>
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
     {
@@ -39,7 +39,9 @@ public class LineBotsController : ControllerBase
                 ListenOnly = s.EvolutionInstance != null && s.EvolutionInstance.ListenOnly,
             })
             .ToListAsync(ct);
-        return Ok(rows.Where(r => !r.ListenOnly).Select(r => new LineBotDto(r.Id, r.DisplayName, r.Phone,
+        // Solo las líneas en uso (conectadas o conectándose) y las que tienen el bot apagado, así
+        // siempre se puede volver a prender aunque la línea se haya caído.
+        return Ok(rows.Where(r => !r.ListenOnly && (r.Status is "Connected" or "Connecting" || r.BotPausedAt is not null)).Select(r => new LineBotDto(r.Id, r.DisplayName, r.Phone,
             r.App is not null && apps.TryGetValue(r.App, out var n) ? n : r.App, r.Status,
             r.BotPausedAt is null, r.BotPausedAt, r.BotPausedBy)));
     }
