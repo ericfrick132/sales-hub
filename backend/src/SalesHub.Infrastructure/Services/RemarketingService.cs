@@ -474,6 +474,7 @@ public class RemarketingService
     /// </summary>
     public async Task<int> EnqueueForSellerAsync(RemarketingSettings s, Seller seller, CancellationToken ct)
     {
+        if (seller.BotPausedAt is not null) return 0;   // bot apagado en esta línea
         var now = DateTimeOffset.UtcNow;
         var nowAr = TimeZoneInfo.ConvertTime(now, LeadEntryService.ArTz);
         if (!s.SendWeekdays.Contains(IsoWeekday(nowAr))) return 0;

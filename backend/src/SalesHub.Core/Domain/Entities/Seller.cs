@@ -60,6 +60,14 @@ public class Seller
     public bool SendingEnabled { get; set; } = true;
 
     /// <summary>
+    /// Bot apagado en esta línea (lo prende/apaga quien atiende, desde /conversaciones): no contesta
+    /// en ninguna charla de la línea (guion, pitch de anuncio, re-enganches, remarketing).
+    /// La línea sigue recibiendo y la persona sigue escribiendo normal. null = bot prendido.
+    /// </summary>
+    public DateTimeOffset? BotPausedAt { get; set; }
+    public string? BotPausedBy { get; set; }
+
+    /// <summary>
     /// Archivar automáticamente el chat de cada lead en el WhatsApp de esta línea. Para
     /// líneas que comparten teléfono con el uso personal: el tráfico de ventas queda en
     /// Archivados y no ensucia la lista principal. Requiere "Mantener chats archivados"

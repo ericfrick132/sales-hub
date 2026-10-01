@@ -44,6 +44,11 @@ public class PitchEngine
         _db = db; _evo = evo; _lineSender = lineSender; _renderer = renderer; _tts = tts; _voice = voice.Value; _assigner = assigner; _log = log;
     }
 
+    /// <summary>Bot apagado en la línea del lead (interruptor de /conversaciones).</summary>
+    private Task<bool> LineBotPausedAsync(Lead lead, CancellationToken ct) =>
+        lead.SellerId is null ? Task.FromResult(false)
+            : _db.Sellers.AnyAsync(x => x.Id == lead.SellerId && x.BotPausedAt != null, ct);
+
     /// <summary>Marca de los outbox rows que pertenecen a un pitch (CadenceCategory).</summary>
     public static string OutboxTag(Guid pitchId) => $"pitch:{pitchId:N}";
 
@@ -56,6 +61,7 @@ public class PitchEngine
     public async Task OnInboundAsync(Lead lead, string text, ConversationService.AdReferral? ad, bool isNewLead, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
+        if (await LineBotPausedAsync(lead, ct)) return;
         var state = await _db.LeadPitchStates.Include(s => s.Pitch).FirstOrDefaultAsync(s => s.LeadId == lead.Id, ct);
         if (state is null)
         {
@@ -224,6 +230,7 @@ public class PitchEngine
         var lead = s.Lead!; var p = s.Pitch!;
         var now = DateTimeOffset.UtcNow;
         if (!p.Active) { s.NextStepDueAt = null; s.UpdatedAt = now; await _db.SaveChangesAsync(ct); return false; }
+        if (await LineBotPausedAsync(lead, ct)) return false;   // queda esperando: sale cuando prendan el bot
         // Takeover humano mientras esperaba el paso: el humano manda, el pitch se retira.
         if (lead.BotMutedAt is not null && s.StepIndex >= 0)
         {
@@ -296,6 +303,7 @@ public class PitchEngine
         var lead = s.Lead!; var p = s.Pitch!;
         if (s.StepIndex < 0 || s.StepIndex >= p.Steps.Count || s.StepSentAt is null) return false;
         if (!p.Active) return false;
+        if (await LineBotPausedAsync(lead, ct)) return false;
         if (lead.BotMutedAt is not null)
         {
             s.CompletedAt = now; s.UpdatedAt = now; await _db.SaveChangesAsync(ct); return false;

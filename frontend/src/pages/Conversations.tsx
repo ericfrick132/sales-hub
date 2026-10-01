@@ -196,6 +196,7 @@ export default function Conversations() {
           selected && showInfo ? 'lg:col-span-3' : '',
           selected ? 'hidden md:block' : 'flex-1 md:flex-none'
         )}>
+        <LineBots />
         <div className="p-3 border-b border-slate-100 space-y-2">
           <div>
             <h2 className="font-semibold text-lg">Conversaciones</h2>
@@ -787,6 +788,52 @@ function QuickReplyBar({ replies, onPick }: { replies: QuickReply[]; onPick: (t:
             : (r.content.length > 40 ? r.content.slice(0, 40) + '…' : r.content)}
         </button>
       ))}
+    </div>
+  );
+}
+
+type LineBot = {
+  sellerId: string; name: string; phone?: string | null; app?: string | null; status?: string | null;
+  botEnabled: boolean; pausedAt?: string | null; pausedBy?: string | null;
+};
+
+/**
+ * Interruptor del bot por línea: apagado, el bot no contesta en ninguna charla de esa línea
+ * (para una sola charla está el botón del chat). Lo usa quien atiende, sin ser admin.
+ */
+function LineBots() {
+  const qc = useQueryClient();
+  const lines = useQuery({
+    queryKey: ['line-bots'],
+    queryFn: async () => (await api.get<LineBot[]>('/line-bots')).data,
+    refetchInterval: 30_000,
+  });
+  const toggle = useMutation({
+    mutationFn: async (l: LineBot) => api.post(`/line-bots/${l.sellerId}`, { enabled: !l.botEnabled }),
+    onSuccess: (_, l) => {
+      toast.success(l.botEnabled ? `Bot apagado en ${l.app ?? l.name}` : `Bot prendido en ${l.app ?? l.name}`);
+      qc.invalidateQueries({ queryKey: ['line-bots'] });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error ?? 'No se pudo cambiar'),
+  });
+  if (!lines.data?.length) return null;
+  return (
+    <div className="p-3 border-b border-slate-100">
+      <div className="text-[11px] text-slate-500 mb-1">Bot por línea</div>
+      <div className="flex flex-wrap gap-1.5">
+        {lines.data.map((l) => (
+          <button key={l.sellerId} type="button" disabled={toggle.isPending}
+            onClick={() => toggle.mutate(l)}
+            title={l.botEnabled
+              ? `${l.name}${l.phone ? ` (${l.phone})` : ''}: el bot contesta. Tocá para apagarlo en toda la línea.`
+              : `Apagado${l.pausedBy ? ` por ${l.pausedBy}` : ''}${l.pausedAt ? ` el ${new Date(l.pausedAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}. Tocá para prenderlo.`}
+            className={clsx('text-[11px] px-2 py-1 rounded-full border flex items-center gap-1.5',
+              l.botEnabled ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-300')}>
+            <span className={clsx('inline-block w-1.5 h-1.5 rounded-full', l.botEnabled ? 'bg-emerald-500' : 'bg-slate-400')} />
+            {l.app ?? l.name}: bot {l.botEnabled ? 'prendido' : 'apagado'}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

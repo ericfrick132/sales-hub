@@ -172,7 +172,7 @@ public class ConversationAgentService
             from l in _db.Leads
             where l.AiSuggestedReply == null && l.AiSuggestedReplyAt == null && l.SellerId != null
                 && replySources.Contains(l.Source)
-                && l.BotMutedAt == null // takeover humano: el bot no toca esta conversación
+                && l.BotMutedAt == null && l.Seller!.BotPausedAt == null // takeover humano: el bot no toca esta conversación
                 // Pitch por anuncio en curso: el guion es dueño de la charla hasta terminar.
                 && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
                 && l.Status != LeadStatus.Lost
@@ -201,7 +201,7 @@ public class ConversationAgentService
         {
             var prio = await (
                 from l in _db.Leads
-                where priorityIds.Contains(l.Id) && l.SellerId != null && l.BotMutedAt == null
+                where priorityIds.Contains(l.Id) && l.SellerId != null && l.BotMutedAt == null && l.Seller!.BotPausedAt == null
                 let last = _db.ConversationMessages
                     .Where(m => m.LeadId == l.Id)
                     .OrderByDescending(m => m.Timestamp)
@@ -985,7 +985,7 @@ public class ConversationAgentService
             from l in _db.Leads
             where l.SellerId != null
                 && followupSources.Contains(l.Source)
-                && l.BotMutedAt == null // takeover humano: tampoco re-enganchar
+                && l.BotMutedAt == null && l.Seller!.BotPausedAt == null // takeover humano: tampoco re-enganchar
                 && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
                 && l.FirstReplyAt != null
                 && (l.Status == LeadStatus.Replied || l.Status == LeadStatus.Interested)
@@ -1013,7 +1013,7 @@ public class ConversationAgentService
             from l in _db.Leads
             where l.SellerId != null
                 && followupSources.Contains(l.Source)
-                && l.BotMutedAt == null
+                && l.BotMutedAt == null && l.Seller!.BotPausedAt == null
                 && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
                 && l.FirstReplyAt == null
                 && l.Status == LeadStatus.Sent
@@ -1137,7 +1137,7 @@ public class ConversationAgentService
             join l in _db.Leads on ob.LeadId equals l.Id
             where ob.ProvisionedAt != null && ob.ProvisionedAt > tooOld
                 && followupSources.Contains(l.Source)
-                && l.BotMutedAt == null && l.SellerId != null
+                && l.BotMutedAt == null && l.Seller!.BotPausedAt == null && l.SellerId != null
                 && ((ob.CheckinSentAt == null && ob.ProvisionedAt < checkinCutoff)
                  || (ob.DiscountNudgeSentAt == null && ob.ProvisionedAt < discountCutoff))
                 // silencio total desde el alta: si escribió, lo lleva la conversación normal
