@@ -266,6 +266,12 @@ export default function Conversations() {
                 {c.dot && <span className={clsx('inline-block w-1.5 h-1.5 rounded-full', c.dot)} />}{c.label}
               </button>
             ))}
+            <button type="button" onClick={() => setTagFilter(tagFilter === 'para-mateo' ? '' : 'para-mateo')}
+              title="Los que el bot pre-calificó y le pasó a una persona"
+              className={clsx('text-[11px] px-2 py-0.5 rounded-full border',
+                tagFilter === 'para-mateo' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50')}>
+              pasados a una persona
+            </button>
             <label className="ml-auto text-[11px] text-slate-500 flex items-center gap-1">
               <input type="checkbox" checked={includeClosed} onChange={(e) => setIncludeClosed(e.target.checked)} /> ver cerradas
             </label>
@@ -317,6 +323,7 @@ export default function Conversations() {
                 </span>
               )}
               {c.closedAt && <span className="text-[10px] bg-slate-100 text-slate-500 rounded px-1">cerrada</span>}
+              {c.botMutedAt && <span title="El bot no le contesta: lo sigue una persona" className="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 rounded px-1">bot pausado</span>}
               {c.tags?.slice(0, 3).map((t) => <span key={t} className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 rounded px-1">#{t}</span>)}
               <span className="ml-auto">{c.lastTimestamp ? new Date(c.lastTimestamp).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : ''}</span>
             </div>
