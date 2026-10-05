@@ -46,7 +46,7 @@ Los datos de terceros están tomados de lo que cada plataforma publica en su sit
 
 | Plataforma | Qué es | Puntos destacados |
 | --- | --- | --- |
-| **PlayCrew** | Software de gestión para clubes de pádel y tenis, con buscador de clubes para jugadores. | Reservas online 24/7, calendario y turnos fijos, señas con Mercado Pago sin comisión por reserva, precio pico, torneos y ranking ELO, clases y profesores, kiosco con stock, reportes y agente IA por WhatsApp. 14 días gratis sin tarjeta. |
+| **PlayCrew** | Software de gestión para clubes de pádel y tenis, con buscador de clubes para jugadores. | Reservas online 24/7, calendario y turnos fijos, señas con Mercado Pago sin comisión por reserva, precio pico, torneos y ranking ELO, clases y profesores, kiosco con stock, reportes y agente IA por WhatsApp. 14 días gratis; primer cobro al terminar la prueba. |
 | **CanchaFija** | Plataforma de gestión para clubes. | Según su sitio (septiembre 2026): reservas, pagos online, torneos y clientes en un panel; cobro anticipado por Mercado Pago. |
 | **Padelero** | Plataforma de gestión para clubes de pádel. | Según su sitio (septiembre 2026): agenda, jugadores y torneos con asistente de IA 24/7. |
 | **Dónde Juego** | Marketplace de canchas. | Según su sitio (septiembre 2026): marketplace para que jugadores reserven canchas de fútbol 5 y pádel. |
@@ -54,7 +54,7 @@ Los datos de terceros están tomados de lo que cada plataforma publica en su sit
 
 ### PlayCrew
 
-PlayCrew es un software de gestión hecho en Argentina para clubes de pádel y tenis (también gestiona canchas de fútbol). Cubre el circuito completo: página pública de reservas 24/7, calendario de ocupación con turnos fijos, precio por hora y precio pico, señas con Mercado Pago que van directo a la cuenta del club, torneos con brackets y ranking ELO de 0.5 a 8.0, clases y profesores, kiosco con stock y punto de venta, y reportes de ingresos y ocupación. El plan Agente IA suma un asistente que atiende el WhatsApp del club y crea reservas desde el chat. No cobra comisiones por reserva y se prueba 14 días gratis sin tarjeta. Podés ver el detalle en [software para clubes de pádel](/software-para-clubes-de-padel/) y [software para clubes de tenis](/software-para-clubes-de-tenis/).
+PlayCrew es un software de gestión hecho en Argentina para clubes de pádel y tenis (también gestiona canchas de fútbol). Cubre el circuito completo: página pública de reservas 24/7, calendario de ocupación con turnos fijos, precio por hora y precio pico, señas con Mercado Pago que van directo a la cuenta del club, torneos con brackets y ranking ELO de 0.5 a 8.0, clases y profesores, kiosco con stock y punto de venta, y reportes de ingresos y ocupación. El plan Agente IA suma un asistente que atiende el WhatsApp del club y crea reservas desde el chat. No cobra comisiones por reserva y se prueba 14 días gratis: dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba. Podés ver el detalle en [software para clubes de pádel](/software-para-clubes-de-padel/) y [software para clubes de tenis](/software-para-clubes-de-tenis/).
 
 ## Cuánto cuesta un software de reservas para clubes
 
@@ -67,7 +67,7 @@ Los precios de terceros cambian seguido y no los publicamos acá; consultalos en
 | Enterprise | $120.000 | $96.000 | Hasta 9, multi-sede |
 | Agente IA | $150.000 | $120.000 | Todo lo del Enterprise + WhatsApp IA |
 
-Todos los planes incluyen reservas y clientes ilimitados, soporte y 14 días de prueba sin tarjeta. Para comparar con cualquier otra opción, hacé esta cuenta: cuota mensual + comisión por reserva multiplicada por tus reservas del mes. Con 300 reservas mensuales, una comisión chica por reserva ya supera una suscripción fija. Detalle completo en [precios de PlayCrew](/precios).
+Todos los planes incluyen reservas y clientes ilimitados, soporte y 14 días de prueba, con el primer cobro al terminarla. Para comparar con cualquier otra opción, hacé esta cuenta: cuota mensual + comisión por reserva multiplicada por tus reservas del mes. Con 300 reservas mensuales, una comisión chica por reserva ya supera una suscripción fija. Detalle completo en [precios de PlayCrew](/precios).
 
 ## Cómo elegir según el tipo de club
 

@@ -4,13 +4,13 @@ Harbiz es la app para entrenadores más buscada en España y una de las más con
 
 ## Resumen en 30 segundos
 
-- **Precio:** Harbiz cobra en dólares para América: USD 19 por mes hasta 5 clientes, USD 129 hasta 50 y USD 219 hasta 50 con app propia. Bunker cobra en pesos: ARS 5.000 por mes hasta 10 atletas, ARS 12.000 hasta 50, ARS 25.000 hasta 200 y ARS 35.000 con planificación asistida por IA.
+- **Precio:** Harbiz cobra en dólares para América: USD 19 por mes hasta 5 clientes, USD 129 hasta 50 y USD 219 hasta 50 con app propia. Bunker cobra en pesos: ARS 40.000 por mes hasta 10 atletas, ARS 60.000 hasta 20 y ARS 80.000 sin tope de atletas, con agente de IA en WhatsApp.
 - **Atletas:** en Bunker los atletas usan la app gratis, siempre. Harbiz cobra por cantidad de clientes en cada plan.
 - **App con tu marca:** acá gana Harbiz. Todos sus planes incluyen app personalizada y hay un complemento para llevarla más lejos. Bunker tiene su propia app para iPhone y versión web; no tiene app con tu logo.
 - **Nutrición y cobros:** Harbiz suma planificación nutricional, Nutri AI y cobros recurrentes con facturación. Bunker se concentra en el entrenamiento: planificación por bloques, adherencia, mensajería y control de cuotas.
-- **Escala:** Bunker Premium incluye 200 atletas por ARS 25.000. En Harbiz el tope publicado es 50 clientes por plan.
+- **Escala:** Bunker Sin límite no tiene tope de atletas, por ARS 80.000. En Harbiz el tope publicado es 50 clientes por plan.
 
-Si sos entrenador online con alumnos en varios países, querés tu app con tu marca y armás planes de nutrición, Harbiz tiene más producto y cobra por eso. Si entrenás en Argentina, tenés 20, 50 o 200 alumnos y querés que ellos no paguen nada, Bunker te sale una fracción del precio y está hecho para planificar y seguir entrenamientos.
+Si sos entrenador online con alumnos en varios países, querés tu app con tu marca y armás planes de nutrición, Harbiz tiene más producto y cobra por eso. Si entrenás en Argentina, tenés 20, 50 o 200 alumnos y querés que ellos no paguen nada, Bunker te cobra en pesos, sin complementos, y está hecho para planificar y seguir entrenamientos.
 
 ## Tabla comparativa
 
@@ -18,14 +18,14 @@ Lo que publica cada uno a septiembre de 2026: Harbiz en su página de tarifas pa
 
 | | Bunker | Harbiz (América) |
 | --- | --- | --- |
-| Planes | Básico, Profesional, Premium, Plan IA | Basic, Pro, App |
-| Precio mensual | ARS 5.000 (Básico), 12.000 (Profesional), 25.000 (Premium), 35.000 (Plan IA) | USD 19 (Basic), 129 (Pro), 219 (App) |
+| Planes | Básico, Profesional, Sin límite | Basic, Pro, App |
+| Precio mensual | ARS 40.000 (Básico), 60.000 (Profesional), 80.000 (Sin límite) | USD 19 (Basic), 129 (Pro), 219 (App) |
 | Precio con pago anual | No publica | USD 14, 97 y 164 por mes |
-| Clientes o atletas incluidos | 10, 50, 200 y 200 | 5 (Basic), 50 (Pro), 50 (App) |
+| Clientes o atletas incluidos | 10, 20 y sin límite | 5 (Basic), 50 (Pro), 50 (App) |
 | Costo para el alumno | Gratis | No publicado |
-| Prueba gratis | 14 días en Básico y Profesional; 30 días en Premium y Plan IA; sin tarjeta | 14 días |
+| Prueba gratis | 14 días en todos los planes; primer cobro al terminar la prueba | 14 días |
 | Planificación de entrenamientos | Bloques, series, descansos y progresiones; asignación por atleta y por equipo | Creador de rutinas y programas automatizados |
-| Planificación asistida por IA | Plan IA (ARS 35.000) | Harbiz AI incluida en todos los planes |
+| Inteligencia artificial | Agente de IA en WhatsApp en el plan Sin límite (ARS 80.000) | Harbiz AI incluida en todos los planes |
 | Nutrición | No | Planificación nutricional; Nutri AI como complemento (USD 17,36 por mes) |
 | App para el alumno | App para iPhone y versión web | App personalizada con tu marca en todos los planes; complemento para personalizarla más (USD 28,85 por mes) |
 | Seguimiento de progreso y adherencia | Sí, analítica en tiempo real | Sí, informes exportables y datos de negocio |
@@ -43,11 +43,11 @@ Fuentes: checkout de bunker-app.com y harbiz.io/tarifas, septiembre de 2026.
 
 Es la diferencia más grande y conviene mirarla por cantidad de alumnos.
 
-**Hasta 5 alumnos.** Harbiz Basic: USD 19 por mes (USD 14 con pago anual). Bunker Básico: ARS 5.000 por mes, con hasta 10 atletas. Para un entrenador que recién arranca, los dos son accesibles; Bunker incluye el doble de alumnos y no pide tarjeta para probar.
+**Hasta 5 alumnos.** Harbiz Basic: USD 19 por mes (USD 14 con pago anual). Bunker Básico: ARS 40.000 por mes, con hasta 10 atletas. Para un entrenador que recién arranca, los dos son accesibles; Bunker incluye el doble de alumnos y te da 14 días de prueba antes del primer cobro.
 
-**Hasta 50 alumnos.** Harbiz Pro: USD 129 por mes (USD 97 anual), con soporte premium, comunidad y app personalizada. Bunker Profesional: ARS 12.000 por mes. Convertí los USD 129 al tipo de cambio del día y compará: la diferencia es de varias veces, y en Bunker esos 50 atletas usan la app sin pagar nada.
+**Hasta 50 alumnos.** Harbiz Pro: USD 129 por mes (USD 97 anual), con soporte premium, comunidad y app personalizada. Bunker Profesional cubre hasta 20 atletas por ARS 60.000 por mes; para 50, el plan Sin límite cuesta ARS 80.000. Convertí los USD 129 al tipo de cambio del día y compará, y sumá que en Bunker esos 50 atletas usan la app sin pagar nada.
 
-**Más de 50 alumnos.** Harbiz publica 50 clientes como tope en sus planes; para más, hay que consultar. Bunker Premium incluye 200 atletas por ARS 25.000 por mes, y el Plan IA, con planificación asistida por inteligencia artificial y un agente de IA para consultas de entrenamientos, asistencia y horarios, sube a ARS 35.000 con los mismos 200 atletas.
+**Más de 50 alumnos.** Harbiz publica 50 clientes como tope en sus planes; para más, hay que consultar. Bunker Sin límite no tiene tope de atletas por ARS 80.000 por mes, e incluye un agente de IA en WhatsApp para consultas de entrenamientos, asistencia y horarios.
 
 Un detalle que pesa: en Harbiz, la app más personalizada, la nutrición con IA y la biblioteca de vídeos son complementos que se suman a la cuota. En Bunker no hay complementos: el plan incluye todo lo que hace.
 
@@ -83,12 +83,12 @@ Bunker resuelve la mensajería con el alumno dentro de la app y el **control de 
 **Elegí Bunker si:**
 
 - Entrenás en Argentina y preferís pagar en pesos, sin complementos.
-- Tenés entre 10 y 200 alumnos y querés que ellos usen la app gratis.
+- Tenés 10, 50 o más alumnos y querés que ellos usen la app gratis.
 - Tu trabajo es planificar fuerza y seguir la adherencia, no la nutrición.
 - Trabajás con equipos o grupos y asignás el mismo plan a muchos a la vez.
 
 ## Cómo pasar de Harbiz a Bunker
 
-Creás tu cuenta de entrenador, armás el primer plan con tus bloques y progresiones, y le mandás el código de invitación a cada alumno. En cinco minutos están viendo su entrenamiento del día en el celular. Durante la prueba gratis, de 14 a 30 días según el plan, podés tener los dos sistemas en paralelo.
+Creás tu cuenta de entrenador, armás el primer plan con tus bloques y progresiones, y le mandás el código de invitación a cada alumno. En cinco minutos están viendo su entrenamiento del día en el celular. Durante los 14 días de prueba gratis podés tener los dos sistemas en paralelo.
 
-**[Empezá gratis con Bunker](/register?role=owner)** — sin tarjeta, con tus alumnos usando la app gratis.
+**[Empezá gratis con Bunker](/register?role=owner)** — 14 días de prueba con el primer cobro al terminarla, y tus alumnos usan la app gratis.

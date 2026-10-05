@@ -92,7 +92,7 @@ Para que lo pongas en el presupuesto, los planes de GymHero al momento de escrib
 - **Multi-sede, ARS 99.000 por mes.** Dos sedes, con descuento por sede extra.
 - **WhatsApp**, como complemento: ARS 8.000 por mes hasta 1.000 mensajes o ARS 18.000 ilimitado.
 
-Sin costo de alta, sin permanencia, con setup asistido en un día y 7 días de prueba sin tarjeta. Los precios actualizados están siempre en [la sección de precios](/#precios).
+Sin costo de alta, sin permanencia, con setup asistido en un día y 7 días de prueba: dejás la tarjeta en Mercado Pago y el primer cobro es al día 8; cancelás cuando quieras. Los precios actualizados están siempre en [la sección de precios](/#precios).
 
 ## 9. El primer mes: apertura y retención
 
@@ -105,4 +105,4 @@ Sin costo de alta, sin permanencia, con setup asistido en un día y 7 días de p
 
 Abrir un gimnasio es elegir bien el modelo y el local, calcular el punto de equilibrio con costos reales de tu ciudad, tener capital de trabajo para los meses de llenado y resolver antes de abrir cómo se cobra y cómo se controla el acceso. Lo primero es trabajo tuyo; lo último lo resuelve el software.
 
-**[Probá GymHero gratis 7 días](/#precios)** — sin tarjeta y sin contrato. Configurás planes, débito automático y semáforo con QR en un día, antes de abrir.
+**[Probá GymHero gratis 7 días](/#precios)** — dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba; cancelás cuando quieras. Configurás planes, débito automático y semáforo con QR en un día, antes de abrir.

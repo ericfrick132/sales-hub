@@ -8,7 +8,7 @@ AgendaPro es el sistema de turnos más buscado en Argentina y en buena parte de 
 - **WhatsApp:** en AgendaPro los mensajes por WhatsApp son un complemento desde ARS 7.900 por mes por cada 50 mensajes. En TurnosPro los recordatorios y la confirmación por WhatsApp desde tu propio número están incluidos en el plan (no se venden por paquetes de mensajes), más un agente de IA que confirma los turnos solo.
 - **Señas:** TurnosPro integra señas con MercadoPago en la reserva, con la plata directo en tu cuenta y 0% de comisión por turno. AgendaPro ofrece pagos en línea y link de pago; no publica si cobra comisión.
 - **Ecosistema:** acá gana AgendaPro. Marketplace propio, reservas desde Google, inventario, giftcards, fichas personalizables, encuestas, presupuestos y dos asistentes de IA. Es una suite completa para un salón grande.
-- **Arranque:** TurnosPro se activa en 15 minutos, sin tarjeta, sin permanencia. AgendaPro publica una promo de 3 meses a ARS 990 por mes en el plan Individual.
+- **Arranque:** TurnosPro se activa en 15 minutos, con 7 días de prueba y el primer cobro al terminarla; cancelás cuando quieras. AgendaPro publica una promo de 3 meses a ARS 990 por mes en el plan Individual.
 
 Si atendés vos solo y querés pagar poco, AgendaPro Individual es difícil de superar en precio. Si tenés un equipo, los turnos que se caen te duelen y vivís en WhatsApp, TurnosPro te resuelve eso con una cuota fija que ya incluye lo que en AgendaPro se paga aparte.
 
@@ -21,7 +21,7 @@ Lo que publica cada uno en su sitio a septiembre de 2026.
 | Planes | Uno solo, todo incluido | Individual, Básico, Premium, Pro |
 | Precio mensual | ARS 50.000 | ARS 13.900 (Individual, 1 profesional), 33.900 (Básico), 44.900 (Premium), 314.900 (Pro), IVA incluido |
 | Con compromiso | ARS 45.000 (3 meses), 40.000 (6 meses), 37.500 (12 meses) | Anual: "2 meses gratis" |
-| Promo | 7 a 14 días gratis según plan, sin tarjeta | Individual: primeros 3 meses a ARS 990 |
+| Promo | 7 días gratis; primer cobro al terminar la prueba | Individual: primeros 3 meses a ARS 990 |
 | Profesionales | Todos incluidos, con sucursales | 1 en Individual; de 2 a 20 en Básico, Premium y Pro |
 | Reservas online | Ilimitadas, desde tu link | Ilimitadas, con presencia en su Marketplace |
 | Recordatorios por WhatsApp | Incluidos en el plan, desde tu propio número, sin paquetes de mensajes | Complemento desde ARS 7.900 por mes por cada 50 mensajes |
@@ -82,7 +82,7 @@ TurnosPro se concentra en lo contrario: agenda, señas, WhatsApp y reportes, sin
 
 ## Implementación y soporte
 
-TurnosPro se activa en 15 minutos: cargás profesionales, horarios y el catálogo de servicios con duración y precio, ponés el link de reservas en Instagram y en el estado de WhatsApp, y ya estás recibiendo turnos. Prueba gratis sin tarjeta, sin permanencia y soporte prioritario en Argentina.
+TurnosPro se activa en 15 minutos: cargás profesionales, horarios y el catálogo de servicios con duración y precio, ponés el link de reservas en Instagram y en el estado de WhatsApp, y ya estás recibiendo turnos. 7 días de prueba gratis (el primer cobro sale al terminarla), sin permanencia y soporte prioritario en Argentina.
 
 AgendaPro es un producto regional con presencia en más de 100 países; el soporte personalizado aparece en su plan Pro. Su página no publica la duración de la prueba gratis.
 
@@ -106,4 +106,4 @@ AgendaPro es un producto regional con presencia en más de 100 países; el sopor
 
 Exportás tus clientes desde AgendaPro, los importás en TurnosPro, cargás profesionales, horarios y servicios, y activás las señas con tu cuenta de MercadoPago. Durante la prueba gratis podés tener los dos sistemas en paralelo y comparar cuántos turnos se confirman solos.
 
-**[Probá TurnosPro gratis](/#precios)** — sin tarjeta y sin permanencia.
+**[Probá TurnosPro gratis](/#precios)** — 7 días de prueba: dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba; cancelás cuando quieras.

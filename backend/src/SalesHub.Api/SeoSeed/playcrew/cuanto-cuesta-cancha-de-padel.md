@@ -81,7 +81,7 @@ Para que lo pongas en la planilla, los planes de PlayCrew al momento de escribir
 - **Enterprise, ARS 120.000 por mes.** Hasta 9 canchas y usuarios ilimitados.
 - **Agente IA, ARS 150.000 por mes.** Canchas y usuarios ilimitados, más un agente de inteligencia artificial que atiende las consultas del club las 24 horas y crea reservas desde el chat.
 
-Todos con reservas y clientes ilimitados, señas con MercadoPago directo en tu cuenta, 0% de comisión por reserva, turnos fijos, precio pico, torneos con ranking ELO, clases, kiosco y reportes, y 14 días de prueba sin tarjeta. Los precios actualizados están siempre en [la página de precios](/precios).
+Todos con reservas y clientes ilimitados, señas con MercadoPago directo en tu cuenta, 0% de comisión por reserva, turnos fijos, precio pico, torneos con ranking ELO, clases, kiosco y reportes, y 14 días de prueba: el primer cobro es al terminar la prueba. Los precios actualizados están siempre en [la página de precios](/precios).
 
 Si estás comparando sistemas, leé [mejores software de reservas para clubes en Argentina](/blog/mejores-software-de-reservas-para-clubes-en-argentina/), [PlayCrew vs Alquila Tu Cancha](/blog/playcrew-vs-alquila-tu-cancha/) y [PlayCrew vs Playtomic Manager](/blog/playcrew-vs-playtomic-manager/). Y para el detalle por deporte, [software para clubes de pádel](/software-para-clubes-de-padel/) y [software para clubes de tenis](/software-para-clubes-de-tenis/).
 
@@ -97,4 +97,4 @@ Si estás comparando sistemas, leé [mejores software de reservas para clubes en
 
 Hacer una cancha de pádel cuesta lo que digan tres presupuestos comparables, con fecha y moneda; abrir el club cuesta eso más el predio, la obra, la habilitación, el bar, el software y los meses de ocupación baja. Lo que decide si el negocio cierra no es el precio de la cancha: es la cuenta de turnos vendidos por franja contra costos fijos, y tener resueltos reservas, señas, turnos fijos y precio pico antes del primer partido.
 
-**[Probá PlayCrew 14 días gratis](https://playcrewpadel.com/register-club)** — sin tarjeta y sin comisión por reserva. Cargás canchas, franjas y turnos fijos antes de abrir, y tu página de reservas queda lista para el día uno.
+**[Probá PlayCrew 14 días gratis](https://playcrewpadel.com/register-club)** — el primer cobro es al terminar la prueba y no hay comisión por reserva. Cargás canchas, franjas y turnos fijos antes de abrir, y tu página de reservas queda lista para el día uno.

@@ -71,7 +71,7 @@ Un resumen de lo que cada herramienta dice hacer, según su sitio (septiembre 20
 
 | Herramienta | Enfoque declarado |
 | --- | --- |
-| **ArchiCloud** | Gestión de obras para arquitectos y constructoras: gastos por obra y rubro contra presupuesto, multi-moneda ARS/USD, planos versionados, contratistas con seguros y ART, avances por etapa, portal del cliente y agente de IA en WhatsApp (plan IA). Planes en pesos publicados en su sitio, 14 días gratis sin tarjeta. |
+| **ArchiCloud** | Gestión de obras para arquitectos y constructoras: gastos por obra y rubro contra presupuesto, multi-moneda ARS/USD, planos versionados, contratistas con seguros y ART, avances por etapa, portal del cliente y agente de IA en WhatsApp (plan IA). Planes en pesos publicados en su sitio, 14 días gratis; primer cobro al terminar la prueba. |
 | **Obak** | Gestión de obras, costos, presupuestos y compras para constructoras, arquitectos y desarrolladoras, según su sitio (septiembre 2026). |
 | **Bloky** | Gestión de obras más un marketplace de materiales, según su sitio (septiembre 2026). |
 | **Dataobra** | Presupuesto y administración para constructoras, multiempresa y multimoneda, según su sitio (septiembre 2026). |
@@ -83,4 +83,4 @@ La pregunta que ordena la elección no es "cuál tiene más funciones", sino "cu
 
 ArchiCloud está armado alrededor de este método. El presupuesto se carga por rubro con categorías editables; cada gasto entra por foto desde el celular, en ARS o USD con la cotización del día guardada, y se compara en vivo contra el presupuesto del rubro. Los aportes del cliente arman su cuenta corriente solos, el cliente tiene su propia vista (avances con fotos, gastos y cuenta corriente, sin márgenes ni datos de contratistas) y los informes salen imprimibles y en CSV. Si sos arquitecto independiente, mirá [ArchiCloud para arquitectos](/software-de-gestion-de-obras-para-arquitectos/); si manejás varias obras con equipo, [ArchiCloud para constructoras](/software-para-constructoras/). Los planes están en [la sección de planes](/#planes).
 
-**[Probá ArchiCloud 14 días gratis](/register)** — sin tarjeta. Seguí leyendo: [Software de gestión de obras para arquitectos](/software-de-gestion-de-obras-para-arquitectos/) y [Software para constructoras](/software-para-constructoras/).
+**[Probá ArchiCloud 14 días gratis](/register)** — dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba; cancelás cuando quieras. Seguí leyendo: [Software de gestión de obras para arquitectos](/software-de-gestion-de-obras-para-arquitectos/) y [Software para constructoras](/software-para-constructoras/).

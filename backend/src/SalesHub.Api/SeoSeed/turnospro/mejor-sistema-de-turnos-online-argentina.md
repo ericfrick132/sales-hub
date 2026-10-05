@@ -50,7 +50,7 @@ Los datos de los demás sistemas son los que publican en sus sitios a septiembre
 
 | Sistema | Plan gratuito | Planes pagos | Comisión | Fuente |
 | --- | --- | --- | --- | --- |
-| **TurnosPro** | Prueba gratis de 7 a 14 días, sin tarjeta | ARS 37.500 a 50.000 por mes según compromiso | 0% | Este sitio |
+| **TurnosPro** | Prueba gratis de 7 días; primer cobro al terminar la prueba | ARS 37.500 a 50.000 por mes según compromiso | 0% | Este sitio |
 | **Gendu** | Plan gratuito con turnos ilimitados | Desde ARS 6.900 por mes | 0% | según su sitio (septiembre 2026) |
 | **ReservaSimple** | Gratis hasta 30 turnos por mes, con recordatorios por WhatsApp y email | No relevado | No relevado | según su sitio (septiembre 2026) |
 | **Turnify** | Gratis | No relevado | No relevado | según su sitio (septiembre 2026) |
@@ -61,7 +61,7 @@ Los datos de los demás sistemas son los que publican en sus sitios a septiembre
 
 **Turnify**, según su sitio (septiembre 2026), es gratis. **Turnito**, según su sitio (septiembre 2026), es gratis hasta 100 turnos por mes con un 5% de comisión. **AgendaPro** es un producto regional, no exclusivo del mercado argentino.
 
-**TurnosPro** no tiene plan gratuito permanente: tiene prueba gratis sin tarjeta, cuota fija en pesos entre ARS 37.500 y 50.000 por mes, 0% de comisión, señas con MercadoPago directo a tu cuenta, recordatorios y confirmación por WhatsApp desde tu número, un agente de IA que confirma turnos solo (add-on), agenda multi-profesional, reportes, soporte prioritario y app para iPhone.
+**TurnosPro** no tiene plan gratuito permanente: tiene 7 días de prueba gratis (dejás la tarjeta en Mercado Pago y el primer cobro sale al terminar la prueba), cuota fija en pesos entre ARS 37.500 y 50.000 por mes, 0% de comisión, señas con MercadoPago directo a tu cuenta, recordatorios y confirmación por WhatsApp desde tu número, un agente de IA que confirma turnos solo (add-on), agenda multi-profesional, reportes, soporte prioritario y app para iPhone.
 
 ## Dónde TurnosPro es mejor y dónde no
 
@@ -88,9 +88,9 @@ Con los datos de arriba, el mercado se ordena en tres escalones:
 Los planes de TurnosPro son un mismo producto con distinto compromiso:
 
 - Plan mensual: ARS 50.000 por mes, 7 días gratis, sin permanencia.
-- Plan 3 meses: ARS 45.000 por mes, 14 días gratis.
-- Plan 6 meses: ARS 40.000 por mes, 14 días gratis.
-- Plan 12 meses: ARS 37.500 por mes, 14 días gratis.
+- Plan 3 meses: ARS 45.000 por mes, 7 días gratis.
+- Plan 6 meses: ARS 40.000 por mes, 7 días gratis.
+- Plan 12 meses: ARS 37.500 por mes, 7 días gratis.
 
 Todos incluyen reservas ilimitadas, cobros con MercadoPago, recordatorios por WhatsApp, agenda multi-profesional, reportes y soporte prioritario; el agente de IA es un add-on. Detalle en la [sección de precios de TurnosPro](/#precios).
 
@@ -107,6 +107,6 @@ Armamos una guía por rubro con lo que más pesa en cada caso:
 
 El mejor sistema de turnos online en Argentina es el que resuelve tu problema real al costo que tu volumen justifica. Si recién arrancás y tenés pocos turnos, probá una opción gratuita como Gendu, ReservaSimple, Turnify o Turnito. Si ya tenés equipo, volumen y ausencias que te cuestan plata, TurnosPro te da señas con MercadoPago sin comisión, WhatsApp desde tu número y un agente de IA que confirma por vos, por una cuota fija en pesos.
 
-Podés probarlo gratis, sin tarjeta, y tenerlo funcionando en 15 minutos.
+Podés probarlo 7 días gratis (el primer cobro es al terminar la prueba) y tenerlo funcionando en 15 minutos.
 
-**[Empezá gratis con TurnosPro](/?register=true)** — 7 días de prueba, sin tarjeta. Si querés ver qué pesa en tu rubro, mirá las guías de TurnosPro para [peluquerías](/sistema-de-turnos-para-peluquerias), [barberías](/sistema-de-turnos-para-barberias), [centros de estética](/sistema-de-turnos-para-centros-de-estetica) y [consultorios](/sistema-de-turnos-para-consultorios).
+**[Empezá gratis con TurnosPro](/?register=true)** — 7 días de prueba; el primer cobro es al terminar la prueba. Si querés ver qué pesa en tu rubro, mirá las guías de TurnosPro para [peluquerías](/sistema-de-turnos-para-peluquerias), [barberías](/sistema-de-turnos-para-barberias), [centros de estética](/sistema-de-turnos-para-centros-de-estetica) y [consultorios](/sistema-de-turnos-para-consultorios).

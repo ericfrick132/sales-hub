@@ -4,7 +4,7 @@ AccesoGym es uno de los sistemas para gimnasios con más trayectoria en Argentin
 
 ## Resumen en 30 segundos
 
-- **Precio:** GymHero publica sus planes: ARS 50.000 por mes el Starter, 69.000 el Coaching Pro y 99.000 el Multi-sede, con 7 días de prueba sin tarjeta. AccesoGym no publica precios: pedís una demo y te contactan en menos de 24 horas.
+- **Precio:** GymHero publica sus planes: ARS 50.000 por mes el Starter, 69.000 el Coaching Pro y 99.000 el Multi-sede, con 7 días de prueba: dejás la tarjeta en Mercado Pago y el primer cobro es al día 8. AccesoGym no publica precios: pedís una demo y te contactan en menos de 24 horas.
 - **Control de acceso:** los dos lo resuelven con hardware. AccesoGym marca asistencia por teclado con DNI, tarjeta o huella digital, y bloquea con molinete o puerta magnética al que no tiene la cuota al día. GymHero usa el semáforo con QR desde el celular del socio, sin tarjetas, y se integra con lector de huella, terminales de reconocimiento facial ZKTeco y Hikvision, y molinete con vigencia sincronizada.
 - **Cobros:** GymHero cobra la cuota con débito automático por MercadoPago. AccesoGym gestiona suscripciones y caja para reducir la mora; su sitio no menciona débito automático ni MercadoPago.
 - **WhatsApp:** AccesoGym incluye recordatorios automáticos de vencimiento, mensajes personalizados y comunicación masiva. En GymHero los recordatorios por WhatsApp son un complemento de ARS 8.000 por mes hasta 1.000 mensajes o ARS 18.000 ilimitado.
@@ -19,7 +19,7 @@ Lo que publica cada uno a septiembre de 2026: AccesoGym en su sitio, GymHero en 
 | | GymHero | AccesoGym |
 | --- | --- | --- |
 | Precio mensual | ARS 50.000 (Starter), 69.000 (Coaching Pro), 99.000 (Multi-sede, 2 sedes) | No publicado: "Solicita tu demo" |
-| Prueba gratis | 7 días, sin tarjeta | Demo, con contacto en menos de 24 horas |
+| Prueba gratis | 7 días; primer cobro al terminar la prueba | Demo, con contacto en menos de 24 horas |
 | Tipo de sistema | 100% online, desde el navegador, sin instalar | Se instala y se personaliza para cada cliente |
 | Socios | Sin límite | No publicado |
 | Marcación de asistencia | QR desde el celular del socio, sin tarjetas | Teclado con DNI, tarjeta o huella digital |
@@ -35,7 +35,7 @@ Lo que publica cada uno a septiembre de 2026: AccesoGym en su sitio, GymHero en 
 | Reportes | Dashboard en vivo, reportes y estadísticas | Informes de asistencias, vencimientos, caja, compras y gráficos |
 | Varias sedes | Multi-sede: 2 sedes, con descuento por sede extra | No lo publica |
 | Soporte | Equipo en Buenos Aires | Córdoba, con línea directa y email |
-| Presencia | 850+ gimnasios en Argentina y LATAM | 800+ clientes y 12.000+ usuarios; se instala en varios países |
+| Presencia | Argentina, con equipo en Buenos Aires | 800+ clientes y 12.000+ usuarios; se instala en varios países |
 
 Fuentes: checkout de gymhero.fitness y accesogym.com.ar, septiembre de 2026.
 
@@ -93,7 +93,7 @@ AccesoGym se instala y se personaliza para cada cliente, con soporte desde Córd
 
 **Elegí GymHero si:**
 
-- Querés saber el precio antes de pedir una demo y probar 7 días sin tarjeta.
+- Querés saber el precio antes de pedir una demo y probar 7 días antes del primer cobro.
 - Necesitás que la cuota se cobre sola con débito automático por MercadoPago.
 - Preferís acceso con QR desde el celular, sin tarjetas, y sumar huella, facial o molinete cuando quieras.
 - Querés usar el sistema desde cualquier lugar, sin instalar nada.
@@ -102,4 +102,4 @@ AccesoGym se instala y se personaliza para cada cliente, con soporte desde Córd
 
 Exportás tus socios con sus planes y vencimientos, los importás en GymHero desde Excel, cargás horarios y activás el débito automático. Si tenés lector de huella o molinete, consultá la compatibilidad antes: GymHero se integra con equipos ZKTeco y Hikvision. Durante los 7 días de prueba podés tener los dos sistemas en paralelo.
 
-**[Probá GymHero gratis 7 días](/#precios)** — sin tarjeta y sin contrato.
+**[Probá GymHero gratis 7 días](/#precios)** — dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba; cancelás cuando quieras.

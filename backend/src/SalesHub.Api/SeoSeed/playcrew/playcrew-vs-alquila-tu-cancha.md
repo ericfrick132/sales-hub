@@ -8,7 +8,7 @@ Alquila Tu Cancha, o ATC, es el sistema de reservas de canchas más conocido en 
 - **Comisión:** PlayCrew no cobra comisión por reserva ni por cobro; la seña entra directo en la cuenta de MercadoPago del club. ATC no publica en su sitio si cobra comisión.
 - **Jugadores:** ATC tiene una app de jugadores para iOS y Android, con la que reservan en los complejos afiliados, y una marca que los jugadores ya conocen. PlayCrew tiene un buscador de clubes y la página pública de cada club.
 - **Operación:** los dos tienen web de reservas 24/7, señas con MercadoPago, turnos fijos, precios por día y horario, caja y stock, reportes y multiusuario. PlayCrew suma torneos con ranking ELO, clases con profesores y un agente de IA; ATC suma filmación de partidos y banners con QR, y lista torneos, clases y armado de partidos como próximamente en su página de "cómo funciona".
-- **Prueba y soporte:** ATC da 30 días de prueba con capacitación; PlayCrew, 14 días sin tarjeta y soporte en Argentina.
+- **Prueba y soporte:** ATC da 30 días de prueba con capacitación; PlayCrew, 14 días con el primer cobro al terminarlos y soporte en Argentina.
 
 Si tus jugadores ya reservan por la app de ATC y no querés cambiarles el hábito, ATC es la opción de menor fricción. Si querés pagar en pesos, sin comisión, y necesitás torneos con ranking, clases y un sistema pensado para operar el club completo, PlayCrew te da más producto por una cuota fija.
 
@@ -23,7 +23,7 @@ Lo que publica cada uno a septiembre de 2026: ATC en su sitio, PlayCrew en su ch
 | Precio con pago anual | No publicado | USD 40, 64 y 80 por mes (20% de descuento) |
 | Moneda | Pesos argentinos | Dólares |
 | Comisión por reserva o por cobro | 0% | No publicada |
-| Prueba gratis | 14 días, sin tarjeta | 30 días, con capacitación virtual |
+| Prueba gratis | 14 días; primer cobro al terminar la prueba | 30 días, con capacitación virtual |
 | Usuarios del panel | 1 (Starter), 3 (Pro), ilimitados (Enterprise y Agente IA) | Ilimitados, con roles y permisos, sin costo adicional |
 | Web de reservas 24/7 | Sí, página pública del club | Sí, sitio propio de cada complejo |
 | App de jugadores | Buscador de clubes para jugadores | App iOS y Android para reservar en complejos afiliados |
@@ -53,7 +53,7 @@ PlayCrew publica sus planes en pesos y los cobra mes a mes:
 - **Enterprise, ARS 120.000 por mes.** Hasta 9 canchas y usuarios ilimitados.
 - **Agente IA, ARS 150.000 por mes.** Canchas y usuarios ilimitados, más un agente de inteligencia artificial que atiende las consultas del club las 24 horas y crea reservas desde el chat.
 
-Todos con 14 días de prueba sin tarjeta, reservas y clientes ilimitados y sin comisión. Los precios actualizados están siempre en [la página de precios](/precios).
+Todos con 14 días de prueba (el primer cobro es al terminarla), reservas y clientes ilimitados y sin comisión. Los precios actualizados están siempre en [la página de precios](/precios).
 
 Para comparar, convertí los dólares de ATC al tipo de cambio del día y sumale la comisión, si la hubiera: su sitio no la publica, así que preguntá antes de firmar. Con la cuota en pesos de PlayCrew sabés de antemano cuánto pagás cada mes.
 
@@ -79,7 +79,7 @@ Más detalle en [software para clubes de pádel](/software-para-clubes-de-padel/
 
 ## Prueba y soporte
 
-ATC da 30 días de prueba, con capacitación virtual y soporte técnico incluidos en ese período. PlayCrew da 14 días sin tarjeta, con soporte en Argentina incluido en todos los planes.
+ATC da 30 días de prueba, con capacitación virtual y soporte técnico incluidos en ese período. PlayCrew da 14 días (el primer cobro sale al terminarlos), con soporte en Argentina incluido en todos los planes.
 
 ## Cuándo elegir cada uno
 
@@ -101,4 +101,4 @@ ATC da 30 días de prueba, con capacitación virtual y soporte técnico incluido
 
 Cargás tus canchas, tus franjas con precio normal y precio pico y tus turnos fijos, importás tus clientes y activás las señas con tu cuenta de MercadoPago. Tu página pública de reservas queda lista para compartir. Durante los 14 días de prueba podés operar los dos sistemas en paralelo y comparar cuántas reservas entran por cada uno.
 
-**[Probá PlayCrew 14 días gratis](https://playcrewpadel.com/register-club)** — sin tarjeta y sin comisión por reserva.
+**[Probá PlayCrew 14 días gratis](https://playcrewpadel.com/register-club)** — el primer cobro es al terminar la prueba y no hay comisión por reserva.

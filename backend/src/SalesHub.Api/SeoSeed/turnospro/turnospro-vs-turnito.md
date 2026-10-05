@@ -21,7 +21,7 @@ Lo que publica cada uno en su sitio a septiembre de 2026.
 | Planes | Uno solo, todo incluido | Gratuito, Advance, Pro |
 | Precio mensual | ARS 50.000 | ARS 0 (Gratuito), 24.500 (Advance), 42.000 (Pro) |
 | Con compromiso | ARS 45.000 (3 meses), 40.000 (6 meses), 37.500 (12 meses) | No publica precios anuales |
-| Prueba gratis | 7 a 14 días según plan, sin tarjeta | Plan gratuito permanente |
+| Prueba gratis | 7 días; primer cobro al terminar la prueba | Plan gratuito permanente |
 | Reservas por mes | Ilimitadas | 100 en Gratuito; ilimitadas en Advance y Pro |
 | Agendas / profesionales | Todos incluidos, con sucursales | 3 en Gratuito; ilimitadas en Advance y Pro |
 | Comisión por cobro | 0% | 5% (Gratuito), 1% (Advance), 0% (Pro) |
@@ -83,7 +83,7 @@ En TurnosPro todos los profesionales y sucursales van en el mismo plan, con turn
 
 ## Implementación y soporte
 
-Los dos se arman rápido: cargás profesionales, horarios y servicios con duración y precio, y ponés el link de reservas en Instagram y en el estado de WhatsApp. TurnosPro se activa en 15 minutos, con prueba gratis sin tarjeta, sin permanencia y soporte prioritario en Argentina. Turnito tiene 4,8 de 5 en Google con 126 reseñas, según su sitio.
+Los dos se arman rápido: cargás profesionales, horarios y servicios con duración y precio, y ponés el link de reservas en Instagram y en el estado de WhatsApp. TurnosPro se activa en 15 minutos, con 7 días de prueba gratis (el primer cobro sale al terminarla), sin permanencia y soporte prioritario en Argentina. Turnito tiene 4,8 de 5 en Google con 126 reseñas, según su sitio.
 
 ## Cuándo elegir cada uno
 
@@ -103,4 +103,4 @@ Los dos se arman rápido: cargás profesionales, horarios y servicios con duraci
 
 Exportás tus clientes y turnos desde Turnito, los importás en TurnosPro, cargás profesionales, horarios y servicios, y activás las señas con tu cuenta de MercadoPago. Durante la prueba gratis podés usar los dos sistemas en paralelo y comparar cuántos turnos se confirman solos.
 
-**[Probá TurnosPro gratis](/#precios)** — sin tarjeta y sin permanencia.
+**[Probá TurnosPro gratis](/#precios)** — 7 días de prueba: dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba; cancelás cuando quieras.

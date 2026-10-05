@@ -65,18 +65,17 @@ Si decidís dejar el Excel, no cambies una planilla por otra con colores. La her
 - Mensajería integrada, separada de tu WhatsApp personal.
 - Control de cuotas: quién pagó, quién debe y el historial de cada uno.
 
-Si entrenás alumnos uno a uno, mirá cómo lo resuelve Bunker en la página de [app para entrenadores personales](/app-para-entrenadores-personales/). Si trabajás con planteles, boxes o grupos grandes, la versión para equipos está en [software para preparadores físicos](/software-para-preparadores-fisicos/), con planificación por equipo, analíticas en tiempo real y hasta 200 atletas en el plan Premium.
+Si entrenás alumnos uno a uno, mirá cómo lo resuelve Bunker en la página de [app para entrenadores personales](/app-para-entrenadores-personales/). Si trabajás con planteles, boxes o grupos grandes, la versión para equipos está en [software para preparadores físicos](/software-para-preparadores-fisicos/), con planificación por equipo, analíticas en tiempo real y atletas sin tope en el plan Sin límite.
 
 ## Cuánto cuesta dejar el Excel
 
-Los atletas usan Bunker gratis y se vinculan con vos con un código de invitación. Los entrenadores empiezan con una prueba gratis, sin tarjeta de crédito, y después eligen el plan según la cantidad de alumnos. Precios mensuales en pesos argentinos:
+Los atletas usan Bunker gratis y se vinculan con vos con un código de invitación. Los entrenadores empiezan con 14 días de prueba gratis en cualquier plan: dejan la tarjeta en Mercado Pago, el primer cobro sale recién al terminar la prueba y cancelan cuando quieran. El plan se elige según la cantidad de alumnos. Precios mensuales en pesos argentinos:
 
 | Plan        | Precio          | Atletas                         | Prueba gratis |
 |-------------|-----------------|---------------------------------|---------------|
-| Básico      | $5.000 ARS/mes  | Hasta 10                        | 14 días       |
-| Profesional | $12.000 ARS/mes | Hasta 50                        | 14 días       |
-| Premium     | $25.000 ARS/mes | Hasta 200                       | 30 días       |
-| Plan IA     | $35.000 ARS/mes | Planificación asistida por IA   | 30 días       |
+| Básico      | $40.000 ARS/mes | Hasta 10                        | 14 días       |
+| Profesional | $60.000 ARS/mes | Hasta 20                        | 14 días       |
+| Sin límite  | $80.000 ARS/mes | Sin tope + agente IA WhatsApp   | 14 días       |
 
 Para dimensionarlo: si la app te ahorra una hora por semana de copiar celdas y perseguir capturas, con dos o tres alumnos ya se pagó sola. El resto es tiempo que volvés a poner en entrenar.
 

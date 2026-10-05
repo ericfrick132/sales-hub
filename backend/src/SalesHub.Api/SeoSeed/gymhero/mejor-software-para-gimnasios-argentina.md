@@ -1,4 +1,4 @@
-# Mejor software para gimnasios en Argentina (2026): qué comparar antes de contratar
+# Software para gimnasios en Argentina (2026): cuál conviene contratar
 
 Si tenés un gimnasio, un box o un estudio y todavía cobrás con una planilla de Excel y transferencias que después perseguís por WhatsApp, ya conocés el problema: la morosidad se te escapa, no sabés quién está al día cuando entra por la puerta y las clases se llenan (o se vacían) sin que te enteres. Un buen software de gestión resuelve eso. Uno malo te agrega trabajo.
 
@@ -38,7 +38,7 @@ Con eso claro, esta es la lista que usaría cualquier dueño de gym antes de fir
 - **Funciona en el celular**, para vos y para tus socios, sin obligarlos a instalar nada.
 - **Integración real con MercadoPago**: débito automático, no solo un link de pago que tenés que mandar a mano.
 - **Se adapta a tu disciplina.** Un box necesita WODs y cupos; un estudio, reservas de equipos; un gimnasio, control de acceso en la puerta.
-- **Prueba gratis sin tarjeta.** Si te piden la tarjeta antes de mostrarte el producto, desconfiá.
+- **Prueba gratis de verdad.** Que puedas usar el sistema completo antes del primer cobro y cancelar sin costo si no te sirve.
 
 ## Comparativa de opciones en Argentina
 
@@ -46,7 +46,7 @@ Lo que dice cada proveedor sobre sí mismo, según su sitio (septiembre 2026). N
 
 | Software | Qué destaca (según su sitio, septiembre 2026) | Precio publicado |
 | --- | --- | --- |
-| GymHero | Semáforo de socios con QR en recepción, débito automático y cobros por MercadoPago, recordatorios de pago y de clases por WhatsApp, reservas desde el celular con cupos, control de acceso opcional por huella o reconocimiento facial, rutinas y planificador (Coaching Pro), reportes. 850+ gimnasios en Argentina y LATAM, equipo en Buenos Aires, setup asistido en 1 día. | Starter ARS 50.000/mes; Coaching Pro (rutinas) ARS 69.000/mes; Multi-sede (2 sedes) ARS 99.000/mes; WhatsApp como complemento desde ARS 8.000/mes. 7 días gratis sin tarjeta. |
+| GymHero | Semáforo de socios con QR en recepción, débito automático y cobros por MercadoPago, recordatorios de pago y de clases por WhatsApp, reservas desde el celular con cupos, control de acceso opcional por huella o reconocimiento facial, rutinas y planificador (Coaching Pro), reportes. Equipo en Buenos Aires, setup asistido en 1 día. | Starter ARS 50.000/mes; Coaching Pro (rutinas) ARS 69.000/mes; Multi-sede (2 sedes) ARS 99.000/mes; WhatsApp como complemento desde ARS 8.000/mes. 7 días gratis; primer cobro al día 8. |
 | About a Gym | Control de acceso con QR, soporte por WhatsApp, "500+ gimnasios". | ARS 20.000/mes |
 | GymFlow | 15+ módulos, facturación AFIP, control de acceso, app para alumnos. | Consultar |
 | AccesoGym | Control de acceso, pagos, turnos y membresías. | Consultar |
@@ -64,8 +64,8 @@ Cómo leer la tabla, según lo que te duele:
 
 Los precios publicados van de **ARS 20.000 a ARS 80.000 por mes**: About a Gym publica ARS 20.000/mes según su sitio, GymHero arranca en ARS 50.000/mes con el plan Starter (cobros, reservas, control de acceso con QR y reportes) y Crossfy publica ARS 80.000/mes. Varios proveedores no publican precio y te piden que consultes. Cuando lo hagas, preguntá siempre por el precio final con IVA, si hay costo de alta, qué pasa cuando superás cierta cantidad de socios, si los mensajes de WhatsApp están incluidos y si el soporte está incluido.
 
-En GymHero hay tres planes mensuales, sin permanencia y sin costo de alta: Starter (ARS 50.000/mes) con semáforo con QR, débito automático, reservas con cupos y reportes; Coaching Pro (ARS 69.000/mes) que suma biblioteca de ejercicios, constructor de rutinas y planes por alumno; y Multi-sede (ARS 99.000/mes) para dos sedes. Los recordatorios por WhatsApp se contratan como complemento: ARS 8.000/mes hasta 1.000 mensajes o ARS 18.000/mes ilimitado. Antes de pagar probás 7 días gratis sin cargar tarjeta. Los precios actualizados están siempre en [la sección de precios](/#precios).
+En GymHero hay tres planes mensuales, sin permanencia y sin costo de alta: Starter (ARS 50.000/mes) con semáforo con QR, débito automático, reservas con cupos y reportes; Coaching Pro (ARS 69.000/mes) que suma biblioteca de ejercicios, constructor de rutinas y planes por alumno; y Multi-sede (ARS 99.000/mes) para dos sedes. Los recordatorios por WhatsApp se contratan como complemento: ARS 8.000/mes hasta 1.000 mensajes o ARS 18.000/mes ilimitado. Probás 7 días gratis: dejás la tarjeta en Mercado Pago y el primer cobro es recién al día 8. Los precios actualizados están siempre en [la sección de precios](/#precios).
 
 Para dimensionarlo: con que el sistema te recupere un par de cuotas de morosos por mes, ya se pagó solo. Lo que sigue es ganancia y horas que no pasás persiguiendo pagos.
 
-**[Probá GymHero gratis 7 días](/#precios)** — sin tarjeta y sin contrato.
+**[Probá GymHero gratis 7 días](/#precios)** — primer cobro al día 8 y sin contrato: cancelás cuando quieras.

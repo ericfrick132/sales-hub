@@ -5,7 +5,7 @@ BrickControl es uno de los software de gestión de obras más buscados en españ
 ## Resumen en 30 segundos
 
 - **Para quién es cada uno:** BrickControl es un ERP de construcción: presupuestos por partidas, certificaciones, Gantt, compras, almacén, tesorería, facturación e integraciones contables, para empresas de 2 usuarios a miles. ArchiCloud es control de obra desde el celular: gastos contra presupuesto por rubro, avances con fotos, contratistas con ART, portal del cliente y planos, para el arquitecto o la constructora que necesita saber cómo va la plata sin un departamento de administración.
-- **Precio:** BrickControl publica planes en dólares por cantidad de usuarios: USD 128 por mes con 2 usuarios en Basic, 258 con 3 en Business y 388 con 5 en Premium, más un cargo por usuario adicional; con pago anual baja, y hay un 50% de descuento por 3 meses para clientes nuevos. ArchiCloud publica sus planes en pesos en su sitio y tiene 14 días de prueba gratis sin tarjeta.
+- **Precio:** BrickControl publica planes en dólares por cantidad de usuarios: USD 128 por mes con 2 usuarios en Basic, 258 con 3 en Business y 388 con 5 en Premium, más un cargo por usuario adicional; con pago anual baja, y hay un 50% de descuento por 3 meses para clientes nuevos. ArchiCloud publica sus planes en pesos en su sitio y tiene 14 días de prueba gratis, con el primer cobro al terminarla.
 - **Profundidad:** acá gana BrickControl. Bases de precios, cómputo por partidas, certificaciones formales, órdenes de compra, hojas de tiempo, maquinaria, KPIs de desviación y API con SAP, Business Central, QuickBooks, Sage y otros.
 - **Simplicidad:** acá gana ArchiCloud. Cada gasto entra por foto desde la obra, en pesos o dólares con la cotización del día, y se compara en vivo contra el presupuesto del rubro. El cliente ve su obra en un portal propio.
 - **Moneda y contexto:** ArchiCloud maneja pesos y dólares a la vez con la cotización guardada por gasto, y carga los seguros y la ART de cada contratista. BrickControl es multiidioma y multipaís, pensado para operar en varios mercados.
@@ -21,7 +21,7 @@ Lo que publica cada uno en su sitio a septiembre de 2026.
 | Para quién | Arquitectos, estudios y constructoras chicas y medianas en Argentina | Constructoras de todos los tamaños, obra civil, estudios de ingeniería, reformadores, contratistas |
 | Precio | Planes en pesos publicados en el sitio | USD 128/mes (Basic, 2 usuarios), 258 (Business, 3), 388 (Premium, 5), Enterprise a consultar; usuario adicional USD 64/77/90 por mes |
 | Con pago anual | No publicado | USD 106,67 / 215 / 323,33 por mes; "2 meses gratis" |
-| Promo | 14 días gratis, sin tarjeta | 50% de descuento por 3 meses para clientes nuevos; prueba gratis |
+| Promo | 14 días gratis; primer cobro al terminar la prueba | 50% de descuento por 3 meses para clientes nuevos; prueba gratis |
 | Costo de implementación | Sin costo | Sin cuota de instalación; curso online incluido |
 | Presupuesto | Por rubro, con categorías editables | Por partidas, con bases de precios actualizadas y estimaciones |
 | Control de gastos | Cada gasto por foto desde el celular, comparado en vivo contra el presupuesto del rubro | Análisis de desviaciones de costes, hojas de tiempo, materiales, maquinaria |
@@ -46,7 +46,7 @@ BrickControl cobra por plan y por usuario, en dólares. Basic incluye 2 usuarios
 
 Para un estudio con un arquitecto, un administrativo y un jefe de obra, el plan Business de BrickControl sale USD 258 por mes, más el tipo de cambio del día. Es un precio de ERP, y se justifica si usás compras, certificaciones formales, tesorería e integraciones contables.
 
-ArchiCloud publica sus planes en pesos en [la sección de planes](/#planes) y se prueba 14 días gratis sin tarjeta. La pregunta correcta no es cuál es más barato, sino qué parte del producto vas a usar: si vas a cargar gastos, seguir avances y mostrarle la obra al cliente, pagar por módulos de compras y tesorería que no vas a abrir es tirar plata.
+ArchiCloud publica sus planes en pesos en [la sección de planes](/#planes) y se prueba 14 días gratis: dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba. La pregunta correcta no es cuál es más barato, sino qué parte del producto vas a usar: si vas a cargar gastos, seguir avances y mostrarle la obra al cliente, pagar por módulos de compras y tesorería que no vas a abrir es tirar plata.
 
 ## Control de gastos: lo que ArchiCloud hace distinto
 
@@ -91,10 +91,10 @@ BrickControl tiene CRM de clientes y gestión de subcontratistas, pero su sitio 
 - Sos arquitecto, estudio o constructora chica o mediana en Argentina.
 - Tu problema es que los gastos no se cargan y el cliente pregunta cómo va la plata.
 - Manejás pesos y dólares en la misma obra y contratistas con ART.
-- Querés arrancar en 14 días de prueba sin tarjeta, sin implementación.
+- Querés arrancar con 14 días de prueba, sin implementación y con el primer cobro al terminarla.
 
 ## Cómo empezar con ArchiCloud
 
 Creás tu cuenta, cargás la obra con su presupuesto por rubro (podés partir de la [plantilla de presupuesto de obra en Excel](/blog/presupuesto-de-obra-excel/)), invitás a tu equipo y al cliente, y empezás a cargar gastos por foto desde el celular. En una semana tenés el control de la obra al día. Más en [software de gestión de obras para arquitectos](/software-de-gestion-de-obras-para-arquitectos/) y [software para constructoras](/software-para-constructoras/).
 
-**[Probá ArchiCloud 14 días gratis](/register)** — sin tarjeta.
+**[Probá ArchiCloud 14 días gratis](/register)** — dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba; cancelás cuando quieras.

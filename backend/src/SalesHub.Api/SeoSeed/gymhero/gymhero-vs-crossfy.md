@@ -23,7 +23,7 @@ Lo que publica cada uno a septiembre de 2026: Crossfy en su sitio, GymHero en su
 | Precio mensual | ARS 50.000 (Starter), 69.000 (Coaching Pro), 99.000 (Multi-sede, 2 sedes) | ARS 80.000 |
 | Precio con compromiso | No publica precios anuales | ARS 70.000 por mes semestral (pago único de 420.000); ARS 57.500 por mes anual (pago único de 690.000) |
 | Costo de alta | Sin costo, setup asistido en 1 día | Sin costo de lanzamiento |
-| Prueba gratis | 7 días, sin tarjeta | Sí, según su sitio |
+| Prueba gratis | 7 días; primer cobro al terminar la prueba | Sí, según su sitio |
 | Socios | Sin límite | Ilimitados |
 | Sedes | 1 en Starter y Coaching Pro; 2 en Multi-sede, con descuento por sede extra | No lo publica |
 | Semáforo de socios con QR en recepción | Sí, en todos los planes | No lo publica |
@@ -37,7 +37,7 @@ Lo que publica cada uno a septiembre de 2026: Crossfy en su sitio, GymHero en su
 | Generación de rutinas con IA | No | Sí |
 | Reportes y dashboard | Sí | Sí |
 | Soporte | Equipo en Buenos Aires | Todos los días, según su sitio |
-| Presencia | 850+ gimnasios en Argentina y LATAM | 1.000+ gimnasios en 15 países |
+| Presencia | Argentina, con equipo en Buenos Aires | 1.000+ gimnasios en 15 países |
 | Forma de pago del servicio | MercadoPago | Transferencia en Argentina; Payoneer o PayPal en otros países |
 
 Fuentes: checkout de gymhero.fitness y crossfyapp.com (páginas de precio y comparador), septiembre de 2026.
@@ -115,4 +115,4 @@ GymHero tiene el equipo en Buenos Aires y **setup asistido en un día**: import�
 
 Si ya usás Crossfy y querés bajar el costo o sumar control de acceso, la migración se hace en un día: exportás tus socios a Excel, los importás en GymHero con sus planes y vencimientos, cargás los horarios de clases y activás el débito automático. Durante los 7 días de prueba podés tener los dos sistemas en paralelo y comparar.
 
-**[Probá GymHero gratis 7 días](/#precios)** — sin tarjeta y sin contrato.
+**[Probá GymHero gratis 7 días](/#precios)** — dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba; cancelás cuando quieras.

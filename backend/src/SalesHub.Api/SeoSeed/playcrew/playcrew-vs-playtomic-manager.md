@@ -8,7 +8,7 @@ Playtomic es la app de pádel más usada del mundo: 4 millones de jugadores regi
 - **Comisión:** PlayCrew no cobra comisión por reserva ni por cobro; la seña entra directo en la cuenta de MercadoPago del club. Playtomic no publica en su sitio si cobra comisión por reserva.
 - **Jugadores:** acá gana Playtomic, y por mucho. Su app tiene 4 millones de jugadores que buscan cancha, arman partidos abiertos y tienen un nivel estimado. Es la mayor fuente de jugadores nuevos que puede tener un club. PlayCrew tiene un buscador de clubes para jugadores, pero no una comunidad de ese tamaño.
 - **Operación del club:** PlayCrew está hecho para cómo opera un club en Argentina: turnos fijos, precio pico por franja, señas con MercadoPago, kiosco con stock y punto de venta, torneos con ranking ELO y clases con profesores. Playtomic Manager suma monedero, integraciones y API, y reserva torneos, entrenadores y membresías para los planes más altos.
-- **Soporte:** PlayCrew tiene soporte en Argentina y prueba de 14 días sin tarjeta. Playtomic escala el tiempo de respuesta según el plan: 48 horas en Estándar, 8 en Profesional, 4 en Campeón y prioridad máxima en Máster.
+- **Soporte:** PlayCrew tiene soporte en Argentina y prueba de 14 días, con el primer cobro al terminarla. Playtomic escala el tiempo de respuesta según el plan: 48 horas en Estándar, 8 en Profesional, 4 en Campeón y prioridad máxima en Máster.
 
 Si tu club vive de jugadores sueltos que buscan cancha por la app y te sirve estar en el marketplace más grande, Playtomic Manager es difícil de reemplazar. Si tu club funciona con turnos fijos, socios y torneos propios, y querés precio en pesos, sin comisión y con la seña en tu cuenta, PlayCrew te resuelve la operación completa.
 
@@ -22,7 +22,7 @@ Lo que publica cada uno a septiembre de 2026: Playtomic en su sitio, PlayCrew en
 | Precio mensual | ARS 60.000 (Starter, hasta 3 canchas), 90.000 (Pro, hasta 6), 120.000 (Enterprise, hasta 9), 150.000 (Agente IA, canchas ilimitadas) | No publicado: "solicita más información" |
 | Usuarios del panel | 1 (Starter), 3 (Pro), ilimitados (Enterprise y Agente IA) | No publicado |
 | Comisión por reserva o por cobro | 0% | No publicada |
-| Prueba gratis | 14 días, sin tarjeta | No publicada |
+| Prueba gratis | 14 días; primer cobro al terminar la prueba | No publicada |
 | Reservas online 24/7 | Sí, página pública del club | Sí, desde la app de Playtomic y el panel |
 | Marketplace de jugadores | Buscador de clubes para jugadores | App con 4 millones de jugadores, partidos abiertos (open matches) para llenar horas valle y nivel estimado |
 | Señas y cobros anticipados | MercadoPago, directo en la cuenta del club | Pagos en la app; monedero desde Profesional |
@@ -50,7 +50,7 @@ Es la primera diferencia práctica. PlayCrew publica el precio de cada plan en p
 - **Enterprise, ARS 120.000 por mes.** Hasta 9 canchas y usuarios ilimitados, para complejos grandes y redes de clubes.
 - **Agente IA, ARS 150.000 por mes.** Canchas y usuarios ilimitados, más un agente de inteligencia artificial que atiende las consultas del club las 24 horas y crea reservas desde el chat.
 
-Todos con 14 días de prueba sin tarjeta y reservas y clientes ilimitados. Los precios actualizados están siempre en [la página de precios](/precios).
+Todos con 14 días de prueba (el primer cobro es al terminarla) y reservas y clientes ilimitados. Los precios actualizados están siempre en [la página de precios](/precios).
 
 Playtomic Manager no publica precios: su página de planes describe qué incluye cada uno y te pide que solicites información. Tampoco publica si cobra comisión por reserva ni cuánto. Antes de decidir, pedí la cotización con tu cantidad de canchas y preguntá por comisiones sobre las reservas que entran por la app, porque es lo que define el costo real cuando el volumen crece.
 
@@ -99,4 +99,4 @@ En soporte, PlayCrew atiende desde Argentina y lo incluye en todos los planes. P
 
 Cargás tus canchas, tus franjas con precio normal y precio pico y tus turnos fijos, importás tus clientes y activás las señas con tu cuenta de MercadoPago. Tu página pública de reservas queda lista para compartir con tus jugadores. Durante los 14 días de prueba podés operar los dos sistemas en paralelo y comparar cuántas reservas entran por cada uno.
 
-**[Probá PlayCrew 14 días gratis](https://playcrewpadel.com/register-club)** — sin tarjeta y sin comisión por reserva.
+**[Probá PlayCrew 14 días gratis](https://playcrewpadel.com/register-club)** — el primer cobro es al terminar la prueba y no hay comisión por reserva.

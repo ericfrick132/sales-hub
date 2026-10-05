@@ -4,11 +4,11 @@ Hexfit es una de las plataformas de coaching con más trayectoria que se venden 
 
 ## Resumen en 30 segundos
 
-- **Precio y moneda:** Hexfit publica 19, 50, 90 y 250 por mes según el plan, y aclara que la moneda final depende del país de tu medio de pago (euros, dólares, pesos mexicanos, colombianos, chilenos o uruguayos, entre otros). Bunker cobra en pesos argentinos: ARS 5.000 por mes hasta 10 atletas, 12.000 hasta 50, 25.000 hasta 200 y 35.000 con planificación asistida por IA.
-- **Clientes incluidos:** Hexfit limita clientes activos por plan: 5 en Starter, 15 en Solo, 40 en Growth y 500 en Studio. Bunker incluye 10, 50, 200 y 200 atletas, y los atletas usan la app gratis.
+- **Precio y moneda:** Hexfit publica 19, 50, 90 y 250 por mes según el plan, y aclara que la moneda final depende del país de tu medio de pago (euros, dólares, pesos mexicanos, colombianos, chilenos o uruguayos, entre otros). Bunker cobra en pesos argentinos: ARS 40.000 por mes hasta 10 atletas, 60.000 hasta 20 y 80.000 sin tope de atletas, con agente de IA en WhatsApp.
+- **Clientes incluidos:** Hexfit limita clientes activos por plan: 5 en Starter, 15 en Solo, 40 en Growth y 500 en Studio. Bunker incluye 10, 20 o atletas sin tope según el plan, y los atletas usan la app gratis.
 - **Alcance de producto:** acá gana Hexfit. Biblioteca de más de 13.000 ejercicios, nutrición, facturación y citas, videollamadas, app con tu marca, integración con Apple Health, Strava y Fitbit, y un asistente de inteligencia artificial. Es una suite para el profesional de la salud y el fitness.
 - **Foco:** Bunker hace menos cosas y las hace para el entrenamiento: planificación por bloques, series, descansos y progresiones, asignación por atleta o por equipo, registro entre series y analítica de adherencia en tiempo real.
-- **Arranque:** los dos tienen prueba gratis sin tarjeta. Bunker se configura en 5 minutos, con 14 a 30 días de prueba según el plan.
+- **Arranque:** los dos tienen prueba gratis. Hexfit la da sin tarjeta; en Bunker dejás la tarjeta en Mercado Pago y el primer cobro es al terminar los 14 días de prueba. Bunker se configura en 5 minutos.
 
 Si sos entrenador online con clientes en varios países, armás nutrición, facturás desde la misma herramienta y querés integraciones con relojes, Hexfit tiene todo eso y cobra por ello. Si entrenás en Argentina, trabajás con 10, 50 o 200 alumnos o con equipos, y lo que necesitás es planificar bien y saber quién cumple, Bunker lo hace en pesos, con tus atletas sin pagar nada.
 
@@ -18,13 +18,13 @@ Lo que publica cada uno a septiembre de 2026: Hexfit en su sitio y su página de
 
 | | Bunker | Hexfit (coaching) |
 | --- | --- | --- |
-| Planes | Básico, Profesional, Premium, Plan IA | Starter, Solo, Growth, Studio |
-| Precio mensual | ARS 5.000, 12.000, 25.000 y 35.000 | 19, 50, 90 y 250 por mes; la moneda depende del país del medio de pago |
-| Clientes o atletas incluidos | 10, 50, 200 y 200 | 5 (Starter), 15 (Solo), 40 (Growth), 500 (Studio) |
+| Planes | Básico, Profesional, Sin límite | Starter, Solo, Growth, Studio |
+| Precio mensual | ARS 40.000, 60.000 y 80.000 | 19, 50, 90 y 250 por mes; la moneda depende del país del medio de pago |
+| Clientes o atletas incluidos | 10, 20 y sin límite | 5 (Starter), 15 (Solo), 40 (Growth), 500 (Studio) |
 | Costo para el alumno | Gratis | App incluida para el cliente del profesional |
-| Prueba gratis | 14 días (Básico y Profesional), 30 días (Premium y Plan IA), sin tarjeta | Sí, sin tarjeta ni compromiso |
+| Prueba gratis | 14 días en todos los planes; primer cobro al terminar la prueba | Sí, sin tarjeta ni compromiso |
 | Planificación de entrenamientos | Bloques, series, descansos y progresiones; asignación por atleta y por equipo | Programas con más de 13.000 ejercicios; circuitos, CrossFit, cardio, HIIT, pirámides y drop sets |
-| Planificación asistida por IA | Plan IA (ARS 35.000) | Asistente de IA "Fred" y automatizaciones desde Growth |
+| Inteligencia artificial | Agente de IA en WhatsApp en el plan Sin límite (ARS 80.000) | Asistente de IA "Fred" y automatizaciones desde Growth |
 | Seguimiento de progreso y adherencia | Analítica en tiempo real por atleta y por equipo | Seguimiento de progreso, tests físicos, objetivos, datos y gráficos |
 | Nutrición | No | Sí; en Solo como complemento, incluida desde Growth |
 | App para el alumno | App para iPhone y versión web | App móvil; app con tu marca desde Growth y complemento de app personalizada |
@@ -44,12 +44,11 @@ Hexfit publica cuatro planes de coaching a 19, 50, 90 y 250 por mes, y su págin
 
 Bunker publica sus planes en pesos y los cobra mes a mes, sin complementos:
 
-- **Básico, ARS 5.000 por mes.** Hasta 10 atletas. 14 días de prueba.
-- **Profesional, ARS 12.000 por mes.** Hasta 50 atletas. 14 días de prueba.
-- **Premium, ARS 25.000 por mes.** Hasta 200 atletas. 30 días de prueba.
-- **Plan IA, ARS 35.000 por mes.** Hasta 200 atletas, con planificación asistida por inteligencia artificial y un agente de IA para consultas. 30 días de prueba.
+- **Básico, ARS 40.000 por mes.** Hasta 10 atletas.
+- **Profesional, ARS 60.000 por mes.** Hasta 20 atletas.
+- **Sin límite, ARS 80.000 por mes.** Atletas sin tope y un agente de IA en WhatsApp para consultas de entrenamientos, asistencia y horarios.
 
-Los atletas usan la app gratis. Los precios actualizados están siempre en [la página de planes](/#trainers).
+Todos con 14 días de prueba: dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba. Los atletas usan la app gratis. Los precios actualizados están siempre en [la página de planes](/#trainers).
 
 ## Planificación: el corazón de Bunker
 
@@ -83,11 +82,11 @@ Bunker no compite en nada de eso: tiene mensajería integrada, control de cuotas
 **Elegí Bunker si:**
 
 - Entrenás en Argentina y preferís pagar en pesos, con precio publicado y sin complementos.
-- Tenés entre 10 y 200 alumnos, o equipos, y querés que ellos usen la app gratis.
+- Tenés 10, 50 o más alumnos, o equipos, y querés que ellos usen la app gratis.
 - Tu trabajo es planificar fuerza y seguir la adherencia, no la nutrición ni la facturación.
 
 ## Cómo pasar de Hexfit a Bunker
 
-Creás tu cuenta de entrenador, armás el primer plan con tus bloques y progresiones y le mandás el código de invitación a cada alumno. En cinco minutos están viendo su entrenamiento del día en el celular. Durante la prueba gratis, de 14 a 30 días según el plan, podés tener las dos plataformas en paralelo.
+Creás tu cuenta de entrenador, armás el primer plan con tus bloques y progresiones y le mandás el código de invitación a cada alumno. En cinco minutos están viendo su entrenamiento del día en el celular. Durante los 14 días de prueba gratis podés tener las dos plataformas en paralelo.
 
-**[Empezá gratis con Bunker](/register?role=owner)** — sin tarjeta, con tus alumnos usando la app gratis.
+**[Empezá gratis con Bunker](/register?role=owner)** — 14 días de prueba con el primer cobro al terminarla, y tus alumnos usan la app gratis.

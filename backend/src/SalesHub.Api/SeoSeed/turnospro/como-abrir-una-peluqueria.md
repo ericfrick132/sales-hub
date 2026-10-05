@@ -90,7 +90,7 @@ Todo esto se puede hacer con un cuaderno el primer mes. Al segundo, el cuaderno 
 
 Lo que tiene que tener está en [cuál es el mejor sistema de turnos online en Argentina](/blog/mejor-sistema-de-turnos-online-argentina/), y las diferencias con otros sistemas en [TurnosPro vs AgendaPro](/blog/turnospro-vs-agendapro/) y [TurnosPro vs Turnito](/blog/turnospro-vs-turnito/).
 
-Para que lo pongas en la planilla, los planes de TurnosPro al momento de escribir esto, tomados de su checkout: un solo plan con reservas ilimitadas, agenda por profesional y sucursales, señas con MercadoPago sin comisión, recordatorios y confirmación por WhatsApp desde tu número y reportes, a **ARS 50.000 por mes** en el plan mensual, con 7 días de prueba; ARS 45.000, 40.000 y 37.500 por mes en los planes de 3, 6 y 12 meses, con 14 días de prueba. Sin tarjeta para probar y sin permanencia. Los precios actualizados están siempre en [la sección de precios](/#precios).
+Para que lo pongas en la planilla, los planes de TurnosPro al momento de escribir esto, tomados de su checkout: un solo plan con reservas ilimitadas, agenda por profesional y sucursales, señas con MercadoPago sin comisión, recordatorios y confirmación por WhatsApp desde tu número y reportes, a **ARS 50.000 por mes** en el plan mensual y ARS 45.000, 40.000 y 37.500 por mes en los planes de 3, 6 y 12 meses, todos con 7 días de prueba. Dejás la tarjeta en Mercado Pago, el primer cobro es al terminar la prueba y cancelás cuando quieras. Los precios actualizados están siempre en [la sección de precios](/#precios).
 
 ## 9. El primer mes: llenar la agenda y que vuelvan
 
@@ -104,4 +104,4 @@ Para que lo pongas en la planilla, los planes de TurnosPro al momento de escribi
 
 Abrir una peluquería es elegir el modelo y el local, habilitar a tiempo, equipar para el negocio que vas a tener, calcular el punto de equilibrio con costos reales de tu ciudad y tener capital de trabajo para los meses de agenda vacía. Y resolver antes de abrir cómo se reserva, cómo se cobra la seña y cómo se recuerda el turno: eso es lo que hace que la agenda se llene y que la clienta vuelva.
 
-**[Probá TurnosPro gratis](/#precios)** — sin tarjeta y sin permanencia. Cargás servicios, estilistas y horarios en 15 minutos, y tu link de reservas queda listo antes de abrir.
+**[Probá TurnosPro gratis](/#precios)** — 7 días de prueba: dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba; cancelás cuando quieras. Cargás servicios, estilistas y horarios en 15 minutos, y tu link de reservas queda listo antes de abrir.
