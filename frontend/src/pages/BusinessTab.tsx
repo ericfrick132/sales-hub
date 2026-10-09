@@ -100,13 +100,13 @@ export default function BusinessTab({ colorOf, nameOf }: { colorOf: (k: string) 
           <tbody className="divide-y divide-slate-100">
             {data.apps.map((a) => (
               <tr key={a.productKey} className={a.connected ? '' : 'text-slate-400'}>
-                <td className="px-3 py-2 font-medium">
+                <td className="px-3 py-2 font-medium whitespace-nowrap">
                   <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle" style={{ background: colorOf(a.productKey) }} />
                   {nameOf(a.productKey)}
                 </td>
                 {a.connected ? (
                   <>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold">{usd(a.mrrUsd)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold whitespace-nowrap">{usd(a.mrrUsd)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{a.active}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{a.trial}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{a.pastDue}</td>
@@ -118,7 +118,7 @@ export default function BusinessTab({ colorOf, nameOf }: { colorOf: (k: string) 
                 ) : (
                   <td colSpan={8} className="px-3 py-2 text-xs">{a.error ?? 'sin datos: la app todavía no reporta'}</td>
                 )}
-                <td className="px-3 py-2 text-xs text-slate-500">{fmtSync(a.lastSyncAt)}</td>
+                <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{fmtSync(a.lastSyncAt)}</td>
               </tr>
             ))}
           </tbody>
