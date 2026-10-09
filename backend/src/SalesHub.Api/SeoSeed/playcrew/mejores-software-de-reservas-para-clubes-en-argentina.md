@@ -76,4 +76,4 @@ Todos los planes incluyen reservas y clientes ilimitados, soporte y 14 días de 
 - **Complejo con bar, kiosco o torneos:** punto de venta con stock y caja, más brackets, inscripción online y ranking para mantener la comunidad activa.
 - **Red de clubes o club que vive en WhatsApp:** pedí multi-sede y usuarios ilimitados, y evaluá un agente de IA que responda y reserve desde el chat.
 
-**[Probá PlayCrew 14 días gratis](https://playcrewpadel.com/register-club)** o [pedí una demo](mailto:hello@playcrew.com?subject=Demo%20de%20PlayCrew). Si querés ver el detalle por deporte, mirá [software para clubes de pádel](/software-para-clubes-de-padel/) y [software para clubes de tenis](/software-para-clubes-de-tenis/).
+**[Probá PlayCrew 14 días gratis](https://playcrew.com.ar/register-club)** o [pedí una demo](mailto:hello@playcrew.com?subject=Demo%20de%20PlayCrew). Si querés ver el detalle por deporte, mirá [software para clubes de pádel](/software-para-clubes-de-padel/) y [software para clubes de tenis](/software-para-clubes-de-tenis/).

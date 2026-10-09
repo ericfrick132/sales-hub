@@ -97,4 +97,4 @@ Si estás comparando sistemas, leé [mejores software de reservas para clubes en
 
 Hacer una cancha de pádel cuesta lo que digan tres presupuestos comparables, con fecha y moneda; abrir el club cuesta eso más el predio, la obra, la habilitación, el bar, el software y los meses de ocupación baja. Lo que decide si el negocio cierra no es el precio de la cancha: es la cuenta de turnos vendidos por franja contra costos fijos, y tener resueltos reservas, señas, turnos fijos y precio pico antes del primer partido.
 
-**[Probá PlayCrew 14 días gratis](https://playcrewpadel.com/register-club)** — el primer cobro es al terminar la prueba y no hay comisión por reserva. Cargás canchas, franjas y turnos fijos antes de abrir, y tu página de reservas queda lista para el día uno.
+**[Probá PlayCrew 14 días gratis](https://playcrew.com.ar/register-club)** — el primer cobro es al terminar la prueba y no hay comisión por reserva. Cargás canchas, franjas y turnos fijos antes de abrir, y tu página de reservas queda lista para el día uno.

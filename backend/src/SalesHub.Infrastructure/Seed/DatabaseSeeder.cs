@@ -305,7 +305,7 @@ $@"Generá un concepto + guion corto (15-30s) para un video de TikTok de {p.Prod
                 Language = "es", PhonePrefix = "54",
                 Categories = new() { "distribuidora", "mayorista", "importador", "tienda de ropa", "e-commerce" },
                 MessageTemplate = "Hola! Soy {seller}. ¿Vendés en MercadoLibre y TiendaNube? UniStock sincroniza stock entre canales y evita sobreventas. Un cliente recuperó 15h/semana.\n\nTe muestro una demo rápida de 15 min? {checkout_url}",
-                CheckoutUrl = "https://unistock-zexev.ondigitalocean.app/", PriceDisplay = "desde USD 49/mes",
+                CheckoutUrl = "https://dashflow.com.ar/", PriceDisplay = "desde USD 49/mes",
                 DailyLimit = 40, TriggerHours = new() { 11, 15, 19 }, RequiresAssistedSale = true
             },
             new()
@@ -315,7 +315,7 @@ $@"Generá un concepto + guion corto (15-30s) para un video de TikTok de {p.Prod
                 Language = "es", PhonePrefix = "54",
                 Categories = new() { "pádel", "tenis", "club de pádel", "canchas de pádel", "club de tenis" },
                 MessageTemplate = "Hola! Soy {seller}. Vi {name} en {city}. ¿Cómo toman las reservas del club? PlayCrew está hecho para clubes de Argentina (Playtomic casi no opera acá). Te muestro cómo anda? {checkout_url}",
-                CheckoutUrl = "https://playcrewpadel.com/", PriceDisplay = "a confirmar",
+                CheckoutUrl = "https://playcrew.com.ar/", PriceDisplay = "a confirmar",
                 DailyLimit = 40, TriggerHours = new() { 10, 14, 18 }, RequiresAssistedSale = true
             },
             new()

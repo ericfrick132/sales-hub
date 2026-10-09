@@ -39,7 +39,7 @@ Lo que publica cada uno a septiembre de 2026: Playtomic en su sitio, PlayCrew en
 | Deportes | Pádel, tenis y fútbol | Pádel y tenis, entre otros deportes de raqueta |
 | Presencia | Argentina | 6.700+ clubes, 25.000+ pistas y 1,5 millones de transacciones por mes en 63 países |
 
-Fuentes: checkout de playcrewpadel.com, playtomic.com/es/precios, playtomic.com/es/playtomic-manager y playtomic.com/es, septiembre de 2026.
+Fuentes: checkout de playcrew.com.ar, playtomic.com/es/precios, playtomic.com/es/playtomic-manager y playtomic.com/es, septiembre de 2026.
 
 ## Precio: publicado o a cotizar
 
@@ -99,4 +99,4 @@ En soporte, PlayCrew atiende desde Argentina y lo incluye en todos los planes. P
 
 Cargás tus canchas, tus franjas con precio normal y precio pico y tus turnos fijos, importás tus clientes y activás las señas con tu cuenta de MercadoPago. Tu página pública de reservas queda lista para compartir con tus jugadores. Durante los 14 días de prueba podés operar los dos sistemas en paralelo y comparar cuántas reservas entran por cada uno.
 
-**[Probá PlayCrew 14 días gratis](https://playcrewpadel.com/register-club)** — el primer cobro es al terminar la prueba y no hay comisión por reserva.
+**[Probá PlayCrew 14 días gratis](https://playcrew.com.ar/register-club)** — el primer cobro es al terminar la prueba y no hay comisión por reserva.

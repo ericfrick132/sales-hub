@@ -165,7 +165,7 @@ public class SeoController : ControllerBase
             ("playcrew", "PlayCrew", "app de pádel para encontrar partidos y reservar canchas",
                 "jugadores de pádel que buscan partidos de su nivel y reservar canchas",
                 "App de pádel para armar partidos por nivel, reservar canchas y conocer jugadores.",
-                "playcrewpadel.com", "ericfrick132/PlayCrew", "main"),
+                "playcrew.com.ar", "ericfrick132/PlayCrew", "main"),
         };
 
         var existing = await _db.SeoSites.Select(s => s.ProductKey).ToListAsync(ct);

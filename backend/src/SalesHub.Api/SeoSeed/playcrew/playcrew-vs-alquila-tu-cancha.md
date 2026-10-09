@@ -40,7 +40,7 @@ Lo que publica cada uno a septiembre de 2026: ATC en su sitio, PlayCrew en su ch
 | Deportes | Pádel, tenis y fútbol | Complejos deportivos en general |
 | Presencia | Argentina | Entre 9 y 13 países de América Latina y Estados Unidos, según la página |
 
-Fuentes: checkout de playcrewpadel.com y atcsports.io (planes, sistema de gestión de clubes y cómo funciona), septiembre de 2026.
+Fuentes: checkout de playcrew.com.ar y atcsports.io (planes, sistema de gestión de clubes y cómo funciona), septiembre de 2026.
 
 ## Precio: pesos contra dólares
 
@@ -101,4 +101,4 @@ ATC da 30 días de prueba, con capacitación virtual y soporte técnico incluido
 
 Cargás tus canchas, tus franjas con precio normal y precio pico y tus turnos fijos, importás tus clientes y activás las señas con tu cuenta de MercadoPago. Tu página pública de reservas queda lista para compartir. Durante los 14 días de prueba podés operar los dos sistemas en paralelo y comparar cuántas reservas entran por cada uno.
 
-**[Probá PlayCrew 14 días gratis](https://playcrewpadel.com/register-club)** — el primer cobro es al terminar la prueba y no hay comisión por reserva.
+**[Probá PlayCrew 14 días gratis](https://playcrew.com.ar/register-club)** — el primer cobro es al terminar la prueba y no hay comisión por reserva.
