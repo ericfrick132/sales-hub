@@ -106,8 +106,8 @@ export default function DashboardHub() {
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Kpi label="Leads nuevos" value={t?.leads ?? '—'} sub={`últimos ${days} días`} to="/crm?view=lista" />
         <Kpi label="Contactados" value={t?.sent ?? '—'} sub="primer mensaje enviado" />
-        <Kpi label="Respondieron" value={t?.replied ?? '—'} sub={t ? `${pct(t.replied, t.sent)} de los contactados` : ''} tone="sky" />
-        <Kpi label="Cuentas creadas" value={t?.closed ?? '—'} sub={t ? `${pct(t.closed, t.sent)} de los contactados` : ''} tone="emerald" />
+        <Kpi label="Respondieron" value={t?.replied ?? '—'} sub={t ? `${pct(t.replied, t.leads)} de los leads nuevos` : ''} tone="sky" />
+        <Kpi label="Cuentas creadas" value={t?.closed ?? '—'} sub={t ? `${pct(t.closed, t.leads)} de los leads nuevos` : ''} tone="emerald" />
         <Kpi
           label="Esperando respuesta"
           value={waiting.data?.length ?? 0}
@@ -223,7 +223,7 @@ function LeadsByDayChart({ daily, appKeys, colorOf, nameOf }: {
           <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} />
           {keys.map((k) => (
             <Bar key={k} dataKey={k} name={k === 'sin-app' ? 'Sin app' : nameOf(k)} stackId="a"
-              fill={k === 'sin-app' ? OTHER : colorOf(k)} stroke="#fff" strokeWidth={1} maxBarSize={28} />
+              fill={k === 'sin-app' ? OTHER : colorOf(k)} stroke="#fff" strokeWidth={1} maxBarSize={28} isAnimationActive={false} />
           ))}
         </BarChart>
       </ResponsiveContainer>
@@ -242,9 +242,9 @@ function FunnelByDayChart({ daily }: { daily: TrendDay[] }) {
           <YAxis {...axisProps} allowDecimals={false} />
           <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
           <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} />
-          <Line type="monotone" dataKey="Contactados" stroke={SERIES[0]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-          <Line type="monotone" dataKey="Respondieron" stroke={SERIES[1]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-          <Line type="monotone" dataKey="Cuentas creadas" stroke={SERIES[2]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+          <Line type="monotone" dataKey="Contactados" stroke={SERIES[0]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+          <Line type="monotone" dataKey="Respondieron" stroke={SERIES[1]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+          <Line type="monotone" dataKey="Cuentas creadas" stroke={SERIES[2]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>

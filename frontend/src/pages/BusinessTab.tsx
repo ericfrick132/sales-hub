@@ -73,7 +73,7 @@ export default function BusinessTab({ colorOf, nameOf }: { colorOf: (k: string) 
                 <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} />
                 {keys.map((k) => (
                   <Area key={k} type="monotone" dataKey={k} name={nameOf(k)} stackId="m"
-                    stroke={colorOf(k)} fill={colorOf(k)} fillOpacity={0.25} strokeWidth={2} />
+                    stroke={colorOf(k)} fill={colorOf(k)} fillOpacity={0.25} strokeWidth={2} isAnimationActive={false} />
                 ))}
               </AreaChart>
             </ResponsiveContainer>
