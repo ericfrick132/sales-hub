@@ -107,6 +107,9 @@ public static class DependencyInjection
         services.AddHttpClient<ProductStateClient>();
         services.AddScoped<IProductStateClient>(sp => sp.GetRequiredService<ProductStateClient>());
 
+        // MRR / pagos / churn por app (tab Negocio del Dashboard).
+        services.AddHttpClient<TenantMetricsService>();
+
         // Notifica al producto el cambio de estado de venta (status-back).
         services.AddHttpClient<ProductStatusNotifier>();
         services.AddScoped<IProductStatusNotifier>(sp => sp.GetRequiredService<ProductStatusNotifier>());

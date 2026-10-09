@@ -55,6 +55,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<LeadEntryReportWorker>();            // reporte diario por WhatsApp: leads que entraron a cada teléfono (config en /entradas)
     builder.Services.AddHostedService<RemarketingWorker>();                // remarketing con tope por línea por día (config en /remarketing, arranca apagado)
     builder.Services.AddHostedService<LineHistoryImportWorker>();          // historial de un teléfono recién escaneado ("cargar para atrás" en /devices)
+    builder.Services.AddHostedService<TenantMetricsWorker>();              // MRR/pagos/churn de cada app → tab Negocio del Dashboard (config TenantMetrics:Sources)
 
     // Workers de Instagram. Corren acá (no en un contenedor aparte) porque la imagen
     // ya trae Playwright/Chromium y el droplet tiene RAM de sobra. Sin esto, las

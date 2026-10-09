@@ -193,8 +193,12 @@ export default function SellerZones() {
 
   function selectSeller(id: string | null) {
     setActiveSellerId(id);
-    if (id) setParams({ seller: id }, { replace: true });
-    else setParams({}, { replace: true });
+    // Conserva view/sub: esta página vive como tab del hub de Equipo.
+    setParams((prev) => {
+      const sp = new URLSearchParams(prev);
+      if (id) sp.set('seller', id); else sp.delete('seller');
+      return sp;
+    }, { replace: true });
   }
 
   function citiesAssignedTo(sellerId: string): number {

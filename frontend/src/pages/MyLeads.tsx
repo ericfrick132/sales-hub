@@ -89,7 +89,9 @@ export default function MyLeads() {
   const qc = useQueryClient();
 
   useEffect(() => {
+    // Conserva view/sub: esta página vive como tab del hub de CRM.
     const sp = new URLSearchParams();
+    for (const k of ['view', 'sub']) { const v = searchParams.get(k); if (v) sp.set(k, v); }
     if (tab === 'pool') sp.set('tab', 'pool');
     if (productKey) sp.set('product', productKey);
     if (status) sp.set('status', status);

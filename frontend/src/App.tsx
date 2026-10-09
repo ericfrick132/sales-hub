@@ -2,53 +2,19 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { isAdmin, useAuthStore } from './lib/auth';
 import Login from './pages/Login';
 import Layout from './components/Layout';
-import MyLeads from './pages/MyLeads';
-import LeadsImport from './pages/LeadsImport';
+import { GoTab } from './components/TabbedPage';
 import LeadDetail from './pages/LeadDetail';
-import Pool from './pages/Pool';
 import MyDashboard from './pages/MyDashboard';
 import Connect from './pages/Connect';
-import Devices from './pages/Devices';
-import Entradas from './pages/Entradas';
-import AdminDashboard from './pages/AdminDashboard';
-import Atencion from './pages/Atencion';
-import Crm from './pages/Crm';
-import Sellers from './pages/Sellers';
+import DashboardHub from './pages/DashboardHub';
 import SellerDetail from './pages/SellerDetail';
-import SellerZones from './pages/SellerZones';
-import Products from './pages/Products';
-import Pipeline from './pages/Pipeline';
-import Competitors from './pages/Competitors';
-import Trends from './pages/Trends';
-import MapPage from './pages/Map';
 import Conversations from './pages/Conversations';
-import SearchLeads from './pages/SearchLeads';
-import AudioAnalytics from './pages/AudioAnalytics';
-import InstagramFollow from './pages/InstagramFollow';
-import InstagramAccounts from './pages/InstagramAccounts';
-import Posteos from './pages/Posteos';
-import CalendarPosteos from './pages/CalendarPosteos';
-import Inspiracion from './pages/Inspiracion';
-import WarmrQueue from './pages/WarmrQueue';
-import Seo from './pages/Seo';
-import Objetivos from './pages/Objetivos';
-import ReglasIa from './pages/ReglasIa';
-import OnboardingApps from './pages/OnboardingApps';
-import Transcripcion from './pages/Transcripcion';
-import Mensajeria from './pages/Mensajeria';
-import Remarketing from './pages/Remarketing';
-import Diccionario from './pages/Diccionario';
-import Simulacion from './pages/Simulacion';
-import ProbarBot from './pages/ProbarBot';
-import Seguimientos from './pages/Seguimientos';
-import Pitches from './pages/Pitches';
-import Soporte from './pages/Soporte';
 import Manual from './pages/Manual';
-import VoiceTest from './pages/VoiceTest';
+import { AppsHub, CrmHub, DevicesHub, MarketingHub, TeamHub } from './pages/Hubs';
 
 function SellerZonesRedirect() {
   const { id } = useParams<{ id: string }>();
-  return <Navigate to={`/sellers/zones?seller=${id ?? ''}`} replace />;
+  return <Navigate to={`/team?view=zonas&seller=${id ?? ''}`} replace />;
 }
 
 export default function App() {
@@ -63,56 +29,67 @@ export default function App() {
     );
   }
 
+  const admin = isAdmin(user);
+
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to={isAdmin(user) ? '/admin' : '/dashboard'} replace />} />
+        <Route path="/" element={<Navigate to={admin ? '/admin' : '/dashboard'} replace />} />
         <Route path="/dashboard" element={<MyDashboard />} />
-        <Route path="/leads" element={<MyLeads />} />
-        <Route path="/crm" element={<Crm />} />
-        <Route path="/leads/import" element={<LeadsImport />} />
-        <Route path="/leads/search" element={<SearchLeads />} />
+        <Route path="/crm" element={<CrmHub />} />
         <Route path="/leads/:id" element={<LeadDetail />} />
-        <Route path="/pool" element={<Pool />} />
-        <Route path="/connect" element={<Connect />} />
         <Route path="/conversations" element={<Conversations />} />
-        <Route path="/map" element={<MapPage />} />
         <Route path="/manual" element={<Manual />} />
-        {isAdmin(user) && (
+        {/* El vendedor conecta su línea acá; el admin la ve dentro de Dispositivos. */}
+        <Route path="/connect" element={admin ? <GoTab to="/devices" view="mi-linea" /> : <Connect />} />
+
+        {/* Rutas viejas → tab del CRM (conservan ?source=, ?product=, …) */}
+        <Route path="/leads" element={<GoTab to="/crm" view="lista" />} />
+        <Route path="/pool" element={<Navigate to="/crm?view=lista&tab=pool" replace />} />
+        <Route path="/leads/search" element={<GoTab to="/crm" view="captar" sub="maps" />} />
+        <Route path="/leads/import" element={<GoTab to="/crm" view="captar" sub="importar" />} />
+        <Route path="/map" element={<GoTab to="/crm" view={admin ? 'mapa' : 'pipeline'} />} />
+
+        {admin && (
           <>
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/atencion" element={<Atencion />} />
-            <Route path="/entradas" element={<Entradas />} />
-            <Route path="/sellers" element={<Sellers />} />
-            <Route path="/devices" element={<Devices />} />
-            <Route path="/objetivos" element={<Objetivos />} />
-            <Route path="/reglas-ia" element={<ReglasIa />} />
-            <Route path="/onboarding-apps" element={<OnboardingApps />} />
-            <Route path="/transcripcion" element={<Transcripcion />} />
-            <Route path="/mensajeria" element={<Mensajeria />} />
-            <Route path="/remarketing" element={<Remarketing />} />
-            <Route path="/diccionario" element={<Diccionario />} />
-            <Route path="/simulacion" element={<Simulacion />} />
-            <Route path="/probar-bot" element={<ProbarBot />} />
-            <Route path="/voice-test" element={<VoiceTest />} />
-            <Route path="/seguimientos" element={<Seguimientos />} />
-            <Route path="/pitches" element={<Pitches />} />
-            <Route path="/soporte" element={<Soporte />} />
-            <Route path="/sellers/zones" element={<SellerZones />} />
-            <Route path="/sellers/:id/zones" element={<SellerZonesRedirect />} />
+            <Route path="/admin" element={<DashboardHub />} />
+            <Route path="/devices" element={<DevicesHub />} />
+            <Route path="/apps" element={<AppsHub />} />
+            <Route path="/team" element={<TeamHub />} />
+            <Route path="/marketing" element={<MarketingHub />} />
             <Route path="/admin/sellers/:id" element={<SellerDetail />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/audio-analytics" element={<AudioAnalytics />} />
-            <Route path="/instagram/accounts" element={<InstagramAccounts />} />
-            <Route path="/instagram/follow" element={<InstagramFollow />} />
-            <Route path="/seo" element={<Seo />} />
-            <Route path="/pipeline" element={<Pipeline />} />
-            <Route path="/competitors" element={<Competitors />} />
-            <Route path="/trends" element={<Trends />} />
-            <Route path="/posteos" element={<Posteos />} />
-            <Route path="/calendario" element={<CalendarPosteos />} />
-            <Route path="/inspiracion" element={<Inspiracion />} />
-            <Route path="/warmr" element={<WarmrQueue />} />
+
+            {/* Rutas viejas → tab de su pantalla nueva */}
+            <Route path="/atencion" element={<GoTab to="/admin" view="equipo" />} />
+            <Route path="/entradas" element={<GoTab to="/admin" view="ventas" />} />
+            <Route path="/audio-analytics" element={<GoTab to="/admin" view="ventas" />} />
+            <Route path="/pipeline" element={<GoTab to="/crm" view="captar" sub="scrapers" />} />
+            <Route path="/remarketing" element={<GoTab to="/crm" view="remarketing" />} />
+            <Route path="/transcripcion" element={<GoTab to="/devices" view="transcripcion" />} />
+            <Route path="/voice-test" element={<GoTab to="/devices" view="voz" />} />
+            <Route path="/products" element={<GoTab to="/apps" view="general" />} />
+            <Route path="/diccionario" element={<GoTab to="/apps" view="bot" sub="diccionario" />} />
+            <Route path="/reglas-ia" element={<GoTab to="/apps" view="bot" sub="reglas" />} />
+            <Route path="/soporte" element={<GoTab to="/apps" view="bot" sub="soporte" />} />
+            <Route path="/onboarding-apps" element={<GoTab to="/apps" view="bot" sub="onboarding" />} />
+            <Route path="/probar-bot" element={<GoTab to="/apps" view="bot" sub="probar" />} />
+            <Route path="/simulacion" element={<GoTab to="/apps" view="bot" sub="simulacion" />} />
+            <Route path="/seguimientos" element={<GoTab to="/apps" view="auto" sub="seguimientos" />} />
+            <Route path="/pitches" element={<GoTab to="/apps" view="auto" sub="pitches" />} />
+            <Route path="/mensajeria" element={<GoTab to="/apps" view="auto" sub="mensajeria" />} />
+            <Route path="/sellers" element={<GoTab to="/team" view="vendedores" />} />
+            <Route path="/sellers/zones" element={<GoTab to="/team" view="zonas" />} />
+            <Route path="/sellers/:id/zones" element={<SellerZonesRedirect />} />
+            <Route path="/objetivos" element={<GoTab to="/team" view="objetivos" />} />
+            <Route path="/posteos" element={<GoTab to="/marketing" view="posteos" sub="lista" />} />
+            <Route path="/calendario" element={<GoTab to="/marketing" view="posteos" sub="calendario" />} />
+            <Route path="/warmr" element={<GoTab to="/marketing" view="posteos" sub="warmr" />} />
+            <Route path="/seo" element={<GoTab to="/marketing" view="seo" />} />
+            <Route path="/instagram/accounts" element={<GoTab to="/marketing" view="instagram" sub="cuentas" />} />
+            <Route path="/instagram/follow" element={<GoTab to="/marketing" view="instagram" sub="follow" />} />
+            <Route path="/inspiracion" element={<GoTab to="/marketing" view="competencia" sub="inspiracion" />} />
+            <Route path="/competitors" element={<GoTab to="/marketing" view="competencia" sub="competidores" />} />
+            <Route path="/trends" element={<GoTab to="/marketing" view="competencia" sub="tendencias" />} />
           </>
         )}
         <Route path="*" element={<Navigate to="/" replace />} />

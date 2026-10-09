@@ -135,6 +135,7 @@ public class DashboardController : ControllerBase
                 break;
             case "7d": since = DateTimeOffset.UtcNow.AddDays(-7); break;
             case "30d": since = DateTimeOffset.UtcNow.AddDays(-30); break;
+            case "90d": since = DateTimeOffset.UtcNow.AddDays(-90); break;
         }
 
         var q = _db.Leads.AsNoTracking().Where(l => l.ProductKey != "");
@@ -179,6 +180,134 @@ public class DashboardController : ControllerBase
             .ToList();
 
         return Ok(result);
+    }
+
+    public record TrendDay(string Date, int Leads, Dictionary<string, int> ByProduct, int Sent, int Replied, int Closed);
+    public record TrendResult(int Days, int Leads, int Sent, int Replied, int Closed,
+        Dictionary<string, int> ByProduct, Dictionary<string, int> BySource, List<TrendDay> Daily);
+
+    /// <summary>
+    /// Serie diaria (días de Argentina) para los gráficos del Dashboard: leads que entraron
+    /// por app, y cuántos se contactaron / respondieron / cerraron ese día (cada uno por su
+    /// propia fecha). Totales del período + leads por app y por origen del mismo período.
+    /// </summary>
+    [HttpGet("trend")]
+    public async Task<ActionResult<TrendResult>> Trend([FromQuery] int days = 30, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        days = Math.Clamp(days, 1, 180);
+
+        TimeZoneInfo arTz;
+        try { arTz = TimeZoneInfo.FindSystemTimeZoneById("America/Argentina/Buenos_Aires"); }
+        catch { arTz = TimeZoneInfo.CreateCustomTimeZone("AR", TimeSpan.FromHours(-3), "AR", "AR"); }
+        var nowAr = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, arTz);
+        var firstDay = DateOnly.FromDateTime(nowAr.DateTime).AddDays(-(days - 1));
+        var since = new DateTimeOffset(firstDay.ToDateTime(TimeOnly.MinValue), nowAr.Offset);
+        string Day(DateTimeOffset t) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(t, arTz).DateTime).ToString("yyyy-MM-dd");
+
+        // Ventana acotada (≤180 días) → se agrupa en memoria por día AR.
+        var created = await _db.Leads.AsNoTracking()
+            .Where(l => l.CreatedAt >= since)
+            .Select(l => new { l.CreatedAt, l.ProductKey, l.Source })
+            .ToListAsync(ct);
+        var sent = await _db.Leads.AsNoTracking()
+            .Where(l => l.SentAt >= since).Select(l => l.SentAt!.Value).ToListAsync(ct);
+        var replied = await _db.Leads.AsNoTracking()
+            .Where(l => l.FirstReplyAt >= since).Select(l => l.FirstReplyAt!.Value).ToListAsync(ct);
+        var closed = await _db.Leads.AsNoTracking()
+            .Where(l => l.ClosedAt >= since && l.Status == LeadStatus.Closed).Select(l => l.ClosedAt!.Value).ToListAsync(ct);
+
+        var createdByDay = created.GroupBy(l => Day(l.CreatedAt)).ToDictionary(g => g.Key, g => g.ToList());
+        var sentByDay = sent.GroupBy(Day).ToDictionary(g => g.Key, g => g.Count());
+        var repliedByDay = replied.GroupBy(Day).ToDictionary(g => g.Key, g => g.Count());
+        var closedByDay = closed.GroupBy(Day).ToDictionary(g => g.Key, g => g.Count());
+
+        var daily = new List<TrendDay>();
+        for (var i = 0; i < days; i++)
+        {
+            var key = firstDay.AddDays(i).ToString("yyyy-MM-dd");
+            var dayLeads = createdByDay.TryGetValue(key, out var dl) ? dl : [];
+            daily.Add(new TrendDay(key, dayLeads.Count,
+                dayLeads.GroupBy(l => l.ProductKey == "" ? "sin-app" : l.ProductKey).ToDictionary(g => g.Key, g => g.Count()),
+                sentByDay.GetValueOrDefault(key), repliedByDay.GetValueOrDefault(key), closedByDay.GetValueOrDefault(key)));
+        }
+
+        return new TrendResult(days, created.Count, sent.Count, replied.Count, closed.Count,
+            created.GroupBy(l => l.ProductKey == "" ? "sin-app" : l.ProductKey).ToDictionary(g => g.Key, g => g.Count()),
+            created.GroupBy(l => l.Source.ToString()).ToDictionary(g => g.Key, g => g.Count()),
+            daily);
+    }
+
+    public record BusinessApp(string ProductKey, bool Connected, DateTimeOffset? LastSyncAt, string? Error,
+        decimal MrrUsd, int Active, int Trial, int PastDue, int NewPaid, int Cancelled, double? ChurnPct, double? TrialToPaidPct);
+    public record BusinessTotals(decimal MrrUsd, int Active, int Trial, int NewPaid, int Cancelled);
+    public record BusinessDay(string Date, Dictionary<string, decimal> ByProduct);
+    public record BusinessResult(int Days, decimal UsdArs, BusinessTotals Totals, List<BusinessApp> Apps, List<BusinessDay> Daily);
+
+    /// <summary>
+    /// Negocio por app (tab "Negocio" del Dashboard): MRR en USD, pagos, trials, altas pagas,
+    /// bajas, churn y trial→pago del período. Sale de app_tenants / app_metrics_daily, que
+    /// llena TenantMetricsWorker con lo que reporta cada app.
+    /// </summary>
+    [HttpGet("business")]
+    public async Task<ActionResult<BusinessResult>> Business(
+        [FromServices] SalesHub.Infrastructure.Services.TenantMetricsService metrics,
+        [FromQuery] int days = 90, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        days = Math.Clamp(days, 7, 365);
+        var since = DateTimeOffset.UtcNow.AddDays(-days);
+
+        var tenants = await _db.AppTenants.AsNoTracking().Where(t => t.Status != "deleted").ToListAsync(ct);
+        var productKeys = (await _db.Products.AsNoTracking().Select(p => p.ProductKey).ToListAsync(ct))
+            .Concat(metrics.Sources().Select(s => s.ProductKey))
+            .Concat(tenants.Select(t => t.ProductKey))
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .Distinct().OrderBy(k => k).ToList();
+
+        var apps = new List<BusinessApp>();
+        foreach (var key in productKeys)
+        {
+            var mine = tenants.Where(t => t.ProductKey == key).ToList();
+            SalesHub.Infrastructure.Services.TenantMetricsService.LastSync.TryGetValue(key, out var sync);
+            var connected = mine.Count > 0 || sync is { Ok: true };
+            var active = mine.Where(t => t.Status == "active").ToList();
+            // Pagos al inicio del período: ya habían pagado antes y no estaban dados de baja.
+            var paidAtStart = mine.Count(t => t.FirstPaidAt < since && (t.CancelledAt == null || t.CancelledAt >= since));
+            var cancelled = mine.Count(t => t.CancelledAt >= since && t.FirstPaidAt != null);
+            var trialsStarted = mine.Where(t => t.CreatedAt >= since).ToList();
+            apps.Add(new BusinessApp(
+                key, connected, sync?.At, sync is { Ok: false } ? sync.Error : null,
+                Math.Round(active.Sum(t => metrics.ToUsd(t.MonthlyAmount, t.Currency)), 2),
+                active.Count,
+                mine.Count(t => t.Status == "trial"),
+                mine.Count(t => t.Status == "past_due"),
+                mine.Count(t => t.FirstPaidAt >= since),
+                cancelled,
+                paidAtStart > 0 ? Math.Round(100.0 * cancelled / paidAtStart, 1) : null,
+                trialsStarted.Count > 0 ? Math.Round(100.0 * trialsStarted.Count(t => t.FirstPaidAt != null) / trialsStarted.Count, 1) : null));
+        }
+
+        var firstDay = SalesHub.Infrastructure.Services.TenantMetricsService.TodayAr().AddDays(-(days - 1));
+        var daily = (await _db.AppMetricsDaily.AsNoTracking().Where(d => d.Date >= firstDay).ToListAsync(ct))
+            .GroupBy(d => d.Date).OrderBy(g => g.Key)
+            .Select(g => new BusinessDay(g.Key.ToString("yyyy-MM-dd"), g.ToDictionary(d => d.ProductKey, d => d.MrrUsd)))
+            .ToList();
+
+        var connectedApps = apps.Where(a => a.Connected).ToList();
+        return new BusinessResult(days, metrics.UsdArs,
+            new BusinessTotals(connectedApps.Sum(a => a.MrrUsd), connectedApps.Sum(a => a.Active), connectedApps.Sum(a => a.Trial),
+                connectedApps.Sum(a => a.NewPaid), connectedApps.Sum(a => a.Cancelled)),
+            apps, daily);
+    }
+
+    /// <summary>Fuerza la sync de tenants de todas las apps (sin esperar al worker).</summary>
+    [HttpPost("business/sync")]
+    public async Task<IActionResult> SyncBusiness([FromServices] SalesHub.Infrastructure.Services.TenantMetricsService metrics, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        await metrics.SyncAllAsync(ct);
+        return Ok(SalesHub.Infrastructure.Services.TenantMetricsService.LastSync);
     }
 
     /// <summary>
