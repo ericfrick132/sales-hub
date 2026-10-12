@@ -47,6 +47,12 @@ public class OnboardingService
     /// </summary>
     public const int StepAwaitDemoOk = -22;
 
+    /// <summary>
+    /// Pre-calificación: mandamos SOLO el saludo ("buenass / como estas? buen dia") y esperamos
+    /// que conteste antes de la 1ª pregunta, como una persona. Su "bien y vos?" no es una duda.
+    /// </summary>
+    public const int StepGreeted = -30;
+
     private readonly ApplicationDbContext _db;
     private readonly IOnboardingProvisionClient _provision;
     private readonly IEmailSender _email;
@@ -417,6 +423,28 @@ public class OnboardingService
         var n = questions.Count;
         if (n == 0) return new OnboardingResult(null, OffScript: true, Provisioned: false); // sin preguntas → IA libre
 
+        // ── Pre-calificación: contestó el saludo → reacción corta + 1ª pregunta ──────────
+        if (ob.Step == StepGreeted)
+        {
+            var greetBurst = string.IsNullOrWhiteSpace(recentBurst) ? msg : recentBurst!;
+            var (gKey, gConfident) = (await _intents.GetMatcherAsync(ct)).ClassifyWithConfidence(msg, "como estas?");
+            // Ya vino con algo concreto (precio, info, llamada…): eso lo contesta la persona.
+            if (KeywordRx.IsMatch(greetBurst.ToLowerInvariant()) || (gConfident && HandoffNowTypes.Contains(gKey)))
+            {
+                ob.Step = StepHumanHandoff;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                    Handoff: KeywordRx.IsMatch(greetBurst.ToLowerInvariant()) ? "pidio precio o info" : $"señal: {gKey}");
+            }
+            ob.Step = 1;
+            ob.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return new OnboardingResult(
+                Join(Spin("{todo bien por aca|bien bien|todo tranqui por aca}", lead.Id, 31), questions[0]),
+                OffScript: false, Provisioned: false);
+        }
+
         // Hasta qué paso se juntan datos: autoservicio tiene paso de mail (n+1); asistida termina en la última pregunta (n).
         var maxCollect = cfg.SelfServe ? n + 1 : n;
 
@@ -506,8 +534,17 @@ public class OnboardingService
                 return new OnboardingResult(null, OffScript: true, Provisioned: false,
                     PendingQuestion: questions[0]);
             }
-            reply = Join(intro, questions[0]);
-            ob.Step = 1;
+            if (cfg.HandoffSellerId is not null && !reengage && !string.IsNullOrWhiteSpace(intro))
+            {
+                // Pre-calificación: primero el saludo solo, la 1ª pregunta va cuando conteste.
+                reply = intro;
+                ob.Step = StepGreeted;
+            }
+            else
+            {
+                reply = Join(intro, questions[0]);
+                ob.Step = 1;
+            }
         }
         else if (ob.Step >= 1 && ob.Step <= n)
         {

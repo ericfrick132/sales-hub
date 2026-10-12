@@ -57,7 +57,8 @@ public class MessageRenderer : IMessageRenderer
         }
         if (tz == TimeZoneInfo.Utc) tz = TimeZoneInfo.CreateCustomTimeZone("ar", TimeSpan.FromHours(-3), "AR", "AR");
         var h = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz).Hour;
-        return h < 12 ? "buenos días" : h < 20 ? "buenas tardes" : "buenas noches";
+        // Sin tildes (regla de copy de WhatsApp) y como lo diría una persona: "buen dia".
+        return h < 12 ? "buen dia" : h < 20 ? "buenas tardes" : "buenas noches";
     }
 
     public string Render(Lead lead, Product product, Seller? seller = null)
