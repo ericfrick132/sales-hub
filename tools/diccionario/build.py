@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 
 csv.field_size_limit(sys.maxsize)
 STATUS = {0:'New',1:'Assigned',2:'Queued',3:'Sent',4:'Replied',5:'Interested',6:'DemoScheduled',7:'Closed',8:'Lost',9:'Blocked',10:'NoWhatsApp'}
-SALES_MARK = re.compile(r'gym ?hero|turnos ?pro|unistock|playcrew|archicloud|bunker|efcloud|prueba gratis|d[ií]as gratis|te creo la cuenta|sistema de gesti|tu (gimnasio|gym|negocio|centro|local|estudio|obra|complejo|consultorio)|tus (alumnos|socios|clientes|pacientes)|nuestra propuesta', re.I)
+SALES_MARK = re.compile(r'gym ?hero|turnos ?pro|unistock|dashflow|playcrew|archicloud|bunker|efcloud|prueba gratis|d[ií]as gratis|te creo la cuenta|sistema de gesti|tu (gimnasio|gym|negocio|centro|local|estudio|obra|complejo|consultorio)|tus (alumnos|socios|clientes|pacientes)|nuestra propuesta', re.I)
 NOTIF = re.compile(r'^\W{0,3}\*[A-ZÁÉÍÓÚÑ ]{4,}( - |\*)')
-IN_MARK = re.compile(r'gym ?hero|turnos ?pro|unistock|playcrew|archicloud|efcloud|morosidad|activar .*(gym|gimnasio|sistema)|quiero (m[aá]s )?info|dejar el excel|prueba gratis|(mi|el) (gimnasio|gym)', re.I)
+IN_MARK = re.compile(r'gym ?hero|turnos ?pro|unistock|dashflow|playcrew|archicloud|efcloud|morosidad|activar .*(gym|gimnasio|sistema)|quiero (m[aá]s )?info|dejar el excel|prueba gratis|(mi|el) (gimnasio|gym)', re.I)
 
 def key_of(phone):
     d = re.sub(r'\D', '', phone or '')

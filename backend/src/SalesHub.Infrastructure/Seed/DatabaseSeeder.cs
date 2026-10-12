@@ -300,11 +300,11 @@ $@"Generá un concepto + guion corto (15-30s) para un video de TikTok de {p.Prod
             },
             new()
             {
-                Id = Guid.NewGuid(), ProductKey = "unistock", DisplayName = "UniStock",
+                Id = Guid.NewGuid(), ProductKey = "unistock", DisplayName = "DashFlow",
                 Active = true, Country = "AR", CountryName = "Argentina", RegionCode = "ar",
                 Language = "es", PhonePrefix = "54",
                 Categories = new() { "distribuidora", "mayorista", "importador", "tienda de ropa", "e-commerce" },
-                MessageTemplate = "Hola! Soy {seller}. ¿Vendés en MercadoLibre y TiendaNube? UniStock sincroniza stock entre canales y evita sobreventas. Un cliente recuperó 15h/semana.\n\nTe muestro una demo rápida de 15 min? {checkout_url}",
+                MessageTemplate = "Hola! Soy {seller}. ¿Vendés en MercadoLibre y TiendaNube? DashFlow sincroniza stock entre canales y evita sobreventas. Un cliente recuperó 15h/semana.\n\nTe muestro una demo rápida de 15 min? {checkout_url}",
                 CheckoutUrl = "https://dashflow.com.ar/", PriceDisplay = "desde USD 49/mes",
                 DailyLimit = 40, TriggerHours = new() { 11, 15, 19 }, RequiresAssistedSale = true
             },

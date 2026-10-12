@@ -66,7 +66,7 @@ public class ColdOpenAudioRelay
             "Che, te robo 20 segundos. Soy Eric, armé una plataforma para entrenadores que te arma los planes de entrenamiento en minutos con inteligencia artificial, y le responde las consultas a tus atletas por WhatsApp. Dejás de perder horas armando rutinas a mano y de contestar los mismos mensajes mil veces. ¿Entrenás gente y te gustaría sacarte esa carga de encima? Contestame y te muestro cómo funciona."),
         ("construction", "ARCHICLOUD / CONSTRUCTION (arquitectos / obras)",
             "Che, te robo 20 segundos. Soy Eric, armo un sistema para estudios de arquitectura que te lleva el control de las obras: presupuestos, gastos, la cuenta con el comitente, y tiene un agente de inteligencia artificial que te carga los gastos y te responde por WhatsApp desde la obra, sin abrir la compu. Dejás de perseguir números en mil planillas. ¿Manejás obras y te vendría bien tenerlo ordenado? Decime y te lo muestro."),
-        ("unistock", "UNISTOCK / DASHFLOW (comercios / retail)",
+        ("unistock", "DASHFLOW (comercios / retail)",
             "Che, te robo 20 segundos. Soy Eric, armo un sistema de gestión para tu comercio: punto de venta con lector de barras, stock, caja y facturación con ARCA, todo en uno. Y tiene un agente de inteligencia artificial que te consulta stock y precios por WhatsApp al instante. Dejás de adivinar qué tenés y qué te falta. ¿Tenés un local y querés tenerlo todo bajo control? Contestame y te lo muestro con tu negocio."),
     };
 

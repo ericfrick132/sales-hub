@@ -38,7 +38,7 @@ public class ConversationService
     private static readonly Regex InternalNoticeRx = new(@"^(lead nuevo en |copia \(le llego a )|necesita atencion \(", RegexOptions.Compiled);
 
     private static readonly Regex AppSystemMsgRx = new(
-        @"(tu c[oó]digo para entrar|c[oó]digo para que ingreses|^📊 \*?SESI[OÓ]N|^\*(GymHero|TurnosPro|ArchiCloud|PlayCrew|UniStock|GestorZap)\*\s*—)",
+        @"(tu c[oó]digo para entrar|c[oó]digo para que ingreses|^📊 \*?SESI[OÓ]N|^\*(GymHero|TurnosPro|ArchiCloud|PlayCrew|DashFlow|UniStock|GestorZap)\*\s*—)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILeadAssigner assigner,

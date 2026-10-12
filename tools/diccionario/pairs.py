@@ -3,8 +3,8 @@
 import paths; paths.use_data()
 import json, re
 from norm import norm
-SALES_OUR = re.compile(r'gym ?hero|turnos ?pro|unistock|playcrew|archicloud|bunker|prueba gratis|d[ií]as gratis|te creo la cuenta|tu (gimnasio|gym|negocio|centro|estudio|obra|complejo)|tus (alumnos|socios|clientes)|c[oó]mo (llev[aá]s|cobr[aá]s|tom[aá]s) ', re.I)
-SALES_IN = re.compile(r'gym ?hero|turnos ?pro|unistock|playcrew|archicloud|morosidad|activar .*(gym|gimnasio|sistema|negocio)|quiero (m[aá]s )?info|dejar el excel|prueba gratis|precio|cu[aá]nto (sale|cuesta)', re.I)
+SALES_OUR = re.compile(r'gym ?hero|turnos ?pro|unistock|dashflow|playcrew|archicloud|bunker|prueba gratis|d[ií]as gratis|te creo la cuenta|tu (gimnasio|gym|negocio|centro|estudio|obra|complejo)|tus (alumnos|socios|clientes)|c[oó]mo (llev[aá]s|cobr[aá]s|tom[aá]s) ', re.I)
+SALES_IN = re.compile(r'gym ?hero|turnos ?pro|unistock|dashflow|playcrew|archicloud|morosidad|activar .*(gym|gimnasio|sistema|negocio)|quiero (m[aá]s )?info|dejar el excel|prueba gratis|precio|cu[aá]nto (sale|cuesta)', re.I)
 CUSTOMER = re.compile(r'comprobante|ya (te )?(pagu|abon|transfer)|me venci[oó]|renov|\bactivad[oa]\b|bienvenid[oa]s|pago recibido', re.I)
 HOT_SOURCES = {'400','401','402','403','404'}
 kept_chats = 0
