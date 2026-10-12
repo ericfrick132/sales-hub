@@ -350,8 +350,11 @@ public class OnboardingService
             ob.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
             var answer = msg.Length > 80 ? msg[..80] + "…" : msg;
+            var sawPrices = !string.IsNullOrWhiteSpace(cfg.PricesMessage);
             return new OnboardingResult(null, OffScript: false, Provisioned: false,
-                Handoff: msg.Contains('?') ? $"vio los precios y pregunto: {answer}" : $"vio los precios, para cuando arranca: {answer}");
+                Handoff: msg.Contains('?')
+                    ? (sawPrices ? $"vio los precios y pregunto: {answer}" : $"pregunto: {answer}")
+                    : (sawPrices ? $"vio los precios, para cuando arranca: {answer}" : $"para cuando arranca: {answer}"));
         }
 
         // ── Le preguntamos si quiere verlo con sus datos: sí → horarios; otra cosa → la persona ──
@@ -678,6 +681,18 @@ public class OnboardingService
                         await _db.SaveChangesAsync(ct);
                         return new OnboardingResult(PresentAs(reply, cfg), OffScript: false, Provisioned: false,
                             MediaAssetIds: anglePitch?.MediaAssetIds is { Count: > 0 } pm ? pm : null);
+                    }
+                    if (string.IsNullOrWhiteSpace(cfg.PricesMessage) && !string.IsNullOrWhiteSpace(cfg.StartQuestion)
+                        && !string.IsNullOrWhiteSpace(reply))
+                    {
+                        // Sin paso de precios: el pitch cierra dando la compra por hecha ("pudiste ver los precios?
+                        // para cuando queres empezar?") y con esa respuesta pasa a la persona, que da el precio.
+                        ob.Step = StepAwaitStart;
+                        ob.UpdatedAt = DateTimeOffset.UtcNow;
+                        await _db.SaveChangesAsync(ct);
+                        return new OnboardingResult(PresentAs(Join(reply, Spin(cfg.StartQuestion, lead.Id, 98)), cfg),
+                            OffScript: false, Provisioned: false,
+                            MediaAssetIds: anglePitch?.MediaAssetIds is { Count: > 0 } sm ? sm : null);
                     }
                     ob.Step = StepHumanHandoff;
                     ob.UpdatedAt = DateTimeOffset.UtcNow;
