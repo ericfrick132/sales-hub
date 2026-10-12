@@ -354,7 +354,7 @@ public class OnboardingService
             return new OnboardingResult(null, OffScript: false, Provisioned: false,
                 Handoff: msg.Contains('?')
                     ? (sawPrices ? $"vio los precios y pregunto: {answer}" : $"pregunto: {answer}")
-                    : (sawPrices ? $"vio los precios, para cuando arranca: {answer}" : $"para cuando arranca: {answer}"));
+                    : (sawPrices ? $"vio los precios, para cuando arranca: {answer}" : $"contesto al cierre: {answer}"));
         }
 
         // ── Le preguntamos si quiere verlo con sus datos: sí → horarios; otra cosa → la persona ──
