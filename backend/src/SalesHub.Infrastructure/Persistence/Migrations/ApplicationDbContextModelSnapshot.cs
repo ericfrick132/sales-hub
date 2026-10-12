@@ -2622,6 +2622,13 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("intro");
 
+                    b.Property<string>("KnownBusinessGreeting")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("")
+                        .HasColumnName("known_business_greeting");
+
                     b.Property<string>("KnownBusinessQuestion")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -2643,6 +2650,20 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)")
                         .HasColumnName("present_as");
+
+                    b.Property<List<Guid>>("PricesMediaAssetIds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("prices_media_asset_ids")
+                        .HasDefaultValueSql("'{}'");
+
+                    b.Property<string>("PricesMessage")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("")
+                        .HasColumnName("prices_message");
 
                     b.Property<string>("ProductKey")
                         .IsRequired()
@@ -2699,6 +2720,13 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.Property<bool>("SelfServe")
                         .HasColumnType("boolean")
                         .HasColumnName("self_serve");
+
+                    b.Property<string>("StartQuestion")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("")
+                        .HasColumnName("start_question");
 
                     b.Property<string>("SuccessMessage")
                         .IsRequired()

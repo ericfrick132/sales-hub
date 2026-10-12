@@ -29,11 +29,12 @@ public class SandboxController : ControllerBase
     private readonly IntentClassifier _intents;
     private readonly PersonHandoffService _handoff;
     private readonly IMessageRenderer _renderer;
+    private readonly MetaAdsSyncService _metaAds;
 
     public SandboxController(ApplicationDbContext db, OnboardingService onboarding, IntentClassifier intents,
-        PersonHandoffService handoff, IMessageRenderer renderer)
+        PersonHandoffService handoff, IMessageRenderer renderer, MetaAdsSyncService metaAds)
     {
-        _db = db; _onboarding = onboarding; _intents = intents; _handoff = handoff; _renderer = renderer;
+        _db = db; _onboarding = onboarding; _intents = intents; _handoff = handoff; _renderer = renderer; _metaAds = metaAds;
         _onboarding.DryRunBooking = true;
         _onboarding.DryRunProvision = true;
     }
@@ -45,7 +46,12 @@ public class SandboxController : ControllerBase
     public record Overrides(bool? Handoff, Guid? HandoffSellerId, int? AfterQuestions, string? PresentAs, string? DemoEventTypeUri,
         string? HandoffMessage, string? DemoPitch = null);
 
-    public record StartRequest(string ProductKey, string? LeadName, Overrides? Overrides);
+    /// <param name="FirstMessage">
+    /// Lo que escribe el lead para arrancar, como en la vida real (ej. el pre-armado de un anuncio: "Hola!
+    /// Tengo una barbería y quiero ver cómo TurnosPro contesta mi WhatsApp"). Si coincide con un anuncio,
+    /// el bot lo trata como lead de ese anuncio (rubro y ángulo). Vacío = el bot arranca solo.
+    /// </param>
+    public record StartRequest(string ProductKey, string? LeadName, Overrides? Overrides, string? FirstMessage = null, string? AdId = null);
     public record MessageRequest(string Text, Overrides? Overrides);
 
     public record BotTurn(List<string> Messages, string? IntentKey, bool? Confident, string? Decision, string? Handoff,
@@ -61,12 +67,16 @@ public class SandboxController : ControllerBase
         if (cfg is null) return BadRequest(new { error = "La app no tiene guion de onboarding cargado." });
 
         var now = DateTimeOffset.UtcNow;
+        var first = (req.FirstMessage ?? "").Trim();
+        var ad = await _metaAds.MatchAsync(req.AdId, first, ct);
         var lead = new Lead
         {
             Id = Guid.NewGuid(),
             ProductKey = product.ProductKey,
             Name = string.IsNullOrWhiteSpace(req.LeadName) ? "prueba bot" : req.LeadName.Trim(),
             Source = LeadSource.WhatsAppAd,
+            AdId = ad?.AdId,
+            AdTitle = ad?.Name,
             Status = LeadStatus.Replied,        // no New: el reparto automático no lo toma
             Tags = new List<string> { Tag },
             ManualAssignedAt = now,
@@ -74,12 +84,19 @@ public class SandboxController : ControllerBase
             UpdatedAt = now,
         };
         _db.Leads.Add(lead);
+        if (first.Length > 0)
+            _db.ConversationMessages.Add(new ConversationMessage
+            {
+                Id = Guid.NewGuid(), LeadId = lead.Id, Direction = MessageDirection.Inbound,
+                Status = MessageDeliveryStatus.Received, Text = first, Timestamp = now,
+                IsRead = true, EvolutionInstance = "sandbox",
+            });
         await _db.SaveChangesAsync(ct);
 
-        // Primer mensaje del bot: el saludo + la 1ª pregunta (como cuando entra alguien por el anuncio).
-        var ob = await _onboarding.ProcessAsync(lead, string.Empty, cfg, ct);
+        // Primer mensaje del bot: el saludo (+ la 1ª pregunta si no pre-califica), como cuando entra alguien por el anuncio.
+        var ob = await _onboarding.ProcessAsync(lead, first, cfg, ct, first);
         var turn = await ToTurnAsync(lead, product, cfg, ob, null, null, ct);
-        return Ok(new { leadId = lead.Id, turn });
+        return Ok(new { leadId = lead.Id, ad = ad is null ? null : new { ad.AdId, ad.Name, ad.Rubro, ad.Angle, ad.BusinessRef }, turn });
     }
 
     [HttpPost("{leadId:guid}/message")]
@@ -152,11 +169,21 @@ public class SandboxController : ControllerBase
                 .Select(p => p.Trim()).Where(p => p.Length > 0));
         }
 
+        async Task AddMedia(List<Guid>? ids)
+        {
+            if (ids is not { Count: > 0 }) return;
+            var names = await _db.MediaAssets.AsNoTracking().Where(a => ids.Contains(a.Id))
+                .Select(a => new { a.Id, a.FileName }).ToListAsync(ct);
+            foreach (var id in ids)
+                parts.Add($"[adjunto: {names.FirstOrDefault(n => n.Id == id)?.FileName ?? id.ToString()}]");
+        }
+
         string decision;
         string? summary = null;
         if (ob.Handoff is not null)
         {
             AddText(ob.Reply);
+            await AddMedia(ob.MediaAssetIds);
             decision = "pasa a la persona";
             summary = await _handoff.BuildSummaryAsync(lead, ob.Handoff, null, null, ct);
         }
@@ -168,6 +195,7 @@ public class SandboxController : ControllerBase
         else
         {
             AddText(ob.Reply);
+            await AddMedia(ob.MediaAssetIds);
             if (!string.IsNullOrWhiteSpace(ob.PostMediaText)) AddText(ob.PostMediaText);
             decision = ob.Provisioned ? "creó la cuenta (alta)" : "sigue el guion";
         }

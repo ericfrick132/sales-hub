@@ -32,7 +32,10 @@ public class OnboardingConfigController : ControllerBase
         bool? HandoffEnabled = null, Guid? HandoffSellerId = null, int? HandoffAfterQuestions = null,
         string? PresentAs = null, string? HandoffMessage = null, string? DemoEventTypeUri = null, string? DemoPitch = null,
         // Por anuncio (ver MetaAd): 1ª pregunta con el rubro ya sabido y pitch por ángulo. null = no tocar.
-        string? KnownBusinessQuestion = null, List<AnglePitch>? AnglePitches = null);
+        string? KnownBusinessQuestion = null, List<AnglePitch>? AnglePitches = null,
+        // Saludo con lo que dijo el anuncio y paso de precios (ver OnboardingConfig). null = no tocar.
+        string? KnownBusinessGreeting = null, string? PricesMessage = null, List<Guid>? PricesMediaAssetIds = null,
+        string? StartQuestion = null);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -58,7 +61,8 @@ public class OnboardingConfigController : ControllerBase
                 c?.FirstStepsMessage ?? "",
                 c?.HandoffSellerId is not null, c?.HandoffSellerId, c?.HandoffAfterQuestions ?? 2,
                 c?.PresentAs ?? "", c?.HandoffMessage ?? "", c?.DemoEventTypeUri ?? "", c?.DemoPitch ?? "",
-                c?.KnownBusinessQuestion ?? "", c?.AnglePitches ?? new());
+                c?.KnownBusinessQuestion ?? "", c?.AnglePitches ?? new(),
+                c?.KnownBusinessGreeting ?? "", c?.PricesMessage ?? "", c?.PricesMediaAssetIds ?? new(), c?.StartQuestion ?? "");
         });
         return Ok(result);
     }
@@ -110,6 +114,10 @@ public class OnboardingConfigController : ControllerBase
         if (dto.HandoffMessage is not null) c.HandoffMessage = dto.HandoffMessage.Trim();
         if (dto.DemoPitch is not null) c.DemoPitch = dto.DemoPitch.Trim();
         if (dto.KnownBusinessQuestion is not null) c.KnownBusinessQuestion = dto.KnownBusinessQuestion.Trim();
+        if (dto.KnownBusinessGreeting is not null) c.KnownBusinessGreeting = dto.KnownBusinessGreeting.Trim();
+        if (dto.PricesMessage is not null) c.PricesMessage = dto.PricesMessage.Trim();
+        if (dto.PricesMediaAssetIds is not null) c.PricesMediaAssetIds = dto.PricesMediaAssetIds.Where(g => g != Guid.Empty).ToList();
+        if (dto.StartQuestion is not null) c.StartQuestion = dto.StartQuestion.Trim();
         if (dto.AnglePitches is not null)
             c.AnglePitches = dto.AnglePitches
                 .Where(p => !string.IsNullOrWhiteSpace(p.Text))

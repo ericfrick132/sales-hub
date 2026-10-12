@@ -175,6 +175,14 @@ public class MetaAdsSyncService
         return Trunc($"{article} {m.Groups[2].Value.Trim()}", 120);
     }
 
+    /// <summary>"Hola! Tengo una barbería y quiero…" → "una barberia" (lo que dijo que tiene, tal cual, sin tildes).</summary>
+    public static string? HasPhraseFromPrefill(string? prefill)
+    {
+        if (string.IsNullOrWhiteSpace(prefill)) return null;
+        var m = Regex.Match(CopyStyle.Clean(prefill).ToLowerInvariant(), @"tengo (.+?) y quiero");
+        return m.Success ? Trunc(m.Groups[1].Value.Trim(), 120) : null;
+    }
+
     private static string Slug(string? s) => IntentText.Normalize(s).Replace(" ", "-");
 
     private async Task PageAsync(HttpClient client, string url, Action<JsonElement> each, CancellationToken ct)

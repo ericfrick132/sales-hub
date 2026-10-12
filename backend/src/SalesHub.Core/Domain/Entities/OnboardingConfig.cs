@@ -148,6 +148,22 @@ public class OnboardingConfig
     /// <summary>Pitch al terminar la pre-calificación, por ángulo del anuncio. Sin match = <see cref="HandoffMessage"/>.</summary>
     public List<AnglePitch> AnglePitches { get; set; } = new();
 
+    /// <summary>
+    /// Línea que se suma al saludo cuando el anuncio ya dijo qué tiene ("vi que tenes {tiene}, buenisimo"):
+    /// {tiene} = "una barberia", "un box", "canchas de futbol". Vacío = saludo solo.
+    /// </summary>
+    public string KnownBusinessGreeting { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Paso de precios después del pitch: si el lead dice que sí a "queres que te pase los precios?",
+    /// el bot manda esto (+ <see cref="PricesMediaAssetIds"/>) y <see cref="StartQuestion"/>, y recién con
+    /// esa respuesta pasa a la persona. Vacío = el pase es justo después del pitch.
+    /// </summary>
+    public string PricesMessage { get; set; } = string.Empty;
+    public List<Guid> PricesMediaAssetIds { get; set; } = new();
+    /// <summary>Pregunta después de los precios ("para cuando tenias pensado comenzar?").</summary>
+    public string StartQuestion { get; set; } = string.Empty;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

@@ -450,6 +450,13 @@ export interface OnboardingAppConfig {
   knownBusinessQuestion?: string;
   /** Pitch al terminar la pre-calificación según el ángulo del anuncio ("" = por defecto). */
   anglePitches?: AnglePitch[];
+  /** Línea extra del saludo cuando el anuncio dijo qué tiene ("vi que tenes {tiene}, buenisimo"). */
+  knownBusinessGreeting?: string;
+  /** Paso de precios después del pitch (vacío = pasa a la persona justo después del pitch). */
+  pricesMessage?: string;
+  pricesMediaAssetIds?: string[];
+  /** Pregunta después de los precios ("para cuando tenias pensado comenzar?"). */
+  startQuestion?: string;
 }
 
 export interface AnglePitch {

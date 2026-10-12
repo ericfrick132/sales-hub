@@ -266,8 +266,32 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
                 placeholder="comentame, como se llama {negocio}?"
                 onChange={(e) => setForm((f) => ({ ...f, knownBusinessQuestion: e.target.value }))} />
             </label>
+            <label className="space-y-0.5 sm:col-span-3">
+              <div className="text-slate-600">
+                Línea extra del saludo cuando el anuncio dijo qué tiene. {'{tiene}'} = "una barberia", "un box",
+                "canchas de futbol". Vacío = saludo solo.
+              </div>
+              <input className="input w-full" value={form.knownBusinessGreeting ?? ''}
+                placeholder="vi que tenes {tiene}, buenisimo"
+                onChange={(e) => setForm((f) => ({ ...f, knownBusinessGreeting: e.target.value }))} />
+            </label>
             <AnglePitchesEditor value={form.anglePitches ?? []}
               onChange={(v) => setForm((f) => ({ ...f, anglePitches: v }))} />
+            <label className="space-y-0.5 sm:col-span-3">
+              <div className="text-slate-600">
+                Precios: si el pitch termina en "queres que te pase los precios?" y el lead dice que sí, el bot manda esto
+                y la pregunta de abajo; recién con esa respuesta pasa a la persona. Vacío = pasa justo después del pitch.
+              </div>
+              <textarea className="input w-full h-20" value={form.pricesMessage ?? ''}
+                placeholder="el mensual es $50.000[NUEVO_MENSAJE]y si lo tomas por mas tiempo baja hasta $37.500[NUEVO_MENSAJE]probas 7 dias gratis, se activa con tu tarjeta en mercado pago"
+                onChange={(e) => setForm((f) => ({ ...f, pricesMessage: e.target.value }))} />
+            </label>
+            <label className="space-y-0.5 sm:col-span-3">
+              <div className="text-slate-600">Pregunta después de los precios</div>
+              <input className="input w-full" value={form.startQuestion ?? ''}
+                placeholder="para cuando tenias pensado comenzar?"
+                onChange={(e) => setForm((f) => ({ ...f, startQuestion: e.target.value }))} />
+            </label>
             <label className="space-y-0.5 sm:col-span-3">
               <div className="text-slate-600">Lo que dice el bot antes de que siga la persona si no hay pitch para el ángulo (admite {'{a|b}'}; vacío = no dice nada)</div>
               <textarea className="input w-full h-16" value={form.handoffMessage ?? ''}

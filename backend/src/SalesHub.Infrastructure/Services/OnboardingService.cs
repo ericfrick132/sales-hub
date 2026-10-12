@@ -53,6 +53,17 @@ public class OnboardingService
     /// </summary>
     public const int StepGreeted = -30;
 
+    /// <summary>Le mandamos el pitch que cierra con "queres que te pase los precios?" y esperamos el sí.</summary>
+    public const int StepAwaitPricesOk = -31;
+
+    /// <summary>Ya vio los precios; esperamos "para cuando tenias pensado comenzar?" y ahí pasa a la persona.</summary>
+    public const int StepAwaitStart = -32;
+
+    private static readonly Regex PricesYesRx = new(
+        @"^(hola |ah |bueno |uh )?(si+|sisi|dale+|ok|oka|okey|bueno|perfecto|genial|de una|obvio|joya|claro|pasa(me|melos|los)?|manda(me|melos|los)?|porfa|por favor|va|vamos|me interesa)\b",
+        RegexOptions.Compiled);
+    private static readonly Regex PricesNoRx = new(@"\bno\b|ahora no|mas adelante|despues|no gracias", RegexOptions.Compiled);
+
     private readonly ApplicationDbContext _db;
     private readonly IOnboardingProvisionClient _provision;
     private readonly IEmailSender _email;
@@ -307,6 +318,39 @@ public class OnboardingService
         var msg = (lastMessage ?? string.Empty).Trim();
         var lower = msg.ToLowerInvariant();
 
+        // ── Precios: dijo que sí → precios + "para cuando…"; otra cosa (no, una pregunta) → la persona ──
+        if (ob.Step == StepAwaitPricesOk)
+        {
+            var t = IntentText.Normalize(msg);
+            var yes = PricesYesRx.IsMatch(t) && !PricesNoRx.IsMatch(t) && !msg.Contains('?') && IntentText.WordCount(t) <= 12;
+            if (!yes)
+            {
+                ob.Step = StepHumanHandoff;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                    Handoff: msg.Contains('?') ? "pregunto algo antes de ver los precios" : "no pidio los precios de una");
+            }
+            ob.Step = StepAwaitStart;
+            ob.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            var prices = Spin(cfg.PricesMessage, lead.Id, 97);
+            var start = Spin(cfg.StartQuestion, lead.Id, 98);
+            return cfg.PricesMediaAssetIds.Count > 0
+                ? new OnboardingResult("{dale|de una}, ahi te paso", OffScript: false, Provisioned: false,
+                    MediaAssetIds: cfg.PricesMediaAssetIds, PostMediaText: Join(prices, start))
+                : new OnboardingResult(Join(prices, start), OffScript: false, Provisioned: false);
+        }
+        if (ob.Step == StepAwaitStart)
+        {
+            ob.Step = StepHumanHandoff;
+            ob.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            var answer = msg.Length > 80 ? msg[..80] + "…" : msg;
+            return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                Handoff: msg.Contains('?') ? $"vio los precios y pregunto: {answer}" : $"vio los precios, para cuando arranca: {answer}");
+        }
+
         // ── Le preguntamos si quiere verlo con sus datos: sí → horarios; otra cosa → la persona ──
         if (ob.Step == StepAwaitDemoOk)
         {
@@ -551,8 +595,12 @@ public class OnboardingService
             }
             if (cfg.HandoffSellerId is not null && !reengage && !string.IsNullOrWhiteSpace(intro))
             {
-                // Pre-calificación: primero el saludo solo, la 1ª pregunta va cuando conteste.
+                // Pre-calificación: primero el saludo solo, la 1ª pregunta va cuando conteste. Si el anuncio
+                // ya dijo qué tiene, se lo reconocemos ("vi que tenes una barberia, buenisimo").
                 reply = intro;
+                if (ad?.PrefillText is { } prefill && !string.IsNullOrWhiteSpace(cfg.KnownBusinessGreeting)
+                    && MetaAdsSyncService.HasPhraseFromPrefill(prefill) is { } tiene)
+                    reply = Join(intro, cfg.KnownBusinessGreeting.Replace("{tiene}", tiene));
                 ob.Step = StepGreeted;
             }
             else
@@ -606,6 +654,15 @@ public class OnboardingService
                                      ?? cfg.AnglePitches.FirstOrDefault(p => string.IsNullOrWhiteSpace(p.Angle));
                     reply = Spin(anglePitch?.Text ?? cfg.HandoffMessage ?? string.Empty, lead.Id, k);
                     lead.Status = LeadStatus.Interested;
+                    if (!string.IsNullOrWhiteSpace(cfg.PricesMessage) && !string.IsNullOrWhiteSpace(reply))
+                    {
+                        // El pitch cierra con "queres que te pase los precios?": esperamos el sí.
+                        ob.Step = StepAwaitPricesOk;
+                        ob.UpdatedAt = DateTimeOffset.UtcNow;
+                        await _db.SaveChangesAsync(ct);
+                        return new OnboardingResult(PresentAs(reply, cfg), OffScript: false, Provisioned: false,
+                            MediaAssetIds: anglePitch?.MediaAssetIds is { Count: > 0 } pm ? pm : null);
+                    }
                     ob.Step = StepHumanHandoff;
                     ob.UpdatedAt = DateTimeOffset.UtcNow;
                     await _db.SaveChangesAsync(ct);

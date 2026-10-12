@@ -23,6 +23,10 @@ public class OnboardingConfigConfiguration : IEntityTypeConfiguration<Onboarding
         // si la tabla tiene filas (nos pasó con reengage_media_asset_ids, 2026-07-20).
         b.Property(x => x.ReengageMediaCaptions).HasDefaultValueSql("'{}'");
         b.Property(x => x.KnownBusinessQuestion).HasDefaultValue(string.Empty);
+        b.Property(x => x.KnownBusinessGreeting).HasDefaultValue(string.Empty);
+        b.Property(x => x.PricesMessage).HasDefaultValue(string.Empty);
+        b.Property(x => x.StartQuestion).HasDefaultValue(string.Empty);
+        b.Property(x => x.PricesMediaAssetIds).HasDefaultValueSql("'{}'");
         b.Property(x => x.AnglePitches)
             .HasColumnType("jsonb")
             .HasDefaultValueSql("'[]'::jsonb")
