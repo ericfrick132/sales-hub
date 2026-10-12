@@ -26,6 +26,8 @@ public class OnboardingConfigConfiguration : IEntityTypeConfiguration<Onboarding
         b.Property(x => x.KnownBusinessGreeting).HasDefaultValue(string.Empty);
         b.Property(x => x.PricesMessage).HasDefaultValue(string.Empty);
         b.Property(x => x.StartQuestion).HasDefaultValue(string.Empty);
+        b.Property(x => x.DemoOffer).HasDefaultValue(string.Empty);
+        b.Property(x => x.DemoLink).HasDefaultValue(string.Empty);
         b.Property(x => x.PricesMediaAssetIds).HasDefaultValueSql("'{}'");
         b.Property(x => x.AnglePitches)
             .HasColumnType("jsonb")

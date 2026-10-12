@@ -2581,6 +2581,20 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("demo_event_type_uri");
 
+                    b.Property<string>("DemoLink")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("")
+                        .HasColumnName("demo_link");
+
+                    b.Property<string>("DemoOffer")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("")
+                        .HasColumnName("demo_offer");
+
                     b.Property<string>("DemoPitch")
                         .IsRequired()
                         .ValueGeneratedOnAdd()

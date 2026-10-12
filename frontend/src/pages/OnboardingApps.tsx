@@ -287,7 +287,22 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
                 onChange={(e) => setForm((f) => ({ ...f, pricesMessage: e.target.value }))} />
             </label>
             <label className="space-y-0.5 sm:col-span-3">
-              <div className="text-slate-600">Pregunta después de los precios</div>
+              <div className="text-slate-600">
+                Demo: el pitch cierra con esta pregunta; si dice que sí, el bot manda el link de abajo y la pregunta del cierre.
+                También contesta así si en el saludo pregunta "como es?". Vacío = sin demo.
+              </div>
+              <input className="input w-full" value={form.demoOffer ?? ''}
+                placeholder="te interesa ver una demo?"
+                onChange={(e) => setForm((f) => ({ ...f, demoOffer: e.target.value }))} />
+            </label>
+            <label className="space-y-0.5 sm:col-span-3">
+              <div className="text-slate-600">Link de la demo (lo que manda si dice que sí)</div>
+              <input className="input w-full" value={form.demoLink ?? ''}
+                placeholder="https://turnos-pro.com/demo-app"
+                onChange={(e) => setForm((f) => ({ ...f, demoLink: e.target.value }))} />
+            </label>
+            <label className="space-y-0.5 sm:col-span-3">
+              <div className="text-slate-600">Pregunta del cierre (después de los precios o de la demo)</div>
               <input className="input w-full" value={form.startQuestion ?? ''}
                 placeholder="para cuando tenias pensado comenzar?"
                 onChange={(e) => setForm((f) => ({ ...f, startQuestion: e.target.value }))} />

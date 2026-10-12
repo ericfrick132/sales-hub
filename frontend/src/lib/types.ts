@@ -457,6 +457,9 @@ export interface OnboardingAppConfig {
   pricesMediaAssetIds?: string[];
   /** Pregunta después de los precios ("para cuando tenias pensado comenzar?"). */
   startQuestion?: string;
+  /** Demo después del pitch: la pregunta ("te interesa ver una demo?") y lo que manda si dice que sí (el link). */
+  demoOffer?: string;
+  demoLink?: string;
 }
 
 export interface AnglePitch {

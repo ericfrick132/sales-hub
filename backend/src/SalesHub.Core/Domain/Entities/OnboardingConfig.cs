@@ -164,6 +164,14 @@ public class OnboardingConfig
     /// <summary>Pregunta después de los precios ("para cuando tenias pensado comenzar?").</summary>
     public string StartQuestion { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Demo después del pitch: el pitch cierra con esto ("te interesa ver una demo?"); si dice que sí,
+    /// el bot manda <see cref="DemoLink"/> + <see cref="StartQuestion"/> y con esa respuesta pasa a la persona.
+    /// Vacío (cualquiera de los dos) = sin paso de demo. También se usa si en el saludo pregunta "como es?".
+    /// </summary>
+    public string DemoOffer { get; set; } = string.Empty;
+    public string DemoLink { get; set; } = string.Empty;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
