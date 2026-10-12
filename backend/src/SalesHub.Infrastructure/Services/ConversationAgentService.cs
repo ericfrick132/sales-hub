@@ -624,6 +624,7 @@ public class ConversationAgentService
             var caption = captions is not null && i < captions.Count && !string.IsNullOrWhiteSpace(captions[i])
                 ? captions[i] : null;
             if (i > 0) await Task.Delay(TimeSpan.FromSeconds(Random.Shared.Next(4, 9)), ct);
+            if (await HumanTookOverAsync(lead.Id, ct)) break;
             var ok = await _evo.SendMediaAsync(line.InstanceName, lead.WhatsappPhone!,
                 asset.Content, asset.MimeType, asset.FileName, caption, ct);
             if (!ok)
@@ -709,6 +710,10 @@ public class ConversationAgentService
         return CopyStyle.Clean(t);
     }
 
+    /// <summary>Lectura fresca (no la entidad trackeada): ¿un humano escribió en el chat y muteó el bot recién?</summary>
+    private Task<bool> HumanTookOverAsync(Guid leadId, CancellationToken ct) =>
+        _db.Leads.AsNoTracking().AnyAsync(l => l.Id == leadId && l.BotMutedAt != null, ct);
+
     /// <summary>
     /// Envío del bot de onboarding: splittea por [NUEVO_MENSAJE] y manda cada parte (como n8n).
     /// Auto-envía SIEMPRE (bypassa AutoPilot — es el bot). Si no se puede enviar (sin teléfono o
@@ -755,6 +760,8 @@ public class ConversationAgentService
                 if (line.InstanceName is not null)
                     try { await _evo.SetPresenceTypingAsync(line.InstanceName, lead.WhatsappPhone!, pause, ct); } catch { }
                 await Task.Delay(TimeSpan.FromSeconds(pause), ct);
+                // Si en la pausa alguien escribió a mano desde el celu/WhatsApp Web, el resto no sale.
+                if (await HumanTookOverAsync(lead.Id, ct)) break;
             }
             firstPart = false;
             // Persistir ANTES de mandar (ver AutoSendAsync): si el eco fromMe llega antes
