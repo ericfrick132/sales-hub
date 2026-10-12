@@ -72,7 +72,30 @@ public class PersonHandoffService
             _log.LogWarning("Pase: no pude avisar a {Person} por su WhatsApp, va al maestro (lead {Lead})", person?.DisplayName, lead.Id);
             await _alerter.AlertAsync(summary, ct);
         }
+        else if (line is not null)
+        {
+            // Copia SIEMPRE al maestro (Eric, pedido 2026-10-12), por la misma línea de la app: la instancia
+            // de alertas puede estar caída y esta acaba de mandar el aviso, así que está viva.
+            var master = WhatsAppNumber(await _db.InspirationSettings.AsNoTracking().Select(x => x.MasterPhone).FirstOrDefaultAsync(ct));
+            if (master is not null && master != WhatsAppNumber(person?.WhatsappPhone))
+            {
+                try { await _lineSender.SendToLeadAsync(line, master, $"copia (le llego a {person?.DisplayName}): {summary}", ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogWarning(ex, "Pase: falló la copia al maestro"); }
+            }
+        }
         _log.LogInformation("Lead {Lead} pasado a {Person} ({Reason})", lead.Id, person?.DisplayName, reason);
+    }
+
+    /// <summary>
+    /// Número para WhatsApp: sólo dígitos y, si es un celular argentino cargado sin el 9 (54 11 xxxx xxxx),
+    /// con el 9 (54 9 11 …), que es como existe en WhatsApp.
+    /// </summary>
+    private static string? WhatsAppNumber(string? raw)
+    {
+        var d = new string((raw ?? "").Where(char.IsDigit).ToArray());
+        if (d.Length == 0) return null;
+        if (d.StartsWith("54") && !d.StartsWith("549") && d.Length == 12) d = "549" + d[2..];
+        return d;
     }
 
     /// <summary>
