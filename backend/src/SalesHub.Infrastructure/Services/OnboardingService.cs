@@ -549,7 +549,9 @@ public class OnboardingService
         else if (ob.Step >= 1 && ob.Step <= n)
         {
             var k = ob.Step; // el lead respondió la pregunta questions[k-1]
-            if (k == 1 && IsBusinessNameSuspicious(msg) && ob.GymRetries < 1)
+            // En pre-calificación no se crea cuenta (no hay subdominio que cuidar) y la 1ª pregunta
+            // puede pedir nombre + rubro juntos: re-preguntar "solo el nombre" ahí suena a bot.
+            if (k == 1 && !handoffMode && IsBusinessNameSuspicious(msg) && ob.GymRetries < 1)
             {
                 // El nombre del negocio se convierte en el subdominio del tenant (la app lo
                 // auto-deriva, no lo pide). Si el lead manda una frase/oración en vez del nombre,
