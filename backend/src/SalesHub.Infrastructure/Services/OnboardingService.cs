@@ -185,7 +185,7 @@ public class OnboardingService
 
     private static readonly Regex OpeningSoonRx = new(@"\babr(o|imos|e|iendo)\b|inaugur|por abrir|no abr|recien (arranco|empiezo|abr)|todavia no (arranque|empece)|estoy armando", RegexOptions.Compiled);
     /// <summary>El lead nos devolvió el saludo ("bien y vos?", "todo bien, vos?", "que tal vos").</summary>
-    private static readonly Regex ReciprocalRx = new(@"\b(y vos|y tu|vos|y usted|como (estas|andas|va)|que tal|todo bien)\s*$", RegexOptions.Compiled);
+    private static readonly Regex ReciprocalRx = new(@"\b(y vos|y tu|vos|y usted|como (estas|andas|va)|que tal|todo bien)\b\s*\?*", RegexOptions.Compiled);
 
     private static readonly Regex AsksToolRx = new(@"sistema|como (llevas|tomas|manejas|cobras|registras)|que usas", RegexOptions.Compiled);
 
@@ -486,9 +486,10 @@ public class OnboardingService
             var (gKey, gConfident) = (await _intents.GetMatcherAsync(ct)).ClassifyWithConfidence(msg, "como estas?");
             // "bien y vos?" no es una pregunta para la persona; cualquier otra pregunta sí ("do you speak
             // english?", "como funciona?"), igual que lo concreto (precio, info, llamada).
-            var normGreet = IntentText.Normalize(greetBurst);
-            var askedBack = ReciprocalRx.IsMatch(normGreet);
-            var realQuestion = greetBurst.Contains('?') && !askedBack;
+            var lowerGreet = CopyStyle.Clean(greetBurst).ToLowerInvariant();
+            var askedBack = ReciprocalRx.IsMatch(lowerGreet);
+            // Sacamos los "y vos?" (pueden venir en el medio: "bien y vos?, se llama el tano") y vemos si queda otra pregunta.
+            var realQuestion = ReciprocalRx.Replace(lowerGreet, " ").Contains('?');
             if (KeywordRx.IsMatch(greetBurst.ToLowerInvariant()) || realQuestion || (gConfident && HandoffNowTypes.Contains(gKey)))
             {
                 ob.Step = StepHumanHandoff;
