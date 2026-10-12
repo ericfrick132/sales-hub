@@ -90,7 +90,7 @@ public class PersonHandoffService
     /// Número para WhatsApp: sólo dígitos y, si es un celular argentino cargado sin el 9 (54 11 xxxx xxxx),
     /// con el 9 (54 9 11 …), que es como existe en WhatsApp.
     /// </summary>
-    private static string? WhatsAppNumber(string? raw)
+    public static string? WhatsAppNumber(string? raw)
     {
         var d = new string((raw ?? "").Where(char.IsDigit).ToArray());
         if (d.Length == 0) return null;

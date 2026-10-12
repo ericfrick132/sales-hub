@@ -30,6 +30,13 @@ public class ConversationService
     // Mensajes automáticos que las apps mandan por la MISMA línea de WhatsApp (OTP de
     // login "*GymHero* — tu código para entrar es…", reportes "📊 *SESIÓN - TurnosPro*",
     // recordatorios "te dejo un nuevo codigo…"). No son takeover humano.
+    /// <summary>
+    /// Avisos internos que manda el sistema desde la línea (lead nuevo al maestro, pase a la persona y su
+    /// copia). Su eco fromMe no es de ningún lead: si el número de Eric o Mateo existe como lead de prueba,
+    /// registrarlo ahí lo tomaría como mensaje manual y le pausaría el bot.
+    /// </summary>
+    private static readonly Regex InternalNoticeRx = new(@"^(lead nuevo en |copia \(le llego a )|necesita atencion \(", RegexOptions.Compiled);
+
     private static readonly Regex AppSystemMsgRx = new(
         @"(tu c[oó]digo para entrar|c[oó]digo para que ingreses|^📊 \*?SESI[OÓ]N|^\*(GymHero|TurnosPro|ArchiCloud|PlayCrew|UniStock|GestorZap)\*\s*—)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -161,6 +168,10 @@ public class ConversationService
                 return false;
             }
             createdNow = true;
+            // Aviso al maestro (Eric, pedido 2026-10-12): cada lead nuevo que escribe a una línea, en el
+            // momento. No para la carga del historial ni para los prospectos del celular escaneado.
+            if (!incoming.FromSync && !IsHistory(incoming) && lead.Source != LeadSource.Remarketing)
+                await NotifyMasterNewLeadAsync(lead, incoming, ct);
         }
         // Atribución del anuncio: si el mensaje trae externalAdReply y el lead no lo tenía, se guarda.
         if (incoming.Ad is not null && string.IsNullOrWhiteSpace(lead.AdId))
@@ -295,6 +306,7 @@ public class ConversationService
     public async Task<bool> HandleOwnMessageAsync(IncomingMessage incoming, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(incoming.Text)) return false;
+        if (InternalNoticeRx.IsMatch(incoming.Text)) return true; // aviso interno, no va a ningún chat de lead
         // Ya registrado (reentrega del webhook o repaso del historial): cortar antes de buscar el
         // lead, que es lo caro — cargar el historial de un teléfono repasa miles de mensajes.
         if (!string.IsNullOrWhiteSpace(incoming.MessageId)
@@ -829,6 +841,36 @@ public class ConversationService
         if (owners.Count == 1) return owners[0];
         var sum = phone.Where(char.IsDigit).Sum(c => c - '0');
         return owners[sum % owners.Count];
+    }
+
+    /// <summary>
+    /// "lead nuevo en TurnosPro: …" al número maestro, por la misma línea que acaba de recibir el mensaje
+    /// (está viva). Best-effort: si falla (o la línea es solo-escucha) no frena el alta del lead.
+    /// </summary>
+    private async Task NotifyMasterNewLeadAsync(Lead lead, IncomingMessage incoming, CancellationToken ct)
+    {
+        try
+        {
+            var master = PersonHandoffService.WhatsAppNumber(
+                await _db.InspirationSettings.AsNoTracking().Select(x => x.MasterPhone).FirstOrDefaultAsync(ct));
+            if (master is null || master == PersonHandoffService.WhatsAppNumber(lead.WhatsappPhone)) return;
+            var app = await _db.Products.AsNoTracking().Where(p => p.ProductKey == lead.ProductKey)
+                .Select(p => p.DisplayName).FirstOrDefaultAsync(ct) ?? lead.ProductKey;
+            var seller = lead.SellerId is null ? null : await _db.Sellers.AsNoTracking()
+                .Where(s => s.Id == lead.SellerId).Select(s => s.DisplayName).FirstOrDefaultAsync(ct);
+            var text = incoming.Text.Length > 200 ? incoming.Text[..200] + "…" : incoming.Text;
+            var msg = $"lead nuevo en {app}: {lead.Name} (+{lead.WhatsappPhone})\n" +
+                      (string.IsNullOrWhiteSpace(lead.AdTitle) ? "sin anuncio reconocido\n" : $"anuncio: {lead.AdTitle}\n") +
+                      $"escribio: \"{text}\"\n" +
+                      (lead.BotMutedAt is null
+                          ? $"el bot ya lo esta atendiendo (pasa a {seller ?? "la persona"})"
+                          : "nadie lo atiende todavia: contestale a mano");
+            await _evo.SendTextAsync(incoming.InstanceName, master, msg, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "Aviso de lead nuevo al maestro falló (lead {Lead})", lead.Id);
+        }
     }
 
     /// <summary>
