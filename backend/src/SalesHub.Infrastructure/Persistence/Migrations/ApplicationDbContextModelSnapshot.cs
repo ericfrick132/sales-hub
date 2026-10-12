@@ -2432,6 +2432,87 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("messaging_policies", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.MetaAd", b =>
+                {
+                    b.Property<string>("AdId")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ad_id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTimeOffset?>("AdCreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ad_created_at");
+
+                    b.Property<string>("Angle")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("angle");
+
+                    b.Property<string>("Body")
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<string>("BusinessRef")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("business_ref");
+
+                    b.Property<string>("DestinationPhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("destination_phone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("PrefillText")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("prefill_text");
+
+                    b.Property<string>("ProductKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<string>("Rubro")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("rubro");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("SyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("title");
+
+                    b.HasKey("AdId")
+                        .HasName("pk_meta_ads");
+
+                    b.HasIndex("ProductKey")
+                        .HasDatabaseName("ix_meta_ads_product_key");
+
+                    b.ToTable("meta_ads", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.OnboardingAudio", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2479,6 +2560,13 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("AnglePitches")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("angle_pitches")
+                        .HasDefaultValueSql("'[]'::jsonb");
 
                     b.Property<string>("ClosingMessage")
                         .IsRequired()
@@ -2533,6 +2621,13 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("intro");
+
+                    b.Property<string>("KnownBusinessQuestion")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("")
+                        .HasColumnName("known_business_question");
 
                     b.Property<string>("PersonaQuestion")
                         .IsRequired()

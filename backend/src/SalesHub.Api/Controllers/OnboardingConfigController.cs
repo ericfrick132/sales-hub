@@ -30,7 +30,9 @@ public class OnboardingConfigController : ControllerBase
         string? PostSignupCheckin = null, string? TrialDiscountNudge = null, string? FirstStepsMessage = null,
         // Pre-calificación con pase a una persona (Mateo). HandoffEnabled null = no tocar (frontend viejo).
         bool? HandoffEnabled = null, Guid? HandoffSellerId = null, int? HandoffAfterQuestions = null,
-        string? PresentAs = null, string? HandoffMessage = null, string? DemoEventTypeUri = null, string? DemoPitch = null);
+        string? PresentAs = null, string? HandoffMessage = null, string? DemoEventTypeUri = null, string? DemoPitch = null,
+        // Por anuncio (ver MetaAd): 1ª pregunta con el rubro ya sabido y pitch por ángulo. null = no tocar.
+        string? KnownBusinessQuestion = null, List<AnglePitch>? AnglePitches = null);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -55,7 +57,8 @@ public class OnboardingConfigController : ControllerBase
                 c?.ReengageMediaCaptions ?? new(), c?.PostSignupCheckin ?? "", c?.TrialDiscountNudge ?? "",
                 c?.FirstStepsMessage ?? "",
                 c?.HandoffSellerId is not null, c?.HandoffSellerId, c?.HandoffAfterQuestions ?? 2,
-                c?.PresentAs ?? "", c?.HandoffMessage ?? "", c?.DemoEventTypeUri ?? "", c?.DemoPitch ?? "");
+                c?.PresentAs ?? "", c?.HandoffMessage ?? "", c?.DemoEventTypeUri ?? "", c?.DemoPitch ?? "",
+                c?.KnownBusinessQuestion ?? "", c?.AnglePitches ?? new());
         });
         return Ok(result);
     }
@@ -106,6 +109,17 @@ public class OnboardingConfigController : ControllerBase
         if (dto.PresentAs is not null) c.PresentAs = string.IsNullOrWhiteSpace(dto.PresentAs) ? null : dto.PresentAs.Trim().ToLowerInvariant();
         if (dto.HandoffMessage is not null) c.HandoffMessage = dto.HandoffMessage.Trim();
         if (dto.DemoPitch is not null) c.DemoPitch = dto.DemoPitch.Trim();
+        if (dto.KnownBusinessQuestion is not null) c.KnownBusinessQuestion = dto.KnownBusinessQuestion.Trim();
+        if (dto.AnglePitches is not null)
+            c.AnglePitches = dto.AnglePitches
+                .Where(p => !string.IsNullOrWhiteSpace(p.Text))
+                .Select(p => new AnglePitch
+                {
+                    Angle = (p.Angle ?? "").Trim().ToLowerInvariant(),
+                    Text = p.Text.Trim(),
+                    MediaAssetIds = (p.MediaAssetIds ?? new()).Where(g => g != Guid.Empty).ToList(),
+                })
+                .ToList();
         if (dto.DemoEventTypeUri is not null)
             c.DemoEventTypeUri = string.IsNullOrWhiteSpace(dto.DemoEventTypeUri) ? null : dto.DemoEventTypeUri.Trim();
         c.UpdatedAt = DateTimeOffset.UtcNow;

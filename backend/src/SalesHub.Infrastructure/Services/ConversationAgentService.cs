@@ -418,6 +418,7 @@ public class ConversationAgentService
                 {
                     // Pre-calificación: el bot cierra su parte y sigue la persona en la misma línea.
                     if (!string.IsNullOrWhiteSpace(ob.Reply)) await OnboardingSendAsync(lead, ob.Reply!, ct);
+                    if (ob.MediaAssetIds is { Count: > 0 }) await TrySendOnboardingMediaAsync(lead, ob.MediaAssetIds, ob.MediaCaptions, ct);
                     await _handoff.HandoffAsync(lead, onbCfg!.HandoffSellerId, ob.Handoff, null, null, ct);
                     await _db.SaveChangesAsync(ct);
                     done++;

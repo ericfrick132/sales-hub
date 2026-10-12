@@ -2,7 +2,38 @@ import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
-import type { OnboardingAppConfig, OnboardingAudioVariant } from '../lib/types';
+import type { AnglePitch, OnboardingAppConfig, OnboardingAudioVariant } from '../lib/types';
+
+const ANGLES = [
+  { key: '', label: 'por defecto (sin anuncio)' },
+  { key: 'bot-whatsapp', label: 'anuncio "bot WhatsApp"' },
+  { key: 'antes-despues', label: 'anuncio "antes y después"' },
+];
+
+/** Pitch al terminar la pre-calificación, uno por ángulo del anuncio. */
+function AnglePitchesEditor({ value, onChange }: { value: AnglePitch[]; onChange: (v: AnglePitch[]) => void }) {
+  const get = (angle: string) => value.find((p) => p.angle === angle);
+  const set = (angle: string, text: string) => {
+    const rest = value.filter((p) => p.angle !== angle);
+    onChange(text.trim() ? [...rest, { angle, text, mediaAssetIds: get(angle)?.mediaAssetIds ?? [] }] : rest);
+  };
+  const extra = value.filter((p) => !ANGLES.some((a) => a.key === p.angle));
+  return (
+    <div className="space-y-2 sm:col-span-3">
+      <div className="text-slate-600">
+        Pitch al terminar las preguntas, según el anuncio del que vino el lead. Sale justo antes del pase a la persona.
+        Admite {'{a|b}'} y [NUEVO_MENSAJE].
+      </div>
+      {[...ANGLES, ...extra.map((p) => ({ key: p.angle, label: p.angle }))].map((a) => (
+        <label key={a.key} className="block space-y-0.5">
+          <div className="text-xs font-medium text-slate-500">{a.label}</div>
+          <textarea className="input w-full h-20" value={get(a.key)?.text ?? ''}
+            onChange={(e) => set(a.key, e.target.value)} />
+        </label>
+      ))}
+    </div>
+  );
+}
 
 /** Grabador del audio del pitch: graba del micrófono, sube y lista las variantes (el motor rota). */
 function AudioSection({ productKey, usePitchAudio, onToggle }: {
@@ -227,7 +258,18 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
               </label>
             )}
             <label className="space-y-0.5 sm:col-span-3">
-              <div className="text-slate-600">Lo que dice el bot antes de que siga la persona (admite {'{a|b}'}; vacío = no dice nada)</div>
+              <div className="text-slate-600">
+                1ª pregunta cuando el anuncio ya dijo el rubro (ver Marketing → Anuncios). {'{negocio}'} = "la barberia",
+                "el estudio de tatuajes"… Vacío = la 1ª pregunta de siempre.
+              </div>
+              <input className="input w-full" value={form.knownBusinessQuestion ?? ''}
+                placeholder="comentame, como se llama {negocio}?"
+                onChange={(e) => setForm((f) => ({ ...f, knownBusinessQuestion: e.target.value }))} />
+            </label>
+            <AnglePitchesEditor value={form.anglePitches ?? []}
+              onChange={(v) => setForm((f) => ({ ...f, anglePitches: v }))} />
+            <label className="space-y-0.5 sm:col-span-3">
+              <div className="text-slate-600">Lo que dice el bot antes de que siga la persona si no hay pitch para el ángulo (admite {'{a|b}'}; vacío = no dice nada)</div>
               <textarea className="input w-full h-16" value={form.handoffMessage ?? ''}
                 placeholder="{perfecto|genial}, con eso ya tengo lo que necesito. te lo dejo armado con tus datos asi lo ves andando, {te llamo 10 minutos|hacemos una llamada corta} o preferis que lo veamos por aca?"
                 onChange={(e) => setForm((f) => ({ ...f, handoffMessage: e.target.value }))} />

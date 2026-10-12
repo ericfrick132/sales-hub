@@ -420,6 +420,15 @@ public class OnboardingService
         var provisionExtra = persona?.ProvisionExtra;
         var intro = effectiveIntro;
 
+        // El anuncio ya dijo el rubro ("Tengo una barberia y quiero…"): no se lo volvemos a preguntar.
+        var ad = lead.AdId is null ? null : await _db.MetaAds.AsNoTracking().FirstOrDefaultAsync(a => a.AdId == lead.AdId, ct);
+        if (persona is null && !reengage && questions.Count > 0 && ad?.BusinessRef is { } negocio
+            && !string.IsNullOrWhiteSpace(cfg.KnownBusinessQuestion))
+        {
+            questions = questions.ToList();
+            questions[0] = cfg.KnownBusinessQuestion.Replace("{negocio}", negocio);
+        }
+
         var n = questions.Count;
         if (n == 0) return new OnboardingResult(null, OffScript: true, Provisioned: false); // sin preguntas → IA libre
 
@@ -471,7 +480,13 @@ public class OnboardingService
             ? (!EmailRx.IsMatch(burst) && (KeywordRx.IsMatch(burstLower) || DoubtRx.IsMatch(burst)))
             : (KeywordRx.IsMatch(burstLower) || DoubtRx.IsMatch(burst) || OffTopicRx.IsMatch(burstLower));
         var handoffMode = cfg.HandoffSellerId is not null;
-        if (handoffMode && inCollect && !atEmailStep)
+        // Contestando la ÚLTIMA pregunta antes del pase ("tenes experiencia con alguna app de
+        // turnos?"): "ya uso agendapro" o "no, nunca" ES la respuesta, no una objeción. Solo
+        // cortamos antes del pitch si pregunta algo o pide precio/info.
+        var answeringLast = handoffMode && ob.Step == Math.Clamp(cfg.HandoffAfterQuestions, 1, Math.Max(n, 1));
+        if (answeringLast && inCollect && !atEmailStep && !msg.Contains('?') && !KeywordRx.IsMatch(burstLower))
+            isDoubt = false;
+        if (handoffMode && inCollect && !atEmailStep && !(answeringLast && !isDoubt))
         {
             // Pre-calificación: cualquier cosa que no sea responder la pregunta la contesta la persona.
             var lastQuestion = ob.Step >= 1 && ob.Step <= n ? questions[ob.Step - 1] : null;
@@ -584,14 +599,19 @@ public class OnboardingService
                         return new OnboardingResult(PresentAs(ReactTo(msg, lead.Id) + "[NUEVO_MENSAJE]" + Spin(pitch, lead.Id, 96), cfg),
                             OffScript: false, Provisioned: false);
                     }
-                    // Sin Calendly: el bot cierra su parte y sigue la persona en la misma línea.
-                    reply = Spin(cfg.HandoffMessage ?? string.Empty, lead.Id, k);
+                    // Sin Calendly: el bot cierra su parte (con el pitch del ángulo del anuncio, si hay)
+                    // y sigue la persona en la misma línea.
+                    var anglePitch = cfg.AnglePitches.FirstOrDefault(p => !string.IsNullOrWhiteSpace(ad?.Angle)
+                                         && string.Equals(p.Angle, ad!.Angle, StringComparison.OrdinalIgnoreCase))
+                                     ?? cfg.AnglePitches.FirstOrDefault(p => string.IsNullOrWhiteSpace(p.Angle));
+                    reply = Spin(anglePitch?.Text ?? cfg.HandoffMessage ?? string.Empty, lead.Id, k);
                     lead.Status = LeadStatus.Interested;
                     ob.Step = StepHumanHandoff;
                     ob.UpdatedAt = DateTimeOffset.UtcNow;
                     await _db.SaveChangesAsync(ct);
                     return new OnboardingResult(string.IsNullOrWhiteSpace(reply) ? null : PresentAs(reply, cfg),
-                        OffScript: false, Provisioned: false, Handoff: $"respondió {k} preguntas");
+                        OffScript: false, Provisioned: false, Handoff: $"respondió {k} preguntas",
+                        MediaAssetIds: anglePitch?.MediaAssetIds is { Count: > 0 } media ? media : null);
                 }
                 if (k < n) { reply = questions[k]; ob.Step = k + 1; }
                 else if (cfg.SelfServe) // última pregunta → audio del pitch (si hay) + pide mail

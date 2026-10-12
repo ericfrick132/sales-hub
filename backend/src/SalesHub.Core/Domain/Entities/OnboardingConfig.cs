@@ -139,6 +139,15 @@ public class OnboardingConfig
     /// </summary>
     public string DemoPitch { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 1ª pregunta cuando el anuncio ya dijo el rubro ("comentame, como se llama {negocio}?"):
+    /// {negocio} = <see cref="MetaAd.BusinessRef"/>. Vacío = la 1ª de <see cref="Questions"/>.
+    /// </summary>
+    public string KnownBusinessQuestion { get; set; } = string.Empty;
+
+    /// <summary>Pitch al terminar la pre-calificación, por ángulo del anuncio. Sin match = <see cref="HandoffMessage"/>.</summary>
+    public List<AnglePitch> AnglePitches { get; set; } = new();
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

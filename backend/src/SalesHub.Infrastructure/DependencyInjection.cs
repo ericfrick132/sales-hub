@@ -145,6 +145,7 @@ public static class DependencyInjection
         services.AddScoped<RemarketingService>();
         services.AddScoped<PersonHandoffService>();
         services.AddSingleton<ChatHistoryImporter>();          // chats de Evolution → ingest (sync periódico + historial de un teléfono nuevo)            // leads que entraron a cada teléfono (gráfico + reporte diario)
+        services.AddScoped<MetaAdsSyncService>();         // anuncios de Meta → meta_ads (rubro/ángulo por anuncio para el guion)
         services.AddScoped<PitchEngine>();                 // pitch por anuncio (pasos, follow-ups, avance por respuesta)
         services.AddScoped<ConversationFeedbackProvider>(); // 👍/👎 humanos → aprendizajes en el prompt
         services.AddSingleton<TakeoverSignal>(); // señal "+": salto de cola webhook→agente

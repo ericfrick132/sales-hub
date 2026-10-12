@@ -446,6 +446,16 @@ export interface OnboardingAppConfig {
   demoEventTypeUri?: string;
   /** Antes de los horarios: qué le resuelve + si quiere verlo con sus datos (tras una reacción a su respuesta). */
   demoPitch?: string;
+  /** 1ª pregunta cuando el anuncio ya dijo el rubro ("comentame, como se llama {negocio}?"). */
+  knownBusinessQuestion?: string;
+  /** Pitch al terminar la pre-calificación según el ángulo del anuncio ("" = por defecto). */
+  anglePitches?: AnglePitch[];
+}
+
+export interface AnglePitch {
+  angle: string;
+  text: string;
+  mediaAssetIds: string[];
 }
 
 export interface OnboardingAudioVariant {

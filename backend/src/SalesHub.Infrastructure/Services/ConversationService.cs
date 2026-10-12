@@ -23,6 +23,7 @@ public class ConversationService
     private readonly PitchEngine _pitch;
     private readonly RemarketingService _remarketing;
     private readonly IntentClassifier _intents;
+    private readonly MetaAdsSyncService _metaAds;
     private readonly ILogger<ConversationService> _log;
     private static readonly Regex NonDigit = new(@"\D", RegexOptions.Compiled);
 
@@ -35,10 +36,10 @@ public class ConversationService
 
     public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILeadAssigner assigner,
         TakeoverSignal takeover, PitchEngine pitch, RemarketingService remarketing, IntentClassifier intents,
-        ILogger<ConversationService> log)
+        MetaAdsSyncService metaAds, ILogger<ConversationService> log)
     {
         _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _pitch = pitch; _remarketing = remarketing;
-        _intents = intents; _log = log;
+        _intents = intents; _metaAds = metaAds; _log = log;
     }
 
     public record IncomingMessage(
@@ -627,10 +628,15 @@ public class ConversationService
     private async Task<Lead?> TryCreateAdLeadAsync(IncomingMessage incoming, string phone, EvolutionInstance instance, CancellationToken ct)
     {
         var hasReferral = incoming.Ad is not null;
-        if (!hasReferral && !AdIntentRx.IsMatch(incoming.Text)) return null;
+        // El anuncio exacto (por referral o por su texto pre-armado): trae app, rubro y ángulo.
+        var metaAd = await _metaAds.MatchAsync(incoming.Ad?.SourceId, incoming.Text, ct);
+        if (!hasReferral && metaAd is null && !AdIntentRx.IsMatch(incoming.Text)) return null;
 
-        // Resuelve entre las apps que atiende ESTA línea (puede ser más de una).
-        var product = await DetectProductForLineAsync(incoming.Text, instance, ct);
+        // Resuelve entre las apps que atiende ESTA línea (puede ser más de una); el anuncio manda.
+        var product = metaAd?.ProductKey is { } adProduct
+            ? await _db.Products.FirstOrDefaultAsync(p => p.Active && p.ProductKey == adProduct, ct)
+            : null;
+        product ??= await DetectProductForLineAsync(incoming.Text, instance, ct);
         // Con referral: el id del anuncio puede estar asignado a un pitch → ese producto gana.
         if (hasReferral && !string.IsNullOrWhiteSpace(incoming.Ad!.SourceId))
         {
@@ -649,6 +655,8 @@ public class ConversationService
             Id = Guid.NewGuid(),
             ProductKey = product.ProductKey,
             Source = LeadSource.WhatsAppAd,
+            AdId = metaAd?.AdId,
+            AdTitle = metaAd is null ? null : Trunc(metaAd.Name, 256),
             Name = ExtractPushName(incoming.RawJson) ?? "Lead de anuncio",
             WhatsappPhone = phone,
             WhatsappValidated = true,

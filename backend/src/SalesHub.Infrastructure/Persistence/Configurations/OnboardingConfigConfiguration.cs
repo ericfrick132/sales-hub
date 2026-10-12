@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SalesHub.Core.Domain.Entities;
@@ -21,5 +22,19 @@ public class OnboardingConfigConfiguration : IEntityTypeConfiguration<Onboarding
         // Default explícito: ADD COLUMN NOT NULL de un array sin default revienta con 23502
         // si la tabla tiene filas (nos pasó con reengage_media_asset_ids, 2026-07-20).
         b.Property(x => x.ReengageMediaCaptions).HasDefaultValueSql("'{}'");
+        b.Property(x => x.KnownBusinessQuestion).HasDefaultValue(string.Empty);
+        b.Property(x => x.AnglePitches)
+            .HasColumnType("jsonb")
+            .HasDefaultValueSql("'[]'::jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v ?? new(), (JsonSerializerOptions?)null),
+                v => DeserializePitches(v));
+    }
+
+    private static List<AnglePitch> DeserializePitches(string? v)
+    {
+        if (string.IsNullOrWhiteSpace(v)) return new();
+        try { return JsonSerializer.Deserialize<List<AnglePitch>>(v, (JsonSerializerOptions?)null) ?? new(); }
+        catch { return new(); }
     }
 }
