@@ -42,7 +42,8 @@ public class MetaAdsSyncService
         await PageAsync(client, $"https://graph.facebook.com/{Version}/me/adaccounts?fields=id&limit=100&access_token={Uri.EscapeDataString(token)}",
             el => accounts.Add(el.GetProperty("id").GetString()!), ct);
 
-        var products = await _db.Products.AsNoTracking().Select(p => new { p.ProductKey, p.DisplayName }).ToListAsync(ct);
+        var products = await _db.Products.AsNoTracking().Where(p => p.ProductKey != "")
+            .Select(p => new { p.ProductKey, p.DisplayName }).ToListAsync(ct);
         var existing = await _db.MetaAds.ToDictionaryAsync(a => a.AdId, ct);
         var now = DateTimeOffset.UtcNow;
         var saved = 0;
@@ -147,9 +148,13 @@ public class MetaAdsSyncService
         var parts = ad.Name.Split(" - ", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return;
         var app = Slug(parts[0]);
-        var product = products.FirstOrDefault(p => Slug(p.Key) == app || Slug(p.Display) == app
-            || app.StartsWith(Slug(p.Display)) || app.StartsWith(Slug(p.Key)));
-        ad.ProductKey = product.Key;
+        if (app.Length == 0) return;
+        // "PlayCrew B2B" → playcrew: exacto primero, si no el nombre del anuncio que EMPIEZA con la app.
+        var match = products.Where(p => Slug(p.Key) == app || Slug(p.Display) == app)
+            .Concat(products.Where(p => (Slug(p.Display).Length > 2 && app.StartsWith(Slug(p.Display)))
+                                     || (Slug(p.Key).Length > 2 && app.StartsWith(Slug(p.Key)))))
+            .Select(p => p.Key).FirstOrDefault();
+        ad.ProductKey = match;
         if (parts.Length >= 3)
         {
             ad.Rubro = Trunc(Slug(parts[1]), 80);
