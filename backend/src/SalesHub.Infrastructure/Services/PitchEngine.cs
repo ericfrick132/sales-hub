@@ -8,6 +8,8 @@ using SalesHub.Infrastructure.Options;
 using SalesHub.Infrastructure.Persistence;
 using SalesHub.Infrastructure.Services.Social;
 
+using Sender = SalesHub.Infrastructure.Services.SellerLineSender.LeadLine;
+
 namespace SalesHub.Infrastructure.Services;
 
 /// <summary>
@@ -137,7 +139,7 @@ public class PitchEngine
         state.UpdatedAt = state.CompletedAt.Value;
         // IA libre solo si la charla vive en la línea del vendedor (la IA responde por esa línea);
         // si entró por una línea de app sin vendedor, el número sería otro → handoff.
-        var sender = await ResolveSenderAsync(lead, ct);
+        var sender = await _lineSender.ResolveForLeadAsync(lead, ct);
         var aiOk = p.AiAfterPitch && sender is { IsSellerLine: true };
         if (!aiOk) lead.BotMutedAt ??= DateTimeOffset.UtcNow;
         lead.UpdatedAt = DateTimeOffset.UtcNow;
@@ -255,7 +257,7 @@ public class PitchEngine
         if (p.Channel == MessageChannel.Instagram)
             return await EnqueueInstagramStepAsync(s, idx, now, ct);
 
-        var sender = await ResolveSenderAsync(lead, ct);
+        var sender = await _lineSender.ResolveForLeadAsync(lead, ct);
         if (sender is null)
         {
             // Sin línea para mandar (todo desconectado o solo-escucha): reintentar más tarde sin
@@ -334,7 +336,7 @@ public class PitchEngine
         }
         else
         {
-            var sender = await ResolveSenderAsync(lead, ct);
+            var sender = await _lineSender.ResolveForLeadAsync(lead, ct);
             if (sender is null) return false;
             await TypingAsync(sender, lead, 3, ct);
             await Task.Delay(TimeSpan.FromSeconds(3), ct);
@@ -522,38 +524,6 @@ public class PitchEngine
     }
 
     // ───────────────────────────── Transporte ─────────────────────────────
-
-    /// <summary>Por dónde sale el pitch para este lead.</summary>
-    public sealed record Sender(string? InstanceName, Guid? BridgeSellerId, bool IsSellerLine)
-    {
-        public bool IsBridge => BridgeSellerId is not null && InstanceName is null;
-    }
-
-    /// <summary>
-    /// La línea donde VIVE la conversación (la que recibió el último inbound) si está conectada y
-    /// no es solo-escucha; si no, la línea del vendedor; si no, el celu (bridge) del vendedor.
-    /// </summary>
-    public async Task<Sender?> ResolveSenderAsync(Lead lead, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return null;
-        var lastInstance = await _db.ConversationMessages.AsNoTracking()
-            .Where(m => m.LeadId == lead.Id && m.Direction == MessageDirection.Inbound && m.EvolutionInstance != null)
-            .OrderByDescending(m => m.Timestamp)
-            .Select(m => m.EvolutionInstance)
-            .FirstOrDefaultAsync(ct);
-        if (!string.IsNullOrWhiteSpace(lastInstance))
-        {
-            var line = await _db.EvolutionInstances.AsNoTracking().FirstOrDefaultAsync(i => i.InstanceName == lastInstance, ct);
-            if (line is not null && line.Status == InstanceStatus.Connected && !line.ListenOnly)
-                return new Sender(line.InstanceName, null, line.SellerId != null && line.SellerId == lead.SellerId);
-        }
-        var sellerInst = lead.Seller?.EvolutionInstance;
-        if (sellerInst is not null && sellerInst.Status == InstanceStatus.Connected && !sellerInst.ListenOnly)
-            return new Sender(sellerInst.InstanceName, null, true);
-        if (lead.SellerId is not null && await _db.Devices.AnyAsync(d => d.SellerId == lead.SellerId, ct))
-            return new Sender(null, lead.SellerId, true);
-        return null;
-    }
 
     private async Task TypingAsync(Sender sender, Lead lead, int seconds, CancellationToken ct)
     {

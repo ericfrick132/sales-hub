@@ -29,14 +29,15 @@ public class VoiceNoteService
     private readonly ElevenLabsClient _tts;
     private readonly ClaudeClient _claude;
     private readonly IEvolutionClient _evo;
+    private readonly SellerLineSender _lineSender;
     private readonly VoiceNoteOptions _opts;
     private readonly ILogger<VoiceNoteService> _log;
 
     public VoiceNoteService(
         ApplicationDbContext db, ElevenLabsClient tts, ClaudeClient claude,
-        IEvolutionClient evo, IOptions<VoiceNoteOptions> opts, ILogger<VoiceNoteService> log)
+        IEvolutionClient evo, SellerLineSender lineSender, IOptions<VoiceNoteOptions> opts, ILogger<VoiceNoteService> log)
     {
-        _db = db; _tts = tts; _claude = claude; _evo = evo; _opts = opts.Value; _log = log;
+        _db = db; _tts = tts; _claude = claude; _evo = evo; _lineSender = lineSender; _opts = opts.Value; _log = log;
     }
 
     /// <summary>Marcador en el hilo: outbound de audio del bot con su guion (para contexto de la IA y la UI).</summary>
@@ -62,9 +63,10 @@ public class VoiceNoteService
     {
         if (!_tts.IsConfigured || !_claude.IsConfigured) return false;
         if (lead.Product?.AutoPilot != true) return false;
-        var instance = lead.Seller?.EvolutionInstance;
-        if (instance is null || instance.Status != InstanceStatus.Connected) return false;
         if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return false;
+        // Misma línea que el texto: la de la app si la charla entró por ahí (el celu no manda audio).
+        var instanceName = (await _lineSender.ResolveForLeadAsync(lead, ct))?.InstanceName;
+        if (instanceName is null) return false;
 
         var trigger = DetectTrigger(thread, lastInbound, reply, intent);
         if (trigger == Trigger.None) return false;
@@ -121,7 +123,7 @@ public class VoiceNoteService
             Direction = MessageDirection.Outbound,
             Status = MessageDeliveryStatus.Sent,
             Text = AudioPrefix + script,
-            EvolutionInstance = instance.InstanceName,
+            EvolutionInstance = instanceName,
             Timestamp = DateTimeOffset.UtcNow,
             IsRead = true,
         };
@@ -136,12 +138,12 @@ public class VoiceNoteService
         var presence = Math.Clamp(prep.DurationSeconds, 2, 12);
         try
         {
-            await _evo.SetPresenceRecordingAsync(instance.InstanceName, jid, presence, ct);
+            await _evo.SetPresenceRecordingAsync(instanceName, jid, presence, ct);
             await Task.Delay(TimeSpan.FromSeconds(presence), ct);
         }
         catch { /* la presencia es cosmética */ }
 
-        var ok = await _evo.SendPreparedVoiceNoteAsync(instance.InstanceName, lead.WhatsappPhone!, prep.OggBytes, ct);
+        var ok = await _evo.SendPreparedVoiceNoteAsync(instanceName, lead.WhatsappPhone!, prep.OggBytes, ct);
         if (!ok)
         {
             msg.Status = MessageDeliveryStatus.Failed;

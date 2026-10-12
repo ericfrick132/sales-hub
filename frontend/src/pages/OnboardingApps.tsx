@@ -178,8 +178,9 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
         <div className="text-xs text-slate-500">
           El bot hace las primeras preguntas y le pasa el lead a la persona, que sigue en el mismo chat (misma línea).
           Si antes el lead pregunta algo, pide precio o llamada, o se sale del guion, el pase es inmediato. El bot se
-          calla en esa charla, el lead queda etiquetado <code>para-mateo</code> y a la persona le llega un resumen por
-          WhatsApp (tiene que tener su número cargado en Vendedores).
+          calla en esa charla, el lead queda etiquetado <code>para-mateo</code> y a nombre de esta persona, y le llega un
+          aviso a su WhatsApp personal con qué chat abrir (tiene que tener su número cargado en Vendedores). En las
+          líneas por app, todo número nuevo pasa por estas preguntas y el bot contesta por la misma línea.
         </div>
         {form.handoffEnabled && (
           <div className="grid gap-2 sm:grid-cols-3">

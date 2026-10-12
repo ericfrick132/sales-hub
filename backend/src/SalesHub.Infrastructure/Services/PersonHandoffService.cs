@@ -9,9 +9,9 @@ namespace SalesHub.Infrastructure.Services;
 
 /// <summary>
 /// Pase de un lead a una persona (Mateo) que sigue la charla en la MISMA línea: el bot se calla en
-/// esa charla, el lead queda etiquetado y con nota, y a la persona le llega un resumen por WhatsApp
-/// desde esa línea (la que acaba de recibir el mensaje, así que está viva). No cambia el dueño del
-/// lead: si lo cambiara, las respuestas saldrían por otro número.
+/// esa charla, el lead queda etiquetado y con nota, y a la persona le llega un aviso corto a su WhatsApp
+/// personal desde esa línea (la que acaba de recibir el mensaje, así que está viva). Las respuestas
+/// salen siempre por la línea donde vive la charla, no por la del dueño del lead.
 /// Lo usan el bot de pre-calificación (onboarding) y el remarketing cuando el lead contesta.
 /// No guarda: lo persiste quien llama.
 /// </summary>
@@ -58,12 +58,12 @@ public class PersonHandoffService
 
         var summary = await BuildSummaryAsync(lead, reason, latestInbound, context, ct);
 
-        var instance = lead.SellerId is null ? null : await _db.EvolutionInstances.AsNoTracking()
-            .Where(i => i.SellerId == lead.SellerId).Select(i => i.InstanceName).FirstOrDefaultAsync(ct);
+        // El aviso sale por la línea donde vive la charla (la de la app), que es la que está conectada.
+        var line = await _lineSender.ResolveForLeadAsync(lead, ct);
         var sent = false;
-        if (!string.IsNullOrWhiteSpace(person?.WhatsappPhone))
+        if (!string.IsNullOrWhiteSpace(person?.WhatsappPhone) && line is not null)
         {
-            try { sent = await _lineSender.SendTextAsync(lead.SellerId, instance, person.WhatsappPhone!, summary, ct); }
+            try { sent = await _lineSender.SendToLeadAsync(line, person.WhatsappPhone!, summary, ct); }
             catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogWarning(ex, "Pase: falló el aviso por la línea del lead"); }
         }
         if (!sent)
@@ -75,25 +75,20 @@ public class PersonHandoffService
         _log.LogInformation("Lead {Lead} pasado a {Person} ({Reason})", lead.Id, person?.DisplayName, reason);
     }
 
-    /// <summary>El texto del resumen que le llega a la persona (sin mandar nada; lo usa también el simulador).</summary>
+    /// <summary>
+    /// El aviso que le llega a la persona (sin mandar nada; lo usa también el simulador). Corto a
+    /// propósito: el chat se lee rápido en el WhatsApp Web de la línea, no hace falta resumirlo;
+    /// solo tiene que saber QUÉ chat y en QUÉ línea abrirlo.
+    /// </summary>
     public async Task<string> BuildSummaryAsync(Lead lead, string reason, string? latestInbound, string? context, CancellationToken ct)
     {
-        // Resumen: lo último que escribió el lead + el contexto del pase.
-        var previous = await _db.ConversationMessages.AsNoTracking()
-            .Where(m => m.LeadId == lead.Id && m.Direction == MessageDirection.Inbound)
-            .OrderByDescending(m => m.Timestamp).Take(4).Select(m => m.Text).ToListAsync(ct);
-        previous.Reverse();
-        if (!string.IsNullOrWhiteSpace(latestInbound) && (previous.Count == 0 || previous[^1] != latestInbound))
-            previous.Add(latestInbound);
-        var lines = previous.Where(t => !string.IsNullOrWhiteSpace(t)).TakeLast(4)
-            .Select(t => "- " + (t.Length > 160 ? t[..160] + "…" : t).Replace('\n', ' '));
         var app = await _db.Products.AsNoTracking().Where(p => p.ProductKey == lead.ProductKey)
             .Select(p => p.DisplayName).FirstOrDefaultAsync(ct) ?? lead.ProductKey;
-        var summary = $"lead para vos de {app}: {lead.Name} ({lead.WhatsappPhone})\n" +
-                      $"motivo: {reason}\n" +
-                      (string.IsNullOrWhiteSpace(context) ? "" : context.Trim() + "\n") +
-                      "lo que escribio:\n" + string.Join("\n", lines) + "\n" +
-                      "seguilo en el mismo chat (el bot ya no le contesta).";
-        return summary;
+        var line = await _lineSender.ResolveForLeadAsync(lead, ct);
+        var linePhone = line?.InstanceName is null ? null : await _db.EvolutionInstances.AsNoTracking()
+            .Where(i => i.InstanceName == line.InstanceName).Select(i => i.ConnectedPhoneNumber).FirstOrDefaultAsync(ct);
+        return $"{app}: {lead.Name} ({lead.WhatsappPhone}) necesita atencion ({reason}).\n" +
+               $"abrilo en la linea de {app}" + (string.IsNullOrWhiteSpace(linePhone) ? "" : $" (+{linePhone})") +
+               ", el bot ya no le contesta.";
     }
 }

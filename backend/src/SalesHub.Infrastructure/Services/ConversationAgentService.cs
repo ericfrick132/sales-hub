@@ -388,8 +388,11 @@ public class ConversationAgentService
             //    cuenta y mandarles el AccessUrl. A reengage/meta los dejamos entrar aunque ya tengan
             //    historia de mensajes (el opener ya salió; ese es justo el punto).
             var fedToClose = lead.Source is LeadSource.ProductReengage or LeadSource.MetaLeadAd;
+            //  - ORGÁNICOS (WhatsAppInbound) cuando la app pre-califica con pase a persona: en las
+            //    líneas por app todo número nuevo pasa por las preguntas antes de llegar a la persona.
             var onbEligible = onbCfg is not null
-                && (lead.Source == LeadSource.WhatsAppAd || (fedToClose && onbCfg.SelfServe));
+                && (lead.Source == LeadSource.WhatsAppAd || (fedToClose && onbCfg.SelfServe)
+                    || (lead.Source == LeadSource.WhatsAppInbound && onbCfg.HandoffSellerId is not null));
             // Tras un "+" (StepHumanHandoff) el guion NO retoma el alta: el humano llevó la
             // charla y el bot tiene que SEGUIRLA con la IA libre (todo el hilo), no caer al
             // off-script del onboarding que contesta "corto" como si fuera una duda del alta.
@@ -577,13 +580,12 @@ public class ConversationAgentService
     /// </summary>
     private async Task<bool> TrySendPitchAudioAsync(Lead lead, string productKey, CancellationToken ct)
     {
-        var instance = lead.Seller?.EvolutionInstance;
-        if (instance is null || instance.Status != InstanceStatus.Connected || string.IsNullOrWhiteSpace(lead.WhatsappPhone))
-            return false;
+        var line = await _lineSender.ResolveForLeadAsync(lead, ct);
+        if (line?.InstanceName is null) return false;
         var audios = await _db.OnboardingAudios.Where(a => a.ProductKey == productKey).Select(a => a.Data).ToListAsync(ct);
         if (audios.Count == 0) return false;
         var pick = audios[Random.Shared.Next(audios.Count)];
-        var ok = await _evo.SendPreparedVoiceNoteAsync(instance.InstanceName, lead.WhatsappPhone!, pick, ct);
+        var ok = await _evo.SendPreparedVoiceNoteAsync(line.InstanceName, lead.WhatsappPhone!, pick, ct);
         if (!ok) return false;
         _db.ConversationMessages.Add(new ConversationMessage
         {
@@ -593,7 +595,7 @@ public class ConversationAgentService
             Direction = MessageDirection.Outbound,
             Status = MessageDeliveryStatus.Sent,
             Text = "[audio]",
-            EvolutionInstance = instance.InstanceName,
+            EvolutionInstance = line.InstanceName,
             Timestamp = DateTimeOffset.UtcNow,
             IsRead = true,
         });
@@ -609,9 +611,8 @@ public class ConversationAgentService
     private async Task TrySendOnboardingMediaAsync(Lead lead, List<Guid> assetIds, List<string>? captions, CancellationToken ct)
     {
         if (lead.Product?.AppManagedTransport == true) return;
-        var instance = lead.Seller?.EvolutionInstance;
-        if (instance is null || instance.Status != InstanceStatus.Connected || string.IsNullOrWhiteSpace(lead.WhatsappPhone))
-            return;
+        var line = await _lineSender.ResolveForLeadAsync(lead, ct);
+        if (line?.InstanceName is null) return;
         var assets = await _db.MediaAssets.AsNoTracking()
             .Where(a => assetIds.Contains(a.Id)).ToListAsync(ct);
         for (var i = 0; i < assetIds.Count; i++)
@@ -622,7 +623,7 @@ public class ConversationAgentService
             var caption = captions is not null && i < captions.Count && !string.IsNullOrWhiteSpace(captions[i])
                 ? captions[i] : null;
             if (i > 0) await Task.Delay(TimeSpan.FromSeconds(Random.Shared.Next(4, 9)), ct);
-            var ok = await _evo.SendMediaAsync(instance.InstanceName, lead.WhatsappPhone!,
+            var ok = await _evo.SendMediaAsync(line.InstanceName, lead.WhatsappPhone!,
                 asset.Content, asset.MimeType, asset.FileName, caption, ct);
             if (!ok)
             {
@@ -640,7 +641,7 @@ public class ConversationAgentService
                 Text = (mt.StartsWith("video", StringComparison.OrdinalIgnoreCase) ? "[video]"
                      : mt.StartsWith("image", StringComparison.OrdinalIgnoreCase) ? "[imagen]" : "[archivo]")
                      + (caption is null ? string.Empty : " " + caption),
-                EvolutionInstance = instance.InstanceName,
+                EvolutionInstance = line.InstanceName,
                 Timestamp = DateTimeOffset.UtcNow,
                 IsRead = true,
             });
@@ -728,14 +729,11 @@ public class ConversationAgentService
         // (no requiere instancia de sales-hub conectada).
         if (lead.Product?.AppManagedTransport == true) { EnqueueRelay(lead, parts); return; }
 
-        var instance = lead.Seller?.EvolutionInstance;
-        // El texto puede salir por el celu del vendedor aunque Evolution esté muerta: sin
-        // esto el agente guardaba la respuesta como "sugerencia" y la charla se cortaba
-        // después del primer mensaje (ver [[feedback-no-evolution]]).
-        var canSend = !string.IsNullOrWhiteSpace(lead.WhatsappPhone)
-            && await _lineSender.CanSendAsync(lead.SellerId, instance?.InstanceName, instance?.Status, ct);
+        // Sale por la línea donde vive la charla (la de la app, si entró por ahí); si no, por la
+        // del vendedor o su celu. Sin línea → queda como sugerencia.
+        var line = await _lineSender.ResolveForLeadAsync(lead, ct);
 
-        if (!canSend)
+        if (line is null)
         {
             lead.AiSuggestedReply = string.Join("\n", parts);
             lead.AiSuggestedReplyAt = DateTimeOffset.UtcNow;
@@ -753,8 +751,8 @@ public class ConversationAgentService
                 // "de a poco": pausa proporcional al largo del mensaje (como alguien tipeando
                 // de verdad). Antes 2-5s: una pared de 5 burbujas caia en 15 segundos.
                 var pause = Math.Clamp(p.Length / 15, 4, 10);
-                if (instance is not null)
-                    try { await _evo.SetPresenceTypingAsync(instance.InstanceName, lead.WhatsappPhone!, pause, ct); } catch { }
+                if (line.InstanceName is not null)
+                    try { await _evo.SetPresenceTypingAsync(line.InstanceName, lead.WhatsappPhone!, pause, ct); } catch { }
                 await Task.Delay(TimeSpan.FromSeconds(pause), ct);
             }
             firstPart = false;
@@ -768,13 +766,13 @@ public class ConversationAgentService
                 Direction = MessageDirection.Outbound,
                 Status = MessageDeliveryStatus.Sent,
                 Text = p,
-                EvolutionInstance = instance?.InstanceName ?? string.Empty,
+                EvolutionInstance = line.InstanceName ?? string.Empty,
                 Timestamp = DateTimeOffset.UtcNow,
                 IsRead = true,
             };
             _db.ConversationMessages.Add(msg);
             await _db.SaveChangesAsync(ct);
-            var ok = await _lineSender.SendTextAsync(lead.SellerId, instance?.InstanceName, lead.WhatsappPhone!, p, ct);
+            var ok = await _lineSender.SendToLeadAsync(line, lead.WhatsappPhone!, p, ct);
             if (!ok) msg.Status = MessageDeliveryStatus.Failed;
         }
         lead.AiSuggestedReply = null;
@@ -1264,10 +1262,10 @@ public class ConversationAgentService
     /// </summary>
     private async Task<bool> AutoSendAsync(Lead lead, string text, CancellationToken ct)
     {
-        var instance = lead.Seller?.EvolutionInstance;
         if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return false;
-        // Sale por el celu si el vendedor tiene uno; Evolution es el fallback.
-        if (!await _lineSender.CanSendAsync(lead.SellerId, instance?.InstanceName, instance?.Status, ct)) return false;
+        // Sale por la línea donde vive la charla (la de la app); si no, la del vendedor o su celu.
+        var line = await _lineSender.ResolveForLeadAsync(lead, ct);
+        if (line is null) return false;
 
         // El outbound se persiste ANTES de mandar: el eco fromMe del webhook llega en ~1s
         // y HandleOwnMessageAsync lo matchea contra estos registros — si todavía no está
@@ -1280,7 +1278,7 @@ public class ConversationAgentService
             Direction = MessageDirection.Outbound,
             Status = MessageDeliveryStatus.Sent,
             Text = text,
-            EvolutionInstance = instance?.InstanceName ?? string.Empty,
+            EvolutionInstance = line.InstanceName ?? string.Empty,
             Timestamp = DateTimeOffset.UtcNow,
             IsRead = true
         };
@@ -1290,7 +1288,7 @@ public class ConversationAgentService
         lead.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
 
-        var ok = await _lineSender.SendTextAsync(lead.SellerId, instance?.InstanceName, lead.WhatsappPhone, text, ct);
+        var ok = await _lineSender.SendToLeadAsync(line, lead.WhatsappPhone, text, ct);
         if (!ok)
         {
             msg.Status = MessageDeliveryStatus.Failed;

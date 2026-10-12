@@ -642,6 +642,7 @@ public class ConversationService
                 product = await _db.Products.FirstOrDefaultAsync(p => p.Active && p.ProductKey == byPitch, ct) ?? product;
         }
         if (product is null) return null; // no sabemos de qué app → no creamos un lead mal taggeado
+        var prequalOwner = IsHistory(incoming) ? null : await PrequalOwnerAsync(instance, product.ProductKey, ct);
 
         var lead = new Lead
         {
@@ -651,14 +652,14 @@ public class ConversationService
             Name = ExtractPushName(incoming.RawJson) ?? "Lead de anuncio",
             WhatsappPhone = phone,
             WhatsappValidated = true,
-            SellerId = instance.SellerId ?? await _assigner.PickOwnerAsync(product.ProductKey, CreatedAtFor(incoming), ct),
+            SellerId = instance.SellerId ?? prequalOwner ?? await _assigner.PickOwnerAsync(product.ProductKey, CreatedAtFor(incoming), ct),
             AssignedAt = DateTimeOffset.UtcNow,
             Status = LeadStatus.Replied,        // ya escribió ellos
             FirstReplyAt = incoming.Timestamp,
-            // Línea de APP: el bot responde por la línea del SELLER (número distinto al que
-            // le escribieron) → confundiría al cliente. Muteado hasta cablear ese envío.
+            // Línea de APP: el bot atiende solo si la app tiene pre-calificación (contesta por la
+            // misma línea, ver SellerLineSender.ResolveForLeadAsync); si no, la maneja un humano.
             // Historia: tampoco (sería contestarle a un anuncio de hace meses).
-            BotMutedAt = instance.SellerId is null || IsHistory(incoming) ? DateTimeOffset.UtcNow : null,
+            BotMutedAt = (instance.SellerId is null && prequalOwner is null) || IsHistory(incoming) ? DateTimeOffset.UtcNow : null,
             CreatedAt = CreatedAtFor(incoming),
             UpdatedAt = DateTimeOffset.UtcNow,
         };
@@ -823,6 +824,21 @@ public class ConversationService
     }
 
     /// <summary>
+    /// Línea de APP (sin vendedor) cuya app tiene pre-calificación con pase a persona: el bot
+    /// atiende al número nuevo y el lead queda a nombre de esa persona (la responsable de la app,
+    /// configurada en /onboarding-apps). Null = la línea no pre-califica.
+    /// </summary>
+    private async Task<Guid?> PrequalOwnerAsync(EvolutionInstance instance, string productKey, CancellationToken ct)
+    {
+        if (instance.SellerId is not null || instance.ProductKey is null || instance.ListenOnly) return null;
+        return await _db.OnboardingConfigs.AsNoTracking()
+            .Where(c => c.ProductKey == productKey && c.Enabled && c.HandoffSellerId != null
+                && _db.Sellers.Any(s => s.Id == c.HandoffSellerId && s.IsActive))
+            .Select(c => c.HandoffSellerId)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>
     /// Número desconocido con texto que NO es de anuncio, en una línea vinculada: se crea
     /// igual (origen WhatsAppInbound) para que TODOS los chats queden en Conversaciones.
     /// El bot arranca MUTEADO — es un chat orgánico/soporte, lo maneja un humano salvo que
@@ -838,6 +854,7 @@ public class ConversationService
             product = await _db.Products.FirstOrDefaultAsync(p => p.Active && p.ProductKey == key, ct);
         }
         if (product is null) return null;
+        var prequalOwner = IsHistory(incoming) ? null : await PrequalOwnerAsync(instance, product.ProductKey, ct);
 
         var lead = new Lead
         {
@@ -847,11 +864,12 @@ public class ConversationService
             Name = ExtractPushName(incoming.RawJson) ?? "Contacto WhatsApp",
             WhatsappPhone = phone,
             WhatsappValidated = true,
-            SellerId = instance.SellerId ?? await _assigner.PickOwnerAsync(product.ProductKey, CreatedAtFor(incoming), ct),
+            SellerId = instance.SellerId ?? prequalOwner ?? await _assigner.PickOwnerAsync(product.ProductKey, CreatedAtFor(incoming), ct),
             AssignedAt = DateTimeOffset.UtcNow,
             Status = LeadStatus.Replied,        // arrancó escribiendo él
             FirstReplyAt = incoming.Timestamp,
-            BotMutedAt = DateTimeOffset.UtcNow, // orgánico: sin bot ni cadencias automáticas
+            // Orgánico: sin bot ni cadencias, salvo en una línea de app con pre-calificación.
+            BotMutedAt = prequalOwner is null ? DateTimeOffset.UtcNow : null,
             CreatedAt = CreatedAtFor(incoming),
             UpdatedAt = DateTimeOffset.UtcNow,
         };
