@@ -187,10 +187,6 @@ public class OnboardingService
     /// <summary>El lead nos devolvió el saludo ("bien y vos?", "todo bien, vos?", "que tal vos").</summary>
     private static readonly Regex ReciprocalRx = new(@"\b(y vos|y tu|vos|y usted|como (estas|andas|va)|que tal|todo bien)\b\s*\?*", RegexOptions.Compiled);
 
-    /// <summary>Nos dijo cómo está ("bien", "joya", "aca andamos") — recién ahí tiene sentido un "que bueno".</summary>
-    private static readonly Regex DoingWellRx = new(@"\b(bien|bn|joya|excelente|barbaro|genial|perfecto|tranqui|aca andamos|de diez|de 10|todo ok)\b", RegexOptions.Compiled);
-    private static readonly Regex DoingBadRx = new(@"\b(mal|mas o menos|maso|no tan bien|no muy bien|para atras|complicad[oa])\b", RegexOptions.Compiled);
-
     private static readonly Regex AsksToolRx = new(@"sistema|como (llevas|tomas|manejas|cobras|registras)|que usas", RegexOptions.Compiled);
 
     private static readonly Regex WantsToPayRx = new(
@@ -510,11 +506,9 @@ public class OnboardingService
             ob.Step = 1;
             ob.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
-            // Si nos devolvió el "y vos?" le contestamos; si no, una reacción corta, como una persona.
-            // "buenas tardes" solo devuelve el saludo: no hay nada que festejar, va directo a la pregunta.
-            var ack = askedBack ? "{todo bien por aca|bien bien|todo tranqui por aca}"
-                : DoingWellRx.IsMatch(lowerGreet) && !DoingBadRx.IsMatch(lowerGreet) ? "{buenisimo|genial|que bueno}"
-                : "";
+            // Si nos devolvió el "y vos?" contestamos "bien" y seguimos; si no, directo a la pregunta
+            // (nadie contesta "que bueno" a un "bien" o a un "buenas tardes").
+            var ack = askedBack ? "bien" : "";
             return new OnboardingResult(Join(Spin(ack, lead.Id, 31), questions[0]), OffScript: false, Provisioned: false);
         }
 
