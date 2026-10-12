@@ -184,6 +184,9 @@ public class OnboardingService
     };
 
     private static readonly Regex OpeningSoonRx = new(@"\babr(o|imos|e|iendo)\b|inaugur|por abrir|no abr|recien (arranco|empiezo|abr)|todavia no (arranque|empece)|estoy armando", RegexOptions.Compiled);
+    /// <summary>El lead nos devolvió el saludo ("bien y vos?", "todo bien, vos?", "que tal vos").</summary>
+    private static readonly Regex ReciprocalRx = new(@"\b(y vos|y tu|vos|y usted|como (estas|andas|va)|que tal|todo bien)\s*$", RegexOptions.Compiled);
+
     private static readonly Regex AsksToolRx = new(@"sistema|como (llevas|tomas|manejas|cobras|registras)|que usas", RegexOptions.Compiled);
 
     private static readonly Regex WantsToPayRx = new(
@@ -481,21 +484,27 @@ public class OnboardingService
         {
             var greetBurst = string.IsNullOrWhiteSpace(recentBurst) ? msg : recentBurst!;
             var (gKey, gConfident) = (await _intents.GetMatcherAsync(ct)).ClassifyWithConfidence(msg, "como estas?");
-            // Ya vino con algo concreto (precio, info, llamada…): eso lo contesta la persona.
-            if (KeywordRx.IsMatch(greetBurst.ToLowerInvariant()) || (gConfident && HandoffNowTypes.Contains(gKey)))
+            // "bien y vos?" no es una pregunta para la persona; cualquier otra pregunta sí ("do you speak
+            // english?", "como funciona?"), igual que lo concreto (precio, info, llamada).
+            var normGreet = IntentText.Normalize(greetBurst);
+            var askedBack = ReciprocalRx.IsMatch(normGreet);
+            var realQuestion = greetBurst.Contains('?') && !askedBack;
+            if (KeywordRx.IsMatch(greetBurst.ToLowerInvariant()) || realQuestion || (gConfident && HandoffNowTypes.Contains(gKey)))
             {
                 ob.Step = StepHumanHandoff;
                 ob.UpdatedAt = DateTimeOffset.UtcNow;
                 await _db.SaveChangesAsync(ct);
                 return new OnboardingResult(null, OffScript: false, Provisioned: false,
-                    Handoff: KeywordRx.IsMatch(greetBurst.ToLowerInvariant()) ? "pidio precio o info" : $"señal: {gKey}");
+                    Handoff: KeywordRx.IsMatch(greetBurst.ToLowerInvariant()) ? "pidio precio o info"
+                        : gConfident && HandoffNowTypes.Contains(gKey) ? $"señal: {gKey}"
+                        : "pregunto algo en el saludo");
             }
             ob.Step = 1;
             ob.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
-            return new OnboardingResult(
-                Join(Spin("{todo bien por aca|bien bien|todo tranqui por aca}", lead.Id, 31), questions[0]),
-                OffScript: false, Provisioned: false);
+            // Si nos devolvió el "y vos?" le contestamos; si no, una reacción corta, como una persona.
+            var ack = askedBack ? "{todo bien por aca|bien bien|todo tranqui por aca}" : "{buenisimo|genial|que bueno}";
+            return new OnboardingResult(Join(Spin(ack, lead.Id, 31), questions[0]), OffScript: false, Provisioned: false);
         }
 
         // Hasta qué paso se juntan datos: autoservicio tiene paso de mail (n+1); asistida termina en la última pregunta (n).
@@ -529,6 +538,12 @@ public class OnboardingService
         // cortamos antes del pitch si pregunta algo o pide precio/info.
         var answeringLast = handoffMode && ob.Step == Math.Clamp(cfg.HandoffAfterQuestions, 1, Math.Max(n, 1));
         if (answeringLast && inCollect && !atEmailStep && !msg.Contains('?') && !KeywordRx.IsMatch(burstLower))
+            isDoubt = false;
+        // Si la pregunta es justo qué usa hoy ("whatsapp, planilla, algun sistema?"), "otro sistema" o
+        // "ya uso X" ES la respuesta, no una objeción (caso real de la batería: PlayCrew cortaba en la 2ª).
+        var currentQuestion = inCollect && !atEmailStep && ob.Step >= 1 && ob.Step <= n ? questions[ob.Step - 1] : null;
+        if (currentQuestion is not null && AsksToolRx.IsMatch(IntentText.Normalize(currentQuestion))
+            && !msg.Contains('?') && !KeywordRx.IsMatch(burstLower))
             isDoubt = false;
         if (handoffMode && inCollect && !atEmailStep && !(answeringLast && !isDoubt))
         {
@@ -829,6 +844,7 @@ public class OnboardingService
         if (t.Length < 2) return true;
         if (!Regex.IsMatch(low, "[a-záéíóúñ0-9]", RegexOptions.IgnoreCase)) return true;
         if (Regex.IsMatch(t, @"^[\d\s.,-]+$")) return true;
+        if (t.Contains('@')) return true; // mandó el mail en vez del nombre
         if (low.EndsWith("?")) return true;
         string[] saludos = { "hola", "buenas", "buen dia", "buenos dias", "buenas tardes", "buenas noches", "que tal", "hey", "holis", "ola" };
         if (saludos.Contains(low)) return true;

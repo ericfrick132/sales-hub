@@ -87,7 +87,8 @@ public class PersonHandoffService
         var line = await _lineSender.ResolveForLeadAsync(lead, ct);
         var linePhone = line?.InstanceName is null ? null : await _db.EvolutionInstances.AsNoTracking()
             .Where(i => i.InstanceName == line.InstanceName).Select(i => i.ConnectedPhoneNumber).FirstOrDefaultAsync(ct);
-        return $"{app}: {lead.Name} ({lead.WhatsappPhone}) necesita atencion ({reason}).\n" +
+        var phone = string.IsNullOrWhiteSpace(lead.WhatsappPhone) ? "" : $" ({lead.WhatsappPhone})";
+        return $"{app}: {lead.Name}{phone} necesita atencion ({reason}).\n" +
                $"abrilo en la linea de {app}" + (string.IsNullOrWhiteSpace(linePhone) ? "" : $" (+{linePhone})") +
                ", el bot ya no le contesta.";
     }
