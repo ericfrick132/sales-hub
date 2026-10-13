@@ -69,6 +69,17 @@ public class OnboardingService
     private static readonly Regex ExplainRx = new(
         @"como es|como funciona|como seria|como va (esto|el tema)|el tema|de que se trata|que es (esto|eso|el sistema|la app)|que ofrecen|que hace|\binfo\b|informacion|mas datos|me (contas|explicas)|contame|explicame",
         RegexOptions.Compiled);
+    /// <summary>Quiere comprar ya ("quiero contratarlo", "como lo contrato", "quiero arrancar"): no se pregunta nada, va a la persona.</summary>
+    private static readonly Regex BuyNowRx = new(
+        @"quiero (contratar|arrancar|empezar|activar|darme de alta|suscribir|el plan|pagar|abonar)|lo quiero|como (lo )?(contrato|activo|arranco|pago|abono)|me (lo )?(quedo|anoto|sumo)|donde (me )?(anoto|registro|pago)",
+        RegexOptions.Compiled);
+
+    /// <summary>"se llama el tano", "se llama padel norte, tenemos 6 canchas": el nombre del negocio en el saludo.</summary>
+    private static readonly Regex NameInGreetRx = new(@"se llama\s+([^,.;:!?\n]+?)\s*(?=[,.;:!?\n]| y (?:somos|tengo|tenemos|trabajo|uso|usamos|no|si)\b|$)", RegexOptions.Compiled);
+    private static readonly Regex GreetWordsRx = new(
+        @"\b(hola+|holis|buenas+|buen dia|buenos dias|buenas tardes|buenas noches|bien|bn|re|muy|todo|tranqui|gracias|joya|y|vos|vs|tu|usted|como|estas|andas|que tal|aca|andamos)\b|[,.;:!?¡¿]",
+        RegexOptions.Compiled);
+
     private static readonly Regex PriceAskRx = new(@"precio|cuesta|cuanto (sale|es|vale|cobran)|valor|tarifa|costo|abono|mensual", RegexOptions.Compiled);
 
     private static readonly Regex PricesYesRx = new(
@@ -584,6 +595,16 @@ public class OnboardingService
                         OffScript: false, Provisioned: false, MediaAssetIds: gp.MediaAssetIds is { Count: > 0 } gm ? gm : null);
                 }
             }
+            if (BuyNowRx.IsMatch(lowerGreet))
+            {
+                // El lead más caliente: no lo hacemos esperar con preguntas.
+                lead.Status = LeadStatus.Interested;
+                ob.Step = StepHumanHandoff;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                var said = msg.Length > 80 ? msg[..80] + "…" : msg;
+                return new OnboardingResult(null, OffScript: false, Provisioned: false, Handoff: $"quiere contratar: {said}");
+            }
             if (KeywordRx.IsMatch(greetBurst.ToLowerInvariant()) || realQuestion || (gConfident && HandoffNowTypes.Contains(gKey)))
             {
                 ob.Step = StepHumanHandoff;
@@ -593,6 +614,34 @@ public class OnboardingService
                     Handoff: KeywordRx.IsMatch(greetBurst.ToLowerInvariant()) ? "pidio precio o info"
                         : gConfident && HandoffNowTypes.Contains(gKey) ? $"señal: {gKey}"
                         : "pregunto algo en el saludo");
+            }
+            // Ya nos dijo cómo se llama ("bien y vos?, se llama el tano"): no se lo volvemos a preguntar.
+            // Si además contó más cosas ("se llama X, 4 chicas y no uso nada"), ya respondió todo → pitch.
+            if (NameInGreetRx.Match(lowerGreet) is { Success: true } nm && nm.Groups[1].Value.Trim().Length >= 2)
+            {
+                var name = nm.Groups[1].Value.Trim();
+                ob.GymName = Trunc(name, 160);
+                if (!IsBusinessNameSuspicious(name)) lead.Name = name;
+                var rest = GreetWordsRx.Replace(ReciprocalRx.Replace(lowerGreet.Replace(nm.Value, " "), " "), " ");
+                var restWords = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+                var np = PitchFor(cfg, ad);
+                if (restWords >= 3 && np is not null && DemoStepEnabled(cfg))
+                {
+                    lead.Status = LeadStatus.Interested;
+                    ob.Step = AfterDemoStep(cfg);
+                    ob.UpdatedAt = DateTimeOffset.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                    return new OnboardingResult(
+                        PresentAs(Join(Join("perfecto, te explico rapido como es", Spin(np.Text, lead.Id, 95)), DemoTail(cfg, lead.Id)), cfg),
+                        OffScript: false, Provisioned: false, MediaAssetIds: np.MediaAssetIds is { Count: > 0 } nmm ? nmm : null);
+                }
+                if (n >= 2)
+                {
+                    ob.Step = 2;
+                    ob.UpdatedAt = DateTimeOffset.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                    return new OnboardingResult(PresentAs(questions[1], cfg), OffScript: false, Provisioned: false);
+                }
             }
             ob.Step = 1;
             ob.UpdatedAt = DateTimeOffset.UtcNow;
@@ -725,7 +774,15 @@ public class OnboardingService
             var k = ob.Step; // el lead respondió la pregunta questions[k-1]
             // En pre-calificación no se crea cuenta (no hay subdominio que cuidar) y la 1ª pregunta
             // puede pedir nombre + rubro juntos: re-preguntar "solo el nombre" ahí suena a bot.
-            if (k == 1 && !handoffMode && IsBusinessNameSuspicious(msg) && ob.GymRetries < 1)
+            if (k == 1 && handoffMode && EmailRx.Match(msg) is { Success: true } em && ob.GymRetries < 1)
+            {
+                // Mandó el mail cuando le preguntamos el nombre: lo guardamos y le re-preguntamos el nombre
+                // (un "bien, perfecto" a algo que no contesta la pregunta suena a bot).
+                ob.Email ??= FixEmailTypos(em.Value.Trim().TrimEnd('.', ','));
+                reply = "anotado el mail" + NL + LastSegment(questions[0]);
+                ob.GymRetries++;
+            }
+            else if (k == 1 && !handoffMode && IsBusinessNameSuspicious(msg) && ob.GymRetries < 1)
             {
                 // El nombre del negocio se convierte en el subdominio del tenant (la app lo
                 // auto-deriva, no lo pide). Si el lead manda una frase/oración en vez del nombre,
