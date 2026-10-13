@@ -41,8 +41,12 @@ type SendLine = { instanceName: string; label: string; phone?: string | null; pr
 function formatPhone(p?: string | null): string {
   if (!p) return '';
   const d = p.replace(/\D/g, '');
-  const m = d.match(/^549(\d{2})(\d{4})(\d{4})$/);
-  return m ? `+54 9 ${m[1]} ${m[2]}-${m[3]}` : p;
+  const m = d.match(/^549(\d{10})$/);
+  if (!m) return p;
+  // Área de 2 dígitos solo en CABA/AMBA (11); el resto, 3 (381, 351, 341…) que es lo más común.
+  const area = m[1].startsWith('11') ? 2 : 3;
+  const rest = m[1].slice(area);
+  return `+54 9 ${m[1].slice(0, area)} ${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`;
 }
 
 type Device = { id: string; name: string; sellerId?: string; sellerName?: string; status: string };
