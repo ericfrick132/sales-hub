@@ -221,18 +221,31 @@ public class OnboardingService
         var pitch = PitchFor(cfg, ad);
         if (pitch is null) return null;
         lead.Status = LeadStatus.Interested;
-        ob.Step = StepAwaitDemoLink;
+        ob.Step = AfterDemoStep(cfg);
         ob.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return new OnboardingResult(
-            PresentAs(Join(Join(SilentGreetingIntro, Spin(pitch.Text, lead.Id, 95)), Spin(cfg.DemoOffer, lead.Id, 99)), cfg),
+            PresentAs(Join(Join(SilentGreetingIntro, Spin(pitch.Text, lead.Id, 95)), DemoTail(cfg, lead.Id)), cfg),
             OffScript: false, Provisioned: false, MediaAssetIds: pitch.MediaAssetIds is { Count: > 0 } m ? m : null);
     }
 
     private const string SilentGreetingIntro = "te explico rapido como es";
 
     private static bool DemoStepEnabled(OnboardingConfig cfg) =>
-        !string.IsNullOrWhiteSpace(cfg.DemoOffer) && !string.IsNullOrWhiteSpace(cfg.DemoLink) && !string.IsNullOrWhiteSpace(cfg.StartQuestion);
+        !string.IsNullOrWhiteSpace(cfg.DemoLink) && !string.IsNullOrWhiteSpace(cfg.StartQuestion);
+
+    /// <summary>
+    /// Lo que sigue al pitch. Sin <see cref="OnboardingConfig.DemoOffer"/> (lo normal): la demo va directo
+    /// ("mira, aca lo podes ver andando" + link) y el cierre "para cuando…" — no le pedimos permiso, no hay
+    /// "no" servido. Con DemoOffer: primero la pregunta y el link recién si dice que sí.
+    /// </summary>
+    private static string DemoTail(OnboardingConfig cfg, Guid leadId) =>
+        string.IsNullOrWhiteSpace(cfg.DemoOffer)
+            ? Join(Spin(cfg.DemoLink, leadId, 97), Spin(cfg.StartQuestion, leadId, 98))
+            : Spin(cfg.DemoOffer, leadId, 99);
+
+    private static int AfterDemoStep(OnboardingConfig cfg) =>
+        string.IsNullOrWhiteSpace(cfg.DemoOffer) ? StepAwaitStart : StepAwaitDemoLink;
 
     /// <summary>El pitch del ángulo del anuncio; si no hay, el por defecto (ángulo vacío).</summary>
     private static AnglePitch? PitchFor(OnboardingConfig cfg, MetaAd? ad) =>
@@ -564,10 +577,10 @@ public class OnboardingService
                 if (gp is not null)
                 {
                     lead.Status = LeadStatus.Interested;
-                    ob.Step = StepAwaitDemoLink;
+                    ob.Step = AfterDemoStep(cfg);
                     ob.UpdatedAt = DateTimeOffset.UtcNow;
                     await _db.SaveChangesAsync(ct);
-                    return new OnboardingResult(PresentAs(Join(Spin(gp.Text, lead.Id, 95), Spin(cfg.DemoOffer, lead.Id, 99)), cfg),
+                    return new OnboardingResult(PresentAs(Join(Spin(gp.Text, lead.Id, 95), DemoTail(cfg, lead.Id)), cfg),
                         OffScript: false, Provisioned: false, MediaAssetIds: gp.MediaAssetIds is { Count: > 0 } gm ? gm : null);
                 }
             }
@@ -753,10 +766,10 @@ public class OnboardingService
                     if (anglePitch is not null && DemoStepEnabled(cfg))
                     {
                         // Pitch con el tono de la persona + "te interesa ver una demo?"; el sí lleva al link y al cierre.
-                        ob.Step = StepAwaitDemoLink;
+                        ob.Step = AfterDemoStep(cfg);
                         ob.UpdatedAt = DateTimeOffset.UtcNow;
                         await _db.SaveChangesAsync(ct);
-                        return new OnboardingResult(PresentAs(Join(Join(PitchIntro, reply), Spin(cfg.DemoOffer, lead.Id, 99)), cfg),
+                        return new OnboardingResult(PresentAs(Join(Join(PitchIntro, reply), DemoTail(cfg, lead.Id)), cfg),
                             OffScript: false, Provisioned: false,
                             MediaAssetIds: anglePitch.MediaAssetIds is { Count: > 0 } dm ? dm : null);
                     }
