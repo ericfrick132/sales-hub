@@ -6,7 +6,7 @@ namespace SalesHub.Infrastructure.Services;
 
 /// <summary>
 /// Renders a product's message_template with placeholders and spin-text.
-/// Placeholders: {name}, {nombre}, {saludo}, {city}, {province}, {price}, {checkout_url}, {seller}
+/// Placeholders: {name}, {nombre}, {saludo}, {hoy}, {city}, {province}, {price}, {checkout_url}, {seller}
 /// Spin syntax: {opt1|opt2|opt3} -> random pick, stable per lead id.
 /// </summary>
 public class MessageRenderer : IMessageRenderer
@@ -62,6 +62,15 @@ public class MessageRenderer : IMessageRenderer
         return h < 6 ? "buenas noches" : h < 12 ? "buen dia" : h < 20 ? "buenas tardes" : "buenas noches";
     }
 
+    /// <summary>"hoy" hasta las 18 (hora del vendedor); más tarde "mañana" — para "podemos armar una demo {hoy}".</summary>
+    public static string TodayOrTomorrow(Seller? seller)
+    {
+        var tz = TimeZoneInfo.CreateCustomTimeZone("ar", TimeSpan.FromHours(-3), "AR", "AR");
+        if (!string.IsNullOrWhiteSpace(seller?.Timezone))
+            try { tz = TimeZoneInfo.FindSystemTimeZoneById(seller!.Timezone!); } catch { }
+        return TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz).Hour < 18 ? "hoy" : "mañana";
+    }
+
     public string Render(Lead lead, Product product, Seller? seller = null)
         => RenderTemplateInternal(product.MessageTemplate ?? string.Empty, lead, product, seller);
 
@@ -102,6 +111,7 @@ public class MessageRenderer : IMessageRenderer
             .Replace("{name}", lead.Name)
             .Replace("{nombre}", FirstName(lead.Name))
             .Replace("{saludo}", TimeGreeting(seller))
+            .Replace("{hoy}", TodayOrTomorrow(seller))
             .Replace("{city}", string.IsNullOrWhiteSpace(lead.City) ? "tu ciudad" : lead.City)
             .Replace("{province}", lead.Province ?? string.Empty)
             .Replace("{category}", category)
