@@ -22,9 +22,9 @@ type Segment = { key: string; label: string; total: number; suggested: number };
 // Segunda burbuja según el grupo: tiene que decir la verdad sobre por qué le escribimos.
 const SEGMENT_INTRO: Record<string, (app: string) => string> = {
   escribieron: (app) => `{hace un tiempo|hace unos meses} nos escribiste por ${app}, {te paso|te muestro} como es arrancar`,
-  enfriados: (app) => `{hace un tiempo|hace unas semanas} estuvimos hablando de ${app}, {te paso|te muestro} como es arrancar`,
-  formulario: (app) => `{hace un tiempo|hace unas semanas} dejaste tus datos para conocer ${app}, {te paso|te muestro} como es arrancar`,
-  registrados: (app) => `vi que {hace un tiempo|hace unas semanas} creaste tu cuenta en ${app}, {te paso|te muestro} como es arrancar`,
+  enfriados: (app) => `{hace un tiempo|hace unos meses} estuvimos hablando de ${app}, {te paso|te muestro} como es arrancar`,
+  formulario: (app) => `{hace un tiempo|hace unos meses} dejaste tus datos para conocer ${app}, {te paso|te muestro} como es arrancar`,
+  registrados: (app) => `vi que {hace un tiempo|hace unos meses} creaste tu cuenta en ${app}, {te paso|te muestro} como es arrancar`,
 };
 const SEGMENT_SHORT: Record<string, string> = {
   escribieron: 'escribieron primero', enfriados: 'se enfriaron', formulario: 'formulario Meta', registrados: 'registrados en la app',
