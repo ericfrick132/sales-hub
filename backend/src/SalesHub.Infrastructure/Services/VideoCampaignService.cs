@@ -30,7 +30,46 @@ public class VideoCampaignService
     // ── Audiencia ──────────────────────────────────────────────────────────
 
     public record AudienceItem(Guid LeadId, string Name, string? Phone, string Source, string? FirstMessage,
-        DateTimeOffset? LastActivity, int OurMessages, bool Suggested, string? WhyNot);
+        DateTimeOffset? LastActivity, int OurMessages, bool Suggested, string? WhyNot, string Risk, string RiskWhy);
+
+    /// <summary>Lo que hace falta de un lead para medir el riesgo de ban de escribirle desde una línea.</summary>
+    public record RiskInput(bool WroteEver, bool ChatOnLine, int Unanswered);
+
+    /// <summary>
+    /// Riesgo de ban de mandarle la campaña, mirado desde la línea que manda (WhatsApp castiga los
+    /// mensajes a gente que no te tiene y los que se ignoran o se reportan):
+    ///  - bajo: ya charló con ESTA línea y le debemos a lo sumo 2 mensajes sin respuesta.
+    ///  - medio: conoce la marca (escribió por otra línea, dejó sus datos o se registró) y no le insistimos
+    ///    más de 2 veces; para esta línea es un número nuevo.
+    ///  - alto: ya ignoró 3 o más mensajes, o nunca escribió y ya le mandamos 2 o más. No se le manda.
+    /// </summary>
+    public static (string Risk, string Why) RiskOf(RiskInput r)
+    {
+        if (r.Unanswered >= 3) return ("alto", $"ya ignoro {r.Unanswered} mensajes nuestros");
+        if (!r.WroteEver && r.Unanswered >= 2) return ("alto", $"nunca escribio y ya le mandamos {r.Unanswered}");
+        if (r.WroteEver && r.ChatOnLine) return ("bajo", r.Unanswered == 0 ? "charlo con esta linea y escribio ultimo" : "charlo con esta linea");
+        if (r.WroteEver) return ("medio", r.Unanswered == 0 ? "escribio ultimo, pero por otra linea" : "charlo con nosotros por otra linea");
+        return ("medio", r.Unanswered == 0 ? "dejo sus datos y nunca le escribimos" : "dejo sus datos, le escribimos 1 vez");
+    }
+
+    /// <summary>Datos de riesgo de varios leads respecto de una línea.</summary>
+    public async Task<Dictionary<Guid, RiskInput>> RiskInputsAsync(IReadOnlyCollection<Guid> leadIds, string instanceName, CancellationToken ct)
+    {
+        var rows = await _db.Leads.AsNoTracking().Where(l => leadIds.Contains(l.Id)).Select(l => new
+        {
+            l.Id,
+            LastIn = _db.ConversationMessages.Where(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound).Max(m => (DateTimeOffset?)m.Timestamp),
+            OnLine = _db.ConversationMessages.Any(m => m.LeadId == l.Id && m.EvolutionInstance == instanceName),
+        }).ToListAsync(ct);
+        var result = new Dictionary<Guid, RiskInput>();
+        foreach (var r in rows)
+        {
+            var unanswered = await _db.ConversationMessages.CountAsync(m => m.LeadId == r.Id
+                && m.Direction == MessageDirection.Outbound && (r.LastIn == null || m.Timestamp > r.LastIn), ct);
+            result[r.Id] = new RiskInput(r.LastIn != null, r.OnLine, unanswered);
+        }
+        return result;
+    }
 
     // Primer mensaje que no es de un prospecto: contestadores automáticos, spam, nada de texto.
     private static readonly Regex JunkRx = new(
@@ -66,7 +105,7 @@ public class VideoCampaignService
     /// días y que nunca recibieron una campaña con video. Marca como no sugeridos los que parecen basura,
     /// son de otro país o ya dijeron que no.
     /// </summary>
-    public async Task<List<AudienceItem>> AudienceAsync(string productKey, int minIdleDays, string segment, CancellationToken ct)
+    public async Task<List<AudienceItem>> AudienceAsync(string productKey, int minIdleDays, string segment, string instanceName, CancellationToken ct)
     {
         var idleCut = DateTimeOffset.UtcNow.AddDays(-minIdleDays);
         var dead = new[] { LeadStatus.Closed, LeadStatus.Lost, LeadStatus.Blocked, LeadStatus.NoWhatsApp };
@@ -93,8 +132,11 @@ public class VideoCampaignService
         var useLast = segment == "enfriados";
         var rows = await q.OrderByDescending(x => x.last).Select(x => new
             {
-                x.l.Id, x.l.Name, x.l.WhatsappPhone, x.l.Source, x.last,
+                x.l.Id, x.l.Name, x.l.WhatsappPhone, x.l.Source, x.last, Wrote = x.firstIn != null,
                 Ours = _db.ConversationMessages.Count(m => m.LeadId == x.l.Id && m.Direction == MessageDirection.Outbound),
+                Unanswered = _db.ConversationMessages.Count(m => m.LeadId == x.l.Id && m.Direction == MessageDirection.Outbound
+                    && (x.lastIn == null || m.Timestamp > x.lastIn)),
+                OnLine = _db.ConversationMessages.Any(m => m.LeadId == x.l.Id && m.EvolutionInstance == instanceName),
                 Text = useLast
                     ? _db.ConversationMessages.Where(m => m.LeadId == x.l.Id && m.Direction == MessageDirection.Inbound)
                         .OrderByDescending(m => m.Timestamp).Select(m => m.Text).FirstOrDefault()
@@ -128,8 +170,9 @@ public class VideoCampaignService
                 && (otherProducts.Any(p => p.Length > 3 && text.Contains(p, StringComparison.OrdinalIgnoreCase))
                     || (OtherAppRx.TryGetValue(productKey, out var rx) && rx.IsMatch(text))))
                 why = "pregunto por otra app";
+            var (risk, riskWhy) = RiskOf(new RiskInput(r.Wrote, r.OnLine, r.Unanswered));
             return new AudienceItem(r.Id, r.Name, r.WhatsappPhone, r.Source.ToString(),
-                text.Length > 0 ? Trunc(text, 140) : null, r.last, r.Ours, why is null, why);
+                text.Length > 0 ? Trunc(text, 140) : null, r.last, r.Ours, why is null && risk != "alto", why, risk, riskWhy);
         }).ToList();
     }
 
@@ -244,6 +287,11 @@ public class VideoCampaignService
             : lead.Status is LeadStatus.Closed or LeadStatus.Lost or LeadStatus.Blocked or LeadStatus.NoWhatsApp ? $"estado {lead.Status}"
             : wroteMeanwhile ? "escribio despues de armar la campaña"
             : null;
+        if (skip is null)
+        {
+            var risk = (await RiskInputsAsync(new[] { lead.Id }, c.InstanceName, ct)).GetValueOrDefault(lead.Id);
+            if (risk is not null && RiskOf(risk).Risk == "alto") skip = "riesgo alto de ban: " + RiskOf(risk).Why;
+        }
         if (skip is not null)
         {
             rec.Status = VideoCampaignRecipientStatus.Skipped;
@@ -305,6 +353,18 @@ public class VideoCampaignService
             _log.LogWarning(ex, "Campaña con video {Campaign}: falló el envío a {Lead}", c.Name, lead.Id);
         }
         return true;
+    }
+
+    /// <summary>Saca de la campaña a los pendientes que hoy dan riesgo alto de ban. Devuelve cuántos.</summary>
+    public async Task<int> PruneHighRiskAsync(VideoCampaign c, CancellationToken ct)
+    {
+        var pending = await _db.VideoCampaignRecipients
+            .Where(r => r.CampaignId == c.Id && r.Status == VideoCampaignRecipientStatus.Pending).ToListAsync(ct);
+        var risks = await RiskInputsAsync(pending.Select(r => r.LeadId).ToList(), c.InstanceName, ct);
+        var high = pending.Where(r => risks.TryGetValue(r.LeadId, out var ri) && RiskOf(ri).Risk == "alto").ToList();
+        _db.VideoCampaignRecipients.RemoveRange(high);
+        await _db.SaveChangesAsync(ct);
+        return high.Count;
     }
 
     // ── Respuestas ─────────────────────────────────────────────────────────

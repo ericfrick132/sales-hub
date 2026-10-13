@@ -14,10 +14,16 @@ type Campaign = {
   total: number; pending: number; sent: number; failed: number; skipped: number; replied: number;
 };
 type Recipient = { leadId: string; name: string; phone?: string | null; status: string; sentAt?: string | null; repliedAt?: string | null; error?: string | null };
-type AudienceItem = { leadId: string; name: string; phone?: string | null; source: string; firstMessage?: string | null; lastActivity?: string | null; ourMessages: number; suggested: boolean; whyNot?: string | null };
+type AudienceItem = { leadId: string; name: string; phone?: string | null; source: string; firstMessage?: string | null; lastActivity?: string | null; ourMessages: number; suggested: boolean; whyNot?: string | null; risk: 'bajo' | 'medio' | 'alto'; riskWhy: string };
 type Media = { id: string; fileName: string; mimeType: string; sizeBytes: number; createdAt: string };
 type SendLine = { instanceName: string; label: string; phone?: string | null; productKey?: string | null };
-type Segment = { key: string; label: string; total: number; suggested: number };
+type Segment = { key: string; label: string; total: number; suggested: number; bajo: number; medio: number; alto: number };
+
+const RISK_CLS: Record<string, string> = {
+  bajo: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  medio: 'bg-amber-50 text-amber-700 border-amber-200',
+  alto: 'bg-rose-50 text-rose-700 border-rose-200',
+};
 
 // Segunda burbuja según el grupo: tiene que decir la verdad sobre por qué le escribimos.
 const SEGMENT_INTRO: Record<string, (app: string) => string> = {
@@ -185,6 +191,8 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4]);
   const [minIdleDays, setMinIdleDays] = useState(7);
   const [segment, setSegment] = useState('escribieron');
+  // Riesgo de ban que se acepta: "bajo" o "bajo y medio". El alto no se manda nunca.
+  const [maxRisk, setMaxRisk] = useState<'bajo' | 'medio'>('medio');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<Preview[] | null>(null);
@@ -212,9 +220,9 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
   }, [productKey, segment, products.data]);
 
   const segments = useQuery({
-    queryKey: ['video-campaign-segments', productKey, minIdleDays],
-    enabled: !!productKey,
-    queryFn: async () => (await api.get<Segment[]>('/video-campaigns/segments', { params: { productKey, minIdleDays } })).data,
+    queryKey: ['video-campaign-segments', productKey, minIdleDays, instanceName],
+    enabled: !!productKey && !!instanceName,
+    queryFn: async () => (await api.get<Segment[]>('/video-campaigns/segments', { params: { productKey, minIdleDays, instanceName } })).data,
   });
 
   const media = useQuery({
@@ -225,13 +233,16 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
   const videos = (media.data ?? []).filter((m) => m.mimeType.startsWith('video/') || m.mimeType.startsWith('image/'));
 
   const audience = useQuery({
-    queryKey: ['video-campaign-audience', productKey, minIdleDays, segment],
-    enabled: !!productKey,
-    queryFn: async () => (await api.get<AudienceItem[]>('/video-campaigns/audience', { params: { productKey, minIdleDays, segment } })).data,
+    queryKey: ['video-campaign-audience', productKey, minIdleDays, segment, instanceName],
+    enabled: !!productKey && !!instanceName,
+    queryFn: async () => (await api.get<AudienceItem[]>('/video-campaigns/audience', { params: { productKey, minIdleDays, segment, instanceName } })).data,
   });
+  const allowed = (a: AudienceItem) => a.risk === 'bajo' || (a.risk === 'medio' && maxRisk === 'medio');
   useEffect(() => {
-    setSelected(new Set((audience.data ?? []).filter((a) => a.suggested).map((a) => a.leadId)));
-  }, [audience.data]);
+    setSelected(new Set((audience.data ?? []).filter((a) => a.suggested && allowed(a)).map((a) => a.leadId)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audience.data, maxRisk]);
+  const riskCount = (r: string) => (audience.data ?? []).filter((a) => a.risk === r).length;
 
   const selectedNames = useMemo(
     () => (audience.data ?? []).filter((a) => selected.has(a.leadId)).slice(0, 3).map((a) => a.name),
@@ -263,12 +274,12 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
   }
 
   const save = useMutation({
-    mutationFn: async () => (await api.post<{ id: string; recipients: number }>('/video-campaigns', {
+    mutationFn: async () => (await api.post<{ id: string; recipients: number; skippedHighRisk: number }>('/video-campaigns', {
       name, productKey, instanceName, messageBefore: before, mediaAssetId: mediaId, messageAfter: after,
       perDay, windowFromHour: from, windowToHour: to, weekdays, leadIds: [...selected],
     })).data,
     onSuccess: (r) => {
-      toast.success(`Campaña guardada con ${r.recipients} leads. Mandate una prueba y despues dale "Empezar a mandar".`);
+      toast.success(`Campaña guardada con ${r.recipients} leads${r.skippedHighRisk ? ` (${r.skippedHighRisk} con riesgo alto quedaron afuera)` : ''}. Mandate una prueba y despues dale "Empezar a mandar".`);
       qc.invalidateQueries({ queryKey: ['video-campaigns'] });
       onDone();
     },
@@ -296,8 +307,8 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
         <label className="text-sm block">
           <div className="text-slate-500 mb-1">A que grupo</div>
           <select className="input w-full" value={segment} onChange={(e) => setSegment(e.target.value)} disabled={!productKey}>
-            {(segments.data ?? [{ key: 'escribieron', label: 'Nos escribieron primero y despues no contestaron', total: 0, suggested: 0 }]).map((g) => (
-              <option key={g.key} value={g.key}>{g.label}{segments.data ? ` (${g.suggested})` : ''}</option>
+            {(segments.data ?? [{ key: 'escribieron', label: 'Nos escribieron primero y despues no contestaron', total: 0, suggested: 0, bajo: 0, medio: 0, alto: 0 }]).map((g) => (
+              <option key={g.key} value={g.key}>{g.label}{segments.data ? ` (bajo ${g.bajo} · medio ${g.medio})` : ''}</option>
             ))}
           </select>
         </label>
@@ -404,20 +415,37 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
               <span className="text-xs text-slate-500">
                 {selected.size} de {audience.data?.length ?? 0} elegidos{days ? ` · ${days} dia${days > 1 ? 's' : ''} de envio` : ''}
               </span>
-              <button className="text-xs underline text-slate-600" onClick={() => setSelected(new Set((audience.data ?? []).map((a) => a.leadId)))}>todos</button>
+              <button className="text-xs underline text-slate-600" onClick={() => setSelected(new Set((audience.data ?? []).filter(allowed).map((a) => a.leadId)))}>todos</button>
               <button className="text-xs underline text-slate-600" onClick={() => setSelected(new Set())}>ninguno</button>
             </div>
             <div className="text-xs text-slate-500">
               {segments.data?.find((g) => g.key === segment)?.label ?? ''}.{' '}
               {segment === 'enfriados' ? 'Se ve su ultimo mensaje; los que ya dijeron que no' : segment === 'escribieron' ? 'Se ve su primer mensaje; los que parecen basura' : 'Nunca nos escribieron; los de otro pais'} vienen destildados.
             </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-slate-500">Riesgo de ban (desde esta linea):</span>
+              {(['bajo', 'medio'] as const).map((r) => (
+                <button key={r} type="button" onClick={() => setMaxRisk(r)}
+                  className={clsx('px-2 py-0.5 rounded-full border', maxRisk === r ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-200')}>
+                  {r === 'bajo' ? `solo bajo (${riskCount('bajo')})` : `bajo y medio (${riskCount('bajo') + riskCount('medio')})`}
+                </button>
+              ))}
+              <span className="text-rose-600">alto: {riskCount('alto')} (no se mandan)</span>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              bajo = ya charlo con esta linea · medio = conoce la marca pero para esta linea es un numero nuevo · alto = ya ignoro 3+ mensajes o nunca escribio y le mandamos 2+
+            </div>
             {audience.isLoading && <div className="text-sm text-slate-500">Buscando…</div>}
             <div className="max-h-96 overflow-y-auto border border-slate-100 rounded">
               <table className="w-full text-sm">
                 <tbody>
                   {(audience.data ?? []).map((a) => (
-                    <tr key={a.leadId} className={clsx('border-b border-slate-50 cursor-pointer hover:bg-slate-50', !selected.has(a.leadId) && 'text-slate-400')} onClick={() => toggle(a.leadId)}>
-                      <td className="p-2 w-6"><input type="checkbox" checked={selected.has(a.leadId)} readOnly /></td>
+                    <tr key={a.leadId} className={clsx('border-b border-slate-50', a.risk === 'alto' ? 'opacity-50' : 'cursor-pointer hover:bg-slate-50', !selected.has(a.leadId) && 'text-slate-400')}
+                      onClick={() => a.risk !== 'alto' && toggle(a.leadId)}>
+                      <td className="p-2 w-6"><input type="checkbox" checked={selected.has(a.leadId)} disabled={a.risk === 'alto'} readOnly /></td>
+                      <td className="p-2 whitespace-nowrap">
+                        <span title={a.riskWhy} className={clsx('text-[10px] border rounded px-1', RISK_CLS[a.risk])}>{a.risk}</span>
+                      </td>
                       <td className="p-2 whitespace-nowrap">{a.name}</td>
                       <td className="p-2 text-xs tabular-nums whitespace-nowrap">{a.phone}</td>
                       <td className="p-2 text-xs">

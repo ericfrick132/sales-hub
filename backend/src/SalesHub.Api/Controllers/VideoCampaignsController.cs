@@ -70,24 +70,30 @@ public class VideoCampaignsController : ControllerBase
     /// <summary>Candidatos: escribieron ellos primero y después silencio (ver VideoCampaignService.AudienceAsync).</summary>
     [HttpGet("audience")]
     public async Task<IActionResult> Audience([FromQuery] string productKey, [FromQuery] int minIdleDays = 7,
-        [FromQuery] string segment = "escribieron", CancellationToken ct = default)
+        [FromQuery] string segment = "escribieron", [FromQuery] string instanceName = "", CancellationToken ct = default)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
         if (string.IsNullOrWhiteSpace(productKey)) return BadRequest(new { error = "Falta la app" });
         if (!VideoCampaignService.Segments.ContainsKey(segment)) return BadRequest(new { error = "Grupo invalido" });
-        return Ok(await _svc.AudienceAsync(productKey, Math.Max(0, minIdleDays), segment, ct));
+        return Ok(await _svc.AudienceAsync(productKey, Math.Max(0, minIdleDays), segment, instanceName, ct));
     }
 
     /// <summary>Cuántos leads hay en cada grupo para una app (para el selector).</summary>
     [HttpGet("segments")]
-    public async Task<IActionResult> Segments([FromQuery] string productKey, [FromQuery] int minIdleDays = 7, CancellationToken ct = default)
+    public async Task<IActionResult> Segments([FromQuery] string productKey, [FromQuery] int minIdleDays = 7,
+        [FromQuery] string instanceName = "", CancellationToken ct = default)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
         var result = new List<object>();
         foreach (var (key, label) in VideoCampaignService.Segments)
         {
-            var items = await _svc.AudienceAsync(productKey, Math.Max(0, minIdleDays), key, ct);
-            result.Add(new { key, label, total = items.Count, suggested = items.Count(i => i.Suggested) });
+            var items = await _svc.AudienceAsync(productKey, Math.Max(0, minIdleDays), key, instanceName, ct);
+            result.Add(new
+            {
+                key, label, total = items.Count, suggested = items.Count(i => i.Suggested),
+                bajo = items.Count(i => i.Risk == "bajo" && i.Suggested), medio = items.Count(i => i.Risk == "medio" && i.Suggested),
+                alto = items.Count(i => i.Risk == "alto"),
+            });
         }
         return Ok(result);
     }
@@ -114,12 +120,15 @@ public class VideoCampaignsController : ControllerBase
         };
         // Solo leads que no recibieron ninguna campaña con video.
         var already = await _db.VideoCampaignRecipients.Where(r => req.LeadIds.Contains(r.LeadId)).Select(r => r.LeadId).ToListAsync(ct);
-        var leadIds = req.LeadIds.Distinct().Except(already).ToList();
+        // Riesgo alto de ban (ya ignoraron 3+ mensajes, o nunca escribieron y les mandamos 2+): no entran nunca.
+        var risks = await _svc.RiskInputsAsync(req.LeadIds.Distinct().ToList(), req.InstanceName, ct);
+        var highRisk = risks.Where(kv => VideoCampaignService.RiskOf(kv.Value).Risk == "alto").Select(kv => kv.Key).ToList();
+        var leadIds = req.LeadIds.Distinct().Except(already).Except(highRisk).ToList();
         if (leadIds.Count == 0) return BadRequest(new { error = "Ninguno de los leads elegidos esta disponible" });
         c.Recipients = leadIds.Select(id => new VideoCampaignRecipient { Id = Guid.NewGuid(), CampaignId = c.Id, LeadId = id }).ToList();
         _db.VideoCampaigns.Add(c);
         await _db.SaveChangesAsync(ct);
-        return Ok(new { id = c.Id, recipients = leadIds.Count, skippedAlreadyInCampaign = already.Count });
+        return Ok(new { id = c.Id, recipients = leadIds.Count, skippedAlreadyInCampaign = already.Count, skippedHighRisk = highRisk.Count });
     }
 
     public record PreviewRequest(string MessageBefore, string? MessageAfter, List<string?>? Names);
@@ -159,6 +168,16 @@ public class VideoCampaignsController : ControllerBase
     [HttpPost("{id:guid}/activate")]
     public async Task<IActionResult> Activate(Guid id, CancellationToken ct) => await SetStatus(id, VideoCampaignStatus.Active, ct);
 
+    /// <summary>Saca los pendientes con riesgo alto de ban (también se hace solo al empezar a mandar).</summary>
+    [HttpPost("{id:guid}/prune-high-risk")]
+    public async Task<IActionResult> PruneHighRisk(Guid id, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var c = await _db.VideoCampaigns.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (c is null) return NotFound();
+        return Ok(new { pruned = await _svc.PruneHighRiskAsync(c, ct) });
+    }
+
     [HttpPost("{id:guid}/pause")]
     public async Task<IActionResult> Pause(Guid id, CancellationToken ct) => await SetStatus(id, VideoCampaignStatus.Paused, ct);
 
@@ -184,10 +203,11 @@ public class VideoCampaignsController : ControllerBase
         if (c.Status == VideoCampaignStatus.Done) return BadRequest(new { error = "La campaña ya termino" });
         if (status == VideoCampaignStatus.Active && await _svc.LineProblemAsync(c.InstanceName, ct) is { } problem)
             return BadRequest(new { error = problem });
+        var pruned = status == VideoCampaignStatus.Active ? await _svc.PruneHighRiskAsync(c, ct) : 0;
         c.Status = status;
         if (status == VideoCampaignStatus.Active) c.StartedAt ??= DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return Ok(new { status = c.Status.ToString() });
+        return Ok(new { status = c.Status.ToString(), prunedHighRisk = pruned });
     }
 
     private async Task<string?> Validate(SaveRequest r, CancellationToken ct)
