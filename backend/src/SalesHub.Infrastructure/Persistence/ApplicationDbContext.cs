@@ -64,6 +64,8 @@ public class ApplicationDbContext : DbContext
     // Campaña de remarketing: config (fila única) + un registro por mensaje encolado.
     public DbSet<RemarketingSettings> RemarketingSettings => Set<RemarketingSettings>();
     public DbSet<RemarketingAttempt> RemarketingAttempts => Set<RemarketingAttempt>();
+    public DbSet<VideoCampaign> VideoCampaigns => Set<VideoCampaign>();
+    public DbSet<VideoCampaignRecipient> VideoCampaignRecipients => Set<VideoCampaignRecipient>();
 
     // Diccionario de tipos de mensaje del lead (respuestas sin IA), editable en /diccionario.
     public DbSet<ReplyIntent> ReplyIntents => Set<ReplyIntent>();

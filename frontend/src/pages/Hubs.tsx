@@ -10,6 +10,7 @@ import SearchLeads from './SearchLeads';
 import Pipeline from './Pipeline';
 import LeadsImport from './LeadsImport';
 import Remarketing from './Remarketing';
+import VideoCampaigns from './VideoCampaigns';
 import Devices from './Devices';
 import Connect from './Connect';
 import Transcripcion from './Transcripcion';
@@ -57,6 +58,7 @@ export function CrmHub() {
           ),
         },
         { key: 'remarketing', label: 'Remarketing', element: <Remarketing />, hidden: !admin },
+        { key: 'video', label: 'Campaña con video', element: <VideoCampaigns />, hidden: !admin },
       ]}
     />
   );

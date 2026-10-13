@@ -74,3 +74,34 @@ public class IntentFeedbackConfiguration : IEntityTypeConfiguration<IntentFeedba
         b.Property(x => x.CorrectAction).HasMaxLength(40);
     }
 }
+
+public class VideoCampaignConfiguration : IEntityTypeConfiguration<VideoCampaign>
+{
+    public void Configure(EntityTypeBuilder<VideoCampaign> b)
+    {
+        b.ToTable("video_campaigns");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Name).HasMaxLength(120).IsRequired();
+        b.Property(x => x.ProductKey).HasMaxLength(64).IsRequired();
+        b.Property(x => x.InstanceName).HasMaxLength(128).IsRequired();
+        b.Property(x => x.Status).HasConversion<int>();
+        b.Property(x => x.Weekdays).HasDefaultValueSql("'{1,2,3,4}'");
+        b.HasOne(x => x.MediaAsset).WithMany().HasForeignKey(x => x.MediaAssetId).OnDelete(DeleteBehavior.Restrict);
+        b.HasMany(x => x.Recipients).WithOne(r => r.Campaign!).HasForeignKey(r => r.CampaignId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class VideoCampaignRecipientConfiguration : IEntityTypeConfiguration<VideoCampaignRecipient>
+{
+    public void Configure(EntityTypeBuilder<VideoCampaignRecipient> b)
+    {
+        b.ToTable("video_campaign_recipients");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Status).HasConversion<int>();
+        b.Property(x => x.Error).HasMaxLength(500);
+        b.HasOne(x => x.Lead).WithMany().HasForeignKey(x => x.LeadId).OnDelete(DeleteBehavior.Cascade);
+        // Un lead recibe cada campaña una sola vez.
+        b.HasIndex(x => new { x.CampaignId, x.LeadId }).IsUnique();
+        b.HasIndex(x => x.LeadId);
+    }
+}

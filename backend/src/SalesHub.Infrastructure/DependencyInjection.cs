@@ -143,6 +143,7 @@ public static class DependencyInjection
         services.AddScoped<ConversationService>();
         services.AddScoped<LeadEntryService>();
         services.AddScoped<RemarketingService>();
+        services.AddScoped<VideoCampaignService>();
         services.AddScoped<PersonHandoffService>();
         services.AddSingleton<ChatHistoryImporter>();          // chats de Evolution → ingest (sync periódico + historial de un teléfono nuevo)            // leads que entraron a cada teléfono (gráfico + reporte diario)
         services.AddScoped<MetaAdsSyncService>();         // anuncios de Meta → meta_ads (rubro/ángulo por anuncio para el guion)

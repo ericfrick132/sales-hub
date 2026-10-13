@@ -54,6 +54,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<SlaAlertWorker>();                   // avisa al maestro cuando un chat pasa el SLA sin respuesta (flag 'sla-alerts')
     builder.Services.AddHostedService<LeadEntryReportWorker>();            // reporte diario por WhatsApp: leads que entraron a cada teléfono (config en /entradas)
     builder.Services.AddHostedService<RemarketingWorker>();                // remarketing con tope por línea por día (config en /remarketing, arranca apagado)
+    builder.Services.AddHostedService<VideoCampaignWorker>();               // campañas con video (Marketing → Campaña con video), arrancan en borrador
     builder.Services.AddHostedService<LineHistoryImportWorker>();          // historial de un teléfono recién escaneado ("cargar para atrás" en /devices)
     builder.Services.AddHostedService<MetaAdsSyncWorker>();                // anuncios de Meta cada hora → meta_ads (Meta:AdsAccessToken)
     builder.Services.AddHostedService<TenantMetricsWorker>();              // MRR/pagos/churn de cada app → tab Negocio del Dashboard (config TenantMetrics:Sources)

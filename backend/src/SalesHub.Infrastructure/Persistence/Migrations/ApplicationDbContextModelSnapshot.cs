@@ -4880,6 +4880,134 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("transcription_settings", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.VideoCampaign", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("InstanceName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("instance_name");
+
+                    b.Property<DateTimeOffset?>("LastSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_sent_at");
+
+                    b.Property<Guid>("MediaAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("media_asset_id");
+
+                    b.Property<string>("MessageAfter")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("message_after");
+
+                    b.Property<string>("MessageBefore")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("message_before");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("PerDay")
+                        .HasColumnType("integer")
+                        .HasColumnName("per_day");
+
+                    b.Property<string>("ProductKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<List<int>>("Weekdays")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer[]")
+                        .HasColumnName("weekdays")
+                        .HasDefaultValueSql("'{1,2,3,4}'");
+
+                    b.Property<int>("WindowFromHour")
+                        .HasColumnType("integer")
+                        .HasColumnName("window_from_hour");
+
+                    b.Property<int>("WindowToHour")
+                        .HasColumnType("integer")
+                        .HasColumnName("window_to_hour");
+
+                    b.HasKey("Id")
+                        .HasName("pk_video_campaigns");
+
+                    b.HasIndex("MediaAssetId")
+                        .HasDatabaseName("ix_video_campaigns_media_asset_id");
+
+                    b.ToTable("video_campaigns", (string)null);
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.VideoCampaignRecipient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("campaign_id");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("error");
+
+                    b.Property<Guid>("LeadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lead_id");
+
+                    b.Property<DateTimeOffset?>("RepliedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("replied_at");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_video_campaign_recipients");
+
+                    b.HasIndex("LeadId")
+                        .HasDatabaseName("ix_video_campaign_recipients_lead_id");
+
+                    b.HasIndex("CampaignId", "LeadId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_video_campaign_recipients_campaign_id_lead_id");
+
+                    b.ToTable("video_campaign_recipients", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.VoiceCalibrationTake", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5347,6 +5475,39 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.Navigation("Lead");
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.VideoCampaign", b =>
+                {
+                    b.HasOne("SalesHub.Core.Domain.Entities.MediaAsset", "MediaAsset")
+                        .WithMany()
+                        .HasForeignKey("MediaAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_video_campaigns_media_assets_media_asset_id");
+
+                    b.Navigation("MediaAsset");
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.VideoCampaignRecipient", b =>
+                {
+                    b.HasOne("SalesHub.Core.Domain.Entities.VideoCampaign", "Campaign")
+                        .WithMany("Recipients")
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_video_campaign_recipients_video_campaigns_campaign_id");
+
+                    b.HasOne("SalesHub.Core.Domain.Entities.Lead", "Lead")
+                        .WithMany()
+                        .HasForeignKey("LeadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_video_campaign_recipients_leads_lead_id");
+
+                    b.Navigation("Campaign");
+
+                    b.Navigation("Lead");
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.Competitor", b =>
                 {
                     b.Navigation("Posts");
@@ -5390,6 +5551,11 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.Navigation("Articles");
 
                     b.Navigation("Keywords");
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.VideoCampaign", b =>
+                {
+                    b.Navigation("Recipients");
                 });
 #pragma warning restore 612, 618
         }

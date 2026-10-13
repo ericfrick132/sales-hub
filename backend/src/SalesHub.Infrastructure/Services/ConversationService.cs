@@ -22,6 +22,7 @@ public class ConversationService
     private readonly TakeoverSignal _takeover;
     private readonly PitchEngine _pitch;
     private readonly RemarketingService _remarketing;
+    private readonly VideoCampaignService _videoCampaigns;
     private readonly IntentClassifier _intents;
     private readonly MetaAdsSyncService _metaAds;
     private readonly ILogger<ConversationService> _log;
@@ -43,9 +44,10 @@ public class ConversationService
 
     public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILeadAssigner assigner,
         TakeoverSignal takeover, PitchEngine pitch, RemarketingService remarketing, IntentClassifier intents,
-        MetaAdsSyncService metaAds, ILogger<ConversationService> log)
+        MetaAdsSyncService metaAds, VideoCampaignService videoCampaigns, ILogger<ConversationService> log)
     {
         _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _pitch = pitch; _remarketing = remarketing;
+        _videoCampaigns = videoCampaigns;
         _intents = intents; _metaAds = metaAds; _log = log;
     }
 
@@ -242,7 +244,11 @@ public class ConversationService
 
         // Respuesta a un mensaje de remarketing: métrica + "coordinar la llamada" en el CRM.
         if (!incoming.FromSync && !IsHistory(incoming))
+        {
             await _remarketing.OnReplyAsync(lead, incoming.Timestamp, ct, incoming.Text);
+            // Respuesta a una campaña con video: pase a la persona de la app.
+            await _videoCampaigns.OnReplyAsync(lead, incoming.Timestamp, incoming.Text, ct);
+        }
 
         if (IsHistory(incoming))
         {
