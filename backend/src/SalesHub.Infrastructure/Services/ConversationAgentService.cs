@@ -712,6 +712,23 @@ public class ConversationAgentService
         return CopyStyle.Clean(t);
     }
 
+    /// <summary>Segundos que tarda una persona en tipear el texto a 50 palabras por minuto (palabra = 5 letras).</summary>
+    private static int TypingSeconds(string text) => Math.Clamp((int)Math.Round(text.Length / (50 * 5 / 60.0)), 2, 30);
+
+    /// <summary>
+    /// Muestra "escribiendo…" y espera ese tiempo. Evolution deja colgado el pedido de presencia
+    /// mientras dura el "escribiendo…", así que solo esperamos lo que falte (antes se esperaba el doble).
+    /// </summary>
+    private async Task TypeLikeAPersonAsync(string? instance, string phone, string text, CancellationToken ct)
+    {
+        var seconds = TypingSeconds(text);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        if (instance is not null)
+            try { await _evo.SetPresenceTypingAsync(instance, phone, seconds, ct); } catch { /* best-effort */ }
+        var rest = TimeSpan.FromSeconds(seconds) - sw.Elapsed;
+        if (rest > TimeSpan.Zero) await Task.Delay(rest, ct);
+    }
+
     /// <summary>Lectura fresca (no la entidad trackeada): ¿un humano escribió en el chat y muteó el bot recién?</summary>
     private Task<bool> HumanTookOverAsync(Guid leadId, CancellationToken ct) =>
         _db.Leads.AsNoTracking().AnyAsync(l => l.Id == leadId && l.BotMutedAt != null, ct);
@@ -749,23 +766,13 @@ public class ConversationAgentService
             return;
         }
 
-        var firstPart = true;
         foreach (var p in parts)
         {
-            // No mandar todo en ráfaga: a partir del 2º mensaje, mostrar "escribiendo…" y una
-            // pausa breve proporcional al largo (más humano, menos cara de bot).
-            if (!firstPart)
-            {
-                // "de a poco": pausa proporcional al largo del mensaje (como alguien tipeando
-                // de verdad). Antes 2-5s: una pared de 5 burbujas caia en 15 segundos.
-                var pause = Math.Clamp(p.Length / 15, 4, 10);
-                if (line.InstanceName is not null)
-                    try { await _evo.SetPresenceTypingAsync(line.InstanceName, lead.WhatsappPhone!, pause, ct); } catch { }
-                await Task.Delay(TimeSpan.FromSeconds(pause), ct);
-                // Si en la pausa alguien escribió a mano desde el celu/WhatsApp Web, el resto no sale.
-                if (await HumanTookOverAsync(lead.Id, ct)) break;
-            }
-            firstPart = false;
+            // "escribiendo…" el tiempo que tardaria una persona tipeando a 50 palabras por minuto,
+            // en TODAS las burbujas (la 1ª tambien: la espera de 25 s a 2 min es "leer", no "tipear").
+            await TypeLikeAPersonAsync(line.InstanceName, lead.WhatsappPhone!, p, ct);
+            // Si mientras "tipeaba" alguien escribió a mano desde el celu/WhatsApp Web, el resto no sale.
+            if (await HumanTookOverAsync(lead.Id, ct)) break;
             // Persistir ANTES de mandar (ver AutoSendAsync): si el eco fromMe llega antes
             // del commit, el takeover lo confunde con mensaje manual y mutea el bot.
             var msg = new ConversationMessage
