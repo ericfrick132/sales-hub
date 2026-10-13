@@ -186,16 +186,37 @@ public class VideoCampaignService
         return c.Weekdays.Contains(dow) && artNow.Hour >= c.WindowFromHour && artNow.Hour < c.WindowToHour;
     }
 
-    /// <summary>Minutos entre envíos: reparte el tope del día en la franja (entre 3 y 20).</summary>
+    /// <summary>Minutos entre envíos: reparte el tope del día en la franja (entre 5 y 30).</summary>
     public static int GapMinutes(VideoCampaign c) =>
-        Math.Clamp((c.WindowToHour - c.WindowFromHour) * 60 / Math.Max(1, c.PerDay), 3, 20);
+        Math.Clamp((c.WindowToHour - c.WindowFromHour) * 60 / Math.Max(1, c.PerDay), 5, 30);
 
-    public async Task<int> SentTodayAsync(VideoCampaign c, CancellationToken ct)
+    /// <summary>
+    /// Espera hasta el próximo envío: el espacio base ±40% (de 9 min sale entre 5,4 y 12,6). Un intervalo
+    /// fijo es un patrón de bot. El azar sale del último envío, así el worker (que mira cada minuto)
+    /// llega siempre al mismo número para ese intervalo.
+    /// </summary>
+    public static TimeSpan NextGap(VideoCampaign c, DateTimeOffset lastSent)
+    {
+        var frac = new Random((int)(lastSent.UtcTicks % int.MaxValue)).NextDouble();
+        return TimeSpan.FromMinutes(GapMinutes(c) * (0.6 + 0.8 * frac));
+    }
+
+    private static DateTimeOffset StartOfArtDay()
     {
         var art = ArtNow();
-        var startOfDay = new DateTimeOffset(art.Year, art.Month, art.Day, 0, 0, 0, art.Offset);
-        return await _db.VideoCampaignRecipients.CountAsync(r => r.CampaignId == c.Id && r.SentAt >= startOfDay, ct);
+        return new DateTimeOffset(art.Year, art.Month, art.Day, 0, 0, 0, art.Offset);
     }
+
+    /// <summary>Envíos de hoy por la LÍNEA (todas sus campañas): el tope es por número, no por campaña.</summary>
+    public async Task<int> LineSentTodayAsync(string instanceName, CancellationToken ct)
+    {
+        var start = StartOfArtDay();
+        return await _db.VideoCampaignRecipients.CountAsync(r => r.Campaign!.InstanceName == instanceName && r.SentAt >= start, ct);
+    }
+
+    /// <summary>Último envío de cualquier campaña por esa línea.</summary>
+    public Task<DateTimeOffset?> LineLastSentAsync(string instanceName, CancellationToken ct) =>
+        _db.VideoCampaigns.Where(c => c.InstanceName == instanceName).MaxAsync(c => c.LastSentAt, ct);
 
     // Variantes: "{hola|buenas|que tal}" → una al azar por lead. "{nombre}" no tiene "|" y no entra acá.
     private static readonly Regex SpinRx = new(@"\{([^{}]*\|[^{}]*)\}", RegexOptions.Compiled);

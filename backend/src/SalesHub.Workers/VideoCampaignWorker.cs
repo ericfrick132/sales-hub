@@ -7,7 +7,8 @@ namespace SalesHub.Workers;
 
 /// <summary>
 /// Campañas con video activas: dentro de la franja y los días elegidos, manda de a un lead,
-/// repartiendo el tope del día en la franja (ver <see cref="VideoCampaignService.GapMinutes"/>).
+/// repartiendo el tope del día en la franja con un espacio que varía ±40% (ver <see cref="VideoCampaignService.NextGap"/>).
+/// El tope y el espaciado son por línea: varias campañas en el mismo número comparten el cupo.
 /// Si la línea se cae, espera; cuando no queda nadie pendiente, la campaña termina.
 /// </summary>
 public class VideoCampaignWorker : BackgroundService
@@ -42,8 +43,9 @@ public class VideoCampaignWorker : BackgroundService
         foreach (var c in active)
         {
             if (!VideoCampaignService.InWindow(c, art)) continue;
-            if (c.LastSentAt is { } last && DateTimeOffset.UtcNow - last < TimeSpan.FromMinutes(VideoCampaignService.GapMinutes(c))) continue;
-            if (await svc.SentTodayAsync(c, ct) >= c.PerDay) continue;
+            // Espaciado y tope por LÍNEA: dos campañas en el mismo número no se suman ni se pisan.
+            if (await svc.LineLastSentAsync(c.InstanceName, ct) is { } last && DateTimeOffset.UtcNow - last < VideoCampaignService.NextGap(c, last)) continue;
+            if (await svc.LineSentTodayAsync(c.InstanceName, ct) >= c.PerDay) continue;
             if (await svc.LineProblemAsync(c.InstanceName, ct) is { } problem)
             {
                 _log.LogDebug("Campaña con video {Name}: no manda ({Problem})", c.Name, problem);
