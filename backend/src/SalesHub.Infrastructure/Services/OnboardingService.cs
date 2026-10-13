@@ -566,6 +566,10 @@ public class OnboardingService
             questions[0] = cfg.KnownBusinessQuestion.Replace("{negocio}", negocio);
         }
 
+        // Rubro de clases (pilates, yoga…): "clases con turnos o pase libre" no tiene sentido, se cambia.
+        questions = AdaptQuestionsToRubro(questions, string.Join(" ",
+            ob.GymName, lead.Name, lead.AdTitle, lead.SearchCategory, ad?.BusinessRef, msg, recentBurst));
+
         var n = questions.Count;
         if (n == 0) return new OnboardingResult(null, OffScript: true, Provisioned: false); // sin preguntas → IA libre
 
@@ -963,6 +967,25 @@ public class OnboardingService
 
     private static string Join(string a, string b) =>
         string.IsNullOrWhiteSpace(a) ? b : (string.IsNullOrWhiteSpace(b) ? a : a + NL + b);
+
+    // Rubros que son SIEMPRE clases con turno: a estos no se les pregunta "clases o pase libre".
+    private static readonly Regex ClassOnlyRubroRx = new(
+        @"pilates|reformer|yoga|danza|baile|barre|zumba|spinning|indoor cycling|stretching|aerobic",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ClassOrPassQuestionRx = new(@"clases grupales.*pase libre|pase libre.*clases", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private const string ClassOnlyQuestion =
+        "bien, perfecto[NUEVO_MENSAJE]y contame, mas o menos cuantos alumnos tenes por semana? (asi te muestro justo lo que te va a servir)";
+
+    /// <summary>
+    /// Si el negocio es de un rubro de clases (pilates, yoga, danza…), la pregunta "clases grupales con turnos o
+    /// pase libre con cuotas" se reemplaza por una que sí califica (cuántos alumnos). Pedido de Eric 2026-10-13.
+    /// </summary>
+    public static List<string> AdaptQuestionsToRubro(List<string> questions, string? rubroText)
+    {
+        if (string.IsNullOrWhiteSpace(rubroText) || !ClassOnlyRubroRx.IsMatch(rubroText)) return questions;
+        if (!questions.Any(q => ClassOrPassQuestionRx.IsMatch(q))) return questions;
+        return questions.Select(q => ClassOrPassQuestionRx.IsMatch(q) ? ClassOnlyQuestion : q).ToList();
+    }
 
     /// <summary>La pregunta pendiente a reenviar tras un off-script — solo la pregunta, sin el ack previo.</summary>
     private static string? PendingQuestion(int step, int n, List<string> questions, string emailPrompt)
