@@ -406,8 +406,12 @@ public class RemarketingService
         if (words.Length > 3) return null;
         // Todo en mayúscula suele ser el nombre del gimnasio ("FUERZA TAUCAP").
         if (n.Length > 3 && n.Any(char.IsLetter) && n.Where(char.IsLetter).All(char.IsUpper)) return null;
-        var first = words[0];
-        if (first.Length < 3 || !first.All(char.IsLetter)) return null;
+        // Cualquier palabra de negocio ("Cfit Gym", "Pro fitness") = es el nombre del lugar, no de la persona.
+        if (words.Any(w => NotNames.Contains(w.Trim('.', ',', '!', '-')))) return null;
+        // "Facundo!!!", "Tomy😉": se limpia lo que no es letra en las puntas.
+        var first = new string(words[0].SkipWhile(c => !char.IsLetter(c)).Reverse().SkipWhile(c => !char.IsLetter(c)).Reverse().ToArray());
+        // Una sola palabra larguísima es un usuario de Instagram ("luluceropilatesstudio").
+        if (first.Length < 3 || first.Length > 12 || !first.All(char.IsLetter)) return null;
         var f = first.ToLowerInvariant();
         return NotNames.Contains(f) ? null : f;
     }
@@ -418,6 +422,7 @@ public class RemarketingService
         "escuela", "academia", "fitness", "crossfit", "pilates", "box", "sport", "sports", "team", "the",
         "los", "las", "mis", "tus", "sus", "una", "uno", "info", "ventas", "admin", "recepcion", "recepción",
         "bonos", "conectar", "mi", "yo", "sin", "con", "del", "por", "para", "casa", "espacio", "sala",
+        "studio", "training", "running", "dojo", "salon", "spa", "lic", "dr", "dra", "pro", "madre",
     };
 
     private static string Trunc(string s, int max) => s.Length <= max ? s : s[..max] + "…";

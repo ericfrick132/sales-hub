@@ -37,6 +37,16 @@ public class VideoCampaignService
         @"gracias por comunicarte|gracias por (tu|su) mensaje|en breve te|horario de atencion|can i learn more|^\[(imagen|audio|video|sticker|documento)|https?://",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex ConsultaRx = new(@"\b(hola|buenas?|buen dia|info|informacion|precio|cuanto|consulta|quiero)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Rubros que son de OTRA app: un "agendas para manicurista" que entró por GymHero es de TurnosPro.
+    private static readonly Dictionary<string, Regex> OtherAppRx = new()
+    {
+        ["gymhero"] = new(@"manicur|lash|pestañ|uñas|peluquer|barber|estetica|seguimiento de obra|padel|cancha", RegexOptions.IgnoreCase),
+        ["turnospro"] = new(@"gimnasio|\bgym\b|cuotas?|alumnos|seguimiento de obra|padel|cancha", RegexOptions.IgnoreCase),
+        ["playcrew"] = new(@"gimnasio|\bgym\b|manicur|lash|pestañ|uñas|peluquer|seguimiento de obra", RegexOptions.IgnoreCase),
+    };
+
     /// <summary>
     /// Leads de la app que nos escribieron ELLOS primero (anuncio, consulta) y después no contestaron
     /// nada de lo que les mandamos, quietos hace más de <paramref name="minIdleDays"/> días y que
@@ -71,10 +81,15 @@ public class VideoCampaignService
         {
             var first = (r.First ?? "").Trim();
             string? why = null;
-            if (first.Length < 4) why = "primer mensaje sin contenido";
+            var digits = new string((r.WhatsappPhone ?? "").Where(char.IsDigit).ToArray());
+            var words = first.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (!digits.StartsWith("54")) why = "numero de otro pais";
+            else if (first.Length < 4) why = "primer mensaje sin contenido";
+            // Una o dos palabras que no son saludo ni pedido de info ("golazo", "nono"): no es una consulta.
+            else if (words.Length <= 2 && !ConsultaRx.IsMatch(first)) why = "no parece una consulta";
             else if (JunkRx.IsMatch(first)) why = "parece contestador automatico o spam";
             else if (otherProducts.Any(p => p.Length > 3 && first.Contains(p, StringComparison.OrdinalIgnoreCase))
-                     || Regex.IsMatch(first, "seguimiento de obra", RegexOptions.IgnoreCase))
+                     || (OtherAppRx.TryGetValue(productKey, out var rx) && rx.IsMatch(first)))
                 why = "pregunto por otra app";
             return new AudienceItem(r.Id, r.Name, r.WhatsappPhone, r.Source.ToString(), Trunc(first, 140), r.LastOut,
                 r.Ours, why is null, why);
