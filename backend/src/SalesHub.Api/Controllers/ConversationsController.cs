@@ -274,6 +274,34 @@ public class ConversationsController : ControllerBase
         }
     }
 
+    /// <summary>Manda una imagen o un video al lead (multipart: "file" + "caption" opcional).</summary>
+    [HttpPost("{leadId:guid}/reply-media")]
+    [RequestSizeLimit(17_000_000)]
+    public async Task<IActionResult> ReplyMedia(Guid leadId, IFormFile file, [FromForm] string? caption, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Falta el archivo" });
+        var mime = file.ContentType ?? "";
+        var isImage = mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+        var isVideo = mime.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
+        if (!isImage && !isVideo) return BadRequest(new { error = "Solo imagenes o videos" });
+        // Tope de WhatsApp para video/imagen: 16 MB.
+        if (file.Length > 16 * 1024 * 1024) return BadRequest(new { error = "El archivo pasa los 16 MB que acepta WhatsApp" });
+
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        try
+        {
+            var msg = await _conv.SendMediaReplyAsync(CurrentUser.Id(User), leadId, ms.ToArray(), mime, file.FileName, caption, ct);
+            if (msg is null) return NotFound();
+            if (msg.Status == MessageDeliveryStatus.Failed) return StatusCode(502, new { error = "WhatsApp no acepto el archivo" });
+            return Ok(new ConversationMessageDto(msg.Id, msg.Direction, msg.Text, msg.Timestamp, msg.Status, msg.IsRead));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>Tags del inbox (reemplaza la lista completa).</summary>
     [HttpPost("{leadId:guid}/tags")]
     public async Task<IActionResult> SetTags(Guid leadId, [FromBody] SetTagsRequest req, CancellationToken ct)

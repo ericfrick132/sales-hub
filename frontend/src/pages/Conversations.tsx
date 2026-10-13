@@ -114,6 +114,8 @@ export default function Conversations() {
   // Prellenado del mini-form "Promover a FAQ" (pregunta = último inbound, respuesta = sugerencia IA).
   const [promoteDraft, setPromoteDraft] = useState<{ productKey: string; question: string; answer: string } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [attachment, setAttachment] = useState<File | null>(null);
 
   const [productFilter, setProductFilter] = useState('');
   const [deviceFilter, setDeviceFilter] = useState('');
@@ -185,6 +187,34 @@ export default function Conversations() {
     },
     onError: (err: any) => toast.error(err.response?.data?.error ?? 'No se pudo enviar')
   });
+
+  // Imagen o video: el texto del input viaja como caption.
+  const mediaMut = useMutation({
+    mutationFn: async () => {
+      const fd = new FormData();
+      fd.append('file', attachment!);
+      if (reply.trim()) fd.append('caption', reply.trim());
+      return (await api.post(`/conversations/${selected}/reply-media`, fd)).data;
+    },
+    onSuccess: () => {
+      setReply('');
+      setAttachment(null);
+      qc.invalidateQueries({ queryKey: ['conv-thread', selected] });
+      qc.invalidateQueries({ queryKey: ['conversations'] });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error ?? 'No se pudo enviar el archivo')
+  });
+
+  const pickFile = (f: File | undefined) => {
+    if (!f) return;
+    if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) { toast.error('Solo imagenes o videos'); return; }
+    if (f.size > 16 * 1024 * 1024) { toast.error('WhatsApp acepta hasta 16 MB'); return; }
+    setAttachment(f);
+  };
+
+  useEffect(() => { setAttachment(null); }, [selected]);
+
+  const sending = sendMut.isPending || mediaMut.isPending;
 
   const clearSelected = () => setParams({});
 
@@ -469,12 +499,46 @@ export default function Conversations() {
                     </div>
                   )}
                   <QuickReplyBar replies={replies} onPick={(t) => setReply(t)} />
+                  {attachment && (
+                    <div className="px-3 pt-2 flex items-center gap-2 text-xs text-slate-600">
+                      <span className="rounded bg-slate-100 px-2 py-1 truncate max-w-[70%]">
+                        {attachment.type.startsWith('video/') ? 'Video' : 'Imagen'}: {attachment.name} ({(attachment.size / 1024 / 1024).toFixed(1)} MB)
+                      </span>
+                      <button type="button" className="text-slate-400 hover:text-slate-700" onClick={() => setAttachment(null)} disabled={sending}>
+                        quitar
+                      </button>
+                      <span className="text-slate-400">el texto va como descripcion</span>
+                    </div>
+                  )}
                   <form
                     className="p-3 border-t border-slate-100 flex gap-2"
-                    onSubmit={(e) => { e.preventDefault(); if (reply.trim()) sendMut.mutate(); }}>
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (attachment) mediaMut.mutate();
+                      else if (reply.trim()) sendMut.mutate();
+                    }}>
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*,video/*"
+                      className="hidden"
+                      onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }}
+                    />
+                    <button
+                      type="button"
+                      className="btn-secondary px-3"
+                      title="Adjuntar imagen o video"
+                      onClick={() => fileRef.current?.click()}
+                      disabled={sending}>
+                      📎
+                    </button>
                     <input
                       className="input flex-1"
-                      placeholder={replies.some(r => r.trigger)
+                      onPaste={(e) => {
+                        const f = Array.from(e.clipboardData.files)[0];
+                        if (f) { e.preventDefault(); pickFile(f); }
+                      }}
+                      placeholder={attachment ? 'Descripcion (opcional)…' : replies.some(r => r.trigger)
                         ? `Escribí tu respuesta… (probá /${replies.find(r => r.trigger)!.trigger})`
                         : 'Escribí tu respuesta…'}
                       value={reply}
@@ -488,10 +552,10 @@ export default function Conversations() {
                           }
                         }
                       }}
-                      disabled={sendMut.isPending}
+                      disabled={sending}
                     />
-                    <button className="btn-primary" disabled={sendMut.isPending || !reply.trim()}>
-                      {sendMut.isPending ? '…' : 'Enviar'}
+                    <button className="btn-primary" disabled={sending || (!reply.trim() && !attachment)}>
+                      {sending ? '…' : 'Enviar'}
                     </button>
                   </form>
                 </>

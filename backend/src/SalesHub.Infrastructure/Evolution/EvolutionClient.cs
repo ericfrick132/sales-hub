@@ -560,10 +560,10 @@ public class EvolutionClient : IEvolutionClient
             return false;
         }
         // Evolution acepta el archivo en base64 vía /message/sendMedia/{instance}.
-        // mediatype: "image" | "document" | "video" | "audio". Acá solo
-        // distinguimos imagen vs document (PDF y demás).
-        var mediaType = mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-            ? "image"
+        // mediatype: "image" | "document" | "video" | "audio". Imagen y video van como
+        // tales (se ven/reproducen en el chat); el resto (PDF y demás) como documento.
+        var mediaType = mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? "image"
+            : mimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? "video"
             : "document";
         var body = new
         {

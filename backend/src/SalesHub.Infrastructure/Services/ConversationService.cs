@@ -531,7 +531,25 @@ public class ConversationService
     /// así que cualquiera puede contestar cualquier chat y el mensaje SIEMPRE sale por la
     /// línea donde vive la conversación, nunca por la del que escribe.
     /// </summary>
-    public async Task<ConversationMessage?> SendReplyAsync(Guid sellerId, Guid leadId, string text, CancellationToken ct)
+    public Task<ConversationMessage?> SendReplyAsync(Guid sellerId, Guid leadId, string text, CancellationToken ct)
+        => SendOutboundAsync(leadId, text, (instance, phone) => _evo.SendTextAsync(instance, phone, text, ct), ct);
+
+    /// <summary>
+    /// Igual que <see cref="SendReplyAsync"/> pero con una imagen o video (y caption opcional).
+    /// El chat guarda "[imagen] caption" / "[video] caption" para que se vea qué se mandó.
+    /// </summary>
+    public Task<ConversationMessage?> SendMediaReplyAsync(Guid sellerId, Guid leadId, byte[] content, string mimeType,
+        string fileName, string? caption, CancellationToken ct)
+    {
+        var kind = mimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? "[video]" : "[imagen]";
+        var text = string.IsNullOrWhiteSpace(caption) ? kind : $"{kind} {caption.Trim()}";
+        return SendOutboundAsync(leadId, text,
+            (instance, phone) => _evo.SendMediaAsync(instance, phone, content, mimeType, fileName,
+                string.IsNullOrWhiteSpace(caption) ? null : caption.Trim(), ct), ct);
+    }
+
+    private async Task<ConversationMessage?> SendOutboundAsync(Guid leadId, string text,
+        Func<string, string, Task<bool>> send, CancellationToken ct)
     {
         var lead = await _db.Leads
             .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
@@ -568,7 +586,7 @@ public class ConversationService
             sendInstanceName = instance.InstanceName;
         }
 
-        var ok = await _evo.SendTextAsync(sendInstanceName, lead.WhatsappPhone, text, ct);
+        var ok = await send(sendInstanceName, lead.WhatsappPhone);
         var entry = new ConversationMessage
         {
             Id = Guid.NewGuid(),
