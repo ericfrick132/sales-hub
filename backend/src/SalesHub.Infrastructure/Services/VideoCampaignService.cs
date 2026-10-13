@@ -47,16 +47,30 @@ public class VideoCampaignService
         ["playcrew"] = new(@"gimnasio|\bgym\b|manicur|lash|pestañ|uñas|peluquer|seguimiento de obra", RegexOptions.IgnoreCase),
     };
 
+    // Respuesta que cierra la puerta: a estos no se les insiste.
+    private static readonly Regex NotInterestedRx = new(
+        @"no me interesa|no gracias|no,? gracias|ya tengo|ya uso|no por ahora|no estoy interesad|no necesito|dejame de|deja de|basta|no molest|no me escrib|\bbaja\b|equivocad",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>Grupos de leads quietos que puede tomar una campaña.</summary>
+    public static readonly IReadOnlyDictionary<string, string> Segments = new Dictionary<string, string>
+    {
+        ["escribieron"] = "Nos escribieron primero y despues no contestaron",
+        ["enfriados"] = "Charlaron con nosotros y se enfriaron",
+        ["formulario"] = "Dejaron sus datos en un formulario de Meta y nunca contestaron",
+        ["registrados"] = "Se registraron en la app y nunca contestaron",
+    };
+
     /// <summary>
-    /// Leads de la app que nos escribieron ELLOS primero (anuncio, consulta) y después no contestaron
-    /// nada de lo que les mandamos, quietos hace más de <paramref name="minIdleDays"/> días y que
-    /// nunca recibieron una campaña con video. Marca como no sugeridos los que parecen basura.
+    /// Leads de la app de un grupo (<see cref="Segments"/>), quietos hace más de <paramref name="minIdleDays"/>
+    /// días y que nunca recibieron una campaña con video. Marca como no sugeridos los que parecen basura,
+    /// son de otro país o ya dijeron que no.
     /// </summary>
-    public async Task<List<AudienceItem>> AudienceAsync(string productKey, int minIdleDays, CancellationToken ct)
+    public async Task<List<AudienceItem>> AudienceAsync(string productKey, int minIdleDays, string segment, CancellationToken ct)
     {
         var idleCut = DateTimeOffset.UtcNow.AddDays(-minIdleDays);
         var dead = new[] { LeadStatus.Closed, LeadStatus.Lost, LeadStatus.Blocked, LeadStatus.NoWhatsApp };
-        var rows = await (
+        var q =
             from l in _db.Leads.AsNoTracking()
             where l.ProductKey == productKey && l.WhatsappPhone != null && l.WhatsappPhone != ""
                   && !dead.Contains(l.Status) && !l.Tags.Contains("sandbox")
@@ -65,34 +79,57 @@ public class VideoCampaignService
             let lastIn = _db.ConversationMessages.Where(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound).Max(m => (DateTimeOffset?)m.Timestamp)
             let firstOut = _db.ConversationMessages.Where(m => m.LeadId == l.Id && m.Direction == MessageDirection.Outbound).Min(m => (DateTimeOffset?)m.Timestamp)
             let lastOut = _db.ConversationMessages.Where(m => m.LeadId == l.Id && m.Direction == MessageDirection.Outbound).Max(m => (DateTimeOffset?)m.Timestamp)
-            where firstIn != null && firstOut != null && firstIn < firstOut && lastIn < firstOut && lastOut < idleCut
-            orderby lastOut descending
-            select new
+            let last = lastIn > lastOut ? lastIn : (lastOut ?? lastIn ?? (DateTimeOffset?)l.CreatedAt)
+            where last < idleCut
+            select new { l, firstIn, lastIn, firstOut, last };
+        q = segment switch
+        {
+            "enfriados" => q.Where(x => x.firstIn != null && x.firstOut != null && x.lastIn >= x.firstOut),
+            "formulario" => q.Where(x => x.firstIn == null && x.l.Source == LeadSource.MetaLeadAd),
+            "registrados" => q.Where(x => x.firstIn == null && x.l.Source == LeadSource.ProductReengage),
+            _ => q.Where(x => x.firstIn != null && x.firstOut != null && x.firstIn < x.firstOut && x.lastIn < x.firstOut),
+        };
+        // Lo que se muestra: el primer mensaje del que escribió primero, el último del que charló.
+        var useLast = segment == "enfriados";
+        var rows = await q.OrderByDescending(x => x.last).Select(x => new
             {
-                l.Id, l.Name, l.WhatsappPhone, l.Source, LastOut = lastOut,
-                Ours = _db.ConversationMessages.Count(m => m.LeadId == l.Id && m.Direction == MessageDirection.Outbound),
-                First = _db.ConversationMessages.Where(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound)
-                    .OrderBy(m => m.Timestamp).Select(m => m.Text).FirstOrDefault(),
-            }).Take(1000).ToListAsync(ct);
+                x.l.Id, x.l.Name, x.l.WhatsappPhone, x.l.Source, x.last,
+                Ours = _db.ConversationMessages.Count(m => m.LeadId == x.l.Id && m.Direction == MessageDirection.Outbound),
+                Text = useLast
+                    ? _db.ConversationMessages.Where(m => m.LeadId == x.l.Id && m.Direction == MessageDirection.Inbound)
+                        .OrderByDescending(m => m.Timestamp).Select(m => m.Text).FirstOrDefault()
+                    : _db.ConversationMessages.Where(m => m.LeadId == x.l.Id && m.Direction == MessageDirection.Inbound)
+                        .OrderBy(m => m.Timestamp).Select(m => m.Text).FirstOrDefault(),
+            }).Take(1500).ToListAsync(ct);
 
         var otherProducts = await _db.Products.AsNoTracking().Where(p => p.ProductKey != productKey)
             .Select(p => p.DisplayName).ToListAsync(ct);
         return rows.Select(r =>
         {
-            var first = (r.First ?? "").Trim();
+            var text = (r.Text ?? "").Trim();
             string? why = null;
             var digits = new string((r.WhatsappPhone ?? "").Where(char.IsDigit).ToArray());
-            var words = first.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (!digits.StartsWith("54")) why = "numero de otro pais";
-            else if (first.Length < 4) why = "primer mensaje sin contenido";
-            // Una o dos palabras que no son saludo ni pedido de info ("golazo", "nono"): no es una consulta.
-            else if (words.Length <= 2 && !ConsultaRx.IsMatch(first)) why = "no parece una consulta";
-            else if (JunkRx.IsMatch(first)) why = "parece contestador automatico o spam";
-            else if (otherProducts.Any(p => p.Length > 3 && first.Contains(p, StringComparison.OrdinalIgnoreCase))
-                     || (OtherAppRx.TryGetValue(productKey, out var rx) && rx.IsMatch(first)))
+            // Sin código de país y con 10 dígitos también es argentino (área + número).
+            if (!digits.StartsWith("54") && digits.Length != 10) why = "numero de otro pais";
+            else if (segment == "enfriados")
+            {
+                if (NotInterestedRx.IsMatch(text)) why = "ya dijo que no";
+                else if (JunkRx.IsMatch(text) && !text.StartsWith("[")) why = "parece contestador automatico o spam";
+            }
+            else if (segment == "escribieron")
+            {
+                var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (text.Length < 4) why = "primer mensaje sin contenido";
+                // Una o dos palabras que no son saludo ni pedido de info ("golazo", "nono"): no es una consulta.
+                else if (words.Length <= 2 && !ConsultaRx.IsMatch(text)) why = "no parece una consulta";
+                else if (JunkRx.IsMatch(text)) why = "parece contestador automatico o spam";
+            }
+            if (why is null && text.Length > 0
+                && (otherProducts.Any(p => p.Length > 3 && text.Contains(p, StringComparison.OrdinalIgnoreCase))
+                    || (OtherAppRx.TryGetValue(productKey, out var rx) && rx.IsMatch(text))))
                 why = "pregunto por otra app";
-            return new AudienceItem(r.Id, r.Name, r.WhatsappPhone, r.Source.ToString(), Trunc(first, 140), r.LastOut,
-                r.Ours, why is null, why);
+            return new AudienceItem(r.Id, r.Name, r.WhatsappPhone, r.Source.ToString(),
+                text.Length > 0 ? Trunc(text, 140) : null, r.last, r.Ours, why is null, why);
         }).ToList();
     }
 

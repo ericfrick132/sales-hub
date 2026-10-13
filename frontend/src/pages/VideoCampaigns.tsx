@@ -17,6 +17,19 @@ type Recipient = { leadId: string; name: string; phone?: string | null; status: 
 type AudienceItem = { leadId: string; name: string; phone?: string | null; source: string; firstMessage?: string | null; lastActivity?: string | null; ourMessages: number; suggested: boolean; whyNot?: string | null };
 type Media = { id: string; fileName: string; mimeType: string; sizeBytes: number; createdAt: string };
 type SendLine = { instanceName: string; label: string; phone?: string | null; productKey?: string | null };
+type Segment = { key: string; label: string; total: number; suggested: number };
+
+// Segunda burbuja según el grupo: tiene que decir la verdad sobre por qué le escribimos.
+const SEGMENT_INTRO: Record<string, (app: string) => string> = {
+  escribieron: (app) => `{hace un tiempo|hace unos meses} nos escribiste por ${app}, {te paso|te muestro} como es arrancar`,
+  enfriados: (app) => `{hace un tiempo|hace unas semanas} estuvimos hablando de ${app}, {te paso|te muestro} como es arrancar`,
+  formulario: (app) => `{hace un tiempo|hace unas semanas} dejaste tus datos para conocer ${app}, {te paso|te muestro} como es arrancar`,
+  registrados: (app) => `vi que {hace un tiempo|hace unas semanas} creaste tu cuenta en ${app}, {te paso|te muestro} como es arrancar`,
+};
+const SEGMENT_SHORT: Record<string, string> = {
+  escribieron: 'escribieron primero', enfriados: 'se enfriaron', formulario: 'formulario Meta', registrados: 'registrados en la app',
+};
+
 type Preview = { name?: string | null; before: string[]; after: string[] };
 
 const STATUS: Record<Campaign['status'], { label: string; cls: string }> = {
@@ -171,6 +184,7 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
   const [to, setTo] = useState(12);
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4]);
   const [minIdleDays, setMinIdleDays] = useState(7);
+  const [segment, setSegment] = useState('escribieron');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<Preview[] | null>(null);
@@ -183,12 +197,25 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
     const line = lines.data?.find((l) => l.productKey === productKey) ?? lines.data?.[0];
     if (line) setInstanceName(line.instanceName);
     const app = product.displayName.toLowerCase();
-    setName(`${product.displayName} · escribieron primero · ${new Date().toLocaleDateString('es-AR')}`);
-    setBefore(`{hola|buenas|que tal} {nombre}, {como estas?|como va?|todo bien?} soy mateo de ${app}\n\n{hace un tiempo|hace unos meses} nos escribiste por ${app}, {te paso|te muestro} como es arrancar`);
     setMediaId('');
-    setPreview(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productKey, lines.data]);
+
+  // App + grupo → nombre y texto de base con variantes.
+  useEffect(() => {
+    if (!product) return;
+    const app = product.displayName.toLowerCase();
+    setName(`${product.displayName} · ${SEGMENT_SHORT[segment]} · ${new Date().toLocaleDateString('es-AR')}`);
+    setBefore(`{hola|buenas|que tal} {nombre}, {como estas?|como va?|todo bien?} soy mateo de ${app}\n\n${SEGMENT_INTRO[segment](app)}`);
+    setPreview(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productKey, segment, products.data]);
+
+  const segments = useQuery({
+    queryKey: ['video-campaign-segments', productKey, minIdleDays],
+    enabled: !!productKey,
+    queryFn: async () => (await api.get<Segment[]>('/video-campaigns/segments', { params: { productKey, minIdleDays } })).data,
+  });
 
   const media = useQuery({
     queryKey: ['product-media', productKey],
@@ -198,9 +225,9 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
   const videos = (media.data ?? []).filter((m) => m.mimeType.startsWith('video/') || m.mimeType.startsWith('image/'));
 
   const audience = useQuery({
-    queryKey: ['video-campaign-audience', productKey, minIdleDays],
+    queryKey: ['video-campaign-audience', productKey, minIdleDays, segment],
     enabled: !!productKey,
-    queryFn: async () => (await api.get<AudienceItem[]>('/video-campaigns/audience', { params: { productKey, minIdleDays } })).data,
+    queryFn: async () => (await api.get<AudienceItem[]>('/video-campaigns/audience', { params: { productKey, minIdleDays, segment } })).data,
   });
   useEffect(() => {
     setSelected(new Set((audience.data ?? []).filter((a) => a.suggested).map((a) => a.leadId)));
@@ -258,12 +285,20 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
         <button className="text-sm text-slate-500 underline" onClick={onDone}>Cancelar</button>
       </div>
 
-      <div className="grid sm:grid-cols-3 gap-3">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <label className="text-sm block">
           <div className="text-slate-500 mb-1">App</div>
           <select className="input w-full" value={productKey} onChange={(e) => setProductKey(e.target.value)}>
             <option value="">Elegi…</option>
             {(products.data ?? []).filter((p) => p.displayName).map((p) => <option key={p.productKey} value={p.productKey}>{p.displayName}</option>)}
+          </select>
+        </label>
+        <label className="text-sm block">
+          <div className="text-slate-500 mb-1">A que grupo</div>
+          <select className="input w-full" value={segment} onChange={(e) => setSegment(e.target.value)} disabled={!productKey}>
+            {(segments.data ?? [{ key: 'escribieron', label: 'Nos escribieron primero y despues no contestaron', total: 0, suggested: 0 }]).map((g) => (
+              <option key={g.key} value={g.key}>{g.label}{segments.data ? ` (${g.suggested})` : ''}</option>
+            ))}
           </select>
         </label>
         <label className="text-sm block">
@@ -373,7 +408,8 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
               <button className="text-xs underline text-slate-600" onClick={() => setSelected(new Set())}>ninguno</button>
             </div>
             <div className="text-xs text-slate-500">
-              Nos escribieron ellos primero (anuncio o consulta) y despues no contestaron nada. Los que parecen basura vienen destildados.
+              {segments.data?.find((g) => g.key === segment)?.label ?? ''}.{' '}
+              {segment === 'enfriados' ? 'Se ve su ultimo mensaje; los que ya dijeron que no' : segment === 'escribieron' ? 'Se ve su primer mensaje; los que parecen basura' : 'Nunca nos escribieron; los de otro pais'} vienen destildados.
             </div>
             {audience.isLoading && <div className="text-sm text-slate-500">Buscando…</div>}
             <div className="max-h-96 overflow-y-auto border border-slate-100 rounded">
@@ -385,7 +421,7 @@ function NewCampaign({ onDone }: { onDone: () => void }) {
                       <td className="p-2 whitespace-nowrap">{a.name}</td>
                       <td className="p-2 text-xs tabular-nums whitespace-nowrap">{a.phone}</td>
                       <td className="p-2 text-xs">
-                        "{a.firstMessage}"
+                        {a.firstMessage ? `"${a.firstMessage}"` : <span className="text-slate-400">{a.source === 'MetaLeadAd' ? 'formulario de Meta' : a.source === 'ProductReengage' ? 'se registro en la app' : 'nunca escribio'}</span>}
                         {a.whyNot && <span className="ml-1 text-[10px] bg-rose-50 text-rose-600 border border-rose-200 rounded px-1">{a.whyNot}</span>}
                       </td>
                       <td className="p-2 text-xs whitespace-nowrap">{fmtDate(a.lastActivity)}</td>

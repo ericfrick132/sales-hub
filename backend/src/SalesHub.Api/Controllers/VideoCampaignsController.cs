@@ -69,11 +69,27 @@ public class VideoCampaignsController : ControllerBase
 
     /// <summary>Candidatos: escribieron ellos primero y después silencio (ver VideoCampaignService.AudienceAsync).</summary>
     [HttpGet("audience")]
-    public async Task<IActionResult> Audience([FromQuery] string productKey, [FromQuery] int minIdleDays = 7, CancellationToken ct = default)
+    public async Task<IActionResult> Audience([FromQuery] string productKey, [FromQuery] int minIdleDays = 7,
+        [FromQuery] string segment = "escribieron", CancellationToken ct = default)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
         if (string.IsNullOrWhiteSpace(productKey)) return BadRequest(new { error = "Falta la app" });
-        return Ok(await _svc.AudienceAsync(productKey, Math.Max(0, minIdleDays), ct));
+        if (!VideoCampaignService.Segments.ContainsKey(segment)) return BadRequest(new { error = "Grupo invalido" });
+        return Ok(await _svc.AudienceAsync(productKey, Math.Max(0, minIdleDays), segment, ct));
+    }
+
+    /// <summary>Cuántos leads hay en cada grupo para una app (para el selector).</summary>
+    [HttpGet("segments")]
+    public async Task<IActionResult> Segments([FromQuery] string productKey, [FromQuery] int minIdleDays = 7, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var result = new List<object>();
+        foreach (var (key, label) in VideoCampaignService.Segments)
+        {
+            var items = await _svc.AudienceAsync(productKey, Math.Max(0, minIdleDays), key, ct);
+            result.Add(new { key, label, total = items.Count, suggested = items.Count(i => i.Suggested) });
+        }
+        return Ok(result);
     }
 
     /// <summary>Crea la campaña en borrador con los leads elegidos.</summary>
