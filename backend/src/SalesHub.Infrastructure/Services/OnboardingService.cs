@@ -208,6 +208,29 @@ public class OnboardingService
     private static readonly Regex SpinRx = new(@"\{([^{}]*\|[^{}]*)\}", RegexOptions.Compiled);
 
     /// <summary>Elige una variante de {a|b} por lead+paso (estable si se reprocesa el mismo turno).</summary>
+    /// <summary>
+    /// No contestó el saludo: el bot no se queda esperando — sigue él con el pitch y la demo, como
+    /// haría un vendedor (el lead escribió por un anuncio, ya mostró interés). Null = no aplica.
+    /// </summary>
+    public async Task<OnboardingResult?> ContinueAfterSilentGreetingAsync(Lead lead, OnboardingConfig cfg, CancellationToken ct)
+    {
+        if (!DemoStepEnabled(cfg)) return null;
+        var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
+        if (ob is null || ob.Step != StepGreeted) return null;
+        var ad = lead.AdId is null ? null : await _db.MetaAds.AsNoTracking().FirstOrDefaultAsync(a => a.AdId == lead.AdId, ct);
+        var pitch = PitchFor(cfg, ad);
+        if (pitch is null) return null;
+        lead.Status = LeadStatus.Interested;
+        ob.Step = StepAwaitDemoLink;
+        ob.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return new OnboardingResult(
+            PresentAs(Join(Join(SilentGreetingIntro, Spin(pitch.Text, lead.Id, 95)), Spin(cfg.DemoOffer, lead.Id, 99)), cfg),
+            OffScript: false, Provisioned: false, MediaAssetIds: pitch.MediaAssetIds is { Count: > 0 } m ? m : null);
+    }
+
+    private const string SilentGreetingIntro = "te explico rapido como es";
+
     private static bool DemoStepEnabled(OnboardingConfig cfg) =>
         !string.IsNullOrWhiteSpace(cfg.DemoOffer) && !string.IsNullOrWhiteSpace(cfg.DemoLink) && !string.IsNullOrWhiteSpace(cfg.StartQuestion);
 

@@ -88,6 +88,8 @@ public class ConversationAgentService
         try { pitched = await _pitch.TickAsync(ct); }
         catch (Exception ex) { _log.LogError(ex, "Pitch tick falló"); }
         var replied = await GenerateSuggestionsAsync(ct);
+        try { replied += await ContinueSilentGreetingsAsync(ct); }
+        catch (Exception ex) { _log.LogError(ex, "Seguimiento del saludo sin respuesta falló"); }
         var reengaged = await GenerateReengagementsAsync(ct);
         var postSignup = await GeneratePostSignupNudgesAsync(ct);
         return transcribed + pitched + replied + reengaged + postSignup;
@@ -976,6 +978,48 @@ public class ConversationAgentService
     /// nuestro (outbound) y pasaron &gt;= ReengageAfterHours sin novedad. Capea a
     /// MaxNudges por lead. Auto-envía si AutoPilot; si no, deja sugerencia.
     /// </summary>
+    /// <summary>
+    /// Pre-calificación: mandamos el saludo y el lead no contestó en unos minutos → el bot sigue
+    /// solo con el pitch y "te interesa ver una demo?" (vender es llevar la charla, no esperar).
+    /// Una sola vez por lead (el paso cambia); saludos de más de 12 h no se tocan.
+    /// </summary>
+    private async Task<int> ContinueSilentGreetingsAsync(CancellationToken ct)
+    {
+        if (!await _db.IsFlagOnAsync("onboarding", false, ct)) return 0;
+        var configs = await _db.OnboardingConfigs.AsNoTracking()
+            .Where(c => c.Enabled && c.HandoffSellerId != null).ToDictionaryAsync(c => c.ProductKey, ct);
+        if (configs.Count == 0) return 0;
+        var now = DateTimeOffset.UtcNow;
+        var silentSince = now.AddMinutes(-_config.GetValue("Onboarding:SilentGreetingMinutes", 4));
+        var tooOld = now.AddHours(-12);
+        var ids = await (
+            from l in _db.Leads
+            where l.SellerId != null && l.BotMutedAt == null && l.Seller!.BotPausedAt == null
+                && _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id && o.Step == OnboardingService.StepGreeted)
+            let last = _db.ConversationMessages.Where(m => m.LeadId == l.Id).OrderByDescending(m => m.Timestamp).FirstOrDefault()
+            where last != null && last.Direction == MessageDirection.Outbound
+                && last.Timestamp < silentSince && last.Timestamp > tooOld
+            select l.Id
+        ).Take(BatchSize).ToListAsync(ct);
+
+        var done = 0;
+        foreach (var id in ids)
+        {
+            var lead = await _db.Leads.Include(l => l.Product)
+                .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
+                .FirstOrDefaultAsync(l => l.Id == id, ct);
+            if (lead?.Product is null || !configs.TryGetValue(lead.Product.ProductKey, out var cfg)) continue;
+            var r = await _onboarding.ContinueAfterSilentGreetingAsync(lead, cfg, ct);
+            if (r?.Reply is null) continue;
+            await OnboardingSendAsync(lead, r.Reply, ct);
+            if (r.MediaAssetIds is { Count: > 0 }) await TrySendOnboardingMediaAsync(lead, r.MediaAssetIds, r.MediaCaptions, ct);
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("Pre-calificacion: lead {Lead} no contesto el saludo, el bot siguio con el pitch", lead.Id);
+            done++;
+        }
+        return done;
+    }
+
     private async Task<int> GenerateReengagementsAsync(CancellationToken ct)
     {
         if (!_suggestions.IsConfigured) return 0;
