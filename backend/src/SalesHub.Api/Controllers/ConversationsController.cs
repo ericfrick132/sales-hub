@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
@@ -16,10 +17,13 @@ public class ConversationsController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly ConversationService _conv;
     private readonly ConversationAgentService _agent;
+    private readonly IEvolutionClient _evo;
+    private readonly IPhoneNormalizer _phones;
 
-    public ConversationsController(ApplicationDbContext db, ConversationService conv, ConversationAgentService agent)
+    public ConversationsController(ApplicationDbContext db, ConversationService conv, ConversationAgentService agent,
+        IEvolutionClient evo, IPhoneNormalizer phones)
     {
-        _db = db; _conv = conv; _agent = agent;
+        _db = db; _conv = conv; _agent = agent; _evo = evo; _phones = phones;
     }
 
     public record ReclassifyRequest(int Max = 50);
@@ -45,7 +49,7 @@ public class ConversationsController : ControllerBase
         DateTimeOffset? FirstReplyAt, DateTimeOffset? SentAt,
         string Source, List<string> Tags, string? AdTitle,
         DateTimeOffset? LastInboundAt, DateTimeOffset? ClosedAt, DateTimeOffset? BotMutedAt,
-        string? PitchName, int? PitchStep, int? PitchSteps, bool PitchActive)
+        string? PitchName, int? PitchStep, int? PitchSteps, bool PitchActive, string? WhatsappPhone)
     {
         /// <summary>Cuándo vence la ventana de 24 h para responder (desde el último inbound).</summary>
         public DateTimeOffset? WindowExpiresAt => LastInboundAt?.AddHours(24);
@@ -96,6 +100,8 @@ public class ConversationsController : ControllerBase
         [FromQuery] string? window,
         [FromQuery] string? tag,
         [FromQuery] string? source,
+        // Búsqueda libre: con 4+ dígitos busca por teléfono (en cualquier formato), si no por nombre.
+        [FromQuery] string? q,
         [FromQuery] bool includeClosed = false,
         [FromQuery] int coldDays = 3,
         [FromQuery] int limit = 200,
@@ -120,7 +126,29 @@ public class ConversationsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(productKey)) leadQ = leadQ.Where(l => l.ProductKey == productKey);
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<LeadStatus>(status, ignoreCase: true, out var st))
             leadQ = leadQ.Where(l => l.Status == st);
-        if (!includeClosed) leadQ = leadQ.Where(l => l.ConversationClosedAt == null);
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            var digits = new string(term.Where(char.IsDigit).ToArray());
+            if (digits.Length >= 4)
+            {
+                // Los teléfonos están guardados en formatos distintos (+54 9, 0, 15, espacios):
+                // se compara contra los dígitos pelados, y si lo que escribieron es un número
+                // argentino completo, por sus últimos 10 dígitos (área + número).
+                var norm = digits.Length >= 10 ? _phones.NormalizeArStrict(digits) : null;
+                var needle = norm is not null ? norm[^10..] : digits.Length > 10 ? digits[^10..] : digits;
+                leadQ = leadQ.Where(l => l.WhatsappPhone != null && l.WhatsappPhone
+                    .Replace(" ", "").Replace("-", "").Replace("+", "")
+                    .Replace("(", "").Replace(")", "").Replace(".", "")
+                    .Contains(needle));
+            }
+            else
+            {
+                var like = "%" + term.Replace("%", "").Replace("_", "") + "%";
+                leadQ = leadQ.Where(l => EF.Functions.ILike(l.Name, like));
+            }
+        }
+        if (!includeClosed && string.IsNullOrWhiteSpace(q)) leadQ = leadQ.Where(l => l.ConversationClosedAt == null);
         if (!string.IsNullOrWhiteSpace(tag)) leadQ = leadQ.Where(l => l.Tags.Contains(tag));
         if (!string.IsNullOrWhiteSpace(source) && Enum.TryParse<LeadSource>(source, ignoreCase: true, out var src))
             leadQ = leadQ.Where(l => l.Source == src);
@@ -176,7 +204,8 @@ public class ConversationsController : ControllerBase
                                ps != null ? ps.Name : null,
                                ps != null ? ps.StepIndex + 1 : (int?)null,
                                ps != null ? ps.Total : (int?)null,
-                               ps != null && ps.CompletedAt == null && ps.GaveUpAt == null))
+                               ps != null && ps.CompletedAt == null && ps.GaveUpAt == null,
+                               l.WhatsappPhone))
                        .Take(Math.Min(limit, 500)).ToListAsync(ct);
 
         // Un seller puede tener más de un celu; se muestra el primero por nombre.
@@ -299,6 +328,100 @@ public class ConversationsController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    public record SendLineDto(string InstanceName, string Label, string? Phone, string? ProductKey, Guid? SellerId, string? SellerName);
+
+    /// <summary>Líneas conectadas desde las que se puede iniciar una conversación (sin las de solo escucha).</summary>
+    [HttpGet("lines")]
+    public async Task<IEnumerable<SendLineDto>> Lines(CancellationToken ct)
+    {
+        var rows = await _db.EvolutionInstances.AsNoTracking().Include(i => i.Seller)
+            .Where(i => i.Status == InstanceStatus.Connected && !i.ListenOnly)
+            .OrderBy(i => i.ProductKey == null).ThenBy(i => i.InstanceName)
+            .ToListAsync(ct);
+        return rows.Select(i => new SendLineDto(i.InstanceName,
+            i.Label ?? i.Seller?.DisplayName ?? i.InstanceName, i.ConnectedPhoneNumber, i.ProductKey,
+            i.SellerId, i.Seller?.DisplayName));
+    }
+
+    public record StartConversationRequest(string Phone, string InstanceName, string ProductKey, string? Name, string Text);
+
+    /// <summary>
+    /// Inicia una conversación con un número: si ya hay un lead con ese teléfono se usa ese chat;
+    /// si no, se crea uno (origen ManualWhatsApp, bot apagado: lo empezó una persona). Manda el
+    /// primer mensaje por la línea elegida. Devuelve el leadId para abrir el chat.
+    /// </summary>
+    [HttpPost("start")]
+    public async Task<IActionResult> Start([FromBody] StartConversationRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.Text)) return BadRequest(new { error = "Escribi el primer mensaje" });
+        var digits = new string((req.Phone ?? "").Where(char.IsDigit).ToArray());
+        var phone = _phones.NormalizeArStrict(req.Phone) ?? (digits.Length >= 11 ? digits : null);
+        if (phone is null) return BadRequest(new { error = "Numero invalido: pone el numero con codigo de area (ej. 11 6937 0050)" });
+
+        var line = await _db.EvolutionInstances.AsNoTracking()
+            .FirstOrDefaultAsync(i => i.InstanceName == req.InstanceName, ct);
+        if (line is null || line.Status != InstanceStatus.Connected) return BadRequest(new { error = "La linea no esta conectada" });
+        if (line.ListenOnly) return BadRequest(new { error = "Esa linea es de solo escucha" });
+        var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.ProductKey == req.ProductKey, ct);
+        if (product is null) return BadRequest(new { error = "Elegi el producto" });
+
+        var check = (await _evo.CheckNumbersAsync(line.InstanceName, new[] { phone }, ct)).FirstOrDefault();
+        if (check is not null && !check.Exists) return BadRequest(new { error = "Ese numero no tiene WhatsApp" });
+
+        // Mismo teléfono (últimos 10 dígitos), preferentemente del mismo producto.
+        var tail = phone[^10..];
+        var existing = await _db.Leads
+            .Where(l => l.WhatsappPhone != null && l.WhatsappPhone
+                .Replace(" ", "").Replace("-", "").Replace("+", "")
+                .Replace("(", "").Replace(")", "").Replace(".", "")
+                .EndsWith(tail))
+            .OrderByDescending(l => l.ProductKey == product.ProductKey).ThenByDescending(l => l.UpdatedAt)
+            .FirstOrDefaultAsync(ct);
+
+        var lead = existing;
+        if (lead is null)
+        {
+            lead = new Lead
+            {
+                Id = Guid.NewGuid(),
+                ProductKey = product.ProductKey,
+                Source = LeadSource.ManualWhatsApp,
+                Name = string.IsNullOrWhiteSpace(req.Name) ? "Contacto WhatsApp" : req.Name.Trim(),
+                WhatsappPhone = phone,
+                WhatsappValidated = check?.Exists == true,
+                SellerId = line.SellerId ?? CurrentUser.Id(User),
+                AssignedAt = DateTimeOffset.UtcNow,
+                Status = LeadStatus.Sent,
+                SentAt = DateTimeOffset.UtcNow,
+                // Lo arrancó una persona: el bot no se mete.
+                BotMutedAt = DateTimeOffset.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            };
+            _db.Leads.Add(lead);
+            await _db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            lead.ConversationClosedAt = null;
+            if (lead.SellerId is null) lead.SellerId = line.SellerId ?? CurrentUser.Id(User);
+            await _db.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            var msg = await _conv.SendReplyAsync(CurrentUser.Id(User), lead.Id, req.Text.Trim(), ct, line.InstanceName);
+            if (msg is null) return NotFound();
+            if (msg.Status == MessageDeliveryStatus.Failed)
+                return StatusCode(502, new { error = "WhatsApp no acepto el mensaje", leadId = lead.Id });
+            return Ok(new { leadId = lead.Id, existing = existing is not null });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message, leadId = lead.Id });
         }
     }
 

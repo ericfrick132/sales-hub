@@ -531,8 +531,9 @@ public class ConversationService
     /// así que cualquiera puede contestar cualquier chat y el mensaje SIEMPRE sale por la
     /// línea donde vive la conversación, nunca por la del que escribe.
     /// </summary>
-    public Task<ConversationMessage?> SendReplyAsync(Guid sellerId, Guid leadId, string text, CancellationToken ct)
-        => SendOutboundAsync(leadId, text, (instance, phone) => _evo.SendTextAsync(instance, phone, text, ct), ct);
+    /// <param name="viaInstance">Línea forzada (iniciar conversación desde una línea elegida).</param>
+    public Task<ConversationMessage?> SendReplyAsync(Guid sellerId, Guid leadId, string text, CancellationToken ct, string? viaInstance = null)
+        => SendOutboundAsync(leadId, text, (instance, phone) => _evo.SendTextAsync(instance, phone, text, ct), ct, viaInstance);
 
     /// <summary>
     /// Igual que <see cref="SendReplyAsync"/> pero con una imagen o video (y caption opcional).
@@ -549,7 +550,7 @@ public class ConversationService
     }
 
     private async Task<ConversationMessage?> SendOutboundAsync(Guid leadId, string text,
-        Func<string, string, Task<bool>> send, CancellationToken ct)
+        Func<string, string, Task<bool>> send, CancellationToken ct, string? viaInstance = null)
     {
         var lead = await _db.Leads
             .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
@@ -565,8 +566,8 @@ public class ConversationService
         // una línea de APP (ej. app_playcrew), contestar por la del seller sería escribirle
         // desde otro número. Si esa línea de app está conectada, se usa; si no, cae a la
         // del seller como siempre.
-        string? sendInstanceName = null;
-        var lastInstanceName = await _db.ConversationMessages
+        string? sendInstanceName = viaInstance;
+        var lastInstanceName = sendInstanceName is not null ? null : await _db.ConversationMessages
             .Where(m => m.LeadId == lead.Id && m.EvolutionInstance != null)
             .OrderByDescending(m => m.Timestamp)
             .Select(m => m.EvolutionInstance)

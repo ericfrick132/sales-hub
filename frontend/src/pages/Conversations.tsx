@@ -32,7 +32,18 @@ type ListItem = {
   pitchStep?: number | null;
   pitchSteps?: number | null;
   pitchActive: boolean;
+  whatsappPhone?: string | null;
 };
+
+type SendLine = { instanceName: string; label: string; phone?: string | null; productKey?: string | null; sellerName?: string | null };
+
+/** "5491169370050" → "+54 9 11 6937-0050" (si no es AR, tal cual). */
+function formatPhone(p?: string | null): string {
+  if (!p) return '';
+  const d = p.replace(/\D/g, '');
+  const m = d.match(/^549(\d{2})(\d{4})(\d{4})$/);
+  return m ? `+54 9 ${m[1]} ${m[2]}-${m[3]}` : p;
+}
 
 type Device = { id: string; name: string; sellerId?: string; sellerName?: string; status: string };
 
@@ -124,6 +135,13 @@ export default function Conversations() {
   const [windowFilter, setWindowFilter] = useState<WindowFilter>('');
   const [includeClosed, setIncludeClosed] = useState(false);
   const [tagFilter, setTagFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [searchDebounced, setSearchDebounced] = useState('');
+  const [showNew, setShowNew] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSearchDebounced(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
   const [showInfo, setShowInfo] = useState(true);
   const fromTs = useMemo(() => {
     if (!days) return undefined;
@@ -131,13 +149,15 @@ export default function Conversations() {
   }, [days]);
 
   const list = useQuery({
-    queryKey: ['conversations', productFilter, deviceFilter, statusFilter, days, windowFilter, includeClosed, tagFilter],
+    queryKey: ['conversations', productFilter, deviceFilter, statusFilter, days, windowFilter, includeClosed, tagFilter, searchDebounced],
     queryFn: async () => (await api.get<ListItem[]>('/conversations', {
       params: {
         productKey: productFilter || undefined,
         deviceId: deviceFilter || undefined,
         status: statusFilter || undefined,
-        from: fromTs,
+        // Buscando, se busca en todo el historial (sin el período).
+        from: searchDebounced ? undefined : fromTs,
+        q: searchDebounced || undefined,
         window: windowFilter || undefined,
         includeClosed: includeClosed || undefined,
         tag: tagFilter || undefined
@@ -220,6 +240,19 @@ export default function Conversations() {
 
   return (
     <div className="flex flex-col md:grid md:grid-cols-12 gap-4 h-[calc(100vh-9rem)] md:h-[calc(100vh-8rem)]">
+      {showNew && (
+        <NewConversationModal
+          initialPhone={/\d{6,}/.test(searchDebounced.replace(/\D/g, '')) ? searchDebounced : ''}
+          products={productsQ.data ?? []}
+          onClose={() => setShowNew(false)}
+          onStarted={(leadId) => {
+            setShowNew(false);
+            setSearch('');
+            qc.invalidateQueries({ queryKey: ['conversations'] });
+            setParams({ lead: leadId });
+          }}
+        />
+      )}
       <div
         className={clsx(
           'md:col-span-4 card overflow-y-auto min-h-0',
@@ -228,10 +261,21 @@ export default function Conversations() {
         )}>
         <LineBots />
         <div className="p-3 border-b border-slate-100 space-y-2">
-          <div>
-            <h2 className="font-semibold text-lg">Conversaciones</h2>
-            <p className="text-xs text-slate-500">Leads que te respondieron o a los que ya escribiste.</p>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="font-semibold text-lg">Conversaciones</h2>
+              <p className="text-xs text-slate-500">Leads que te respondieron o a los que ya escribiste.</p>
+            </div>
+            <button type="button" className="btn-primary text-sm shrink-0" onClick={() => setShowNew(true)}>
+              + Nueva
+            </button>
           </div>
+          <input
+            className="input text-sm w-full"
+            placeholder="Buscar por numero o nombre…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
           <div className="flex flex-wrap gap-2">
             <div className="flex-1 min-w-[120px]">
               <label className="text-[11px] text-slate-500 block">Producto</label>
@@ -312,7 +356,13 @@ export default function Conversations() {
           )}
         </div>
         {list.isLoading && <div className="p-4 text-sm text-slate-500">Cargando…</div>}
-        {list.data?.length === 0 && (
+        {list.data?.length === 0 && searchDebounced && (
+          <div className="p-4 text-sm text-slate-500">
+            No hay chats con "{searchDebounced}".{' '}
+            <button type="button" className="underline" onClick={() => setShowNew(true)}>Iniciar una conversacion nueva</button>
+          </div>
+        )}
+        {list.data?.length === 0 && !searchDebounced && (
           <div className="p-4 text-sm text-slate-500">
             Ninguna conversación todavía. Van a aparecer acá cuando los leads respondan a los mensajes que mandaste.
           </div>
@@ -340,6 +390,9 @@ export default function Conversations() {
                 <span className="badge bg-rose-500 text-white text-xs shrink-0">{c.unreadCount}</span>
               )}
             </div>
+            {c.whatsappPhone && (
+              <div className="text-[11px] text-slate-400 tabular-nums">{formatPhone(c.whatsappPhone)}</div>
+            )}
             <div className="text-xs text-slate-500 truncate">
               {c.lastDirection === 'Outbound' ? (c.deviceName ? `${c.deviceName}: ` : 'Nosotros: ') : ''}
               {c.lastMessageText?.slice(0, 80) ?? '(sin mensajes)'}
@@ -706,6 +759,112 @@ function LeadInfoPanel({ thread, onTagClick, onChanged }: { thread: Thread; onTa
 
 /// Mini-form para promover una respuesta aprobada a FAQ canónica del producto.
 /// POST /support/faqs/promote — después se administra desde /soporte (tab FAQs).
+function NewConversationModal({
+  initialPhone,
+  products,
+  onClose,
+  onStarted
+}: {
+  initialPhone: string;
+  products: Product[];
+  onClose: () => void;
+  onStarted: (leadId: string) => void;
+}) {
+  const linesQ = useQuery({
+    queryKey: ['conv-send-lines'],
+    queryFn: async () => (await api.get<SendLine[]>('/conversations/lines')).data
+  });
+  const [phone, setPhone] = useState(initialPhone);
+  const [name, setName] = useState('');
+  const [instanceName, setInstanceName] = useState('');
+  const [productKey, setProductKey] = useState('');
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Primera línea por defecto, y su app como producto.
+  useEffect(() => {
+    const first = linesQ.data?.[0];
+    if (first && !instanceName) {
+      setInstanceName(first.instanceName);
+      if (first.productKey) setProductKey(first.productKey);
+    }
+  }, [linesQ.data, instanceName]);
+
+  const pickLine = (name: string) => {
+    setInstanceName(name);
+    const l = linesQ.data?.find((x) => x.instanceName === name);
+    if (l?.productKey) setProductKey(l.productKey);
+  };
+
+  async function start() {
+    setSaving(true);
+    try {
+      const r = (await api.post<{ leadId: string; existing: boolean }>('/conversations/start', {
+        phone, instanceName, productKey, name: name.trim() || null, text: text.trim()
+      })).data;
+      toast.success(r.existing ? 'Ya tenia chat: mensaje enviado ahi' : 'Conversacion iniciada');
+      onStarted(r.leadId);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? 'No se pudo iniciar');
+      if (err.response?.data?.leadId) onStarted(err.response.data.leadId);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4 overflow-y-auto">
+      <div className="card p-5 w-full max-w-lg space-y-3 my-8">
+        <h3 className="text-lg font-semibold">Nueva conversacion</h3>
+        <label className="text-sm block">
+          <div className="text-slate-500 mb-1">Numero (con codigo de area)</div>
+          <input className="input" autoFocus placeholder="ej. 11 6937 0050" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </label>
+        <label className="text-sm block">
+          <div className="text-slate-500 mb-1">Nombre (opcional)</div>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <div className="flex gap-2">
+          <label className="text-sm block flex-1">
+            <div className="text-slate-500 mb-1">Desde la linea</div>
+            <select className="input w-full" value={instanceName} onChange={(e) => pickLine(e.target.value)}>
+              {linesQ.isLoading && <option>Cargando…</option>}
+              {(linesQ.data ?? []).map((l) => (
+                <option key={l.instanceName} value={l.instanceName}>
+                  {l.label}{l.phone ? ` · ${formatPhone(l.phone)}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm block flex-1">
+            <div className="text-slate-500 mb-1">Producto</div>
+            <select className="input w-full" value={productKey} onChange={(e) => setProductKey(e.target.value)}>
+              <option value="">Elegi…</option>
+              {products.map((p) => <option key={p.productKey} value={p.productKey}>{p.displayName}</option>)}
+            </select>
+          </label>
+        </div>
+        {linesQ.data?.length === 0 && <div className="text-xs text-rose-600">No hay ninguna linea conectada.</div>}
+        <label className="text-sm block">
+          <div className="text-slate-500 mb-1">Primer mensaje</div>
+          <textarea className="input min-h-[80px]" placeholder="hola, como estas? soy mateo de…" value={text} onChange={(e) => setText(e.target.value)} />
+        </label>
+        <p className="text-xs text-slate-500">
+          Si el numero ya tiene chat, el mensaje va a ese chat. El bot queda pausado en las conversaciones que empezas vos.
+          Despues podes mandar imagen o video desde el chat.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button className="btn-primary" onClick={start}
+            disabled={saving || phone.replace(/\D/g, '').length < 10 || !instanceName || !productKey || !text.trim()}>
+            {saving ? 'Enviando…' : 'Enviar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PromoteFaqModal({
   draft,
   onClose
