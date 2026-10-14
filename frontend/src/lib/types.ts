@@ -92,7 +92,8 @@ export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   WhatsAppAd: 'WhatsApp Ad (CTWA)',
   ProductOnboarding: 'Onboarding / OTP',
   MetaLeadAd: 'Meta Lead Ads',
-  WhatsAppInbound: 'WhatsApp entrante'
+  WhatsAppInbound: 'WhatsApp entrante',
+  InstagramDm: 'DM de Instagram'
 };
 
 /** Orígenes que se ofrecen como filtro en el CRM y en modo llamadas. */
@@ -101,6 +102,7 @@ export const CRM_SOURCES = [
   { value: 'MetaLeadAd', label: 'Meta Lead Ads' },
   { value: 'WhatsAppAd', label: 'Click to WhatsApp' },
   { value: 'WhatsAppInbound', label: 'Escribió al WhatsApp' },
+  { value: 'InstagramDm', label: 'Escribió por DM de Instagram' },
   { value: 'ProductOnboarding', label: 'Onboarding del producto' },
   { value: 'ProductReengage', label: 'Re-enganche' },
   { value: 'GooglePlaces', label: 'Google Maps' },
@@ -127,7 +129,7 @@ export type LeadSource =
   | 'ApifyInstagram' | 'ApifyFacebookPages' | 'Manual'
   | 'ManualMaps' | 'ManualInstagram' | 'ManualWhatsApp' | 'ManualWeb' | 'Remarketing'
   | 'BrowserCapture' | 'InstagramScraper' | 'DemoSignup' | 'ProductReengage'
-  | 'WhatsAppAd' | 'ProductOnboarding' | 'MetaLeadAd' | 'WhatsAppInbound';
+  | 'WhatsAppAd' | 'ProductOnboarding' | 'MetaLeadAd' | 'WhatsAppInbound' | 'InstagramDm';
 
 export interface Lead {
   id: string;

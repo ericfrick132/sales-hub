@@ -1684,6 +1684,11 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("instagram_handle");
 
+                    b.Property<string>("InstagramScopedId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("instagram_scoped_id");
+
                     b.Property<DateTimeOffset?>("LastInboundAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_inbound_at");
@@ -1857,6 +1862,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("ix_leads_created_at");
+
+                    b.HasIndex("InstagramScopedId")
+                        .HasDatabaseName("ix_leads_instagram_scoped_id")
+                        .HasFilter("instagram_scoped_id IS NOT NULL");
 
                     b.HasIndex("LastInboundAt")
                         .HasDatabaseName("ix_leads_last_inbound_at");

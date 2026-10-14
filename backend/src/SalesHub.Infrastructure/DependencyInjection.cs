@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.Configure<ClaudeOptions>(config.GetSection("Claude"));
         services.Configure<CalendlyOptions>(config.GetSection("Calendly"));
         services.Configure<InstagramOptions>(config.GetSection("Instagram"));
+        services.Configure<Instagram.InstagramMessagingOptions>(config.GetSection("InstagramMessaging"));
         // Varios servicios IG (InstagramClient, InstagramLeadScraper, InstagramAccountsController…)
         // inyectan InstagramOptions DIRECTO (no IOptions<>). Sin esta línea no resuelven en runtime
         // → era lo que bloqueaba las ventas automáticas por Instagram.
@@ -53,6 +54,7 @@ public static class DependencyInjection
         services.AddHttpClient<ApifyUsageMonitor>();
         services.AddHttpClient<EvolutionClient>();
         services.AddHttpClient<GroqWhisperClient>();
+        services.AddHttpClient<Instagram.InstagramMessengerClient>();   // DMs de las cuentas propias de IG (API oficial)
         services.AddHttpClient<ClaudeClient>();
         services.AddHttpClient<CalendlyClient>();
         services.AddHttpClient<BufferClient>();

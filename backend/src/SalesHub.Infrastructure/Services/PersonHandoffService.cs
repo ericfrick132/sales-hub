@@ -59,7 +59,10 @@ public class PersonHandoffService
         var summary = await BuildSummaryAsync(lead, reason, latestInbound, context, ct);
 
         // El aviso sale por la línea donde vive la charla (la de la app), que es la que está conectada.
+        // Si la charla vive en un DM de Instagram, esa "línea" solo le escribe al lead: el aviso va
+        // por una línea de WhatsApp de la app o del vendedor.
         var line = await _lineSender.ResolveForLeadAsync(lead, ct);
+        if (line is { IsInstagram: true }) line = await _lineSender.ResolveNoticeLineAsync(lead, ct);
         var sent = false;
         if (!string.IsNullOrWhiteSpace(person?.WhatsappPhone) && line is not null)
         {
@@ -108,6 +111,12 @@ public class PersonHandoffService
         var app = await _db.Products.AsNoTracking().Where(p => p.ProductKey == lead.ProductKey)
             .Select(p => p.DisplayName).FirstOrDefaultAsync(ct) ?? lead.ProductKey;
         var line = await _lineSender.ResolveForLeadAsync(lead, ct);
+        if (line is { IsInstagram: true })
+        {
+            var handle = string.IsNullOrWhiteSpace(lead.InstagramHandle) ? "" : $" (@{lead.InstagramHandle.TrimStart('@')})";
+            return $"{app}: {lead.Name}{handle} necesita atencion ({reason}).\n" +
+                   $"escribio por DM al instagram de {app}: abrilo ahi, el bot ya no le contesta.";
+        }
         var linePhone = line?.InstanceName is null ? null : await _db.EvolutionInstances.AsNoTracking()
             .Where(i => i.InstanceName == line.InstanceName).Select(i => i.ConnectedPhoneNumber).FirstOrDefaultAsync(ct);
         var phone = string.IsNullOrWhiteSpace(lead.WhatsappPhone) ? "" : $" ({lead.WhatsappPhone})";

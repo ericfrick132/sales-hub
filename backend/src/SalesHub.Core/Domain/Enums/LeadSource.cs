@@ -38,5 +38,9 @@ public enum LeadSource
     // Número desconocido que escribió a una línea vinculada (vendedor o app) sin texto
     // de anuncio: se crea igual para que TODOS los chats queden centralizados en
     // Conversaciones. El bot arranca muteado (lo maneja un humano salvo que lo prendan).
-    WhatsAppInbound = 405
+    WhatsAppInbound = 405,
+    // Escribió por DM a una cuenta propia de Instagram (@gymhero.fitness, @turnos.pro,
+    // @playcrewpadel), recibido por el webhook oficial de Meta (Messenger Platform para IG).
+    // Lo atiende el mismo bot que a los chats de anuncios; se contesta por la Graph API.
+    InstagramDm = 406
 }

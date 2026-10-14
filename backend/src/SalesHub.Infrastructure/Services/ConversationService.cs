@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
+using SalesHub.Infrastructure.Instagram;
 using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Infrastructure.Services;
@@ -25,6 +26,9 @@ public class ConversationService
     private readonly VideoCampaignService _videoCampaigns;
     private readonly IntentClassifier _intents;
     private readonly MetaAdsSyncService _metaAds;
+    private readonly InstagramMessengerClient _ig;
+    private readonly SellerLineSender _lineSender;
+    private readonly IAdminAlerter _alerter;
     private readonly ILogger<ConversationService> _log;
     private static readonly Regex NonDigit = new(@"\D", RegexOptions.Compiled);
 
@@ -44,8 +48,10 @@ public class ConversationService
 
     public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILeadAssigner assigner,
         TakeoverSignal takeover, PitchEngine pitch, RemarketingService remarketing, IntentClassifier intents,
-        MetaAdsSyncService metaAds, VideoCampaignService videoCampaigns, ILogger<ConversationService> log)
+        MetaAdsSyncService metaAds, VideoCampaignService videoCampaigns, InstagramMessengerClient ig,
+        SellerLineSender lineSender, IAdminAlerter alerter, ILogger<ConversationService> log)
     {
+        _ig = ig; _lineSender = lineSender; _alerter = alerter;
         _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _pitch = pitch; _remarketing = remarketing;
         _videoCampaigns = videoCampaigns;
         _intents = intents; _metaAds = metaAds; _log = log;
@@ -517,6 +523,207 @@ public class ConversationService
         return true;
     }
 
+    /// <summary>Un DM entrante (o eco saliente) de una cuenta propia de IG, ya parseado del webhook de Meta.</summary>
+    public record InstagramDm(
+        string AccountIgId,      // nuestra cuenta de IG (recipient.id del inbound / sender.id del eco)
+        string ContactIgsid,     // IGSID del contacto
+        string? MessageId,       // message.mid
+        string Text,
+        DateTimeOffset Timestamp,
+        string RawJson,
+        AdReferral? Ad = null);
+
+    /// <summary>
+    /// Clave de dedup de un mid de IG en conversation_messages.whatsapp_message_id (128 chars): los
+    /// mid de IG son largos, así que va hasheado.
+    /// </summary>
+    private static string? IgMessageKey(string? mid)
+    {
+        if (string.IsNullOrWhiteSpace(mid)) return null;
+        var hash = System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(mid));
+        return "igm:" + Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// DM entrante a una cuenta propia de Instagram (webhook oficial, Messenger Platform). Mismo
+    /// recorrido que un chat de WhatsApp de anuncio: crea/matchea el lead (por IGSID, app según la
+    /// cuenta que recibió), guarda el mensaje con la "línea" <c>ig:{cuenta}</c> y dispara el pitch.
+    /// La respuesta la genera el ConversationAgent y sale por la Graph API (SellerLineSender).
+    /// </summary>
+    public async Task<bool> HandleInstagramDmAsync(InstagramDm dm, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(dm.Text)) return false;
+        var acc = _ig.FindAccount(dm.AccountIgId);
+        if (acc is null)
+        {
+            _log.LogWarning("DM de IG para una cuenta no configurada ({Ig}) — ignorado", dm.AccountIgId);
+            return false;
+        }
+        var extKey = IgMessageKey(dm.MessageId);
+        if (extKey is not null && await _db.ConversationMessages.AnyAsync(m => m.WhatsappMessageId == extKey, ct))
+            return true;
+
+        var now = DateTimeOffset.UtcNow;
+        var lead = await _db.Leads
+            .Where(l => l.InstagramScopedId == dm.ContactIgsid)
+            .OrderByDescending(l => l.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        var createdNow = false;
+        if (lead is null)
+        {
+            var product = await _db.Products.FirstOrDefaultAsync(p => p.Active && p.ProductKey == acc.ProductKey, ct);
+            if (product is null)
+            {
+                _log.LogWarning("DM de IG a @{User}: la app {Product} no existe o está inactiva — ignorado", acc.Username, acc.ProductKey);
+                return false;
+            }
+            var (username, name) = await _ig.GetProfileAsync(acc.IgUserId, dm.ContactIgsid, ct);
+            // Pre-calificación con pase a persona: el lead queda a nombre de la responsable de la app.
+            var owner = await _db.OnboardingConfigs.AsNoTracking()
+                    .Where(c => c.ProductKey == product.ProductKey && c.Enabled && c.HandoffSellerId != null
+                        && _db.Sellers.Any(x => x.Id == c.HandoffSellerId && x.IsActive))
+                    .Select(c => c.HandoffSellerId).FirstOrDefaultAsync(ct)
+                ?? await _assigner.PickOwnerAsync(product.ProductKey, now, ct);
+            lead = new Lead
+            {
+                Id = Guid.NewGuid(),
+                ProductKey = product.ProductKey,
+                Source = LeadSource.InstagramDm,
+                Name = Trunc(name ?? (username is null ? null : "@" + username), 256) ?? "Contacto Instagram",
+                InstagramHandle = Trunc(username, 128),
+                InstagramScopedId = dm.ContactIgsid,
+                SellerId = owner,
+                AssignedAt = owner is null ? null : now,
+                Status = LeadStatus.Replied,        // arrancó escribiendo él
+                FirstReplyAt = dm.Timestamp,
+                // Cuenta con el bot apagado por config: entra a Conversaciones para un humano.
+                BotMutedAt = acc.BotEnabled ? null : now,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            _db.Leads.Add(lead);
+            createdNow = true;
+            _log.LogInformation("Lead de DM de IG creado: {Lead} app={Product} @{User} igsid={Igsid}",
+                lead.Id, lead.ProductKey, username ?? "-", dm.ContactIgsid);
+        }
+
+        if (dm.Ad is not null && string.IsNullOrWhiteSpace(lead.AdId))
+        {
+            lead.AdId = dm.Ad.SourceId;
+            lead.AdTitle = Trunc(dm.Ad.Title ?? dm.Ad.Body, 256);
+            lead.AdSourceUrl = Trunc(dm.Ad.SourceUrl, 512);
+        }
+        if (lead.LastInboundAt is null || lead.LastInboundAt < dm.Timestamp) lead.LastInboundAt = dm.Timestamp;
+        lead.ConversationClosedAt = null;
+
+        _db.ConversationMessages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = lead.SellerId,
+            Direction = MessageDirection.Inbound,
+            Status = MessageDeliveryStatus.Received,
+            Text = dm.Text,
+            WhatsappMessageId = extKey,
+            EvolutionInstance = InstagramMessengerClient.LineName(acc.IgUserId),
+            Timestamp = dm.Timestamp,
+            IsRead = false,
+            RawJson = dm.RawJson,
+        });
+
+        var isFirstReply = lead.FirstReplyAt is null;
+        if (isFirstReply) lead.FirstReplyAt = dm.Timestamp;
+        if (lead.Status is LeadStatus.Sent or LeadStatus.Queued or LeadStatus.Assigned)
+            lead.Status = LeadStatus.Replied;
+        lead.UpdatedAt = now;
+        // Mensaje nuevo → la sugerencia (o el "evaluado sin respuesta") quedó vieja; el agente regenera.
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
+        if (isFirstReply)
+        {
+            var pending = await _db.Outbox
+                .Where(o => o.LeadId == lead.Id && o.Status == OutboxStatus.Scheduled)
+                .ToListAsync(ct);
+            foreach (var o in pending) o.Status = OutboxStatus.Cancelled;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("DM de IG guardado: lead={Lead} cuenta=@{User}", lead.Id, acc.Username ?? acc.IgUserId);
+
+        if (createdNow)
+        {
+            // Mismo aviso al maestro que un lead nuevo de WhatsApp (por el alerter: acá no hay línea de WA).
+            var app = await _db.Products.AsNoTracking().Where(p => p.ProductKey == lead.ProductKey)
+                .Select(p => p.DisplayName).FirstOrDefaultAsync(ct) ?? lead.ProductKey;
+            var preview = dm.Text.Length > 200 ? dm.Text[..200] + "…" : dm.Text;
+            try
+            {
+                await _alerter.AlertAsync(
+                    $"lead nuevo en {app} por DM de instagram (@{acc.Username ?? acc.IgUserId}): {lead.Name}\n" +
+                    $"escribio: \"{preview}\"\n" +
+                    (lead.BotMutedAt is null ? "el bot ya lo esta atendiendo" : "el bot esta apagado para esta cuenta: contestale a mano"), ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _log.LogWarning(ex, "Aviso de lead nuevo de IG al maestro falló (lead {Lead})", lead.Id);
+            }
+        }
+
+        try { await _pitch.OnInboundAsync(lead, dm.Text, dm.Ad, createdNow, ct); }
+        catch (Exception ex) { _log.LogError(ex, "Pitch hook (DM de IG) falló para lead {Lead}", lead.Id); }
+        return true;
+    }
+
+    /// <summary>
+    /// Eco (is_echo) de un mensaje que salió de una cuenta propia de IG. Si es uno que mandó el
+    /// sistema (bot/UI: quedó registrado como Outbound antes de mandarlo) se ignora. Si no, lo
+    /// escribió una persona desde la app de Instagram: se registra en el hilo y se mutea el bot
+    /// para ese lead (takeover humano, igual que en WhatsApp).
+    /// </summary>
+    public async Task<bool> HandleInstagramEchoAsync(InstagramDm echo, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(echo.Text)) return false;
+        var extKey = IgMessageKey(echo.MessageId);
+        if (extKey is not null && await _db.ConversationMessages.AnyAsync(m => m.WhatsappMessageId == extKey, ct))
+            return true;
+        var lead = await _db.Leads
+            .Where(l => l.InstagramScopedId == echo.ContactIgsid)
+            .OrderByDescending(l => l.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (lead is null) return false;
+
+        var since = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var text = echo.Text;
+        var isOwnEcho = await _db.ConversationMessages.AnyAsync(m =>
+            m.LeadId == lead.Id
+            && m.Direction == MessageDirection.Outbound
+            && m.Timestamp >= since
+            && (m.Text == text || m.Text.Contains(text)), ct);
+        if (isOwnEcho) return false;
+
+        _db.ConversationMessages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = lead.SellerId,
+            Direction = MessageDirection.Outbound,
+            Status = MessageDeliveryStatus.Sent,
+            Text = text,
+            WhatsappMessageId = extKey,
+            EvolutionInstance = InstagramMessengerClient.LineName(echo.AccountIgId),
+            Timestamp = echo.Timestamp,
+            IsRead = true,
+            RawJson = echo.RawJson,
+        });
+        lead.BotMutedAt ??= DateTimeOffset.UtcNow;
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Takeover IG: mensaje manual desde la app de Instagram en lead {Lead} → bot muteado", lead.Id);
+        return true;
+    }
+
     /// <summary>
     /// Busca el lead más reciente cuyo InstagramHandle matchea (case-insensitive,
     /// tolerando el @ inicial guardado de cualquier lado).
@@ -538,8 +745,48 @@ public class ConversationService
     /// línea donde vive la conversación, nunca por la del que escribe.
     /// </summary>
     /// <param name="viaInstance">Línea forzada (iniciar conversación desde una línea elegida).</param>
-    public Task<ConversationMessage?> SendReplyAsync(Guid sellerId, Guid leadId, string text, CancellationToken ct, string? viaInstance = null)
-        => SendOutboundAsync(leadId, text, (instance, phone) => _evo.SendTextAsync(instance, phone, text, ct), ct, viaInstance);
+    public async Task<ConversationMessage?> SendReplyAsync(Guid sellerId, Guid leadId, string text, CancellationToken ct, string? viaInstance = null)
+    {
+        // Charla que vive en un DM de Instagram: se contesta por la misma cuenta de IG.
+        if (viaInstance is null)
+        {
+            var (handled, igMsg) = await TrySendInstagramReplyAsync(leadId, text, ct);
+            if (handled) return igMsg;
+        }
+        return await SendOutboundAsync(leadId, text, (instance, phone) => _evo.SendTextAsync(instance, phone, text, ct), ct, viaInstance);
+    }
+
+    private async Task<(bool Handled, ConversationMessage? Msg)> TrySendInstagramReplyAsync(Guid leadId, string text, CancellationToken ct)
+    {
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        if (lead is null || string.IsNullOrWhiteSpace(lead.InstagramScopedId)) return (false, null);
+        var line = await _lineSender.ResolveForLeadAsync(lead, ct);
+        if (line is not { IsInstagram: true }) return (false, null);
+        var entry = new ConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            LeadId = lead.Id,
+            SellerId = lead.SellerId,
+            Direction = MessageDirection.Outbound,
+            Status = MessageDeliveryStatus.Sent,
+            Text = text,
+            EvolutionInstance = line.RecordName,
+            Timestamp = DateTimeOffset.UtcNow,
+            IsRead = true
+        };
+        // Persistir ANTES de mandar: el eco (is_echo) del webhook se matchea contra esto.
+        _db.ConversationMessages.Add(entry);
+        lead.AiSuggestedReply = null;
+        lead.AiSuggestedReplyAt = null;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        if (!await _lineSender.SendToLeadAsync(line, string.Empty, text, ct))
+        {
+            entry.Status = MessageDeliveryStatus.Failed;
+            await _db.SaveChangesAsync(ct);
+        }
+        return (true, entry);
+    }
 
     /// <summary>
     /// Igual que <see cref="SendReplyAsync"/> pero con una imagen o video (y caption opcional).

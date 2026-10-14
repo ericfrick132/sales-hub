@@ -537,6 +537,9 @@ public class PitchEngine
         var product = lead.Product!;
         var rendered = string.IsNullOrWhiteSpace(text) ? string.Empty : _renderer.RenderTemplate(text, lead, product, lead.Seller);
         var any = false;
+        // DM de Instagram: solo texto. Un paso de audio va como su guion en texto (igual que los pitches de IG).
+        if (sender.IsInstagram && string.IsNullOrWhiteSpace(rendered) && !string.IsNullOrWhiteSpace(voiceText))
+            rendered = _renderer.RenderTemplate(voiceText, lead, product, lead.Seller);
 
         // 1) Nota de voz generada (voz clonada) — gana sobre el asset.
         if (!string.IsNullOrWhiteSpace(voiceText) && sender.InstanceName is not null)
@@ -582,7 +585,9 @@ public class PitchEngine
         var m = Record(lead, sender, rendered);
         await _db.SaveChangesAsync(ct);
         bool sentText;
-        if (sender.InstanceName is not null)
+        if (sender.IsInstagram)
+            sentText = await _lineSender.SendToLeadAsync(sender, lead.WhatsappPhone ?? string.Empty, rendered, ct);
+        else if (sender.InstanceName is not null)
             sentText = await _evo.SendTextAsync(sender.InstanceName, lead.WhatsappPhone!, rendered, ct);
         else
             sentText = await _lineSender.SendTextAsync(sender.BridgeSellerId, null, lead.WhatsappPhone!, rendered, ct);
@@ -641,7 +646,7 @@ public class PitchEngine
             Direction = MessageDirection.Outbound,
             Status = MessageDeliveryStatus.Sent,
             Text = text,
-            EvolutionInstance = sender.InstanceName ?? string.Empty,
+            EvolutionInstance = sender.RecordName,
             Timestamp = DateTimeOffset.UtcNow,
             IsRead = true,
         };

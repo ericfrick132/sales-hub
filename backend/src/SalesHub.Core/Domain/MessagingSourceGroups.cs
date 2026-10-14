@@ -18,6 +18,7 @@ public static class MessagingSourceGroups
     public const string Apps = "apps";
     public const string Reengage = "reengage";
     public const string Inbound = "inbound";
+    public const string InstagramDms = "ig-dms";
 
     public record GroupDef(string Key, string Label, string Hint);
 
@@ -36,6 +37,8 @@ public static class MessagingSourceGroups
             "Importados de TurnosPro/GymHero para volver a contactarlos desde el Hub."),
         new(Inbound, "Inbound desconocido",
             "Números que escribieron a una línea sin venir de un anuncio."),
+        new(InstagramDms, "DMs de Instagram",
+            "Escribieron por DM a @gymhero.fitness, @turnos.pro o @playcrewpadel."),
     };
 
     public static string For(LeadSource source) => source switch
@@ -45,6 +48,7 @@ public static class MessagingSourceGroups
         LeadSource.DemoSignup or LeadSource.ProductOnboarding => Apps,
         LeadSource.ProductReengage => Reengage,
         LeadSource.WhatsAppInbound => Inbound,
+        LeadSource.InstagramDm => InstagramDms,
         _ => Cold,
     };
 

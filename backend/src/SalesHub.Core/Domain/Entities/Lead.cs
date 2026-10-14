@@ -26,6 +26,11 @@ public class Lead
 
     public string? Website { get; set; }
     public string? InstagramHandle { get; set; }
+    /// <summary>
+    /// IGSID (Instagram-scoped id) del contacto que nos escribió por DM a una cuenta propia de IG
+    /// (Messenger Platform). Es a quién se le contesta por la Graph API; no es un teléfono.
+    /// </summary>
+    public string? InstagramScopedId { get; set; }
     public string? FacebookUrl { get; set; }
 
     public double? Rating { get; set; }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
+using SalesHub.Infrastructure.Instagram;
 using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Infrastructure.Services;
@@ -59,6 +60,7 @@ public class ConversationAgentService
     private readonly ILogger<ConversationAgentService> _log;
 
     private readonly PersonHandoffService _handoff;
+    private readonly InstagramMessengerClient _ig;
 
     public ConversationAgentService(
         ApplicationDbContext db, IEvolutionClient evo, GroqWhisperClient whisper,
@@ -67,9 +69,10 @@ public class ConversationAgentService
         Microsoft.Extensions.Configuration.IConfiguration config,
         TakeoverSignal takeover, IAdminAlerter alerter, SellerLineSender lineSender,
         ILogger<ConversationAgentService> log,
-        PitchEngine pitch, ConversationFeedbackProvider feedback, PersonHandoffService handoff)
+        PitchEngine pitch, ConversationFeedbackProvider feedback, PersonHandoffService handoff,
+        InstagramMessengerClient ig)
     {
-        _handoff = handoff;
+        _handoff = handoff; _ig = ig;
         _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding;
         _scheduler = scheduler; _voiceNotes = voiceNotes; _renderer = renderer; _config = config;
         _takeover = takeover; _alerter = alerter; _lineSender = lineSender; _log = log;
@@ -119,9 +122,13 @@ public class ConversationAgentService
             msg.TranscriptionAttempts++;
 
             string? transcript = null;
-            var audio = await _evo.GetMediaBase64Async(msg.EvolutionInstance!, msg.RawJson!, ct);
+            // DM de Instagram: el audio viene como URL de CDN en el evento (RawJson), no en Evolution.
+            var isIg = InstagramMessengerClient.AccountFromLine(msg.EvolutionInstance) is not null;
+            var audio = isIg
+                ? await _ig.DownloadAudioAsync(msg.RawJson!, ct)
+                : await _evo.GetMediaBase64Async(msg.EvolutionInstance!, msg.RawJson!, ct);
             if (audio is not null)
-                transcript = await _whisper.TranscribeAsync(audio, "voice.ogg", ct);
+                transcript = await _whisper.TranscribeAsync(audio, isIg ? "voice.mp4" : "voice.ogg", ct);
 
             if (!string.IsNullOrWhiteSpace(transcript))
             {
@@ -392,8 +399,9 @@ public class ConversationAgentService
             var fedToClose = lead.Source is LeadSource.ProductReengage or LeadSource.MetaLeadAd;
             //  - ORGÁNICOS (WhatsAppInbound) cuando la app pre-califica con pase a persona: en las
             //    líneas por app todo número nuevo pasa por las preguntas antes de llegar a la persona.
+            //  - DMs a las cuentas propias de Instagram: mismo trato que un anuncio.
             var onbEligible = onbCfg is not null
-                && (lead.Source == LeadSource.WhatsAppAd || (fedToClose && onbCfg.SelfServe)
+                && (lead.Source is LeadSource.WhatsAppAd or LeadSource.InstagramDm || (fedToClose && onbCfg.SelfServe)
                     || (lead.Source == LeadSource.WhatsAppInbound && onbCfg.HandoffSellerId is not null));
             // Tras un "+" (StepHumanHandoff) el guion NO retoma el alta: el humano llevó la
             // charla y el bot tiene que SEGUIRLA con la IA libre (todo el hilo), no caer al
@@ -729,6 +737,10 @@ public class ConversationAgentService
         if (rest > TimeSpan.Zero) await Task.Delay(rest, ct);
     }
 
+    /// <summary>Lead que solo existe por un DM de Instagram (sin WhatsApp): no se le puede mandar por relay.</summary>
+    private static bool IsInstagramOnly(Lead lead) =>
+        !string.IsNullOrWhiteSpace(lead.InstagramScopedId) && string.IsNullOrWhiteSpace(lead.WhatsappPhone);
+
     /// <summary>Lectura fresca (no la entidad trackeada): ¿un humano escribió en el chat y muteó el bot recién?</summary>
     private Task<bool> HumanTookOverAsync(Guid leadId, CancellationToken ct) =>
         _db.Leads.AsNoTracking().AnyAsync(l => l.Id == leadId && l.BotMutedAt != null, ct);
@@ -751,8 +763,8 @@ public class ConversationAgentService
         if (parts.Count == 0) return;
 
         // Transporte gestionado por la app: encolar para que la app mande por SU Evolution
-        // (no requiere instancia de sales-hub conectada).
-        if (lead.Product?.AppManagedTransport == true) { EnqueueRelay(lead, parts); return; }
+        // (no requiere instancia de sales-hub conectada). Un DM de Instagram sale siempre por la Graph API.
+        if (lead.Product?.AppManagedTransport == true && !IsInstagramOnly(lead)) { EnqueueRelay(lead, parts); return; }
 
         // Sale por la línea donde vive la charla (la de la app, si entró por ahí); si no, por la
         // del vendedor o su celu. Sin línea → queda como sugerencia.
@@ -783,7 +795,7 @@ public class ConversationAgentService
                 Direction = MessageDirection.Outbound,
                 Status = MessageDeliveryStatus.Sent,
                 Text = p,
-                EvolutionInstance = line.InstanceName ?? string.Empty,
+                EvolutionInstance = line.RecordName,
                 Timestamp = DateTimeOffset.UtcNow,
                 IsRead = true,
             };
@@ -811,7 +823,7 @@ public class ConversationAgentService
         // Relay: si el producto delega el transporte a la app, encolamos la respuesta (la app la
         // manda por su Evolution). Respetamos AutoPilot + needs_human; el cap/pacing lo aplica el
         // endpoint /hub/outbound. No requiere instancia de sales-hub conectada.
-        if (autoGate && lead.Product!.AppManagedTransport)
+        if (autoGate && lead.Product!.AppManagedTransport && !IsInstagramOnly(lead))
         {
             EnqueueRelay(lead, new[] { text });
             await _db.SaveChangesAsync(ct);
@@ -1321,7 +1333,7 @@ public class ConversationAgentService
     /// </summary>
     private async Task<bool> AutoSendAsync(Lead lead, string text, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return false;
+        if (string.IsNullOrWhiteSpace(lead.WhatsappPhone) && string.IsNullOrWhiteSpace(lead.InstagramScopedId)) return false;
         // Sale por la línea donde vive la charla (la de la app); si no, la del vendedor o su celu.
         var line = await _lineSender.ResolveForLeadAsync(lead, ct);
         if (line is null) return false;
@@ -1337,7 +1349,7 @@ public class ConversationAgentService
             Direction = MessageDirection.Outbound,
             Status = MessageDeliveryStatus.Sent,
             Text = text,
-            EvolutionInstance = line.InstanceName ?? string.Empty,
+            EvolutionInstance = line.RecordName,
             Timestamp = DateTimeOffset.UtcNow,
             IsRead = true
         };
@@ -1347,7 +1359,7 @@ public class ConversationAgentService
         lead.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
 
-        var ok = await _lineSender.SendToLeadAsync(line, lead.WhatsappPhone, text, ct);
+        var ok = await _lineSender.SendToLeadAsync(line, lead.WhatsappPhone!, text, ct);
         if (!ok)
         {
             msg.Status = MessageDeliveryStatus.Failed;

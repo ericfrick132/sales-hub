@@ -22,6 +22,8 @@ public class LeadConfiguration : IEntityTypeConfiguration<Lead>
         b.Property(x => x.WhatsappJid).HasMaxLength(64);
         b.Property(x => x.Website).HasMaxLength(512);
         b.Property(x => x.InstagramHandle).HasMaxLength(128);
+        b.Property(x => x.InstagramScopedId).HasMaxLength(64);
+        b.HasIndex(x => x.InstagramScopedId).HasFilter("instagram_scoped_id IS NOT NULL");
         b.Property(x => x.FacebookUrl).HasMaxLength(256);
         b.Property(x => x.BusinessStatus).HasMaxLength(32);
         b.Property(x => x.PlaceId).HasMaxLength(128);
