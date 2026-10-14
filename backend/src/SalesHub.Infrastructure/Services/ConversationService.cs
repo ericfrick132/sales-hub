@@ -650,24 +650,22 @@ public class ConversationService
         return await q.OrderByDescending(l => l.CreatedAt).FirstOrDefaultAsync(ct);
     }
 
-    // Intención típica del texto pre-armado de un anuncio click-to-WhatsApp.
-    private static readonly Regex AdIntentRx = new(
-        @"activar|quiero|me gustar|me interesa|informaci[oó]n|empezar|comenzar|probar|sumar",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
     /// <summary>
-    /// Si un número DESCONOCIDO escribe el texto pre-armado de un anuncio (ej.
-    /// "me gustaría activar Gym Hero para mi gimnasio"), crea el lead taggeado como
-    /// <see cref="LeadSource.WhatsAppAd"/>, con el producto detectado del texto y
-    /// asignado al seller de la instancia (el dueño del número que recibió el ad).
-    /// Devuelve null si no parece un lead de anuncio (no creamos nada).
+    /// Si un número DESCONOCIDO viene de un anuncio, crea el lead taggeado como
+    /// <see cref="LeadSource.WhatsAppAd"/>, con el producto del anuncio y asignado al seller de
+    /// la instancia (el dueño del número que recibió el ad). "Viene de un anuncio" = trae el
+    /// referral de Meta, o el mensaje CONTIENE el texto pre-armado de un anuncio sincronizado
+    /// (<see cref="MetaAdsSyncService.MatchAsync"/>). Nada más: antes alcanzaba con palabras como
+    /// "quiero" o "informacion", y el bot le tiraba el pitch a un cliente que escribia por otra
+    /// cosa (13/10/2026). Devuelve null si no es de anuncio (no creamos nada; lo crea
+    /// <see cref="TryCreateInboundLeadAsync"/> con el bot apagado).
     /// </summary>
     private async Task<Lead?> TryCreateAdLeadAsync(IncomingMessage incoming, string phone, EvolutionInstance instance, CancellationToken ct)
     {
         var hasReferral = incoming.Ad is not null;
         // El anuncio exacto (por referral o por su texto pre-armado): trae app, rubro y ángulo.
         var metaAd = await _metaAds.MatchAsync(incoming.Ad?.SourceId, incoming.Text, ct);
-        if (!hasReferral && metaAd is null && !AdIntentRx.IsMatch(incoming.Text)) return null;
+        if (!hasReferral && metaAd is null) return null;
 
         // Resuelve entre las apps que atiende ESTA línea (puede ser más de una); el anuncio manda.
         var product = metaAd?.ProductKey is { } adProduct
@@ -916,8 +914,9 @@ public class ConversationService
     /// <summary>
     /// Número desconocido con texto que NO es de anuncio, en una línea vinculada: se crea
     /// igual (origen WhatsAppInbound) para que TODOS los chats queden en Conversaciones.
-    /// El bot arranca MUTEADO — es un chat orgánico/soporte, lo maneja un humano salvo que
-    /// lo reactiven con "+" o desde la UI. Producto: por mención en el texto → línea de
+    /// El bot arranca MUTEADO siempre, también en las líneas de app con pre-calificación: el
+    /// bot solo le contesta a quien viene de un anuncio. Es un chat orgánico/soporte, lo maneja
+    /// un humano salvo que lo reactiven con "+" o desde la UI. Producto: por mención en el texto → línea de
     /// app → whitelist del seller de la línea. Si no se puede determinar, no se crea.
     /// </summary>
     private async Task<Lead?> TryCreateInboundLeadAsync(IncomingMessage incoming, string phone, EvolutionInstance instance, CancellationToken ct)
@@ -943,8 +942,8 @@ public class ConversationService
             AssignedAt = DateTimeOffset.UtcNow,
             Status = LeadStatus.Replied,        // arrancó escribiendo él
             FirstReplyAt = incoming.Timestamp,
-            // Orgánico: sin bot ni cadencias, salvo en una línea de app con pre-calificación.
-            BotMutedAt = prequalOwner is null ? DateTimeOffset.UtcNow : null,
+            // Orgánico (no vino de un anuncio): sin bot ni cadencias.
+            BotMutedAt = DateTimeOffset.UtcNow,
             CreatedAt = CreatedAtFor(incoming),
             UpdatedAt = DateTimeOffset.UtcNow,
         };

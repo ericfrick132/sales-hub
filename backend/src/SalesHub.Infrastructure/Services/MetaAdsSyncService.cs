@@ -85,8 +85,11 @@ public class MetaAdsSyncService
     }
 
     /// <summary>
-    /// El anuncio del que viene un mensaje: por id (referral) o por el texto pre-armado. Tolera
-    /// tildes, mayúsculas, espacios dobles y que el lead le agregue algo al final.
+    /// El anuncio del que viene un mensaje: por id (referral) o por el texto pre-armado CONTENIDO en
+    /// el mensaje. Tolera tildes, mayúsculas, espacios dobles y que el lead agregue algo antes o
+    /// después. Si cambió el rubro ("Tengo un estudio de uñas y capilares y quiero…"), alcanza con
+    /// que contenga la parte del anuncio desde "y quiero" ("quiero que mis clientes reserven asi de
+    /// rapido"), que es propia de cada anuncio.
     /// </summary>
     public async Task<MetaAd?> MatchAsync(string? adId, string? text, CancellationToken ct)
     {
@@ -98,14 +101,26 @@ public class MetaAdsSyncService
         var norm = IntentText.Normalize(text);
         if (norm.Length < 12) return null;
         var candidates = await _db.MetaAds.AsNoTracking().Where(a => a.PrefillText != null && a.PrefillText != "").ToListAsync(ct);
+        var withText = candidates.Select(a => (Ad: a, P: IntentText.Normalize(a.PrefillText))).Where(x => x.P.Length >= 12).ToList();
         // El más reciente primero: dos anuncios con el mismo pre-armado (copias) → el vigente.
-        return candidates
-            .Select(a => (Ad: a, P: IntentText.Normalize(a.PrefillText)))
-            .Where(x => x.P.Length >= 12 && (norm == x.P || norm.StartsWith(x.P)))
+        return Best(withText.Where(x => norm.Contains(x.P)))
+            ?? Best(withText.Where(x => PrefillTail(x.P) is { } tail && norm.Contains(tail)));
+
+        static MetaAd? Best(IEnumerable<(MetaAd Ad, string P)> xs) => xs
             .OrderByDescending(x => x.Ad.Status == "ACTIVE")
+            .ThenByDescending(x => x.P.Length)
             .ThenByDescending(x => x.Ad.AdCreatedAt)
             .Select(x => x.Ad)
             .FirstOrDefault();
+    }
+
+    /// <summary>"hola tengo un gimnasio y quiero conocer gymhero" → "quiero conocer gymhero" (null si es muy corto para identificar el anuncio).</summary>
+    private static string? PrefillTail(string normalizedPrefill)
+    {
+        var i = normalizedPrefill.IndexOf(" y quiero ", StringComparison.Ordinal);
+        if (i < 0) return null;
+        var tail = normalizedPrefill[(i + 3)..];
+        return tail.Length >= 18 ? tail : null;
     }
 
     // ── parsing ─────────────────────────────────────────────────────────────────────────
