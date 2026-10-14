@@ -86,12 +86,29 @@ public class CalendlyClient
 
     public record Booking(bool Ok, string? EventUri, string? Error);
 
+    // Preguntas obligatorias del evento de la demo (calendly.com/efcloud/demo), en este orden. Con
+    // preguntas obligatorias, POST /invitees falla si no van en questions_and_answers con el texto exacto.
+    public const string AppQuestion = "¿Para qué app es la demo?";
+    public const string PhoneQuestion = "Celular";
+
+    /// <summary>Opción del dropdown de apps del evento para cada ProductKey (tiene que coincidir con Calendly).</summary>
+    public static string? AppOption(string productKey) => productKey switch
+    {
+        "gymhero" => "GymHero",
+        "turnospro" => "TurnosPro",
+        "playcrew" => "PlayCrew",
+        "construction" => "ArchiCloud",
+        "bunker" => "Bunker",
+        "unistock" => "DashFlow",
+        _ => null,
+    };
+
     /// <summary>
     /// Reserva el turno a nombre del lead. Calendly le manda la invitación por mail (con el link de
     /// Meet) y dispara sus recordatorios como si hubiera reservado desde la página.
     /// </summary>
     public async Task<Booking> BookAsync(string eventTypeUri, DateTimeOffset start, string name, string email,
-        string timezone, string? phoneE164, CancellationToken ct)
+        string timezone, string? phoneE164, string? appOption, CancellationToken ct)
     {
         if (!IsConfigured) return new(false, null, "Calendly sin token");
         var body = new Dictionary<string, object?>
@@ -106,6 +123,11 @@ public class CalendlyClient
                 ["text_reminder_number"] = string.IsNullOrWhiteSpace(phoneE164) ? null : phoneE164,
             }.Where(kv => kv.Value is not null).ToDictionary(kv => kv.Key, kv => kv.Value),
             ["location"] = new Dictionary<string, object?> { ["kind"] = "google_conference" },
+            ["questions_and_answers"] = new[]
+            {
+                new Dictionary<string, object?> { ["question"] = AppQuestion, ["answer"] = appOption ?? "", ["position"] = 0 },
+                new Dictionary<string, object?> { ["question"] = PhoneQuestion, ["answer"] = phoneE164 ?? "", ["position"] = 1 },
+            },
         };
         try
         {

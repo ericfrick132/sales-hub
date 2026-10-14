@@ -172,7 +172,8 @@ public class OnboardingService
         var name = MessageRenderer.FirstName(ob.ContactName) is { Length: > 0 } fn ? fn : (ob.GymName ?? lead.Name);
         var res = DryRunBooking
             ? new CalendlyClient.Booking(true, "simulado", null)
-            : await _calendly.BookAsync(cfg.DemoEventTypeUri!, slot, name, email, LeadEntryService.ArTz.Id, phone, ct);
+            : await _calendly.BookAsync(cfg.DemoEventTypeUri!, slot, name, email, LeadEntryService.ArTz.Id, phone,
+                CalendlyClient.AppOption(cfg.ProductKey), ct);
         ob.Email ??= email;
         if (!res.Ok)
         {
