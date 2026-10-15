@@ -25,7 +25,10 @@ import Entradas from './Entradas';
 import AudioAnalytics from './AudioAnalytics';
 import BusinessTab from './BusinessTab';
 
-interface TrendDay { date: string; leads: number; byProduct: Record<string, number>; sent: number; replied: number; closed: number }
+interface TrendDay {
+  date: string; leads: number; byProduct: Record<string, number>; sent: number; replied: number; closed: number;
+  adLeads: number; adByProduct: Record<string, number>; adReplied: number;
+}
 interface Trend {
   days: number; leads: number; sent: number; replied: number; closed: number;
   byProduct: Record<string, number>; bySource: Record<string, number>; daily: TrendDay[];
@@ -195,31 +198,31 @@ export default function DashboardHub() {
 
 // ── Leads de hoy ────────────────────────────────────────────────────────────
 
-/** Leads que entraron hoy (día AR; el último día de /dashboard/trend) vs ayer, por app. */
+/** Leads de anuncios (WhatsApp Ads + form de Meta) que entraron hoy (día AR; el último día de /dashboard/trend) vs ayer, por app. */
 function TodayLeads({ daily, colorOf, nameOf }: { daily: TrendDay[]; colorOf: (k: string) => string; nameOf: (k: string) => string }) {
   const today = daily[daily.length - 1];
   const yesterday = daily[daily.length - 2];
   if (!today) return null;
-  const diff = yesterday ? today.leads - yesterday.leads : 0;
-  const apps = Object.entries(today.byProduct).sort((a, b) => b[1] - a[1]);
+  const diff = yesterday ? today.adLeads - yesterday.adLeads : 0;
+  const apps = Object.entries(today.adByProduct ?? {}).sort((a, b) => b[1] - a[1]);
   return (
     <section className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
-      <Link to="/crm?view=lista" className="shrink-0">
-        <div className="text-[11px] uppercase tracking-wide text-slate-400">Leads de hoy</div>
+      <div className="shrink-0">
+        <div className="text-[11px] uppercase tracking-wide text-slate-400">Leads de anuncios hoy</div>
         <div className="flex items-baseline gap-2">
-          <span className="text-4xl font-bold tabular-nums text-brand-700">{today.leads.toLocaleString('es-AR')}</span>
+          <span className="text-4xl font-bold tabular-nums text-brand-700">{(today.adLeads ?? 0).toLocaleString('es-AR')}</span>
           {yesterday && (
             <span className={`text-xs font-medium ${diff > 0 ? 'text-emerald-700' : diff < 0 ? 'text-rose-700' : 'text-slate-500'}`}>
-              {diff > 0 ? '▲' : diff < 0 ? '▼' : '='} {Math.abs(diff)} vs ayer ({yesterday.leads})
+              {diff > 0 ? '▲' : diff < 0 ? '▼' : '='} {Math.abs(diff)} vs ayer ({yesterday.adLeads})
             </span>
           )}
         </div>
         <div className="text-[11px] text-slate-500">
-          {today.sent} contactados · {today.replied} respondieron · {today.closed} cuentas creadas
+          {today.adReplied} ya respondieron · WhatsApp Ads + form de Meta
         </div>
-      </Link>
+      </div>
       <div className="flex flex-wrap gap-1.5 sm:border-l sm:border-slate-100 sm:pl-6">
-        {apps.length === 0 && <span className="text-sm text-slate-400">Todavía no entró ningún lead hoy.</span>}
+        {apps.length === 0 && <span className="text-sm text-slate-400">Todavía no entró ningún lead de anuncios hoy.</span>}
         {apps.map(([k, n]) => (
           <span key={k} className="inline-flex items-center gap-1.5 text-xs bg-slate-50 border border-slate-200 rounded-full px-2.5 py-1">
             <span className="inline-block w-2 h-2 rounded-full" style={{ background: k === 'sin-app' ? OTHER : colorOf(k) }} />

@@ -182,7 +182,8 @@ public class DashboardController : ControllerBase
         return Ok(result);
     }
 
-    public record TrendDay(string Date, int Leads, Dictionary<string, int> ByProduct, int Sent, int Replied, int Closed);
+    public record TrendDay(string Date, int Leads, Dictionary<string, int> ByProduct, int Sent, int Replied, int Closed,
+        int AdLeads, Dictionary<string, int> AdByProduct, int AdReplied);
     public record TrendResult(int Days, int Leads, int Sent, int Replied, int Closed,
         Dictionary<string, int> ByProduct, Dictionary<string, int> BySource, List<TrendDay> Daily);
 
@@ -208,7 +209,7 @@ public class DashboardController : ControllerBase
         // Ventana acotada (≤180 días) → se agrupa en memoria por día AR.
         var created = await _db.Leads.AsNoTracking()
             .Where(l => l.CreatedAt >= since)
-            .Select(l => new { l.CreatedAt, l.ProductKey, l.Source })
+            .Select(l => new { l.CreatedAt, l.ProductKey, l.Source, l.FirstReplyAt })
             .ToListAsync(ct);
         var sent = await _db.Leads.AsNoTracking()
             .Where(l => l.SentAt >= since).Select(l => l.SentAt!.Value).ToListAsync(ct);
@@ -227,9 +228,14 @@ public class DashboardController : ControllerBase
         {
             var key = firstDay.AddDays(i).ToString("yyyy-MM-dd");
             var dayLeads = createdByDay.TryGetValue(key, out var dl) ? dl : [];
+            // "De anuncios" = click-to-WhatsApp + formulario de Meta (lo que se paga en Ads).
+            var adLeads = dayLeads.Where(l => l.Source is LeadSource.WhatsAppAd or LeadSource.MetaLeadAd).ToList();
             daily.Add(new TrendDay(key, dayLeads.Count,
                 dayLeads.GroupBy(l => l.ProductKey == "" ? "sin-app" : l.ProductKey).ToDictionary(g => g.Key, g => g.Count()),
-                sentByDay.GetValueOrDefault(key), repliedByDay.GetValueOrDefault(key), closedByDay.GetValueOrDefault(key)));
+                sentByDay.GetValueOrDefault(key), repliedByDay.GetValueOrDefault(key), closedByDay.GetValueOrDefault(key),
+                adLeads.Count,
+                adLeads.GroupBy(l => l.ProductKey == "" ? "sin-app" : l.ProductKey).ToDictionary(g => g.Key, g => g.Count()),
+                adLeads.Count(l => l.FirstReplyAt != null)));
         }
 
         return new TrendResult(days, created.Count, sent.Count, replied.Count, closed.Count,
