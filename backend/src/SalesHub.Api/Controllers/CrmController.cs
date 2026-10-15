@@ -55,7 +55,9 @@ public class CrmController : ControllerBase
         Guid? SellerId, string? SellerName, Guid? DeviceId, string? DeviceName,
         DateTimeOffset? LastActivityAt, DateTimeOffset? NextActionAt, string? NextActionNote,
         int NoteCount, string? LastNote, int UnreadCount, int Score,
-        DateTimeOffset CreatedAt, DateTimeOffset? DemoScheduledAt, string? OriginSellerName);
+        DateTimeOffset CreatedAt, DateTimeOffset? DemoScheduledAt, string? OriginSellerName,
+        // El teléfono principal salió del Instagram del negocio (no de Maps): se pinta distinto.
+        bool PhoneFromInstagram);
 
     public record StageColumn(string Key, string Label, int Total, IReadOnlyList<CrmCard> Cards);
 
@@ -304,6 +306,7 @@ public class CrmController : ControllerBase
                 l.WhatsappPhone, l.Status, l.Source, l.SellerId,
                 SellerName = l.Seller != null ? l.Seller.DisplayName : null,
                 l.NextActionAt, l.NextActionNote, l.Score, l.CreatedAt, l.UpdatedAt, l.DemoScheduledAt,
+                PhoneFromInstagram = l.InstagramPhone != null && l.InstagramPhone == l.WhatsappPhone,
                 OriginSellerName = _db.Sellers.Where(x => x.Id == l.OriginSellerId).Select(x => x.DisplayName).FirstOrDefault(),
                 LastMessageAt = _db.ConversationMessages.Where(m => m.LeadId == l.Id)
                     .OrderByDescending(m => m.Timestamp).Select(m => (DateTimeOffset?)m.Timestamp).FirstOrDefault(),
@@ -326,7 +329,8 @@ public class CrmController : ControllerBase
                 r.SellerId, r.SellerName, dev?.Id, dev?.Name,
                 r.LastMessageAt ?? r.UpdatedAt,
                 r.NextActionAt, r.NextActionNote,
-                r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt, r.DemoScheduledAt, r.OriginSellerName);
+                r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt, r.DemoScheduledAt, r.OriginSellerName,
+                r.PhoneFromInstagram);
         }).ToList();
         return (cards, hasMore);
     }
@@ -394,6 +398,7 @@ public class CrmController : ControllerBase
             website = lead.Website,
             instagram = lead.InstagramHandle,
             instagramPhone = lead.InstagramPhone,
+            phoneFromInstagram = lead.InstagramPhone != null && lead.InstagramPhone == lead.WhatsappPhone,
             productKey = lead.ProductKey,
             productName = lead.Product?.DisplayName,
             status = lead.Status.ToString(),
@@ -546,7 +551,7 @@ public class CrmController : ControllerBase
         Guid Id, string Name, string Phone, string ProductKey, string? ProductName, string? City,
         string Status, string StageKey, string? SellerName, DateTimeOffset? NextActionAt,
         string? NextActionNote, string? LastNote, int CallCount, DateTimeOffset? LastCallAt,
-        DateTimeOffset CreatedAt);
+        DateTimeOffset CreatedAt, bool PhoneFromInstagram);
 
     /// <summary>
     /// Cola del modo llamadas: los leads con teléfono que matchean los filtros del tablero,
@@ -605,6 +610,7 @@ public class CrmController : ControllerBase
                 l.Id, l.Name, l.WhatsappPhone, l.ProductKey,
                 ProductName = l.Product != null ? l.Product.DisplayName : null,
                 l.City, l.Status,
+                PhoneFromInstagram = l.InstagramPhone != null && l.InstagramPhone == l.WhatsappPhone,
                 SellerName = l.Seller != null ? l.Seller.DisplayName : null,
                 l.NextActionAt, l.NextActionNote, l.CreatedAt,
                 LastNote = _db.LeadNotes.Where(n => n.LeadId == l.Id && (n.Kind == LeadNoteKind.Note || n.Kind == LeadNoteKind.Call))
@@ -618,7 +624,7 @@ public class CrmController : ControllerBase
         var items = rows.Select(r => new CallQueueItem(
             r.Id, r.Name, r.WhatsappPhone!, r.ProductKey, r.ProductName, r.City, r.Status.ToString(),
             StageKeyOf(r.Status), r.SellerName, r.NextActionAt, r.NextActionNote, r.LastNote,
-            r.CallCount, r.LastCallAt, r.CreatedAt)).ToList();
+            r.CallCount, r.LastCallAt, r.CreatedAt, r.PhoneFromInstagram)).ToList();
 
         return Ok(new { total, items });
     }

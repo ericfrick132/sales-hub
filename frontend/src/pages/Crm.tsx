@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import { isAdmin, useAuthStore } from '../lib/auth';
 import { demoFollowUps, fmtDate, fmtDateTime, fmtPhone, hace, telHref, toLocalInput } from '../lib/crmFormat';
 import CrmCallMode from '../components/CrmCallMode';
+import PhoneOrigin from '../components/PhoneOrigin';
 import { CRM_SOURCES as SOURCES } from '../lib/types';
 import type { Product, Seller } from '../lib/types';
 
@@ -26,13 +27,15 @@ type Card = {
   demoScheduledAt?: string;
   /** Quién lo originó, si después lo tomó otro (la cold caller que se lo pasó para la demo). */
   originSellerName?: string;
+  /** El teléfono salió del Instagram del negocio. */
+  phoneFromInstagram?: boolean;
 };
 type Column = { key: string; label: string; total: number; cards: Card[] };
 type Board = { stages: Column[]; total: number; overdue: number; perStage: number };
 type Note = { id: string; text: string; kind: string; createdAt: string; sellerId?: string; sellerName?: string };
 type Detail = {
   id: string; name: string; phone?: string; city?: string; province?: string; website?: string;
-  instagram?: string; instagramPhone?: string; productKey: string; productName?: string; status: string; source: string;
+  instagram?: string; instagramPhone?: string; phoneFromInstagram?: boolean; productKey: string; productName?: string; status: string; source: string;
   score: number; sellerId?: string; sellerName?: string; manualAssignedAt?: string; originSellerName?: string;
   createdAt: string; sentAt?: string; firstReplyAt?: string;
   demoScheduledAt?: string; closedAt?: string; nextActionAt?: string; nextActionNote?: string;
@@ -424,7 +427,8 @@ function CrmCard({ card, onOpen, onDragStart, onDragEnd }: {
           draggable={false}
           // Sin esto el click también abre la ficha.
           onClick={(e) => e.stopPropagation()}
-          className="block text-[11px] text-slate-700 mt-0.5 tabular-nums truncate hover:text-brand-700 hover:underline">
+          className={`flex items-center gap-1 text-[11px] mt-0.5 tabular-nums truncate hover:underline ${card.phoneFromInstagram ? 'text-pink-700' : 'text-slate-700 hover:text-brand-700'}`}>
+          <PhoneOrigin fromInstagram={card.phoneFromInstagram} />
           {fmtPhone(card.phone)}
         </a>
       )}
@@ -582,9 +586,10 @@ function LeadDrawer({ leadId, stages, sellers, onClose, onMove }: {
               <div className="min-w-0">
                 <h2 className="text-lg font-bold truncate">{d.name}</h2>
                 {d.phone ? (
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex items-center gap-2">
+                    <PhoneOrigin fromInstagram={d.phoneFromInstagram} />
                     <a href={telHref(d.phone)} title="Llamar"
-                       className="text-sm text-slate-700 tabular-nums hover:text-brand-700 hover:underline">
+                       className={`text-sm tabular-nums hover:underline ${d.phoneFromInstagram ? 'text-pink-700' : 'text-slate-700 hover:text-brand-700'}`}>
                       {fmtPhone(d.phone)}
                     </a>
                     <button
@@ -604,9 +609,6 @@ function LeadDrawer({ leadId, stages, sellers, onClose, onMove }: {
                   <div className="flex items-baseline gap-2 text-xs text-slate-600">
                     {d.instagram && (
                       <a href={`https://instagram.com/${d.instagram}`} target="_blank" rel="noreferrer" className="hover:underline">@{d.instagram}</a>
-                    )}
-                    {d.instagramPhone && d.instagramPhone === d.phone && (
-                      <span className="text-[11px] bg-pink-50 text-pink-700 border border-pink-200 rounded px-1" title="El teléfono salió de su Instagram">número de IG</span>
                     )}
                   </div>
                 )}

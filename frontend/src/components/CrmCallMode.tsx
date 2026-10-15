@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import PhoneOrigin from './PhoneOrigin';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
@@ -19,6 +20,7 @@ type QueueItem = {
   id: string; name: string; phone: string; productKey: string; productName?: string; city?: string;
   status: string; stageKey: string; sellerName?: string; nextActionAt?: string; nextActionNote?: string;
   lastNote?: string; callCount: number; lastCallAt?: string; createdAt: string;
+  phoneFromInstagram?: boolean;
 };
 type Outcome = 'NoAnswer' | 'Answered' | 'Interested' | 'NotInterested' | 'Callback' | 'WrongNumber';
 type LeadDetail = {
@@ -290,9 +292,13 @@ export default function CrmCallMode({ filters, stages, onClose }: {
           <div className="p-4 space-y-4">
             <div className="space-y-1">
               <div className="text-xl font-bold leading-tight">{current.name}</div>
-              <a href={telHref(current.phone)} className="text-2xl tabular-nums text-brand-700 hover:underline">
-                {fmtPhone(current.phone)}
-              </a>
+              <div className="flex items-center gap-2">
+                <PhoneOrigin fromInstagram={current.phoneFromInstagram} className="text-xs px-1.5" />
+                <a href={telHref(current.phone)}
+                  className={`text-2xl tabular-nums hover:underline ${current.phoneFromInstagram ? 'text-pink-700' : 'text-brand-700'}`}>
+                  {fmtPhone(current.phone)}
+                </a>
+              </div>
               <div className="text-xs text-slate-500">
                 {current.productName ?? current.productKey}
                 {current.city ? ` · ${current.city}` : ''} · {stageLabel(current.stageKey)}
