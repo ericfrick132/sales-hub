@@ -213,7 +213,7 @@ export default function Conversations() {
     const el = replyRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight + el.offsetHeight - el.clientHeight, 160)}px`;
   }, [reply]);
 
   useEffect(() => { setInfoSheet(false); }, [selected]);
