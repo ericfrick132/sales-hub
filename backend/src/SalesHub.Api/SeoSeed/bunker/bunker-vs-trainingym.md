@@ -8,7 +8,7 @@ Trainingym es uno de los nombres más buscados por quien entrena gente en Argent
 - **Precio:** Bunker publica sus planes en pesos: ARS 40.000 por mes hasta 10 atletas, 60.000 hasta 20 y 80.000 sin tope de atletas, con agente de IA en WhatsApp. Trainingym no publica precios: los planes varían según el tamaño del negocio y hay que pedir presupuesto.
 - **Atletas:** en Bunker los atletas usan la app gratis, siempre. Trainingym incluye una app para miembros dentro de la suite del gimnasio.
 - **Alcance de producto:** acá gana Trainingym. Suma CRM con comunicación por WhatsApp e inteligencia artificial, control de accesos con QR, pulseras y reconocimiento facial, cobros integrados, herramientas de retención y nutrición. Bunker no hace nada de eso: hace planificación por bloques, adherencia, mensajería y control de cuotas.
-- **Arranque:** Bunker se configura en 5 minutos, con 14 días de prueba y el primer cobro al terminarla. Trainingym ofrece prueba gratis y una demo de 30 minutos.
+- **Arranque:** Bunker se configura en 5 minutos, con 14 días de prueba sin tarjeta. Trainingym ofrece prueba gratis y una demo de 30 minutos.
 
 Si tenés un gimnasio o un estudio con recepción, cuotas, control de acceso y necesidad de retener socios, Trainingym es una suite para eso y Bunker no lo reemplaza. Si sos entrenador, preparador físico o dirigís un equipo y lo que necesitás es planificar bien y saber quién cumple, Bunker está hecho para eso, con precio en pesos y tus atletas sin pagar nada.
 
@@ -22,7 +22,7 @@ Lo que publica cada uno a septiembre de 2026: Trainingym en su sitio, Bunker en 
 | Planes | Básico, Profesional, Sin límite | Según tamaño del negocio, con presupuesto personalizado |
 | Precio mensual | ARS 40.000 (hasta 10 atletas), 60.000 (hasta 20), 80.000 (Sin límite, sin tope de atletas) | No publicado |
 | Costo para el alumno | Gratis | App para miembros incluida en la suite del negocio |
-| Prueba gratis | 14 días en todos los planes; primer cobro al terminar la prueba | Prueba gratis y demo de 30 minutos, según su sitio |
+| Prueba gratis | 14 días en todos los planes, sin tarjeta | Prueba gratis y demo de 30 minutos, según su sitio |
 | Planificación de entrenamientos | Bloques, series, descansos y progresiones; asignación por atleta y por equipo | Rutinas y entrenamientos con videos |
 | Seguimiento de progreso y adherencia | Analítica en tiempo real | App con seguimiento de progreso |
 | Inteligencia artificial | Agente de IA en WhatsApp en el plan Sin límite | IA en la comunicación del CRM |
@@ -54,7 +54,7 @@ Bunker publica sus planes en pesos y los cobra mes a mes, sin complementos:
 - **Profesional, ARS 60.000 por mes.** Hasta 20 atletas.
 - **Sin límite, ARS 80.000 por mes.** Atletas sin tope y un agente de IA en WhatsApp para consultas de entrenamientos, asistencia y horarios.
 
-Todos con 14 días de prueba. Los atletas usan la app gratis; vos dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba. Los precios actualizados están siempre en [la página de planes](/#trainers).
+Todos con 14 días de prueba. Los atletas usan la app gratis; vos probás sin tarjeta y al terminar elegís el plan. Los precios actualizados están siempre en [la página de planes](/#trainers).
 
 Trainingym no publica precios: su sitio indica planes variables según el tamaño del negocio y pide contactar para un presupuesto personalizado. Cuando lo hagas, preguntá si el precio depende de la cantidad de socios, si la app para miembros y el control de accesos van incluidos, y si hay costo de implementación.
 
@@ -96,4 +96,4 @@ Bunker no compite en nada de eso. Tiene mensajería entre entrenador y atleta, c
 
 Creás tu cuenta de entrenador, armás el primer plan con tus bloques y progresiones, y le mandás el código de invitación a cada alumno. En cinco minutos están viendo su entrenamiento del día en el celular. Durante los 14 días de prueba gratis podés usarlo en paralelo con lo que tengas hoy.
 
-**[Empezá gratis con Bunker](/register?role=owner)** — 14 días de prueba con el primer cobro al terminarla, y tus alumnos usan la app gratis.
+**[Empezá gratis con Bunker](/register?role=owner)** — 14 días de prueba sin tarjeta, y tus alumnos usan la app gratis.

@@ -23,7 +23,7 @@ Lo que publica cada uno a septiembre de 2026: Harbiz en su página de tarifas pa
 | Precio con pago anual | No publica | USD 14, 97 y 164 por mes |
 | Clientes o atletas incluidos | 10, 20 y sin límite | 5 (Basic), 50 (Pro), 50 (App) |
 | Costo para el alumno | Gratis | No publicado |
-| Prueba gratis | 14 días en todos los planes; primer cobro al terminar la prueba | 14 días |
+| Prueba gratis | 14 días en todos los planes, sin tarjeta | 14 días |
 | Planificación de entrenamientos | Bloques, series, descansos y progresiones; asignación por atleta y por equipo | Creador de rutinas y programas automatizados |
 | Inteligencia artificial | Agente de IA en WhatsApp en el plan Sin límite (ARS 80.000) | Harbiz AI incluida en todos los planes |
 | Nutrición | No | Planificación nutricional; Nutri AI como complemento (USD 17,36 por mes) |
@@ -43,7 +43,7 @@ Fuentes: checkout de bunker-app.com y harbiz.io/tarifas, septiembre de 2026.
 
 Es la diferencia más grande y conviene mirarla por cantidad de alumnos.
 
-**Hasta 5 alumnos.** Harbiz Basic: USD 19 por mes (USD 14 con pago anual). Bunker Básico: ARS 40.000 por mes, con hasta 10 atletas. Para un entrenador que recién arranca, los dos son accesibles; Bunker incluye el doble de alumnos y te da 14 días de prueba antes del primer cobro.
+**Hasta 5 alumnos.** Harbiz Basic: USD 19 por mes (USD 14 con pago anual). Bunker Básico: ARS 40.000 por mes, con hasta 10 atletas. Para un entrenador que recién arranca, los dos son accesibles; Bunker incluye el doble de alumnos y te da 14 días de prueba sin tarjeta.
 
 **Hasta 50 alumnos.** Harbiz Pro: USD 129 por mes (USD 97 anual), con soporte premium, comunidad y app personalizada. Bunker Profesional cubre hasta 20 atletas por ARS 60.000 por mes; para 50, el plan Sin límite cuesta ARS 80.000. Convertí los USD 129 al tipo de cambio del día y compará, y sumá que en Bunker esos 50 atletas usan la app sin pagar nada.
 
@@ -91,4 +91,4 @@ Bunker resuelve la mensajería con el alumno dentro de la app y el **control de 
 
 Creás tu cuenta de entrenador, armás el primer plan con tus bloques y progresiones, y le mandás el código de invitación a cada alumno. En cinco minutos están viendo su entrenamiento del día en el celular. Durante los 14 días de prueba gratis podés tener los dos sistemas en paralelo.
 
-**[Empezá gratis con Bunker](/register?role=owner)** — 14 días de prueba con el primer cobro al terminarla, y tus alumnos usan la app gratis.
+**[Empezá gratis con Bunker](/register?role=owner)** — 14 días de prueba sin tarjeta, y tus alumnos usan la app gratis.

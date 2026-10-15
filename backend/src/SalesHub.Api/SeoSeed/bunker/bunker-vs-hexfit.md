@@ -8,7 +8,7 @@ Hexfit es una de las plataformas de coaching con más trayectoria que se venden 
 - **Clientes incluidos:** Hexfit limita clientes activos por plan: 5 en Starter, 15 en Solo, 40 en Growth y 500 en Studio. Bunker incluye 10, 20 o atletas sin tope según el plan, y los atletas usan la app gratis.
 - **Alcance de producto:** acá gana Hexfit. Biblioteca de más de 13.000 ejercicios, nutrición, facturación y citas, videollamadas, app con tu marca, integración con Apple Health, Strava y Fitbit, y un asistente de inteligencia artificial. Es una suite para el profesional de la salud y el fitness.
 - **Foco:** Bunker hace menos cosas y las hace para el entrenamiento: planificación por bloques, series, descansos y progresiones, asignación por atleta o por equipo, registro entre series y analítica de adherencia en tiempo real.
-- **Arranque:** los dos tienen prueba gratis. Hexfit la da sin tarjeta; en Bunker dejás la tarjeta en Mercado Pago y el primer cobro es al terminar los 14 días de prueba. Bunker se configura en 5 minutos.
+- **Arranque:** los dos tienen prueba gratis y sin tarjeta. En Bunker son 14 días y al terminar elegís el plan; se configura en 5 minutos.
 
 Si sos entrenador online con clientes en varios países, armás nutrición, facturás desde la misma herramienta y querés integraciones con relojes, Hexfit tiene todo eso y cobra por ello. Si entrenás en Argentina, trabajás con 10, 50 o 200 alumnos o con equipos, y lo que necesitás es planificar bien y saber quién cumple, Bunker lo hace en pesos, con tus atletas sin pagar nada.
 
@@ -22,7 +22,7 @@ Lo que publica cada uno a septiembre de 2026: Hexfit en su sitio y su página de
 | Precio mensual | ARS 40.000, 60.000 y 80.000 | 19, 50, 90 y 250 por mes; la moneda depende del país del medio de pago |
 | Clientes o atletas incluidos | 10, 20 y sin límite | 5 (Starter), 15 (Solo), 40 (Growth), 500 (Studio) |
 | Costo para el alumno | Gratis | App incluida para el cliente del profesional |
-| Prueba gratis | 14 días en todos los planes; primer cobro al terminar la prueba | Sí, sin tarjeta ni compromiso |
+| Prueba gratis | 14 días en todos los planes, sin tarjeta | Sí, sin tarjeta ni compromiso |
 | Planificación de entrenamientos | Bloques, series, descansos y progresiones; asignación por atleta y por equipo | Programas con más de 13.000 ejercicios; circuitos, CrossFit, cardio, HIIT, pirámides y drop sets |
 | Inteligencia artificial | Agente de IA en WhatsApp en el plan Sin límite (ARS 80.000) | Asistente de IA "Fred" y automatizaciones desde Growth |
 | Seguimiento de progreso y adherencia | Analítica en tiempo real por atleta y por equipo | Seguimiento de progreso, tests físicos, objetivos, datos y gráficos |
@@ -48,7 +48,7 @@ Bunker publica sus planes en pesos y los cobra mes a mes, sin complementos:
 - **Profesional, ARS 60.000 por mes.** Hasta 20 atletas.
 - **Sin límite, ARS 80.000 por mes.** Atletas sin tope y un agente de IA en WhatsApp para consultas de entrenamientos, asistencia y horarios.
 
-Todos con 14 días de prueba: dejás la tarjeta en Mercado Pago y el primer cobro es al terminar la prueba. Los atletas usan la app gratis. Los precios actualizados están siempre en [la página de planes](/#trainers).
+Todos con 14 días de prueba, sin tarjeta; al terminar elegís el plan. Los atletas usan la app gratis. Los precios actualizados están siempre en [la página de planes](/#trainers).
 
 ## Planificación: el corazón de Bunker
 
@@ -89,4 +89,4 @@ Bunker no compite en nada de eso: tiene mensajería integrada, control de cuotas
 
 Creás tu cuenta de entrenador, armás el primer plan con tus bloques y progresiones y le mandás el código de invitación a cada alumno. En cinco minutos están viendo su entrenamiento del día en el celular. Durante los 14 días de prueba gratis podés tener las dos plataformas en paralelo.
 
-**[Empezá gratis con Bunker](/register?role=owner)** — 14 días de prueba con el primer cobro al terminarla, y tus alumnos usan la app gratis.
+**[Empezá gratis con Bunker](/register?role=owner)** — 14 días de prueba sin tarjeta, y tus alumnos usan la app gratis.

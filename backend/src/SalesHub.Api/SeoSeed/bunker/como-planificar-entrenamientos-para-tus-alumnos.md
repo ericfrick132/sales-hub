@@ -69,7 +69,7 @@ Si entrenás alumnos uno a uno, mirá cómo lo resuelve Bunker en la página de 
 
 ## Cuánto cuesta dejar el Excel
 
-Los atletas usan Bunker gratis y se vinculan con vos con un código de invitación. Los entrenadores empiezan con 14 días de prueba gratis en cualquier plan: dejan la tarjeta en Mercado Pago, el primer cobro sale recién al terminar la prueba y cancelan cuando quieran. El plan se elige según la cantidad de alumnos. Precios mensuales en pesos argentinos:
+Los atletas usan Bunker gratis y se vinculan con vos con un código de invitación. Los entrenadores empiezan con 14 días de prueba gratis en cualquier plan, sin tarjeta; al terminar, siguen con el que les sirva. El plan se elige según la cantidad de alumnos. Precios mensuales en pesos argentinos:
 
 | Plan        | Precio          | Atletas                         | Prueba gratis |
 |-------------|-----------------|---------------------------------|---------------|
