@@ -128,7 +128,8 @@ export default function Conversations() {
   const [hideSuggestionFor, setHideSuggestionFor] = useState<string | null>(null);
   // Prellenado del mini-form "Promover a FAQ" (pregunta = último inbound, respuesta = sugerencia IA).
   const [promoteDraft, setPromoteDraft] = useState<{ productKey: string; question: string; answer: string } | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const replyRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<File | null>(null);
 
@@ -147,6 +148,10 @@ export default function Conversations() {
     return () => clearTimeout(t);
   }, [search]);
   const [showInfo, setShowInfo] = useState(true);
+  // Mobile: los filtros van plegados (si no, tapan la lista) y la info del lead abre en una hoja aparte.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [infoSheet, setInfoSheet] = useState(false);
+  const activeFilters = [productFilter, deviceFilter, statusFilter, days !== 30 ? 'p' : ''].filter(Boolean).length;
   const fromTs = useMemo(() => {
     if (!days) return undefined;
     return new Date(Date.now() - days * 86400_000).toISOString();
@@ -197,9 +202,21 @@ export default function Conversations() {
     return dev?.name ?? (thread.data?.sellerName ? `${thread.data.sellerName} (sin celu)` : null);
   }, [thread.data?.sellerId, thread.data?.sellerName, devicesQ.data]);
 
+  // Scrollea solo el hilo (scrollIntoView en mobile arrastraba la página entera).
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [thread.data?.messages.length, selected]);
+
+  // El composer crece con el texto hasta ~6 líneas.
+  useEffect(() => {
+    const el = replyRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [reply]);
+
+  useEffect(() => { setInfoSheet(false); }, [selected]);
 
   const sendMut = useMutation({
     mutationFn: async () => (await api.post(`/conversations/${selected}/reply`, { text: reply })).data,
@@ -243,7 +260,7 @@ export default function Conversations() {
   const clearSelected = () => setParams({});
 
   return (
-    <div className="flex flex-col md:grid md:grid-cols-12 gap-4 h-[calc(100vh-9rem)] md:h-[calc(100vh-8rem)]">
+    <div className="flex flex-col md:grid md:grid-cols-12 gap-4 h-[calc(100dvh-6.5rem)] md:h-[calc(100vh-8rem)]">
       {showNew && (
         <NewConversationModal
           initialPhone={/\d{6,}/.test(searchDebounced.replace(/\D/g, '')) ? searchDebounced : ''}
@@ -263,24 +280,34 @@ export default function Conversations() {
           selected && showInfo ? 'lg:col-span-3' : '',
           selected ? 'hidden md:block' : 'flex-1 md:flex-none'
         )}>
-        <LineBots />
+        <div className={clsx(!filtersOpen && 'hidden md:block')}>
+          <LineBots />
+        </div>
         <div className="p-3 border-b border-slate-100 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <div>
               <h2 className="font-semibold text-lg">Conversaciones</h2>
-              <p className="text-xs text-slate-500">Leads que te respondieron o a los que ya escribiste.</p>
+              <p className="text-xs text-slate-500 hidden sm:block">Leads que te respondieron o a los que ya escribiste.</p>
             </div>
             <button type="button" className="btn-primary text-sm shrink-0" onClick={() => setShowNew(true)}>
               + Nueva
             </button>
           </div>
-          <input
-            className="input text-sm w-full"
-            placeholder="Buscar por numero o nombre…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2">
+            <input
+              className="input text-base md:text-sm w-full"
+              type="search"
+              placeholder="Buscar por numero o nombre…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <button type="button" onClick={() => setFiltersOpen((v) => !v)}
+              className={clsx('md:hidden shrink-0 rounded-md border px-3 text-sm',
+                filtersOpen || activeFilters ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-300 text-slate-600')}>
+              Filtros{activeFilters ? ` (${activeFilters})` : ''}
+            </button>
+          </div>
+          <div className={clsx('flex-wrap gap-2', filtersOpen ? 'flex' : 'hidden md:flex')}>
             <div className="flex-1 min-w-[120px]">
               <label className="text-[11px] text-slate-500 block">Producto</label>
               <select
@@ -340,14 +367,14 @@ export default function Conversations() {
               <button key={c.key} type="button"
                 onClick={() => setWindowFilter(c.key)}
                 title={c.key === '' ? 'Todas' : c.key === 'new' ? 'Leads creados en las últimas 24 h' : 'Tiempo que queda de la ventana de 24 h para responder'}
-                className={clsx('text-[11px] px-2 py-0.5 rounded-full border flex items-center gap-1',
+                className={clsx('text-xs md:text-[11px] px-2.5 py-1 md:px-2 md:py-0.5 rounded-full border flex items-center gap-1',
                   windowFilter === c.key ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50')}>
                 {c.dot && <span className={clsx('inline-block w-1.5 h-1.5 rounded-full', c.dot)} />}{c.label}
               </button>
             ))}
             <button type="button" onClick={() => setTagFilter(tagFilter === 'para-mateo' ? '' : 'para-mateo')}
               title="Los que el bot pre-calificó y le pasó a una persona"
-              className={clsx('text-[11px] px-2 py-0.5 rounded-full border',
+              className={clsx('text-xs md:text-[11px] px-2.5 py-1 md:px-2 md:py-0.5 rounded-full border',
                 tagFilter === 'para-mateo' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50')}>
               pasados a una persona
             </button>
@@ -385,7 +412,7 @@ export default function Conversations() {
               <StatusPill status={c.status} />
               {(c.deviceName || c.sellerName) && (
                 <span
-                  className="text-[11px] bg-brand-100 text-brand-700 rounded px-1.5 py-0.5 font-medium shrink-0"
+                  className="hidden sm:inline text-[11px] bg-brand-100 text-brand-700 rounded px-1.5 py-0.5 font-medium shrink-0"
                   title={c.deviceName ? `Celular: ${c.deviceName}` : `Sin celular asignado — línea de ${c.sellerName}`}>
                   {c.deviceName ?? `${c.sellerName} (sin celu)`}
                 </span>
@@ -403,6 +430,9 @@ export default function Conversations() {
             </div>
             <div className="text-xs text-slate-400 mt-0.5 flex gap-2 flex-wrap items-center">
               <span>{c.productKey}</span>
+              {(c.deviceName || c.sellerName) && (
+                <span className="sm:hidden text-[10px] bg-brand-100 text-brand-700 rounded px-1">{c.deviceName ?? `${c.sellerName} (sin celu)`}</span>
+              )}
               {c.city && <span>· {c.city}</span>}
               {c.source === 'WhatsAppAd' && <span title={c.adTitle ?? 'Lead de anuncio'} className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 rounded px-1">📣 ad</span>}
               {c.pitchName && (
@@ -423,19 +453,27 @@ export default function Conversations() {
         className={clsx(
           'md:col-span-8 card flex flex-col overflow-hidden min-h-0',
           selected && showInfo ? 'lg:col-span-6' : '',
-          selected ? 'flex-1 md:flex-none' : 'hidden md:flex'
+          selected
+            ? 'fixed inset-x-0 top-0 h-[100dvh] z-40 rounded-none border-0 pt-[env(safe-area-inset-top)] md:static md:h-auto md:z-auto md:rounded-lg md:border md:pt-0'
+            : 'hidden md:flex'
         )}>
         {!selected ? (
           <div className="flex-1 grid place-items-center text-slate-500">Seleccioná una conversación</div>
-        ) : thread.isLoading ? (
-          <div className="flex-1 grid place-items-center text-slate-500">Cargando…</div>
-        ) : thread.data ? (
+        ) : !thread.data ? (
+          <div className="flex-1 grid place-items-center text-slate-500 text-center p-4">
+            <div>
+              {thread.isLoading ? 'Cargando…' : 'No se pudo abrir la conversación.'}
+              <button type="button" onClick={clearSelected} className="md:hidden block mx-auto mt-3 btn-secondary">← Volver</button>
+            </div>
+          </div>
+        ) : (
           <>
-            <div className="p-3 border-b border-slate-100 flex items-start gap-2">
+            <div className="px-2 py-2 md:p-3 border-b border-slate-100 flex items-center md:items-start gap-1.5 md:gap-2">
               <button
                 type="button"
                 onClick={clearSelected}
-                className="md:hidden text-sm text-slate-500 hover:text-slate-700 mt-0.5">
+                aria-label="Volver a la lista"
+                className="md:hidden shrink-0 w-9 h-9 grid place-items-center rounded-full text-xl text-slate-600 hover:bg-slate-100">
                 ←
               </button>
               <div className="min-w-0 flex-1">
@@ -444,7 +482,7 @@ export default function Conversations() {
                   <StatusPill status={thread.data.status} />
                 </div>
                 <div className="text-xs text-slate-500 truncate">
-                  {thread.data.productKey} · {thread.data.whatsappPhone ?? '—'}
+                  {thread.data.productKey} · {formatPhone(thread.data.whatsappPhone) || '—'}
                   {threadDevice && <> · <span className="font-medium">{threadDevice}</span></>}
                 </div>
               </div>
@@ -457,10 +495,11 @@ export default function Conversations() {
                   await api.post(`/conversations/${thread.data!.leadId}/bot`, { enabled: !!thread.data!.botMutedAt });
                   qc.invalidateQueries({ queryKey: ['conv-thread', selected] });
                 }}
-                className={`text-[11px] px-2 py-1 rounded border shrink-0 ${thread.data.botMutedAt
+                className={`text-xs md:text-[11px] px-2 py-1.5 md:py-1 rounded border shrink-0 ${thread.data.botMutedAt
                   ? 'border-amber-300 bg-amber-50 text-amber-700'
                   : 'border-emerald-300 bg-emerald-50 text-emerald-700'}`}>
-                {thread.data.botMutedAt ? '🤖 pausado' : '🤖 activo'}
+                🤖<span className="hidden sm:inline"> {thread.data.botMutedAt ? 'pausado' : 'activo'}</span>
+                <span className="sm:hidden"> {thread.data.botMutedAt ? 'off' : 'on'}</span>
               </button>
               <button
                 type="button"
@@ -471,15 +510,19 @@ export default function Conversations() {
                   qc.invalidateQueries({ queryKey: ['conversations'] });
                   toast.success(thread.data!.closedAt ? 'Conversación reabierta' : 'Conversación cerrada');
                 }}
-                className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0">
-                {thread.data.closedAt ? '↺ Reabrir' : '✕ Cerrar'}
+                className="text-xs md:text-[11px] px-2 py-1.5 md:py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0">
+                {thread.data.closedAt ? '↺' : '✕'}<span className="hidden sm:inline"> {thread.data.closedAt ? 'Reabrir' : 'Cerrar'}</span>
+              </button>
+              <button type="button" onClick={() => setInfoSheet(true)} aria-label="Info del lead"
+                className="lg:hidden text-xs px-2 py-1.5 md:py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0">
+                ⓘ<span className="hidden sm:inline"> Info</span>
               </button>
               <button type="button" onClick={() => setShowInfo((v) => !v)}
                 className="hidden lg:block text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0">
                 {showInfo ? 'Ocultar info' : 'Info del lead'}
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2 bg-slate-50">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain p-3 md:p-4 space-y-2 bg-slate-50">
               {thread.data.renderedInitialMessage && thread.data.messages.length === 0 && (
                 <div className="text-center text-xs text-slate-400 mb-4">
                   Mensaje inicial sugerido (aún no enviado):
@@ -492,7 +535,7 @@ export default function Conversations() {
                 <div key={m.id}
                   className={clsx('flex', m.direction === 'Outbound' ? 'justify-end' : 'justify-start')}>
                   <div className={clsx(
-                    'max-w-[85%] md:max-w-md rounded-lg px-3 py-2 text-sm whitespace-pre-wrap',
+                    'max-w-[85%] md:max-w-md rounded-lg px-3 py-2 text-[15px] md:text-sm whitespace-pre-wrap [overflow-wrap:anywhere]',
                     m.direction === 'Outbound' ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200'
                   )}>
                     <div>{m.text}</div>
@@ -503,7 +546,6 @@ export default function Conversations() {
                   </div>
                 </div>
               ))}
-              <div ref={endRef} />
             </div>
             {(() => {
               const replies = parseQuickReplies(
@@ -515,11 +557,11 @@ export default function Conversations() {
                   {suggestion && hideSuggestionFor !== selected && (
                     <div className="px-3 pt-2 border-t border-slate-100">
                       <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-sm">
-                        <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                           <span className="text-[11px] uppercase tracking-wide text-amber-700 font-medium">
                             💡 Sugerencia IA
                           </span>
-                          <div className="flex gap-1.5 shrink-0">
+                          <div className="flex flex-wrap gap-1.5">
                             <button
                               type="button"
                               onClick={() => { setReply(suggestion); setHideSuggestionFor(selected); }}
@@ -551,7 +593,7 @@ export default function Conversations() {
                             )}
                           </div>
                         </div>
-                        <div className="text-slate-700 whitespace-pre-wrap">{suggestion}</div>
+                        <div className="text-slate-700 whitespace-pre-wrap max-h-28 md:max-h-none overflow-y-auto">{suggestion}</div>
                       </div>
                     </div>
                   )}
@@ -568,9 +610,10 @@ export default function Conversations() {
                     </div>
                   )}
                   <form
-                    className="p-3 border-t border-slate-100 flex gap-2"
+                    className="p-2 md:p-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:pb-3 border-t border-slate-100 flex items-end gap-2"
                     onSubmit={(e) => {
                       e.preventDefault();
+                      if (sending) return;
                       if (attachment) mediaMut.mutate();
                       else if (reply.trim()) sendMut.mutate();
                     }}>
@@ -583,14 +626,16 @@ export default function Conversations() {
                     />
                     <button
                       type="button"
-                      className="btn-secondary px-3"
+                      className="btn-secondary px-3 h-10 shrink-0"
                       title="Adjuntar imagen o video"
                       onClick={() => fileRef.current?.click()}
                       disabled={sending}>
                       📎
                     </button>
-                    <input
-                      className="input flex-1"
+                    <textarea
+                      ref={replyRef}
+                      rows={1}
+                      className="input flex-1 resize-none text-base md:text-sm leading-snug"
                       onPaste={(e) => {
                         const f = Array.from(e.clipboardData.files)[0];
                         if (f) { e.preventDefault(); pickFile(f); }
@@ -601,6 +646,13 @@ export default function Conversations() {
                       value={reply}
                       onChange={(e) => setReply(expandSlash(e.target.value, replies))}
                       onKeyDown={(e) => {
+                        // Escritorio: Enter manda, Shift+Enter baja de línea. Celu: Enter baja de línea.
+                        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing
+                          && !window.matchMedia('(pointer: coarse)').matches) {
+                          e.preventDefault();
+                          e.currentTarget.form?.requestSubmit();
+                          return;
+                        }
                         if (e.key === 'Tab') {
                           const expanded = expandSlash(reply + ' ', replies);
                           if (expanded !== reply + ' ') {
@@ -611,7 +663,7 @@ export default function Conversations() {
                       }}
                       disabled={sending}
                     />
-                    <button className="btn-primary" disabled={sending || (!reply.trim() && !attachment)}>
+                    <button className="btn-primary h-10 shrink-0" disabled={sending || (!reply.trim() && !attachment)}>
                       {sending ? '…' : 'Enviar'}
                     </button>
                   </form>
@@ -619,7 +671,7 @@ export default function Conversations() {
               );
             })()}
           </>
-        ) : null}
+        )}
       </div>
 
       {selected && showInfo && thread.data && (
@@ -628,6 +680,22 @@ export default function Conversations() {
             qc.invalidateQueries({ queryKey: ['conv-thread', selected] });
             qc.invalidateQueries({ queryKey: ['conversations'] });
           }} />
+        </div>
+      )}
+
+      {selected && infoSheet && thread.data && (
+        <div className="lg:hidden fixed inset-0 z-50 bg-white flex flex-col pt-[env(safe-area-inset-top)]">
+          <div className="px-2 py-2 border-b border-slate-100 flex items-center gap-2">
+            <button type="button" onClick={() => setInfoSheet(false)} aria-label="Volver al chat"
+              className="w-9 h-9 grid place-items-center rounded-full text-xl text-slate-600 hover:bg-slate-100">←</button>
+            <span className="font-semibold">Info del lead</span>
+          </div>
+          <div className="flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+            <LeadInfoPanel thread={thread.data} onTagClick={(t) => { setTagFilter(t); setInfoSheet(false); setParams({}); }} onChanged={() => {
+              qc.invalidateQueries({ queryKey: ['conv-thread', selected] });
+              qc.invalidateQueries({ queryKey: ['conversations'] });
+            }} />
+          </div>
         </div>
       )}
 
@@ -828,7 +896,7 @@ function NewConversationModal({
           <div className="text-slate-500 mb-1">Nombre (opcional)</div>
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <label className="text-sm block flex-1">
             <div className="text-slate-500 mb-1">Desde la linea</div>
             <select className="input w-full" value={instanceName} onChange={(e) => pickLine(e.target.value)}>
@@ -994,8 +1062,8 @@ function expandSlash(value: string, replies: QuickReply[]): string {
 function QuickReplyBar({ replies, onPick }: { replies: QuickReply[]; onPick: (t: string) => void }) {
   if (!replies || replies.length === 0) return null;
   return (
-    <div className="px-3 pt-2 border-t border-slate-100 flex flex-wrap gap-1">
-      <span className="text-[11px] uppercase tracking-wide text-slate-400 self-center mr-1">
+    <div className="px-3 pt-2 border-t border-slate-100 flex flex-nowrap overflow-x-auto md:flex-wrap gap-1">
+      <span className="hidden md:inline text-[11px] uppercase tracking-wide text-slate-400 self-center mr-1">
         Respuestas rápidas:
       </span>
       {replies.map((r, i) => (
@@ -1005,7 +1073,7 @@ function QuickReplyBar({ replies, onPick }: { replies: QuickReply[]; onPick: (t:
           onClick={() => onPick(r.content)}
           title={r.trigger ? `/${r.trigger}\n\n${r.content}` : r.content}
           className={clsx(
-            'text-xs px-2 py-1 rounded border max-w-[260px] truncate',
+            'text-xs px-2 py-1.5 md:py-1 rounded border max-w-[260px] truncate shrink-0',
             r.trigger
               ? 'border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100 font-mono'
               : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
