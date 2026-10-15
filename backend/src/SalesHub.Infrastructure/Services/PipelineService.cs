@@ -193,7 +193,7 @@ public class PipelineService
         var discarded = 0;
         foreach (var lead in leads)
         {
-            lead.WhatsappPhone = _phone.Normalize(lead.RawPhone, product.PhonePrefix);
+            lead.WhatsappPhone = _phone.NormalizeBusiness(lead.RawPhone, product.PhonePrefix);
 
             // Fallback: si Google no trajo teléfono pero sí website, lo crawleamos buscando
             // tel: / wa.me / patrones de tel argentinos, y de paso sacamos IG/FB.
@@ -203,7 +203,7 @@ public class PipelineService
                 if (!string.IsNullOrWhiteSpace(info.Phone))
                 {
                     lead.RawPhone ??= info.Phone;
-                    lead.WhatsappPhone = _phone.Normalize(info.Phone, product.PhonePrefix);
+                    lead.WhatsappPhone = _phone.NormalizeBusiness(info.Phone, product.PhonePrefix);
                 }
                 if (string.IsNullOrWhiteSpace(lead.InstagramHandle) && !string.IsNullOrWhiteSpace(info.InstagramHandle))
                     lead.InstagramHandle = info.InstagramHandle;

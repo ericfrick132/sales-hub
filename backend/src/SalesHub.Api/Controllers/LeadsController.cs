@@ -559,7 +559,8 @@ public class LeadsController : ControllerBase
     [HttpPost("repair-phones")]
     public async Task<ActionResult<PhoneRepairResult>> RepairPhones(
         [FromQuery] bool apply = false, [FromQuery] string? productKey = null,
-        [FromQuery] LeadSource? source = null, CancellationToken ct = default)
+        [FromQuery] LeadSource? source = null, [FromQuery] bool onlyMarkedMobiles = false,
+        CancellationToken ct = default)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
 
@@ -571,6 +572,10 @@ public class LeadsController : ControllerBase
         // form). Los de Maps guardados como 54-sin-9 hoy mandan igual — no tocarlos en masa.
         if (source is not null) q = q.Where(l => l.Source == source);
         var leads = (await q.ToListAsync(ct)).Where(l => !_phone.IsCanonicalAr(l.WhatsappPhone)).ToList();
+        // onlyMarkedMobiles: solo los que el número crudo dice que son celular (15 o 9). Se arreglan
+        // sin consultar WhatsApp; los dudosos (casi siempre fijos de Maps) quedan como están.
+        if (onlyMarkedMobiles)
+            leads = leads.Where(l => _phone.IsMarkedArMobile(l.RawPhone ?? l.WhatsappPhone)).ToList();
 
         var rows = new List<PhoneRepairRow>();
         var fixes = new Dictionary<Guid, string>();
@@ -578,6 +583,14 @@ public class LeadsController : ControllerBase
 
         foreach (var lead in leads)
         {
+            if (onlyMarkedMobiles)
+            {
+                var s = _phone.NormalizeArStrict(lead.RawPhone ?? lead.WhatsappPhone) ?? _phone.NormalizeArStrict(lead.WhatsappPhone);
+                if (s is not null) fixes[lead.Id] = s;
+                else rows.Add(new PhoneRepairRow(lead.Id, lead.Name, lead.ProductKey, lead.Status.ToString(),
+                    lead.WhatsappPhone!, null, "unfixable"));
+                continue;
+            }
             var strict = _phone.NormalizeArStrict(lead.WhatsappPhone);
             if (strict is not null) { fixes[lead.Id] = strict; continue; }
             var candidates = _phone.ArRepairCandidates(lead.WhatsappPhone);
@@ -1421,7 +1434,7 @@ public class LeadsController : ControllerBase
                 }
             }
 
-            var normalized = _phone.Normalize(enrichedPhone, product.PhonePrefix);
+            var normalized = _phone.NormalizeBusiness(enrichedPhone, product.PhonePrefix);
 
             // Segundo dedupe: por placeId (más robusto) y por phone (si el enrich consiguió uno).
             if (!string.IsNullOrWhiteSpace(placeId))

@@ -67,6 +67,31 @@ public class PhoneNormalizer : IPhoneNormalizer
         return b.Length == 10 && ArCanonicalRx.IsMatch(full) ? full : null;
     }
 
+    public string? NormalizeBusiness(string? rawPhone, string countryPrefix)
+    {
+        if (countryPrefix == "54" && IsMarkedArMobile(rawPhone))
+        {
+            var strict = NormalizeArStrict(rawPhone);
+            if (strict is not null) return strict;
+        }
+        return Normalize(rawPhone, countryPrefix);
+    }
+
+    public bool IsMarkedArMobile(string? rawPhone)
+    {
+        if (string.IsNullOrWhiteSpace(rawPhone)) return false;
+        var d = NonDigit.Replace(rawPhone, "").TrimStart('0');
+        while (d.StartsWith("5454")) d = d[2..];
+        if (d.StartsWith("549")) return true;
+        if (d.StartsWith("54")) d = d[2..];
+        if (d.Length == 11 && d[0] == '9') return true;
+        if (d.Length == 11 && d[0] == '0') d = d[1..];
+        if (d.Length == 12)
+            for (var areaLen = 2; areaLen <= 4; areaLen++)
+                if (d.Substring(areaLen, 2) == "15") return true;
+        return false;
+    }
+
     public IReadOnlyList<string> ArRepairCandidates(string? rawPhone)
     {
         var result = new List<string>();

@@ -364,8 +364,10 @@ public class SearchJobsController : ControllerBase
         foreach (var item in req.Items)
         {
             if (string.IsNullOrWhiteSpace(item.Name)) { skipped++; continue; }
-            var mapsPhone = _phone.Normalize(item.Phone, product.PhonePrefix);
-            var igPhone = _phone.Normalize(item.InstagramPhone, product.PhonePrefix);
+            var mapsPhone = _phone.NormalizeBusiness(item.Phone, product.PhonePrefix);
+            // El de IG casi siempre es el celu (bio / wa.me): formato estricto 549 si se puede.
+            var igPhone = (product.PhonePrefix == "54" ? _phone.NormalizeArStrict(item.InstagramPhone) : null)
+                ?? _phone.Normalize(item.InstagramPhone, product.PhonePrefix);
             if (string.IsNullOrWhiteSpace(mapsPhone)) mapsPhone = null;
             if (string.IsNullOrWhiteSpace(igPhone)) igPhone = null;
             // Se guardan los dos (Maps en RawPhone, IG en InstagramPhone). El principal —el que se ve y
