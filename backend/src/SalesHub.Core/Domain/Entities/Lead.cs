@@ -27,6 +27,11 @@ public class Lead
     public string? Website { get; set; }
     public string? InstagramHandle { get; set; }
     /// <summary>
+    /// Teléfono sacado del perfil de Instagram del negocio (link wa.me, botón de contacto o número
+    /// en la bio), normalizado. Lo carga la captura de Maps además del teléfono de Maps.
+    /// </summary>
+    public string? InstagramPhone { get; set; }
+    /// <summary>
     /// IGSID (Instagram-scoped id) del contacto que nos escribió por DM a una cuenta propia de IG
     /// (Messenger Platform). Es a quién se le contesta por la Graph API; no es un teléfono.
     /// </summary>

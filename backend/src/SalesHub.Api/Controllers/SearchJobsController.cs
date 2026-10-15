@@ -52,7 +52,11 @@ public class SearchJobsController : ControllerBase
         string? Type,
         string? BusinessStatus,
         double? Latitude,
-        double? Longitude);
+        double? Longitude,
+        // Del perfil de IG del negocio (userscript ≥ 0.9). InstagramPhoneIsWhatsapp = salió de un link wa.me (informativo).
+        string? InstagramHandle = null,
+        string? InstagramPhone = null,
+        bool? InstagramPhoneIsWhatsapp = null);
 
     public record SubmitCaptureRequest(
         string ProductKey,
@@ -360,14 +364,22 @@ public class SearchJobsController : ControllerBase
         foreach (var item in req.Items)
         {
             if (string.IsNullOrWhiteSpace(item.Name)) { skipped++; continue; }
-            var normalized = _phone.Normalize(item.Phone, product.PhonePrefix);
+            var mapsPhone = _phone.Normalize(item.Phone, product.PhonePrefix);
+            var igPhone = _phone.Normalize(item.InstagramPhone, product.PhonePrefix);
+            if (string.IsNullOrWhiteSpace(mapsPhone)) mapsPhone = null;
+            if (string.IsNullOrWhiteSpace(igPhone)) igPhone = null;
+            // Se guardan los dos (Maps en RawPhone, IG en InstagramPhone). El principal —el que se ve y
+            // al que se le escribe— es el de IG cuando hay: suele ser el celu con WhatsApp; el de Maps
+            // muchas veces es un fijo.
+            var normalized = igPhone ?? mapsPhone;
             // Sin teléfono no podemos contactar ni dedupear con confianza: skip.
-            if (string.IsNullOrWhiteSpace(normalized)) { skipped++; continue; }
+            if (normalized is null) { skipped++; continue; }
 
             if (!seenInBatch.Add(normalized)) { duplicates++; continue; }
 
             var dup = await _db.Leads.AnyAsync(
-                l => l.ProductKey == product.ProductKey && l.WhatsappPhone == normalized, ct);
+                l => l.ProductKey == product.ProductKey
+                    && (l.WhatsappPhone == normalized || (mapsPhone != null && l.WhatsappPhone == mapsPhone) || (igPhone != null && l.WhatsappPhone == igPhone)), ct);
             if (dup) { duplicates++; continue; }
 
             var lead = new Lead
@@ -377,8 +389,10 @@ public class SearchJobsController : ControllerBase
                 Source = LeadSource.BrowserCapture,
                 Name = item.Name.Trim(),
                 Address = item.Address,
-                RawPhone = item.Phone,
+                RawPhone = item.Phone ?? item.InstagramPhone, // el de Maps tal cual vino
                 WhatsappPhone = normalized,
+                InstagramPhone = igPhone,
+                InstagramHandle = string.IsNullOrWhiteSpace(item.InstagramHandle) ? null : item.InstagramHandle.Trim().TrimStart('@'),
                 Website = item.Website,
                 Rating = item.Rating,
                 TotalReviews = item.TotalReviews,

@@ -1684,6 +1684,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("instagram_handle");
 
+                    b.Property<string>("InstagramPhone")
+                        .HasColumnType("text")
+                        .HasColumnName("instagram_phone");
+
                     b.Property<string>("InstagramScopedId")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")

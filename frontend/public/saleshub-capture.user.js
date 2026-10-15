@@ -1,15 +1,18 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.8.1
-// @description  Captura negocios desde Google Maps y los manda a SalesHub como leads.
+// @version      0.9.0
+// @description  Captura negocios desde Google Maps (y el teléfono de su Instagram) y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
+// @match        https://www.instagram.com/*
 // @updateURL    https://sales.efcloud.tech/saleshub-capture.user.js
 // @downloadURL  https://sales.efcloud.tech/saleshub-capture.user.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_xmlhttpRequest
+// @grant        GM_openInTab
+// @grant        GM_addValueChangeListener
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
@@ -17,6 +20,163 @@
 /* eslint-disable */
 (function () {
   'use strict';
+
+  // En instagram.com el script solo trabaja en la tab que abrió la captura de Maps
+  // (?saleshub-ig=1); en cualquier otra tab de IG no hace nada.
+  if (location.hostname.endsWith('instagram.com')) { igWorker(); return; }
+
+  // ============================================================
+  // Instagram: tab trabajadora
+  // ============================================================
+  // Maps deja un pedido en GM storage ('saleshub.igReq' = {id, stage, name, address, handle?}).
+  // Esta tab (logueada con la cuenta de IG del navegador) busca el negocio, entra al perfil
+  // y contesta en 'saleshub.igRes' con el handle y el teléfono de la bio. La navegación al
+  // perfil recarga la página, por eso el estado viaja en el pedido (stage search → profile).
+  function igWorker() {
+    // Respaldo por si IG limpia el query string: Maps deja un "reclamo" justo antes de abrir la tab.
+    const claim = GM_getValue('saleshub.igClaim', 0);
+    if (/[?&]saleshub-ig=1/.test(location.search) || (Date.now() - claim < 20000 && history.length <= 2)) {
+      sessionStorage.setItem('saleshub-ig', '1');
+      GM_setValue('saleshub.igClaim', 0);
+    }
+    if (sessionStorage.getItem('saleshub-ig') !== '1') return;
+
+    const IG_HEADERS = { 'X-IG-App-ID': '936619743392459', 'X-Requested-With': 'XMLHttpRequest' };
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ').trim();
+    const compact = (s) => norm(s).replace(/ /g, '');
+    const STOP = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'en', 'the', 'by', 'sa', 'srl', 'and']);
+    // Palabras de rubro: pesan la mitad y solas no alcanzan para decir "es este negocio".
+    const GENERIC = new Set(['gimnasio', 'gym', 'fitness', 'crossfit', 'funcional', 'estudio', 'studio', 'centro',
+      'escuela', 'academia', 'club', 'yoga', 'pilates', 'danza', 'spa', 'salon', 'peluqueria', 'barberia', 'barber',
+      'estetica', 'belleza', 'nails', 'unas', 'padel', 'cancha', 'canchas', 'complejo', 'deportivo', 'box', 'boxeo',
+      'consultorio', 'clinica', 'kinesiologia', 'arquitectura', 'arquitecto', 'arquitectos', 'oficial', 'sede']);
+    const PROVINCES = new Set(['buenos aires', 'cordoba', 'santa fe', 'mendoza', 'tucuman', 'entre rios', 'salta',
+      'misiones', 'chaco', 'corrientes', 'santiago del estero', 'san juan', 'jujuy', 'rio negro', 'neuquen',
+      'formosa', 'chubut', 'san luis', 'catamarca', 'la rioja', 'la pampa', 'santa cruz', 'tierra del fuego',
+      'argentina', 'caba', 'ciudad autonoma de buenos aires']);
+    let busy = false;
+
+    document.title = '[SalesHub] ' + document.title;
+
+    function respond(req, res) {
+      sessionStorage.setItem('saleshub-ig-done', req.id);
+      GM_setValue('saleshub.igRes', { id: req.id, ...res });
+      console.log('[SalesHub IG]', req.name, '→', res);
+    }
+
+    async function igGet(path) {
+      const r = await fetch(path, { headers: IG_HEADERS, credentials: 'include' });
+      if (r.status === 401 || r.status === 403 || /\/accounts\/login/.test(r.url)) throw new Error('not-logged');
+      if (r.status === 429) throw new Error('rate-limited');
+      const txt = await r.text();
+      if (/please wait a few minutes/i.test(txt)) throw new Error('rate-limited');
+      try { return JSON.parse(txt); } catch { throw new Error('bad-response'); }
+    }
+
+    // Qué tan parecido es un usuario de IG al nombre del negocio en Maps (0..1).
+    function score(name, u) {
+      const nameC = compact(name);
+      const userC = compact(u.username);
+      const fullC = compact(u.full_name);
+      if (nameC.length >= 4 && (userC.includes(nameC) || fullC.includes(nameC))) return 1;
+      if (userC.length >= 5 && !GENERIC.has(userC) && nameC.includes(userC) && userC.length / nameC.length >= 0.6) return 0.9;
+      const tokens = norm(name).split(' ').filter(t => t.length >= 3 && !STOP.has(t));
+      if (tokens.length === 0) return 0;
+      const hay = norm(u.full_name) + ' ' + userC;
+      const w = (t) => (GENERIC.has(t) ? 0.5 : 1);
+      const hits = tokens.filter(t => hay.includes(t));
+      if (!hits.some(t => t.length >= 4 && !GENERIC.has(t))) return 0;
+      return hits.reduce((a, t) => a + w(t), 0) / tokens.reduce((a, t) => a + w(t), 0);
+    }
+
+    async function search(req) {
+      const city = cityOf(req.address);
+      const queries = [req.name, city ? `${req.name} ${city}` : null].filter(Boolean);
+      let best = null;
+      for (const q of queries) {
+        const data = await igGet(`/web/search/topsearch/?context=blended&include_reel=false&query=${encodeURIComponent(q)}`);
+        for (const { user } of (data.users || []).slice(0, 10)) {
+          const sc = score(req.name, user);
+          if (!best || sc > best.sc) best = { sc, username: user.username };
+        }
+        if (best && best.sc >= 0.75) break;
+        await sleep(1200 + Math.random() * 1500);
+      }
+      return best && best.sc >= 0.6 ? best.username : null;
+    }
+
+    function cityOf(address) {
+      const parts = (address || '').split(',').map(s => s.trim()).filter(Boolean);
+      if (parts.length < 2) return '';
+      const clean = (p) => p.replace(/^[A-Z]?\d{4}[A-Z]{0,3}\s*/, '').replace(/\d+/g, '').trim();
+      for (let i = parts.length - 1; i >= 1; i--) {
+        const c = clean(parts[i]);
+        if (c && !PROVINCES.has(norm(c))) return c;
+      }
+      return '';
+    }
+
+    // Teléfono del perfil: link wa.me (seguro WhatsApp) > botón de contacto > número escrito en la bio.
+    function phoneOf(u, domText) {
+      const links = [u.external_url, ...((u.bio_links || []).flatMap(l => [l.url, l.lynx_url]))].filter(Boolean);
+      const bio = u.biography || domText || '';
+      for (const raw of [...links, bio]) {
+        let txt = raw;
+        try { txt = decodeURIComponent(raw); } catch {}
+        const m = txt.match(/(?:wa\.me\/|wa\.link\/|whatsapp\.com\/send\/?\?phone=)\+?(\d{8,15})/i);
+        if (m) return { phone: m[1], isWa: true, from: 'wa.me' };
+      }
+      if (u.business_phone_number) {
+        const cc = u.business_country_code && !String(u.business_phone_number).startsWith('+') ? `+${u.business_country_code}` : '';
+        return { phone: `${cc}${u.business_phone_number}`, isWa: /whatsapp/i.test(u.business_contact_method || ''), from: 'boton' };
+      }
+      for (const line of bio.split(/\n/)) {
+        const m = line.match(/(\+?\d[\d\s\-\(\)\.]{7,}\d)/);
+        const digits = m ? m[1].replace(/\D/g, '') : '';
+        if (digits.length >= 8 && digits.length <= 15) {
+          return { phone: m[1].trim(), isWa: /wh?ats|wpp|wsp|\bwa\b|📲|💬/i.test(line), from: 'bio' };
+        }
+      }
+      return null;
+    }
+
+    async function handle(req) {
+      if (busy || !req || sessionStorage.getItem('saleshub-ig-done') === req.id) return;
+      busy = true;
+      try {
+        if (req.stage === 'search') {
+          const username = req.handle || await search(req);
+          if (!username) return respond(req, { found: false, reason: 'no-match' });
+          GM_setValue('saleshub.igReq', { ...req, stage: 'profile', handle: username });
+          location.assign(`/${username}/`);
+          return;
+        }
+        if (req.stage === 'profile') {
+          if (location.pathname.replace(/\/$/, '') !== `/${req.handle}`) { location.assign(`/${req.handle}/`); return; }
+          await sleep(1500 + Math.random() * 1500); // que se vea el perfil, como una persona
+          const data = await igGet(`/api/v1/users/web_profile_info/?username=${encodeURIComponent(req.handle)}`);
+          const u = data?.data?.user;
+          if (!u) return respond(req, { found: false, reason: 'no-profile', handle: req.handle });
+          const domText = document.querySelector('header')?.innerText || '';
+          const ph = phoneOf(u, domText);
+          respond(req, {
+            found: true, handle: u.username, fullName: u.full_name,
+            phone: ph?.phone || null, isWa: !!ph?.isWa, from: ph?.from || null
+          });
+        }
+      } catch (e) {
+        respond(req, { found: false, reason: e.message || 'error' });
+      } finally {
+        busy = false;
+      }
+    }
+
+    // Pedidos por evento (las tabs en segundo plano frenan los timers) + el pendiente al cargar.
+    GM_addValueChangeListener('saleshub.igReq', (_k, _old, req) => { handle(req); });
+    setTimeout(() => handle(GM_getValue('saleshub.igReq', null)), 800);
+  }
 
   // ============================================================
   // Config + storage
@@ -122,6 +282,10 @@
   let autoRunning = false;
   let autoCancel = false;
   let autoStatus = '';
+  let igEnabled = GM_getValue('saleshub.igEnabled', true);
+  // Tope diario de perfiles buscados en IG, para no quemar la cuenta.
+  const IG_DAILY_CAP = 80;
+  let igTab = null;
 
   function persistBuffer() { GM_setValue('saleshub.buffer', buffer); }
 
@@ -292,8 +456,12 @@
 
     const type = main.querySelector('button[jsaction*="category"]')?.innerText?.trim() || null;
     const latlng = location.href.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    // Muchos negocios tienen el Instagram como "Sitio web" (o en otro link del panel):
+    // el handle sale de ahí directo, sin buscar en IG.
+    const instagramHandle = [website, ...Array.from(main.querySelectorAll('a[href*="instagram.com/"]'), a => a.href)]
+      .map(handleFromWebsite).find(Boolean) || null;
     return {
-      name, phone, address, website, rating, totalReviews: reviews, type,
+      name, phone, address, website, instagramHandle, rating, totalReviews: reviews, type,
       businessStatus: null,
       latitude: latlng ? parseFloat(latlng[1]) : null,
       longitude: latlng ? parseFloat(latlng[2]) : null
@@ -592,6 +760,8 @@
                   <div class="name">${escapeHtml(b.name)}</div>
                   <div class="meta">
                     ${b.phone ? `📞 ${escapeHtml(b.phone)}` : '<i style="color:#cbd5e1;">sin teléfono</i>'}
+                    ${b.instagramHandle ? ` · 📸 @${escapeHtml(b.instagramHandle)}` : ''}
+                    ${b.instagramPhone ? ` ${b.instagramPhoneIsWhatsapp ? '🟢' : '☎'} ${escapeHtml(b.instagramPhone)}` : ''}
                     ${b.rating ? ` · ⭐ ${b.rating}${b.totalReviews ? ` (${b.totalReviews})` : ''}` : ''}
                   </div>
                   ${b.address ? `<div class="meta">${escapeHtml(b.address)}</div>` : ''}
@@ -635,6 +805,13 @@
           <div class="row">
             <button class="btn" id="sh-add-list" style="flex:1;">📋 Solo lo visible</button>
             <button class="btn" id="sh-add-detail">📍 Este lugar</button>
+          </div>
+          <div class="row" style="font-size:11px; color:#475569;">
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Después de auto-capturar, abre una tab de Instagram (con tu sesión), busca cada negocio y saca el teléfono de la bio">
+              <input type="checkbox" id="sh-ig-toggle" style="flex:none;" ${igEnabled ? 'checked' : ''}> 📸 Buscar en Instagram
+            </label>
+            <span style="margin-left:auto;">${igUsedToday()}/${IG_DAILY_CAP} hoy</span>
+            ${igPending().length > 0 ? `<button class="btn" id="sh-ig-run" style="padding:3px 8px;">Buscar ${igPending().length}</button>` : ''}
           </div>
         `;})()}
 
@@ -684,6 +861,11 @@
 
     if ($('#sh-auto')) $('#sh-auto').onclick = autoCapture;
     if ($('#sh-enrich')) $('#sh-enrich').onclick = enrichMissingPhones;
+    if ($('#sh-ig-run')) $('#sh-ig-run').onclick = enrichWithInstagram;
+    if ($('#sh-ig-toggle')) $('#sh-ig-toggle').onchange = (e) => {
+      igEnabled = e.target.checked;
+      GM_setValue('saleshub.igEnabled', igEnabled);
+    };
     if ($('#sh-cancel-auto')) $('#sh-cancel-auto').onclick = () => { autoCancel = true; };
 
     if ($('#sh-add-list')) $('#sh-add-list').onclick = () => {
@@ -893,6 +1075,85 @@
     );
   }
 
+  // ============================================================
+  // Instagram: búsqueda desde Maps
+  // ============================================================
+
+  function igToday() { return new Date().toLocaleDateString('sv'); }
+  function igUsedToday() {
+    const c = GM_getValue('saleshub.igCount', null);
+    return c && c.day === igToday() ? c.n : 0;
+  }
+  function igBump() { GM_setValue('saleshub.igCount', { day: igToday(), n: igUsedToday() + 1 }); }
+
+  // Si Maps ya trae el Instagram como sitio web, no hace falta buscarlo.
+  function handleFromWebsite(website) {
+    const m = (website || '').match(/instagram\.com\/([A-Za-z0-9._]+)/i);
+    return m && !['p', 'reel', 'explore', 'stories'].includes(m[1].toLowerCase()) ? m[1] : null;
+  }
+
+  function igPending() { return buffer.filter(b => b.name && !b.igChecked); }
+
+  async function igLookup(item) {
+    if (!igTab || igTab.closed) {
+      GM_setValue('saleshub.igClaim', Date.now());
+      igTab = GM_openInTab('https://www.instagram.com/?saleshub-ig=1', { active: false, insert: true, setParent: true });
+      await sleep(6000); // que cargue IG antes del primer pedido
+    }
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    GM_setValue('saleshub.igReq', {
+      id, stage: 'search', name: item.name, address: item.address || '', handle: item.instagramHandle || handleFromWebsite(item.website)
+    });
+    const start = Date.now();
+    while (Date.now() - start < 60000) {
+      await sleep(500);
+      const res = GM_getValue('saleshub.igRes', null);
+      if (res && res.id === id) return res;
+      if (autoCancel) return { found: false, reason: 'cancelled' };
+    }
+    return { found: false, reason: 'timeout' };
+  }
+
+  // Busca en IG cada item del buffer que no se buscó todavía y le agrega handle + teléfono.
+  async function enrichWithInstagram() {
+    const targets = igPending();
+    if (targets.length === 0) return toast('Ya se buscaron todos en Instagram');
+    autoCancel = false;
+    autoRunning = true;
+    render();
+    let found = 0, phones = 0, done = 0, stop = '';
+    for (const item of targets) {
+      if (autoCancel) break;
+      if (igUsedToday() >= IG_DAILY_CAP) { stop = `llegaste al tope de ${IG_DAILY_CAP} búsquedas de IG por hoy`; break; }
+      done++;
+      setAutoStatus(`Instagram ${done}/${targets.length}: ${item.name.slice(0, 34)}`);
+      const res = await igLookup(item);
+      if (res.reason === 'cancelled') break;
+      if (res.reason === 'not-logged') { stop = 'Instagram no tiene la sesión iniciada en este Chrome'; break; }
+      if (res.reason === 'rate-limited') { stop = 'Instagram pidió esperar (rate limit). Probá más tarde'; break; }
+      if (res.reason === 'timeout') { stop = 'la tab de Instagram no respondió'; igTab = null; break; }
+      igBump();
+      const live = buffer.find(b => b === item) || buffer.find(b => b.name === item.name && b.phone === item.phone);
+      if (live) {
+        live.igChecked = true;
+        if (res.handle) { live.instagramHandle = res.handle; found++; }
+        if (res.phone) { live.instagramPhone = res.phone; live.instagramPhoneIsWhatsapp = !!res.isWa; phones++; }
+        persistBuffer();
+      }
+      // Pausa humana entre perfiles (escalada por el preset de velocidad).
+      await sleep(slowJitter(4000, 4000));
+    }
+    try { igTab?.close(); } catch {}
+    igTab = null;
+    autoRunning = false;
+    setAutoStatus('');
+    render();
+    toast(stop
+      ? `Instagram frenado: ${stop}. ${phones} teléfonos encontrados.`
+      : `✓ Instagram: ${found} perfiles, ${phones} con teléfono (de ${done} buscados)`,
+      stop ? 'err' : (phones > 0 ? 'ok' : ''));
+  }
+
   function setAutoStatus(s) {
     autoStatus = s;
     const alertEl = panel.querySelector('.alert.ok span:nth-child(2)');
@@ -958,6 +1219,7 @@
       await sleep(slow(400));
       await fastListCapture();
     }
+    if (igEnabled && !autoCancel && igPending().length > 0) await enrichWithInstagram();
   }
 
   // Modo rápido: scroll todo, leer lista, agregar al buffer.

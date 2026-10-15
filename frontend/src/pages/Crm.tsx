@@ -32,7 +32,7 @@ type Board = { stages: Column[]; total: number; overdue: number; perStage: numbe
 type Note = { id: string; text: string; kind: string; createdAt: string; sellerId?: string; sellerName?: string };
 type Detail = {
   id: string; name: string; phone?: string; city?: string; province?: string; website?: string;
-  instagram?: string; productKey: string; productName?: string; status: string; source: string;
+  instagram?: string; instagramPhone?: string; productKey: string; productName?: string; status: string; source: string;
   score: number; sellerId?: string; sellerName?: string; manualAssignedAt?: string; originSellerName?: string;
   createdAt: string; sentAt?: string; firstReplyAt?: string;
   demoScheduledAt?: string; closedAt?: string; nextActionAt?: string; nextActionNote?: string;
@@ -84,6 +84,7 @@ export default function Crm() {
   const [sellerId, setSellerId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [source, setSource] = useState('');
+  const [withIg, setWithIg] = useState(false);
   const [quick, setQuick] = useState<'' | 'mine' | 'overdue' | 'today' | 'stalled' | 'contacted'>('');
   const [openLead, setOpenLead] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -100,6 +101,7 @@ export default function Crm() {
     due: quick === 'overdue' ? 'overdue' : quick === 'today' ? 'today' : undefined,
     stalledDays: quick === 'stalled' ? 7 : undefined,
     contactedToday: quick === 'contacted' || undefined,
+    withInstagramPhone: withIg || undefined,
   };
 
   const board = useQuery({
@@ -214,10 +216,13 @@ export default function Crm() {
           <Chip active={quick === 'today'} onClick={() => setQuick('today')}>Para hoy</Chip>
           <Chip active={quick === 'contacted'} onClick={() => setQuick('contacted')}>Contactados hoy</Chip>
           <Chip active={quick === 'stalled'} onClick={() => setQuick('stalled')}>Sin tocar +7 días</Chip>
-          {(q || productKey || sellerId || deviceId || source || quick) && (
+          <span className="w-px bg-slate-200 mx-1" />
+          {/* Se combina con los de arriba: los que tienen el número de su Instagram (los más valiosos). */}
+          <Chip active={withIg} onClick={() => setWithIg((v) => !v)}>📸 Con número de IG</Chip>
+          {(q || productKey || sellerId || deviceId || source || quick || withIg) && (
             <button
               className="text-xs text-slate-500 hover:text-slate-700 underline ml-1"
-              onClick={() => { setQ(''); setProductKey(''); setSellerId(''); setDeviceId(''); setSource(''); setQuick(''); }}>
+              onClick={() => { setQ(''); setProductKey(''); setSellerId(''); setDeviceId(''); setSource(''); setQuick(''); setWithIg(false); }}>
               limpiar
             </button>
           )}
@@ -594,6 +599,16 @@ function LeadDrawer({ leadId, stages, sellers, onClose, onMove }: {
                   </div>
                 ) : (
                   <p className="text-sm text-slate-400">sin teléfono</p>
+                )}
+                {(d.instagram || d.instagramPhone) && (
+                  <div className="flex items-baseline gap-2 text-xs text-slate-600">
+                    {d.instagram && (
+                      <a href={`https://instagram.com/${d.instagram}`} target="_blank" rel="noreferrer" className="hover:underline">@{d.instagram}</a>
+                    )}
+                    {d.instagramPhone && d.instagramPhone === d.phone && (
+                      <span className="text-[11px] bg-pink-50 text-pink-700 border border-pink-200 rounded px-1" title="El teléfono salió de su Instagram">número de IG</span>
+                    )}
+                  </div>
                 )}
                 <p className="text-xs text-slate-500">
                   {d.productName ?? d.productKey} · {d.status}

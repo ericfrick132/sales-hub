@@ -78,6 +78,8 @@ public class CrmController : ControllerBase
         public int? StalledDays { get; set; }
         public string? Due { get; set; }
         public bool ContactedToday { get; set; }
+        /// <summary>Solo los que tienen teléfono sacado de su Instagram (los más valiosos: suele ser el celu con WhatsApp).</summary>
+        public bool WithInstagramPhone { get; set; }
         /// <summary>Etiqueta exacta (ej. "bot-remarketing").</summary>
         public string? Tag { get; set; }
     }
@@ -115,6 +117,7 @@ public class CrmController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(f.ProductKey)) leadQ = leadQ.Where(l => l.ProductKey == f.ProductKey);
         if (f.Source is { Length: > 0 }) leadQ = leadQ.Where(l => f.Source.Contains(l.Source));
+        if (f.WithInstagramPhone) leadQ = leadQ.Where(l => l.InstagramPhone != null);
         if (!string.IsNullOrWhiteSpace(f.Tag))
         {
             var tag = f.Tag.Trim().ToLowerInvariant();
@@ -390,6 +393,7 @@ public class CrmController : ControllerBase
             province = lead.Province,
             website = lead.Website,
             instagram = lead.InstagramHandle,
+            instagramPhone = lead.InstagramPhone,
             productKey = lead.ProductKey,
             productName = lead.Product?.DisplayName,
             status = lead.Status.ToString(),
