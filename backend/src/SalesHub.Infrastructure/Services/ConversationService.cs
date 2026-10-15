@@ -568,6 +568,9 @@ public class ConversationService
             .Where(l => l.InstagramScopedId == dm.ContactIgsid)
             .OrderByDescending(l => l.CreatedAt)
             .FirstOrDefaultAsync(ct);
+        // Contesta un DM en frío que le mandamos desde el navegador: el lead ya existe con su
+        // @usuario (lo cargó la captura de Maps) pero todavía sin IGSID → se engancha a ese.
+        lead ??= await LinkColdDmLeadAsync(acc, dm.ContactIgsid, ct);
         var createdNow = false;
         if (lead is null)
         {
@@ -690,6 +693,12 @@ public class ConversationService
             .Where(l => l.InstagramScopedId == echo.ContactIgsid)
             .OrderByDescending(l => l.CreatedAt)
             .FirstOrDefaultAsync(ct);
+        // Eco del DM en frío que salió del navegador: engancha el IGSID al lead por @usuario.
+        if (lead is null)
+        {
+            var acc = _ig.FindAccount(echo.AccountIgId);
+            if (acc is not null) lead = await LinkColdDmLeadAsync(acc, echo.ContactIgsid, ct);
+        }
         if (lead is null) return false;
 
         var since = DateTimeOffset.UtcNow.AddMinutes(-10);
@@ -722,6 +731,27 @@ public class ConversationService
         await _db.SaveChangesAsync(ct);
         _log.LogInformation("Takeover IG: mensaje manual desde la app de Instagram en lead {Lead} → bot muteado", lead.Id);
         return true;
+    }
+
+    /// <summary>
+    /// Lead de esta app al que le mandamos un DM en frío (IgDmSentAt) y que todavía no tiene IGSID:
+    /// se resuelve el @usuario del contacto por la Graph API y se le guarda el IGSID. null si no hay.
+    /// </summary>
+    private async Task<Lead?> LinkColdDmLeadAsync(InstagramMessagingOptions.Account acc, string igsid, CancellationToken ct)
+    {
+        var (username, _) = await _ig.GetProfileAsync(acc.IgUserId, igsid, ct);
+        if (string.IsNullOrWhiteSpace(username)) return null;
+        var norm = username.ToLower();
+        var lead = await _db.Leads
+            .Where(l => l.ProductKey == acc.ProductKey && l.InstagramScopedId == null && l.IgDmSentAt != null
+                && l.InstagramHandle != null && l.InstagramHandle.ToLower().Replace("@", "") == norm)
+            .OrderByDescending(l => l.IgDmSentAt)
+            .FirstOrDefaultAsync(ct);
+        if (lead is null) return null;
+        lead.InstagramScopedId = igsid;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        _log.LogInformation("DM de IG enganchado al lead del DM en frío {Lead} (@{User})", lead.Id, username);
+        return lead;
     }
 
     /// <summary>

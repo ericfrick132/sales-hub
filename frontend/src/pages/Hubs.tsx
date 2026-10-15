@@ -25,6 +25,7 @@ import Simulacion from './Simulacion';
 import Seguimientos from './Seguimientos';
 import Pitches from './Pitches';
 import Mensajeria from './Mensajeria';
+import IgDms from './IgDms';
 import Sellers from './Sellers';
 import SellerZones from './SellerZones';
 import Objetivos from './Objetivos';
@@ -113,6 +114,7 @@ export function AppsHub() {
               { key: 'seguimientos', label: 'Seguimientos', element: <Seguimientos /> },
               { key: 'pitches', label: 'Pitches por anuncio', element: <Pitches /> },
               { key: 'mensajeria', label: 'Política de mensajes', element: <Mensajeria /> },
+              { key: 'dms-ig', label: 'DMs por Instagram', element: <IgDms /> },
             ]} />
           ),
         },

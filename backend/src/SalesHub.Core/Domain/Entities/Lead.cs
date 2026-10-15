@@ -31,6 +31,10 @@ public class Lead
     /// en la bio), normalizado. Lo carga la captura de Maps además del teléfono de Maps.
     /// </summary>
     public string? InstagramPhone { get; set; }
+    /// <summary>DM en frío por Instagram (userscript): cuándo se lo dio a la extensión, cuándo salió y por qué falló.</summary>
+    public DateTimeOffset? IgDmClaimedAt { get; set; }
+    public DateTimeOffset? IgDmSentAt { get; set; }
+    public string? IgDmError { get; set; }
     /// <summary>
     /// IGSID (Instagram-scoped id) del contacto que nos escribió por DM a una cuenta propia de IG
     /// (Messenger Platform). Es a quién se le contesta por la Graph API; no es un teléfono.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.9.0
+// @version      0.10.0
 // @description  Captura negocios desde Google Maps (y el teléfono de su Instagram) y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
@@ -23,7 +23,7 @@
 
   // En instagram.com el script solo trabaja en la tab que abrió la captura de Maps
   // (?saleshub-ig=1); en cualquier otra tab de IG no hace nada.
-  if (location.hostname.endsWith('instagram.com')) { igWorker(); return; }
+  if (location.hostname.endsWith('instagram.com')) { igWorker(); igDmSender(); return; }
 
   // ============================================================
   // Instagram: tab trabajadora
@@ -176,6 +176,191 @@
     // Pedidos por evento (las tabs en segundo plano frenan los timers) + el pendiente al cargar.
     GM_addValueChangeListener('saleshub.igReq', (_k, _old, req) => { handle(req); });
     setTimeout(() => handle(GM_getValue('saleshub.igReq', null)), 800);
+  }
+
+  // ============================================================
+  // Instagram: DMs en frío (cualquier pestaña de IG, con el panel prendido)
+  // ============================================================
+  // SalesHub reparte de a un DM para la cuenta logueada (tope, horario y pausas los aplica el
+  // backend). Esta pestaña entra al perfil, toca "Enviar mensaje", escribe y manda, y confirma que
+  // el mensaje quedó en el chat antes de reportarlo. El paso en curso vive en sessionStorage
+  // porque entrar al perfil recarga la página.
+  function igDmSender() {
+    if (sessionStorage.getItem('saleshub-ig') === '1') return; // la pestaña de búsquedas de la captura
+    if (window.top !== window.self) return;
+
+    const API = (GM_getValue('saleshub.api', 'https://api.sales.efcloud.tech') || '').replace(/\/$/, '');
+    const IG_HEADERS = { 'X-IG-App-ID': '936619743392459', 'X-Requested-With': 'XMLHttpRequest' };
+    const STATE_KEY = 'saleshub-dm';
+    const TAB_ID = sessionStorage.getItem('saleshub-dm-tab') || Math.random().toString(36).slice(2);
+    sessionStorage.setItem('saleshub-dm-tab', TAB_ID);
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const human = (min, jit) => sleep(min + Math.random() * jit);
+    const BLOCK_RX = /int[eé]ntalo de nuevo m[aá]s tarde|try again later|restringimos|we restrict|acci[oó]n bloqueada|action blocked|limitamos la frecuencia|we limit how often/i;
+    let me = null, status = '', timer = null;
+
+    const isOn = () => !!GM_getValue('saleshub.dmOn', false);
+    const getState = () => { try { return JSON.parse(sessionStorage.getItem(STATE_KEY) || 'null'); } catch { return null; } };
+    const setState = (st) => st ? sessionStorage.setItem(STATE_KEY, JSON.stringify(st)) : sessionStorage.removeItem(STATE_KEY);
+
+    // Una sola pestaña manda: la que tiene el candado (se renueva en cada paso; vence a los 5 min).
+    function holdLock() {
+      const l = GM_getValue('saleshub.dmLock', null);
+      if (l && l.tab !== TAB_ID && Date.now() - l.at < 5 * 60000) return false;
+      GM_setValue('saleshub.dmLock', { tab: TAB_ID, at: Date.now() });
+      return true;
+    }
+
+    function api(method, path, body) {
+      const token = GM_getValue('saleshub.token', '');
+      return new Promise((resolve, reject) => {
+        if (!token) return reject(new Error('Sin sesion de SalesHub: inicia sesion desde el panel en Google Maps'));
+        GM_xmlhttpRequest({
+          method, url: API + path,
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          data: body ? JSON.stringify(body) : undefined,
+          onload: (r) => {
+            if (r.status === 401) return reject(new Error('La sesion de SalesHub vencio: volve a iniciar sesion desde Google Maps'));
+            if (r.status >= 400) return reject(new Error(`SalesHub respondio ${r.status}`));
+            try { resolve(r.responseText ? JSON.parse(r.responseText) : null); } catch { resolve(null); }
+          },
+          onerror: () => reject(new Error('Sin conexion con SalesHub')),
+        });
+      });
+    }
+
+    async function whoAmI() {
+      const id = (document.cookie.match(/(?:^|; )ds_user_id=(\d+)/) || [])[1];
+      if (!id) return null;
+      try {
+        const r = await fetch(`/api/v1/users/${id}/info/`, { headers: IG_HEADERS, credentials: 'include' });
+        return (await r.json())?.user?.username || null;
+      } catch { return null; }
+    }
+
+    // ---------- panel ----------
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:2147483647;background:#fff;border:1px solid #e2e8f0;' +
+      'border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.15);font:12px -apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a;' +
+      'padding:8px 10px;max-width:280px;';
+    function render() {
+      const on = isOn();
+      box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;">
+          <b style="flex:1;">DMs SalesHub${me ? ` · @${me}` : ''}</b>
+          <button id="sh-dm-toggle" style="font:inherit;border:0;border-radius:999px;padding:3px 10px;cursor:pointer;color:#fff;background:${on ? '#db2777' : '#94a3b8'};">${on ? 'ON' : 'OFF'}</button>
+        </div>
+        <div style="margin-top:4px;color:#64748b;">${status || (on ? 'Esperando…' : 'Apagado')}</div>`;
+      box.querySelector('#sh-dm-toggle').onclick = () => {
+        GM_setValue('saleshub.dmOn', !isOn());
+        if (!isOn()) { setState(null); GM_setValue('saleshub.dmLock', null); setStatus('Apagado'); }
+        else schedule(500);
+        render();
+      };
+    }
+    function setStatus(t) { status = t; render(); console.log('[SalesHub DM]', t); }
+    function schedule(ms) { clearTimeout(timer); timer = setTimeout(tick, ms); }
+
+    // ---------- DOM de Instagram ----------
+    const visibleText = () => document.body?.innerText || '';
+    function findButton(rx) {
+      return Array.from(document.querySelectorAll('div[role="button"], button, a[role="link"]'))
+        .find(b => rx.test((b.innerText || b.getAttribute('aria-label') || '').trim()));
+    }
+    async function waitFor(fn, ms) {
+      const end = Date.now() + ms;
+      while (Date.now() < end) { const v = fn(); if (v) return v; await sleep(400); }
+      return null;
+    }
+    function dismissDialogs() {
+      const b = findButton(/^(ahora no|not now)$/i);
+      if (b) b.click();
+    }
+
+    async function report(st, res) {
+      setState(null);
+      try { await api('POST', `/api/ig-dm/${st.leadId}/result`, { ...res, text: st.text }); }
+      catch (e) { setStatus(`No pude avisar a SalesHub: ${e.message}`); }
+    }
+
+    async function stepProfile(st) {
+      if (location.pathname.replace(/\/$/, '').toLowerCase() !== `/${st.handle}`) { location.assign(`/${st.handle}/`); return; }
+      setStatus(`Abriendo el perfil de @${st.handle}…`);
+      const ready = await waitFor(() => document.querySelector('header') || /no est[aá] disponible|isn.t available/i.test(visibleText()), 15000);
+      if (!ready || /esta p[aá]gina no est[aá] disponible|this page isn.t available/i.test(visibleText())) {
+        return report(st, { ok: false, error: 'el perfil no existe' });
+      }
+      await human(1500, 2000);
+      let btn = findButton(/^(enviar mensaje|mensaje|message)$/i);
+      if (!btn) {
+        // Algunos perfiles lo esconden en el menú "...".
+        const more = document.querySelector('header svg[aria-label="Opciones"], header svg[aria-label="Options"]')?.closest('div[role="button"], button');
+        if (more) { more.click(); await human(800, 700); btn = findButton(/^(enviar mensaje|send message)$/i); }
+      }
+      if (!btn) return report(st, { ok: false, error: 'el perfil no permite mandar mensajes' });
+      setState({ ...st, stage: 'compose' });
+      btn.click();
+      await stepCompose({ ...st, stage: 'compose' });
+    }
+
+    async function stepCompose(st) {
+      setStatus(`Escribiendole a @${st.handle}…`);
+      const input = await waitFor(() => { dismissDialogs(); return document.querySelector('div[role="textbox"][contenteditable="true"]'); }, 20000);
+      if (!input) {
+        if (BLOCK_RX.test(visibleText())) return report(st, { ok: false, blocked: true, error: 'Instagram mostro un aviso de bloqueo' });
+        return report(st, { ok: false, error: 'no se abrio el chat' });
+      }
+      await human(1000, 1500);
+      input.focus();
+      document.execCommand('insertText', false, st.text.replace(/\s*\n\s*/g, ' '));
+      await human(800, 1200);
+      const typed = (input.innerText || '').trim();
+      if (!typed) return report(st, { ok: false, error: 'no se pudo escribir el mensaje' });
+      const send = findButton(/^(enviar|send)$/i);
+      if (send) send.click();
+      else input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+
+      const probe = st.text.slice(0, 40);
+      const sent = await waitFor(() => {
+        if (BLOCK_RX.test(visibleText())) return 'blocked';
+        const cleared = !(document.querySelector('div[role="textbox"][contenteditable="true"]')?.innerText || '').trim();
+        return cleared && visibleText().includes(probe) ? 'ok' : null;
+      }, 15000);
+      if (sent === 'blocked') return report(st, { ok: false, blocked: true, error: 'Instagram mostro un aviso de bloqueo' });
+      // Sin confirmación no se reintenta: mejor perder uno que mandarle dos veces al mismo.
+      if (sent !== 'ok') return report(st, { ok: false, error: 'no se pudo confirmar el envio' });
+      await report(st, { ok: true });
+      setStatus(`Enviado a @${st.handle}`);
+    }
+
+    async function tick() {
+      if (!isOn()) return;
+      if (!holdLock()) { setStatus('Otra pestaña de Instagram está mandando'); return schedule(60000); }
+      try {
+        me = me || await whoAmI();
+        if (!me) { setStatus('No detecto la cuenta de Instagram logueada'); return schedule(60000); }
+        const st = getState();
+        if (st?.stage === 'profile') { await stepProfile(st); return schedule(5000); }
+        if (st?.stage === 'compose') { await stepCompose(st); return schedule(5000); }
+        if (BLOCK_RX.test(visibleText())) { setStatus('Instagram muestra un aviso de bloqueo: frenado'); return schedule(30 * 60000); }
+
+        const next = await api('GET', `/api/ig-dm/next?account=${encodeURIComponent(me)}`);
+        if (!next?.leadId) {
+          const mins = Math.max(1, Math.round((next?.waitSeconds || 600) / 60));
+          setStatus(`${next?.reason || 'Nada para mandar'} · reviso en ${mins} min`);
+          return schedule(Math.min(next?.waitSeconds || 600, 15 * 60) * 1000);
+        }
+        const job = { leadId: next.leadId, handle: next.handle, text: next.text, stage: 'profile' };
+        setState(job);
+        await stepProfile(job);
+        schedule(5000);
+      } catch (e) {
+        setStatus(e.message || 'error');
+        schedule(5 * 60000);
+      }
+    }
+
+    const mount = () => { if (!document.body) return setTimeout(mount, 500); document.body.appendChild(box); render(); if (isOn()) schedule(3000); };
+    mount();
   }
 
   // ============================================================

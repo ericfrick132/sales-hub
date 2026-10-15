@@ -1051,6 +1051,69 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("followup_sequences", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.IgDmSettings", b =>
+                {
+                    b.Property<string>("ProductKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<string>("AccountUsername")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("account_username");
+
+                    b.Property<int>("DailyCap")
+                        .HasColumnType("integer")
+                        .HasColumnName("daily_cap");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<int>("FromHour")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_hour");
+
+                    b.Property<int>("MaxGapMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_gap_minutes");
+
+                    b.Property<int>("MinGapMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("min_gap_minutes");
+
+                    b.Property<DateTimeOffset?>("NextAllowedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_allowed_at");
+
+                    b.Property<string>("PausedReason")
+                        .HasColumnType("text")
+                        .HasColumnName("paused_reason");
+
+                    b.Property<DateTimeOffset?>("PausedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paused_until");
+
+                    b.Property<string>("Template")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("template");
+
+                    b.Property<int>("ToHour")
+                        .HasColumnType("integer")
+                        .HasColumnName("to_hour");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("ProductKey")
+                        .HasName("pk_ig_dm_settings");
+
+                    b.ToTable("ig_dm_settings", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.InstagramAccount", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1678,6 +1741,18 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("HotAlertedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("hot_alerted_at");
+
+                    b.Property<DateTimeOffset?>("IgDmClaimedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ig_dm_claimed_at");
+
+                    b.Property<string>("IgDmError")
+                        .HasColumnType("text")
+                        .HasColumnName("ig_dm_error");
+
+                    b.Property<DateTimeOffset?>("IgDmSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ig_dm_sent_at");
 
                     b.Property<string>("InstagramHandle")
                         .HasMaxLength(128)
