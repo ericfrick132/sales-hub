@@ -113,7 +113,7 @@ public class PromosController : ControllerBase
         var res = new List<object>();
         foreach (var app in apps)
         {
-            var c = await _engine.LaunchAsync(ev, app, bases, ct);
+            var c = await _engine.LaunchAsync(ev, app, bases, ct, startsNow: true);
             res.Add(new { c.ProductKey, status = c.Status.ToString(), c.TrackedUrl, c.Error });
         }
         return Ok(res);
@@ -127,7 +127,7 @@ public class PromosController : ControllerBase
         if (c?.Event == null) return NotFound();
         c.Headline = "";
         await _db.SaveChangesAsync(ct);
-        var r = await _engine.LaunchAsync(c.Event, c.ProductKey, null, ct);
+        var r = await _engine.LaunchAsync(c.Event, c.ProductKey, null, ct, startsNow: c.StartsAt <= DateTimeOffset.UtcNow);
         return Ok(new { status = r.Status.ToString(), r.Headline, r.Subheadline, r.Bullets, r.TrackedUrl, r.Error });
     }
 

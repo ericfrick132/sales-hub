@@ -144,12 +144,32 @@ public class PromoEngine
                 if (c.Status == PromoCampaignStatus.Live) launched++; else errors++;
             }
         }
+
+        // 3) Siempre hay promo: si una app quedó sin campaña vigente, se adelanta la PRÓXIMA fecha
+        // de su calendario y arranca ya (así el link fijo de la bio nunca cae en la home).
+        var liveApps = await _db.PromoCampaigns.AsNoTracking()
+            .Where(c => c.Status == PromoCampaignStatus.Live && c.StartsAt <= nowUtc && c.EndsAt > nowUtc)
+            .Select(c => c.ProductKey).Distinct().ToListAsync(ct);
+        var liveSet = new HashSet<string>(liveApps, StringComparer.OrdinalIgnoreCase);
+        foreach (var app in bases.Keys.Where(k => !liveSet.Contains(k)).ToList())
+        {
+            var next = events
+                .Where(e => AppsFor(e, bases).Contains(app, StringComparer.OrdinalIgnoreCase))
+                .Where(e => !e.Campaigns.Any(c => c.ProductKey.Equals(app, StringComparison.OrdinalIgnoreCase)
+                                                  && (c.Status != PromoCampaignStatus.Error || c.Attempts >= MaxAttempts)))
+                .OrderBy(e => e.Date).ThenBy(e => e.Slug)
+                .FirstOrDefault();
+            if (next == null) continue;
+            var c = await LaunchAsync(next, app, bases, ct, startsNow: true);
+            if (c.Status == PromoCampaignStatus.Live) launched++; else errors++;
+        }
+
         return new TickResult(launched, ended, errors);
     }
 
     // ── Lanzar una campaña ────────────────────────────────────────────────
 
-    public async Task<PromoCampaign> LaunchAsync(PromoEvent ev, string productKey, Dictionary<string, string>? bases, CancellationToken ct)
+    public async Task<PromoCampaign> LaunchAsync(PromoEvent ev, string productKey, Dictionary<string, string>? bases, CancellationToken ct, bool startsNow = false)
     {
         bases ??= AppBases();
         var c = await _db.PromoCampaigns.FirstOrDefaultAsync(x => x.PromoEventId == ev.Id && x.ProductKey == productKey, ct);
@@ -161,7 +181,9 @@ public class PromoEngine
         c.CouponCode = CodeFor(ev, DefaultDiscount);
         c.DiscountPercent = ev.DiscountPercent ?? DefaultDiscount;
         c.DurationMonths = ev.DurationMonths ?? DefaultMonths;
-        c.StartsAt = StartsAt(ev);
+        // Adelantada (siempre-hay-promo o "Lanzar ya"): arranca ahora en vez de esperar la ventana.
+        var windowStart = StartsAt(ev);
+        c.StartsAt = startsNow && DateTimeOffset.UtcNow < windowStart ? DateTimeOffset.UtcNow.AddMinutes(-1) : windowStart;
         c.EndsAt = EndsAt(ev);
         c.Attempts++;
         c.UpdatedAt = DateTimeOffset.UtcNow;
