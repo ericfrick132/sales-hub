@@ -40,11 +40,10 @@ public class PromosController : ControllerBase
         {
             today = PromoEngine.TodayAr(),
             defaults = new { discountPercent = _engine.DefaultDiscount, durationMonths = _engine.DefaultMonths },
-            apps = bases.Keys.OrderBy(k => k).Select(k => new
+            apps = bases.Keys.OrderBy(k => k).Select(k =>
             {
-                productKey = k,
-                landingUrl = landings.GetValueOrDefault(k),
-                bioUrl = landings.TryGetValue(k, out var l) ? PromoEngine.BioUrl(l) : null,
+                var l = landings.GetValueOrDefault(k) ?? _engine.DefaultLandingFor(k);
+                return new { productKey = k, landingUrl = l, bioUrl = l == null ? null : PromoEngine.BioUrl(l) };
             }),
             events = events.Select(e => new
             {

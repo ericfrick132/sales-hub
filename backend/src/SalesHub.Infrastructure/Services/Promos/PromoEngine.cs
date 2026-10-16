@@ -80,6 +80,24 @@ public class PromoEngine
         return map;
     }
 
+    /// <summary>Dónde vive /promo de cada app (para el link fijo de bio antes de la 1ra campaña). Override: Promos:Apps:{key}:PublicUrl.</summary>
+    private static readonly Dictionary<string, string> DefaultLandings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["gymhero"] = "https://gymhero.fitness/promo",
+        ["playcrew"] = "https://playcrew.com.ar/promo",
+        ["construction"] = "https://archicloud.tech/promo",
+        ["bunker"] = "https://bunker-app.com/promo",
+        ["unistock"] = "https://dashflow.com.ar/promo",
+        ["turnospro"] = "https://turnos-pro.com/promo",
+    };
+
+    public string? DefaultLandingFor(string productKey)
+    {
+        var cfg = _config[$"Promos:Apps:{productKey}:PublicUrl"];
+        if (!string.IsNullOrWhiteSpace(cfg)) return cfg.Trim().TrimEnd('/');
+        return DefaultLandings.GetValueOrDefault(productKey);
+    }
+
     public IReadOnlyList<string> AppsFor(PromoEvent e, Dictionary<string, string> bases) =>
         (e.Apps.Count == 0 ? bases.Keys.ToList() : e.Apps.Where(bases.ContainsKey).ToList())
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -95,20 +113,26 @@ public class PromoEngine
         var bases = AppBases();
         int launched = 0, ended = 0, errors = 0;
 
-        // 1) Terminar las vencidas.
+        // 1) Terminar las vencidas. NO se llama al DELETE de la app: la promo deja de mostrarse sola
+        // (endsAt) y el cupón vence solo, pero el que se dio de alta durante la promo y paga
+        // después (prueba de 14 días) conserva el descuento. El DELETE queda para "terminar" a mano.
         var nowUtc = DateTimeOffset.UtcNow;
         var toEnd = await _db.PromoCampaigns.Include(c => c.Event)
             .Where(c => c.Status == PromoCampaignStatus.Live && c.EndsAt < nowUtc)
             .ToListAsync(ct);
         foreach (var c in toEnd)
         {
-            if (await EndAsync(c, bases, ct)) ended++;
+            c.Status = PromoCampaignStatus.Ended;
+            c.EndedAt = nowUtc;
+            c.UpdatedAt = nowUtc;
+            ended++;
         }
 
         // 2) Lanzar las que entran en ventana.
         var events = await _db.PromoEvents.Include(e => e.Campaigns)
             .Where(e => e.Enabled && e.EndDate >= today)
             .ToListAsync(ct);
+        if (ended > 0) await _db.SaveChangesAsync(ct);
         foreach (var ev in events.Where(e => WindowStart(e) <= today))
         {
             foreach (var app in AppsFor(ev, bases))
