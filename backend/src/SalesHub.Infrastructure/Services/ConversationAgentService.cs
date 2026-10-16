@@ -999,7 +999,7 @@ public class ConversationAgentService
     /// </summary>
     /// <summary>
     /// Pre-calificación: mandamos el saludo y el lead no contestó en unos minutos → el bot sigue
-    /// solo con el pitch y "te interesa ver una demo?" (vender es llevar la charla, no esperar).
+    /// con la 1ª pregunta (una sola) y espera; el pitch va recién cuando el lead contesta.
     /// Una sola vez por lead (el paso cambia); saludos de más de 12 h no se tocan.
     /// </summary>
     private async Task<int> ContinueSilentGreetingsAsync(CancellationToken ct)
@@ -1033,7 +1033,7 @@ public class ConversationAgentService
             await OnboardingSendAsync(lead, r.Reply, ct);
             if (r.MediaAssetIds is { Count: > 0 }) await TrySendOnboardingMediaAsync(lead, r.MediaAssetIds, r.MediaCaptions, ct);
             await _db.SaveChangesAsync(ct);
-            _log.LogInformation("Pre-calificacion: lead {Lead} no contesto el saludo, el bot siguio con el pitch", lead.Id);
+            _log.LogInformation("Pre-calificacion: lead {Lead} no contesto el saludo, el bot siguio con la 1a pregunta", lead.Id);
             done++;
         }
         return done;

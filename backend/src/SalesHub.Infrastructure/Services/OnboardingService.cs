@@ -221,27 +221,27 @@ public class OnboardingService
 
     /// <summary>Elige una variante de {a|b} por lead+paso (estable si se reprocesa el mismo turno).</summary>
     /// <summary>
-    /// No contestó el saludo: el bot no se queda esperando — sigue él con el pitch y la demo, como
-    /// haría un vendedor (el lead escribió por un anuncio, ya mostró interés). Null = no aplica.
+    /// No contestó el saludo: el bot sigue con la 1ª pregunta (una sola) y espera. Null = no aplica.
     /// </summary>
     public async Task<OnboardingResult?> ContinueAfterSilentGreetingAsync(Lead lead, OnboardingConfig cfg, CancellationToken ct)
     {
-        if (!DemoStepEnabled(cfg)) return null;
+        // Antes acá iba el pitch entero + demo + cierre (8 mensajes seguidos a alguien que no contestó
+        // ni el saludo): sonaba a bot. Ahora va UNA pregunta corta y se espera a que conteste; el pitch
+        // sale recién cuando hay charla (2026-10-16).
         var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
         if (ob is null || ob.Step != StepGreeted) return null;
         var ad = lead.AdId is null ? null : await _db.MetaAds.AsNoTracking().FirstOrDefaultAsync(a => a.AdId == lead.AdId, ct);
-        var pitch = PitchFor(cfg, ad);
-        if (pitch is null) return null;
-        lead.Status = LeadStatus.Interested;
-        ob.Step = AfterDemoStep(cfg);
+        var questions = cfg.Questions.ToList();
+        if (questions.Count == 0) return null;
+        if (ad?.BusinessRef is { } negocio && !string.IsNullOrWhiteSpace(cfg.KnownBusinessQuestion))
+            questions[0] = cfg.KnownBusinessQuestion.Replace("{negocio}", negocio);
+        questions = AdaptQuestionsToRubro(questions, string.Join(" ",
+            ob.GymName, lead.Name, lead.AdTitle, lead.SearchCategory, ad?.BusinessRef));
+        ob.Step = 1;
         ob.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return new OnboardingResult(
-            PresentAs(Join(Join(SilentGreetingIntro, Spin(pitch.Text, lead.Id, 95)), DemoTail(cfg, lead.Id)), cfg),
-            OffScript: false, Provisioned: false, MediaAssetIds: pitch.MediaAssetIds is { Count: > 0 } m ? m : null);
+        return new OnboardingResult(PresentAs(questions[0], cfg), OffScript: false, Provisioned: false);
     }
-
-    private const string SilentGreetingIntro = "te explico rapido como es";
 
     private static bool DemoStepEnabled(OnboardingConfig cfg) =>
         !string.IsNullOrWhiteSpace(cfg.DemoLink) && !string.IsNullOrWhiteSpace(cfg.StartQuestion);
