@@ -93,6 +93,8 @@ public class ConversationAgentService
         var replied = await GenerateSuggestionsAsync(ct);
         try { replied += await ContinueSilentGreetingsAsync(ct); }
         catch (Exception ex) { _log.LogError(ex, "Seguimiento del saludo sin respuesta falló"); }
+        try { replied += await FollowUpStalledStagesAsync(ct); }
+        catch (Exception ex) { _log.LogError(ex, "Seguimiento por etapa falló"); }
         var reengaged = await GenerateReengagementsAsync(ct);
         var postSignup = await GeneratePostSignupNudgesAsync(ct);
         return transcribed + pitched + replied + reengaged + postSignup;
@@ -1039,6 +1041,55 @@ public class ConversationAgentService
         return done;
     }
 
+    /// <summary>
+    /// Pre-calificación: el lead se quedó callado en un paso del guion → seguimiento sin IA según el paso
+    /// (pregunta pendiente, link de la demo, "para cuando"). El 1º a las 3 h de nuestro último mensaje, el
+    /// 2º a las 24 h; máx. 2 por paso. Solo de 9 a 21 h de Argentina y charlas de menos de 5 días.
+    /// </summary>
+    private async Task<int> FollowUpStalledStagesAsync(CancellationToken ct)
+    {
+        if (!await _db.IsFlagOnAsync("onboarding", false, ct)) return 0;
+        var now = DateTimeOffset.UtcNow;
+        var arHour = TimeZoneInfo.ConvertTime(now, LeadEntryService.ArTz).Hour;
+        if (arHour < 9 || arHour >= 21) return 0;
+        var configs = await _db.OnboardingConfigs.AsNoTracking()
+            .Where(c => c.Enabled && c.HandoffSellerId != null).ToDictionaryAsync(c => c.ProductKey, ct);
+        if (configs.Count == 0) return 0;
+        var keys = configs.Keys.ToList();
+        var firstAfter = now.AddHours(-_config.GetValue("Onboarding:FollowUpFirstHours", 3));
+        var secondAfter = now.AddHours(-_config.GetValue("Onboarding:FollowUpSecondHours", 24));
+        var tooOld = now.AddDays(-5);
+        var ids = await (
+            from l in _db.Leads
+            join o in _db.Set<LeadOnboarding>() on l.Id equals o.LeadId
+            where l.SellerId != null && l.BotMutedAt == null && l.Seller!.BotPausedAt == null
+                && l.Product != null && keys.Contains(l.Product.ProductKey)
+                && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
+                    || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk)
+                && !(o.FollowUpStep == o.Step && o.FollowUpCount >= 2)
+            let last = _db.ConversationMessages.Where(m => m.LeadId == l.Id).OrderByDescending(m => m.Timestamp).FirstOrDefault()
+            where last != null && last.Direction == MessageDirection.Outbound && last.Timestamp > tooOld
+                && last.Timestamp < (o.FollowUpStep == o.Step && o.FollowUpCount >= 1 ? secondAfter : firstAfter)
+            select l.Id
+        ).Take(BatchSize).ToListAsync(ct);
+
+        var done = 0;
+        foreach (var id in ids)
+        {
+            var lead = await _db.Leads.Include(l => l.Product)
+                .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
+                .FirstOrDefaultAsync(l => l.Id == id, ct);
+            if (lead?.Product is null || !configs.TryGetValue(lead.Product.ProductKey, out var cfg)) continue;
+            var text = await _onboarding.StageFollowUpAsync(lead, cfg, ct);
+            if (text is null) continue;
+            await OnboardingSendAsync(lead, text, ct);
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("Pre-calificacion: seguimiento por etapa a lead {Lead}", lead.Id);
+            done++;
+        }
+        return done;
+    }
+
     private async Task<int> GenerateReengagementsAsync(CancellationToken ct)
     {
         if (!_suggestions.IsConfigured) return 0;
@@ -1049,6 +1100,9 @@ public class ConversationAgentService
         // Re-enganche = seguimiento proactivo a un lead ya contactado: lo manda el mismo
         // switch que los follow-ups de la cadencia.
         var followupSources = (await _db.LoadMessagingPolicyAsync(ct)).FollowupSources;
+        // Los que están a mitad de la pre-calificación los sigue el guion (FollowUpStalledStagesAsync), no la IA.
+        var prequalKeys = await _db.OnboardingConfigs.AsNoTracking()
+            .Where(c => c.Enabled && c.HandoffSellerId != null).Select(c => c.ProductKey).ToListAsync(ct);
 
         var candidates = await (
             from l in _db.Leads
@@ -1056,6 +1110,9 @@ public class ConversationAgentService
                 && followupSources.Contains(l.Source)
                 && l.BotMutedAt == null && l.Seller!.BotPausedAt == null // takeover humano: tampoco re-enganchar
                 && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
+                && !(l.Product != null && prequalKeys.Contains(l.Product.ProductKey) && _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
+                    && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
+                        || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk)))
                 && l.FirstReplyAt != null
                 && (l.Status == LeadStatus.Replied || l.Status == LeadStatus.Interested)
                 && l.AiSuggestedReply == null
@@ -1084,6 +1141,9 @@ public class ConversationAgentService
                 && followupSources.Contains(l.Source)
                 && l.BotMutedAt == null && l.Seller!.BotPausedAt == null
                 && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
+                && !(l.Product != null && prequalKeys.Contains(l.Product.ProductKey) && _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
+                    && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
+                        || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk)))
                 && l.FirstReplyAt == null
                 && l.Status == LeadStatus.Sent
                 // Solo leads CALIENTES (anuncios/forms/app-fed, source >= 400): a los scrapeados

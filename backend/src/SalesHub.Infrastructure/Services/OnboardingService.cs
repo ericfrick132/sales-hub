@@ -62,8 +62,6 @@ public class OnboardingService
     /// <summary>El pitch cerró con "te interesa ver una demo?": sí → link + cierre (StepAwaitStart); otra cosa → la persona.</summary>
     public const int StepAwaitDemoLink = -33;
 
-    /// <summary>Abre el pitch cuando llega después de las preguntas (si preguntó "como es?" en el saludo, va directo).</summary>
-    private const string PitchIntro = "bien, te explico rapido como es";
 
     /// <summary>En el saludo pregunta qué es / cómo funciona (y no el precio): eso lo contesta el pitch, no hace falta la persona.</summary>
     private static readonly Regex ExplainRx = new(
@@ -230,17 +228,84 @@ public class OnboardingService
         // sale recién cuando hay charla (2026-10-16).
         var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
         if (ob is null || ob.Step != StepGreeted) return null;
-        var ad = lead.AdId is null ? null : await _db.MetaAds.AsNoTracking().FirstOrDefaultAsync(a => a.AdId == lead.AdId, ct);
-        var questions = cfg.Questions.ToList();
+        var questions = await QuestionsForAsync(lead, cfg, ob, ct);
         if (questions.Count == 0) return null;
-        if (ad?.BusinessRef is { } negocio && !string.IsNullOrWhiteSpace(cfg.KnownBusinessQuestion))
-            questions[0] = cfg.KnownBusinessQuestion.Replace("{negocio}", negocio);
-        questions = AdaptQuestionsToRubro(questions, string.Join(" ",
-            ob.GymName, lead.Name, lead.AdTitle, lead.SearchCategory, ad?.BusinessRef));
         ob.Step = 1;
         ob.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return new OnboardingResult(PresentAs(questions[0], cfg), OffScript: false, Provisioned: false);
+    }
+
+    /// <summary>Las preguntas del guion como se las hicimos a ESTE lead (rubro del anuncio, clases vs pase libre).</summary>
+    private async Task<List<string>> QuestionsForAsync(Lead lead, OnboardingConfig cfg, LeadOnboarding ob, CancellationToken ct)
+    {
+        var ad = lead.AdId is null ? null : await _db.MetaAds.AsNoTracking().FirstOrDefaultAsync(a => a.AdId == lead.AdId, ct);
+        var questions = cfg.Questions.ToList();
+        if (questions.Count == 0) return questions;
+        if (ad?.BusinessRef is { } negocio && !string.IsNullOrWhiteSpace(cfg.KnownBusinessQuestion))
+            questions[0] = cfg.KnownBusinessQuestion.Replace("{negocio}", negocio);
+        return AdaptQuestionsToRubro(questions, string.Join(" ",
+            ob.GymName, lead.Name, lead.AdTitle, lead.SearchCategory, ad?.BusinessRef));
+    }
+
+    /// <summary>Pasos de la pre-calificación donde el lead se puede quedar callado y le hacemos seguimiento.</summary>
+    public static bool IsFollowUpStage(int step) =>
+        step is >= 1 and <= 10 or StepAwaitDemoLink or StepAwaitStart or StepAwaitPricesOk;
+
+    /// <summary>
+    /// Seguimiento sin IA según DÓNDE se quedó la charla (el paso del guion), no según el texto.
+    /// Máx. 2 por paso; si el lead avanza, arranca de cero. Null = no toca (todavía no, o ya se le
+    /// insistió lo suficiente). Mensajes cortos, uno o dos: nada de volver a mandar el pitch.
+    /// </summary>
+    public async Task<string?> StageFollowUpAsync(Lead lead, OnboardingConfig cfg, CancellationToken ct)
+    {
+        var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
+        if (ob is null || !IsFollowUpStage(ob.Step)) return null;
+        var count = ob.FollowUpStep == ob.Step ? ob.FollowUpCount : 0;
+        if (count >= 2) return null;
+        var seed = 200 + ob.Step * 10 + count;
+
+        string text;
+        var nextStep = ob.Step;
+        if (ob.Step == StepAwaitDemoLink)
+        {
+            // Le ofrecimos el link y no contestó: se lo pasamos igual (sin pedir permiso dos veces) y queda
+            // esperando el "para cuando" como si hubiera dicho que sí.
+            if (string.IsNullOrWhiteSpace(cfg.DemoLink)) return null;
+            text = Join(Spin("{te lo paso igual asi lo ves cuando puedas|te lo dejo por aca asi lo ves tranqui}", lead.Id, seed),
+                Spin(cfg.DemoLink, lead.Id, 97));
+            nextStep = StepAwaitStart;
+            count = -1; // el paso cambia: el contador del paso nuevo arranca en 0
+        }
+        else if (ob.Step == StepAwaitStart)
+        {
+            text = count == 0
+                ? Spin("{pudiste verlo?|pudiste chusmearlo?|llegaste a verlo?}", lead.Id, seed)
+                : Spin("{si queres lo vemos juntos en 15 min y te lo dejo armado con tus datos, decime que dia te queda comodo|cuando tengas un rato lo vemos juntos en 15 min, decime que dia te sirve}", lead.Id, seed);
+        }
+        else if (ob.Step == StepAwaitPricesOk)
+        {
+            text = count == 0
+                ? Spin("{te paso los precios?|queres que te pase los precios?}", lead.Id, seed)
+                : Spin("{cualquier cosa me escribis y te paso los precios|te dejo por aca, cuando quieras te paso los precios}", lead.Id, seed);
+        }
+        else
+        {
+            // Una pregunta del guion sin contestar. 1º un toque corto; 2º se la dejamos de nuevo, más liviana.
+            var questions = await QuestionsForAsync(lead, cfg, ob, ct);
+            var pending = ob.Step - 1 < questions.Count ? LastSegment(questions[ob.Step - 1]) : null;
+            text = count == 0 || string.IsNullOrWhiteSpace(pending)
+                ? Spin("{seguis por ahi?|estas por ahi?|pudiste ver?}", lead.Id, seed)
+                : Join(Spin("{te dejo la pregunta por aca, cuando puedas me contas|cuando tengas un minuto me contas}", lead.Id, seed), pending);
+        }
+
+        ob.Step = nextStep;
+        ob.FollowUpStep = nextStep;
+        ob.FollowUpCount = count + 1;
+        ob.LastFollowUpAt = DateTimeOffset.UtcNow;
+        ob.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return PresentAs(text, cfg);
     }
 
     private static bool DemoStepEnabled(OnboardingConfig cfg) =>
@@ -637,7 +702,7 @@ public class OnboardingService
                     ob.UpdatedAt = DateTimeOffset.UtcNow;
                     await _db.SaveChangesAsync(ct);
                     return new OnboardingResult(
-                        PresentAs(Join(Join("perfecto, te explico rapido como es", Spin(np.Text, lead.Id, 95)), DemoTail(cfg, lead.Id)), cfg),
+                        PresentAs(Join(Spin(np.Text, lead.Id, 95), DemoTail(cfg, lead.Id)), cfg),
                         OffScript: false, Provisioned: false, MediaAssetIds: np.MediaAssetIds is { Count: > 0 } nmm ? nmm : null);
                 }
                 if (n >= 2)
@@ -831,7 +896,7 @@ public class OnboardingService
                         ob.Step = AfterDemoStep(cfg);
                         ob.UpdatedAt = DateTimeOffset.UtcNow;
                         await _db.SaveChangesAsync(ct);
-                        return new OnboardingResult(PresentAs(Join(Join(PitchIntro, reply), DemoTail(cfg, lead.Id)), cfg),
+                        return new OnboardingResult(PresentAs(Join(reply, DemoTail(cfg, lead.Id)), cfg),
                             OffScript: false, Provisioned: false,
                             MediaAssetIds: anglePitch.MediaAssetIds is { Count: > 0 } dm ? dm : null);
                     }

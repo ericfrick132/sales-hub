@@ -2126,6 +2126,14 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("first_steps_sent_at");
 
+                    b.Property<int>("FollowUpCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("follow_up_count");
+
+                    b.Property<int?>("FollowUpStep")
+                        .HasColumnType("integer")
+                        .HasColumnName("follow_up_step");
+
                     b.Property<string>("GymName")
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)")
@@ -2134,6 +2142,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.Property<int>("GymRetries")
                         .HasColumnType("integer")
                         .HasColumnName("gym_retries");
+
+                    b.Property<DateTimeOffset?>("LastFollowUpAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_follow_up_at");
 
                     b.Property<Guid>("LeadId")
                         .HasColumnType("uuid")

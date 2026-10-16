@@ -48,6 +48,14 @@ public class LeadOnboarding
     public DateTimeOffset? DemoBookedAt { get; set; }
     public string? DemoEventUri { get; set; }
 
+    /// <summary>
+    /// Seguimiento por etapa (pre-calificación): en qué paso se quedó cuando le mandamos el último
+    /// follow-up, cuántos van en ese paso y cuándo. Si el lead avanza de paso, el contador arranca de cero.
+    /// </summary>
+    public int? FollowUpStep { get; set; }
+    public int FollowUpCount { get; set; }
+    public DateTimeOffset? LastFollowUpAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
