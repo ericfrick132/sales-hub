@@ -37,8 +37,18 @@ public static class ContentTypes
             "TIPO: PRECIO/PROMO. Comunicá el precio o una oferta puntual. Usá EXCLUSIVAMENTE los precios/planes que estén en la ficha de la landing; si la ficha no tiene precios, NO inventes — elegí otro ángulo. CTA claro."),
     };
 
+    /// <summary>
+    /// Anuncio de una promo del calendario (PromoEngine). NO está en <see cref="All"/>: nunca sale
+    /// al azar, solo cuando el worker lo fuerza porque hay una campaña Live para la app.
+    /// </summary>
+    public static readonly ContentType Promo = new("promo", "Promo del calendario", 0,
+        "TIPO: PROMO DEL CALENDARIO. Anunciá la promo vigente (ver TEMA / INDICACIÓN): la fecha, el % off, los meses y el CÓDIGO. " +
+        "Gancho atado a la fecha, beneficio real del producto (solo de la ficha), y CTA 'link en bio'. Sin inventar precios. Visual atractivo de la fecha con personas del rubro.");
+
     public static ContentType? ByKey(string? key) =>
-        string.IsNullOrWhiteSpace(key) ? null : All.FirstOrDefault(t => t.Key.Equals(key.Trim(), StringComparison.OrdinalIgnoreCase));
+        string.IsNullOrWhiteSpace(key) ? null
+        : key.Trim().Equals(Promo.Key, StringComparison.OrdinalIgnoreCase) ? Promo
+        : All.FirstOrDefault(t => t.Key.Equals(key.Trim(), StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Elige un tipo por peso, evitando <paramref name="avoidKey"/> (el último usado).

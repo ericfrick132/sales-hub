@@ -47,6 +47,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<InspirationSettings> InspirationSettings => Set<InspirationSettings>();
     public DbSet<DailyTheme> DailyThemes => Set<DailyTheme>();
 
+    // Promos automáticas por calendario (cupón + landing en cada app + posteos)
+    public DbSet<SalesHub.Core.Domain.Entities.Promos.PromoEvent> PromoEvents => Set<SalesHub.Core.Domain.Entities.Promos.PromoEvent>();
+    public DbSet<SalesHub.Core.Domain.Entities.Promos.PromoCampaign> PromoCampaigns => Set<SalesHub.Core.Domain.Entities.Promos.PromoCampaign>();
+
     // Flags on/off de runners, toggleables desde la UI (override de Workers:*AutoStart).
     public DbSet<RuntimeFlag> RuntimeFlags => Set<RuntimeFlag>();
 

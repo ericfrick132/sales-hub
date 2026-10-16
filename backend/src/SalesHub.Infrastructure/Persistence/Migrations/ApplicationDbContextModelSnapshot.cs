@@ -3311,6 +3311,222 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("product_knowledge", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.Promos.PromoCampaign", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<List<string>>("Bullets")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("bullets");
+
+                    b.Property<string>("CouponCode")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("coupon_code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DiscountPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("discount_percent");
+
+                    b.Property<int>("DurationMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_months");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
+
+                    b.Property<DateTimeOffset>("EndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ends_at");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<string>("Headline")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("headline");
+
+                    b.Property<string>("LandingUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("landing_url");
+
+                    b.Property<DateTimeOffset?>("LaunchedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("launched_at");
+
+                    b.Property<string>("ProductKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<Guid>("PromoEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("promo_event_id");
+
+                    b.Property<DateTimeOffset>("StartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("starts_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subheadline")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("subheadline");
+
+                    b.Property<string>("TrackedUrl")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("tracked_url");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_promo_campaigns");
+
+                    b.HasIndex("ProductKey", "Status")
+                        .HasDatabaseName("ix_promo_campaigns_product_key_status");
+
+                    b.HasIndex("PromoEventId", "ProductKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_promo_campaigns_promo_event_id_product_key");
+
+                    b.ToTable("promo_campaigns", (string)null);
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.Promos.PromoEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<List<string>>("Apps")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("apps");
+
+                    b.Property<string>("Confidence")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("confidence");
+
+                    b.Property<string>("CouponCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("coupon_code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("date");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<int?>("DiscountPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("discount_percent");
+
+                    b.Property<int?>("DurationMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_months");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
+
+                    b.Property<Guid?>("ImageAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("image_asset_id");
+
+                    b.Property<string>("ImageCredit")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("image_credit");
+
+                    b.Property<string>("ImageSourceUrl")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("image_source_url");
+
+                    b.Property<int>("LeadDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("lead_days");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("slug");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_promo_events");
+
+                    b.HasIndex("Date")
+                        .HasDatabaseName("ix_promo_events_date");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasDatabaseName("ix_promo_events_slug");
+
+                    b.ToTable("promo_events", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.RemarketingAttempt", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5452,6 +5668,18 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.Promos.PromoCampaign", b =>
+                {
+                    b.HasOne("SalesHub.Core.Domain.Entities.Promos.PromoEvent", "Event")
+                        .WithMany("Campaigns")
+                        .HasForeignKey("PromoEventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_promo_campaigns_promo_events_promo_event_id");
+
+                    b.Navigation("Event");
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.RemarketingAttempt", b =>
                 {
                     b.HasOne("SalesHub.Core.Domain.Entities.Lead", "Lead")
@@ -5638,6 +5866,11 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.Product", b =>
                 {
                     b.Navigation("Leads");
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.Promos.PromoEvent", b =>
+                {
+                    b.Navigation("Campaigns");
                 });
 
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.Seller", b =>

@@ -747,11 +747,13 @@ public class SocialPostsController : ControllerBase
     /// </summary>
     [AllowAnonymous]
     [HttpGet("assets/{id:guid}.png")]
+    [HttpGet("assets/{id:guid}.jpg")]
     [HttpGet("assets/{id:guid}.mp4")]
     [HttpGet("assets/{id:guid}")]
     // Buffer hace un HEAD para verificar que la imagen es accesible antes de aceptarla;
     // sin estas rutas HEAD el endpoint devuelve 405 y Buffer rechaza el push.
     [HttpHead("assets/{id:guid}.png")]
+    [HttpHead("assets/{id:guid}.jpg")]
     [HttpHead("assets/{id:guid}.mp4")]
     [HttpHead("assets/{id:guid}")]
     public async Task<IActionResult> GetAsset(Guid id, CancellationToken ct)

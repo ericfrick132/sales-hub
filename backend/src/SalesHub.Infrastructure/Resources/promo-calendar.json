@@ -1,0 +1,724 @@
+[
+  {
+    "date": "2026-10-30",
+    "endDate": "2026-10-30",
+    "description": "Día de la Educación Física: un mimo para los que viven del movimiento",
+    "title": "Día de la Educación Física",
+    "slug": "dia-educacion-fisica-2026",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://billiken.lat/interesante/30-de-octubre-dia-de-la-educacion-fisica/",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1d/Tired_blonde_woman_in_the_gym._End_of_training.jpg/1920px-Tired_blonde_woman_in_the_gym._End_of_training.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Nenad Stojkovic / Wikimedia Commons (CC BY 2.0)"
+  },
+  {
+    "date": "2026-11-02",
+    "endDate": "2026-11-04",
+    "description": "Cyber Monday: tres días de descuentos online en todo el país",
+    "title": "Cyber Monday 2026",
+    "slug": "cyber-monday-2026",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.cybermonday.com.ar/",
+    "note": "CACE: arranca lunes 2/11 00 h y dura 3 dias (2 al 4). Tiendanube publico 3-5, la web oficial dice desde el 2.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c4/Backlit_keyboard.jpg/1920px-Backlit_keyboard.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Colin / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2026-11-02",
+    "endDate": "2026-11-07",
+    "description": "Arranca el Mundial de pádel en Doha: la seleccion juega y los clubes se llenan",
+    "title": "Mundial de Pádel FIP 2026",
+    "slug": "mundial-padel-fip-2026",
+    "apps": [
+      "playcrew"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.padelfip.com/2026/07/fip-world-cup-qatar-confirmed-as-host-of-the-2026-and-2028-editions/",
+    "note": "FIP World Cup, Khalifa International Tennis & Squash Complex, Doha. Bienal: no hay edicion 2027 (la proxima es 2028).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/64/Padel_en_el_Cos_Sports_Plaza.jpg/1920px-Padel_en_el_Cos_Sports_Plaza.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Virpana / Wikimedia Commons (CC0)"
+  },
+  {
+    "date": "2026-11-06",
+    "endDate": "2026-11-08",
+    "description": "SouthFit Challenge: la final del crossfit latino en Buenos Aires",
+    "title": "SouthFit Challenge 2026",
+    "slug": "southfit-challenge-2026",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.allaccess.com.ar/event/atomik-southfit-challenge-2026",
+    "note": "Atomik SouthFit Challenge, final presencial en el Parque Olimpico de la Juventud (CABA). Es la competencia de crossfit mas grande de Latam (organizada desde boxes argentinos, ex clasificatorio a los Games). Fecha tomada de la ticketera; el listado de licenciados de CrossFit muestra 1-3 nov sin anio (edicion vieja).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/District_Crossfit_Class_Warfare-50.jpg/1920px-District_Crossfit_Class_Warfare-50.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: ROSE PHYSICAL THERAPY GROUP (photos · photo sets) / Wikimedia Commons (CC BY 2.0)"
+  },
+  {
+    "date": "2026-11-17",
+    "endDate": "2026-11-17",
+    "description": "Día de la Construcción: para los que levantan obras todos los días",
+    "title": "Día de la Construcción",
+    "slug": "dia-construccion-2026",
+    "apps": [
+      "construction"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.ellitoral.com/informacion-general/dia-construccion_0_tDy5FVjqYh.amp.html",
+    "note": "Instituido por la Camara Argentina de la Construccion en 1955 (apertura del Canal de Suez, 17/11/1869).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/ba/QV_Building_construction_site%2C_Melbourne_-_March_2002.jpg/1920px-QV_Building_construction_site%2C_Melbourne_-_March_2002.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Diliff / Wikimedia Commons (CC BY 3.0)"
+  },
+  {
+    "date": "2026-11-23",
+    "endDate": "2026-11-29",
+    "description": "Premier Pádel aterriza en Latam con el México Major de Acapulco",
+    "title": "México Major Premier Pádel",
+    "slug": "premier-padel-mexico-major-2026",
+    "apps": [
+      "playcrew"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.padelfip.com/es/calendario-premier-padel/?events-year=2026",
+    "note": "Unica parada Premier Padel en Latam que queda en el rango 2026.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/64/Padel_en_el_Cos_Sports_Plaza.jpg/1920px-Padel_en_el_Cos_Sports_Plaza.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Virpana / Wikimedia Commons (CC0)"
+  },
+  {
+    "date": "2026-11-27",
+    "endDate": "2026-11-29",
+    "description": "Black Friday: el finde de ofertas más grande de noviembre",
+    "title": "Black Friday 2026",
+    "slug": "black-friday-2026",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.universal-assistance.com/uablog/cuando-es-el-black-friday/",
+    "note": "Viernes 27/11/2026 (dia siguiente al Thanksgiving del 26). No lo organiza la CACE; muchas marcas lo estiran hasta el lunes 30.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a2/Fashionable_Woman_%28Unsplash%29.jpg/1920px-Fashionable_Woman_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: freestocks.org freestocks / Wikimedia Commons (CC0)"
+  },
+  {
+    "date": "2026-12-10",
+    "endDate": "2026-12-13",
+    "description": "Finals de Premier Pádel en Barcelona: el cierre de la temporada del pádel mundial",
+    "title": "Premier Pádel Finals 2026",
+    "slug": "premier-padel-finals-2026",
+    "apps": [
+      "playcrew"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://premierpadel.com/en/tourfinals",
+    "note": "Palau Sant Jordi, Barcelona. Top 16 parejas.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/64/Padel_en_el_Cos_Sports_Plaza.jpg/1920px-Padel_en_el_Cos_Sports_Plaza.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Virpana / Wikimedia Commons (CC0)"
+  },
+  {
+    "date": "2026-12-25",
+    "endDate": "2026-12-25",
+    "description": "Navidad: cerra diciembre con tu negocio ordenado y arranca enero sin papeles",
+    "title": "Navidad",
+    "slug": "navidad-2026",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.canal26.com/general/2026/08/17/cuando-es-el-proximo-feriado-y-cuantos-fines-de-semana-largos-quedan-en-argentina-en-2026-el-calendario-completo/",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/97/Viborg_Christmas_street_illumination_2010-11-30.jpg/1920px-Viborg_Christmas_street_illumination_2010-11-30.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Kim Hansen / Wikimedia Commons (CC BY-SA 3.0)"
+  },
+  {
+    "date": "2027-01-01",
+    "endDate": "2027-01-01",
+    "description": "Arranca 2027: empeza el nuevo ciclo con tu negocio bajo control",
+    "title": "Año Nuevo",
+    "slug": "ano-nuevo-2027",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://calcularsueldo.com.ar/interes-general/16229/feriados-2027-calendario-oficial-y-fines-de-semana-largos.html",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b7/Fireworks_lugano_2011-1.jpg/1920px-Fireworks_lugano_2011-1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Philippe Moret / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-02-07",
+    "endDate": "2027-02-15",
+    "description": "Argentina Open en el Buenos Aires Lawn Tennis: semana de tenis grande en el país",
+    "title": "Argentina Open ATP 2027",
+    "slug": "argentina-open-atp-2027",
+    "apps": [
+      "playcrew"
+    ],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://www.sitioandino.com.ar/andino-sports/bombazo-el-argentina-open-jugara-el-numero-7-del-mundo-n5730244",
+    "note": "Fechas 7-15 feb 2027 reportadas por un solo medio (sept 2026); falta confirmacion oficial ATP. Podria ser la ultima edicion en polvo de ladrillo.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/68/P%C3%B6rtschach_Johannes-Brahms-Promenade_Werzer-Tennis-Arena_27052017_8932.jpg/1920px-P%C3%B6rtschach_Johannes-Brahms-Promenade_Werzer-Tennis-Arena_27052017_8932.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Johann Jaritz / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-02-14",
+    "endDate": "2027-02-14",
+    "description": "San Valentín: semana de turnos llenos y regalos, preparate con tiempo",
+    "title": "San Valentín",
+    "slug": "san-valentin-2027",
+    "apps": [
+      "turnospro",
+      "unistock",
+      "gymhero",
+      "playcrew"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://calcularsueldo.com.ar/interes-general/16229/feriados-2027-calendario-oficial-y-fines-de-semana-largos.html",
+    "note": "Fecha fija 14/2. Cae domingo. Fuerte para turnospro (estetica, unas, barberias) y dashflow (regaleria/kioscos).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/Flower-bouquet-wild-flowers-Sitia-Crete-Greece.jpg/1920px-Flower-bouquet-wild-flowers-Sitia-Crete-Greece.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Petro Stelte / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-02-18",
+    "endDate": "2027-03-08",
+    "description": "Arranca el CrossFit Open: tres semanas donde todos los boxes compiten",
+    "title": "CrossFit Open 2027",
+    "slug": "crossfit-open-2027",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://games.crossfit.com/open/schedule",
+    "note": "27.1 el 18/2 (cierre 23/2), 27.2 el 25/2, 27.3 el 4/3; temporada Open 18/2 al 8/3. Una semana antes que 2025 y 2026.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/District_Crossfit_Class_Warfare-50.jpg/1920px-District_Crossfit_Class_Warfare-50.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: ROSE PHYSICAL THERAPY GROUP (photos · photo sets) / Wikimedia Commons (CC BY 2.0)"
+  },
+  {
+    "date": "2027-03-01",
+    "endDate": "2027-03-01",
+    "description": "Vuelta a la rutina: marzo arranca en serio, ordena tu negocio desde el día uno",
+    "title": "Vuelta a la rutina",
+    "slug": "vuelta-rutina-marzo-2027",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://calcularsueldo.com.ar/interes-general/16229/feriados-2027-calendario-oficial-y-fines-de-semana-largos.html",
+    "note": "Fecha conceptual (inicio de clases y fin de vacaciones). Lunes 1/3.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f1/Journaling_over_coffee_%28Unsplash%29.jpg/1920px-Journaling_over_coffee_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Thought Catalog thoughtcatalog / Wikimedia Commons (CC0)"
+  },
+  {
+    "date": "2027-03-20",
+    "endDate": "2027-03-21",
+    "description": "HYROX vuelve a La Rural: el fitness race que esta explotando en Argentina",
+    "title": "HYROX Buenos Aires 2027",
+    "slug": "hyrox-buenos-aires-2027",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://hyrox.com/event/hyrox-buenos-aires/",
+    "note": "Segunda edicion en Argentina (la primera fue 13/6/2026). Pagina oficial: 20-21 marzo 2027, La Rural, Palermo.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bd/Gym%2C_GLV1%2C_Nairobi_%2820250810-LRM_20250810_050004%29.jpg/1920px-Gym%2C_GLV1%2C_Nairobi_%2820250810-LRM_20250810_050004%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Matti Blume / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-04-06",
+    "endDate": "2027-04-06",
+    "description": "Día Mundial de la Actividad Física: el mejor momento para sumar alumnos",
+    "title": "Día Mundial de la Actividad Física",
+    "slug": "dia-mundial-actividad-fisica-2027",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.paho.org/es/noticias/10-4-2024-tu-salud-tu-derecho-caminata-conmemoracion-dia-mundial-actividad-fisica-contexto",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/16/Berlin-Marathon_2015_Runners_14.jpg/1920px-Berlin-Marathon_2015_Runners_14.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Denis Barthel / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-04-22",
+    "endDate": "2027-04-22",
+    "description": "Día del Trabajador de la Construcción: reconocimiento a los que hacen la obra",
+    "title": "Día del Trabajador de la Construcción",
+    "slug": "dia-trabajador-construccion-2027",
+    "apps": [
+      "construction"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.ellitoral.com/informacion-general/celebra-hoy-dia-trabajador-construccion_0_HLeItSW3zk.html",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/ba/QV_Building_construction_site%2C_Melbourne_-_March_2002.jpg/1920px-QV_Building_construction_site%2C_Melbourne_-_March_2002.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Diliff / Wikimedia Commons (CC BY 3.0)"
+  },
+  {
+    "date": "2027-05-10",
+    "endDate": "2027-05-12",
+    "description": "Hot Sale: tres días de descuentos online en todo el país",
+    "title": "Hot Sale 2027",
+    "slug": "hot-sale-2027",
+    "apps": [],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://mercado.com.ar/agenda/cace-abrio-las-contrataciones-para-hot-sale-2026-previsto-del-11-al-13-de-mayo",
+    "note": "NO anunciado. Estimado por patron CACE: 2do lunes de mayo, 3 dias (2026 fue 11-13/5, 2025 12-14/5). Confirmar cuando la CACE abra contrataciones (~feb 2027).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a2/Fashionable_Woman_%28Unsplash%29.jpg/1920px-Fashionable_Woman_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: freestocks.org freestocks / Wikimedia Commons (CC0)"
+  },
+  {
+    "date": "2027-05-15",
+    "endDate": "2027-05-16",
+    "description": "ExpoBeauty en La Rural: la feria de belleza donde se mueve el rubro",
+    "title": "ExpoBeauty 2027",
+    "slug": "expobeauty-2027",
+    "apps": [
+      "turnospro"
+    ],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://events.flashpass.com.ar/eventos/7ma-expobeauty-8293",
+    "note": "Estimada: la 7ma edicion fue 16-17/5/2026 (sab-dom) en La Rural, Pabellon Verde. 2027 sin anunciar.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4c/Interior_view_of_modern_beauty_salon.jpg/1920px-Interior_view_of_modern_beauty_salon.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Shixart1985 / Wikimedia Commons (CC BY 2.0)"
+  },
+  {
+    "date": "2027-05-31",
+    "endDate": "2027-05-31",
+    "description": "Día del Kiosquero: un saludo a los que atienden el mostrador todos los días",
+    "title": "Día del Kiosquero",
+    "slug": "dia-kiosquero-2027",
+    "apps": [
+      "unistock"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://infokioscos.com.ar/118354/cada-31-de-mayo-celebramos-el-dia-nacional-del-kiosquero.html",
+    "note": "Personeria juridica de la UKRA (31/5/1947).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Grocery_and_butcher_shop_at_night%2C_Quebec_City.jpg/1920px-Grocery_and_butcher_shop_at_night%2C_Quebec_City.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Wilfredor / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-06-20",
+    "endDate": "2027-06-20",
+    "description": "Día del Padre: el finde de más ventas del invierno, llega con stock y turnos listos",
+    "title": "Día del Padre",
+    "slug": "dia-del-padre-2027",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://calcularsueldo.com.ar/interes-general/16229/feriados-2027-calendario-oficial-y-fines-de-semana-largos.html",
+    "note": "3er domingo de junio. Coincide con el feriado de Belgrano (20/6, domingo). Fin de semana largo 19-21/6 por Guemes trasladado al lunes 21.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/Mother_and_child_at_Campo_Grande_Garden%2C_Lisbon%2C_Portugal_%28PPL1-Corrected%29_julesvernex2.jpg/1920px-Mother_and_child_at_Campo_Grande_Garden%2C_Lisbon%2C_Portugal_%28PPL1-Corrected%29_julesvernex2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Jules Verne Times Two / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-06-23",
+    "endDate": "2027-06-26",
+    "description": "Batimat Expovivienda en La Rural: la feria de la construcción y la vivienda",
+    "title": "BATEV Batimat Expovivienda 2027",
+    "slug": "batev-batimat-2027",
+    "apps": [
+      "construction"
+    ],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://www.neventum.com/tradeshows/batimat-expovivienda",
+    "note": "Estimada: 2026 fue 24-27/6 (mie-sab) en La Rural. 2027 figura con fecha TBD; confirmar en batev.com.ar.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bd/VdA_58_chemin_des_chaumieres.jpg/1920px-VdA_58_chemin_des_chaumieres.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Velvet / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-06-24",
+    "endDate": "2027-07-25",
+    "description": "Arranca el Mundial femenino en Brasil",
+    "title": "Mundial Femenino Brasil 2027",
+    "slug": "mundial-femenino-2027",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "confirmada",
+    "enabled": false,
+    "source": "https://es.soccerway.com/noticias/futbol-mundial-femenino-el-mundial-femenino-de-brasil-2027-se-celebrara-entre-el-24-de-junio-y-el-25-de-julio/IJTIcjim",
+    "note": "Confirmado (24/6 al 25/7, final en el Maracana). Apagado: poco tiron comercial para software B2B; activar si se quiere copy deportivo.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f0/Women_heptathlon_LJ_French_Athletics_Championships_2013_t144221.jpg/1920px-Women_heptathlon_LJ_French_Athletics_Championships_2013_t144221.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Marie-Lan Nguyen / Wikimedia Commons (CC BY 3.0)"
+  },
+  {
+    "date": "2027-07-01",
+    "endDate": "2027-07-01",
+    "description": "Día del Arquitecto: un saludo a los que disenan y dirigen cada obra",
+    "title": "Día del Arquitecto",
+    "slug": "dia-del-arquitecto-2027",
+    "apps": [
+      "construction"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.diariouno.com.ar/sociedad/por-que-se-celebra-el-dia-del-arquitecto-el-1-julio-argentina-n1127831",
+    "note": "FADEA mantiene el 1/7 en Argentina (fundacion de la UIA, 1949).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bd/VdA_58_chemin_des_chaumieres.jpg/1920px-VdA_58_chemin_des_chaumieres.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Velvet / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-07-20",
+    "endDate": "2027-07-20",
+    "description": "Día del Amigo: recomenda a un colega y los dos ganan",
+    "title": "Día del Amigo",
+    "slug": "dia-del-amigo-2027",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://alihuen.org.ar/page/7",
+    "note": "Ideal para promo de referidos.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/92/Lantern_of_hope.jpg/1920px-Lantern_of_hope.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Shaheed539 / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-07-23",
+    "endDate": "2027-08-08",
+    "description": "Panamericanos de Lima: dos semanas de deporte que motivan a entrenar",
+    "title": "Juegos Panamericanos Lima 2027",
+    "slug": "panamericanos-lima-2027",
+    "apps": [
+      "gymhero",
+      "bunker",
+      "playcrew"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://forbes.pe/actualidad/2026-01-30/juegos-panamericanos-de-lima-2027-cambiaron-de-fecha-seran-del-23-de-julio-al-8-de-agosto/",
+    "note": "Panam Sports movio las fechas una semana (antes 16/7-1/8).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f0/Women_heptathlon_LJ_French_Athletics_Championships_2013_t144221.jpg/1920px-Women_heptathlon_LJ_French_Athletics_Championships_2013_t144221.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Marie-Lan Nguyen / Wikimedia Commons (CC BY 3.0)"
+  },
+  {
+    "date": "2027-07-30",
+    "endDate": "2027-08-01",
+    "description": "CrossFit Games: la final mundial del crossfit",
+    "title": "CrossFit Games 2027",
+    "slug": "crossfit-games-2027",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "estimada",
+    "enabled": false,
+    "source": "https://www.crossfit.com/sport/the-2026-crossfit-games-dates-and-location",
+    "note": "NO anunciado (fecha ni sede; se hablo de Europa). Placeholder por patron de fines de julio. Activar y corregir cuando CrossFit lo publique.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/District_Crossfit_Class_Warfare-50.jpg/1920px-District_Crossfit_Class_Warfare-50.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: ROSE PHYSICAL THERAPY GROUP (photos · photo sets) / Wikimedia Commons (CC BY 2.0)"
+  },
+  {
+    "date": "2027-08-15",
+    "endDate": "2027-08-15",
+    "description": "Día del Niño: la fecha más fuerte para kioscos, jugueterias y escuelitas",
+    "title": "Día del Niño",
+    "slug": "dia-del-nino-2027",
+    "apps": [
+      "unistock",
+      "gymhero",
+      "playcrew"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://calcularsueldo.com.ar/interes-general/16229/feriados-2027-calendario-oficial-y-fines-de-semana-largos.html",
+    "note": "3er domingo de agosto. Fin de semana largo 14-16/8 (San Martin trasladado al lunes 16).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0d/Woman_with_children_playing_in_fountain_on_Como_lakefront.jpg/1920px-Woman_with_children_playing_in_fountain_on_Como_lakefront.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Daniel Case / Wikimedia Commons (CC BY-SA 3.0)"
+  },
+  {
+    "date": "2027-08-22",
+    "endDate": "2027-08-22",
+    "description": "Media Maratón de Buenos Aires: miles de runners en la calle, momento ideal para planificar",
+    "title": "21K de Buenos Aires 2027",
+    "slug": "21k-buenos-aires-2027",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://static.buenosaires.gob.ar/sites/default/files/2026-06/LINDA%20733%20WEB%20CAMBIO.pdf",
+    "note": "Estimada: 4to domingo de agosto (2025 fue 24/8, 2026 fue 23/8). Confirmar en maratondebuenosaires.com.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/16/Berlin-Marathon_2015_Runners_14.jpg/1920px-Berlin-Marathon_2015_Runners_14.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Denis Barthel / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-08-25",
+    "endDate": "2027-08-25",
+    "description": "Día del Peluquero: un saludo a peluqueros y barberos de todo el país",
+    "title": "Día del Peluquero",
+    "slug": "dia-del-peluquero-2027",
+    "apps": [
+      "turnospro"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://billiken.lat/interesante/25-de-agosto-dia-internacional-del-peluquero/",
+    "note": "Fijado en el Congreso Nacional de Peluqueros de Pergamino, 1940.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4c/Interior_view_of_modern_beauty_salon.jpg/1920px-Interior_view_of_modern_beauty_salon.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Shixart1985 / Wikimedia Commons (CC BY 2.0)"
+  },
+  {
+    "date": "2027-09-04",
+    "endDate": "2027-09-05",
+    "description": "Expo Manos en La Rural: unas, makeup y belleza en un solo lugar",
+    "title": "Expo Manos Makeup & Beauty 2027",
+    "slug": "expo-manos-2027",
+    "apps": [
+      "turnospro"
+    ],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://www.expomanosargentina.com/",
+    "note": "Estimada: 2026 fue 5-6/9 (sab-dom) en La Rural. 2027 sin anunciar.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/DZ6_0587_A_nail_technician_carefully_files_a_customers_nails_at_a_salon_surrounded_by_color_samples_and_manicure_tools.jpg/1920px-DZ6_0587_A_nail_technician_carefully_files_a_customers_nails_at_a_salon_surrounded_by_color_samples_and_manicure_tools.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: PattayaPatrol / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-09-08",
+    "endDate": "2027-09-09",
+    "description": "Expo Franquicias en La Rural: el punto de encuentro de los que abren locales",
+    "title": "Expo Franquicias 2027",
+    "slug": "expo-franquicias-2027",
+    "apps": [
+      "unistock",
+      "gymhero",
+      "turnospro"
+    ],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://mercado.com.ar/agenda/expo-franquicias-argentina-2026-se-hara-el-9-y-10-de-septiembre-en-la-rural",
+    "note": "Estimada: 2026 fue 9-10/9, 2025 11-12/9, ambas en La Rural (AAMF). 2027 sin anunciar.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Grocery_and_butcher_shop_at_night%2C_Quebec_City.jpg/1920px-Grocery_and_butcher_shop_at_night%2C_Quebec_City.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Wilfredor / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-09-18",
+    "endDate": "2027-09-18",
+    "description": "Día Mundial del Barbero: un saludo a las barberias que no paran",
+    "title": "Día Mundial del Barbero",
+    "slug": "dia-mundial-barbero-2027",
+    "apps": [
+      "turnospro"
+    ],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://dayspedia.com/ca/calendar/holiday/5083/?lang=es",
+    "note": "3er sabado de septiembre segun calendarios agregadores; no es una fecha oficial argentina.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/96/Barber_shop%2C_Quebec_city%2C_Canada.jpg/1920px-Barber_shop%2C_Quebec_city%2C_Canada.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Wilfredor / Wikimedia Commons (CC0)"
+  },
+  {
+    "date": "2027-09-19",
+    "endDate": "2027-09-19",
+    "description": "Maratón de Buenos Aires: el día grande del running argentino",
+    "title": "Maratón de Buenos Aires 2027",
+    "slug": "maraton-buenos-aires-2027",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://static.buenosaires.gob.ar/sites/default/files/2026-06/LINDA%20733%20WEB%20CAMBIO.pdf",
+    "note": "Estimada: 3er domingo de septiembre (2026 fue 20/9). Buenos Aires es Capital Mundial del Deporte 2027. Confirmar en maratondebuenosaires.com.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/16/Berlin-Marathon_2015_Runners_14.jpg/1920px-Berlin-Marathon_2015_Runners_14.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Denis Barthel / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-09-21",
+    "endDate": "2027-09-21",
+    "description": "Día de la Cosmetóloga: un saludo a las profesionales de la estética",
+    "title": "Día de la Cosmetóloga",
+    "slug": "dia-cosmetologa-2027",
+    "apps": [
+      "turnospro"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://misionesonline.net/2017/09/21/hoy-se-celebra-dia-la-cosmetologa/",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/DZ6_0587_A_nail_technician_carefully_files_a_customers_nails_at_a_salon_surrounded_by_color_samples_and_manicure_tools.jpg/1920px-DZ6_0587_A_nail_technician_carefully_files_a_customers_nails_at_a_salon_surrounded_by_color_samples_and_manicure_tools.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: PattayaPatrol / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-09-21",
+    "endDate": "2027-09-21",
+    "description": "Llega la primavera: temporada alta para arrancar con todo",
+    "title": "Primavera",
+    "slug": "primavera-2027",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.primeraedicion.com.ar/nota/100499974/21-de-septiembre-el-dia-en-el-que-casi-todos-tienen-motivos-para-festejar/",
+    "note": "Tambien Dia del Estudiante. Pico de altas en gimnasios y estetica pre-verano.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/25/Spring_flowers_in_Hagley_Park%2C_Christchurch%2C_New_Zealand_10.jpg/1920px-Spring_flowers_in_Hagley_Park%2C_Christchurch%2C_New_Zealand_10.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Michal Klajban / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-09-26",
+    "endDate": "2027-09-26",
+    "description": "Día del Empleado de Comercio: un saludo a los que atienden cada venta",
+    "title": "Día del Empleado de Comercio",
+    "slug": "dia-empleado-comercio-2027",
+    "apps": [
+      "unistock"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://siap.blogdelcontador.com.ar/normativa/ley-26541/",
+    "note": "Ley 26.541. En 2027 cae domingo; FAECyS y las camaras suelen pasar el asueto a un lunes cercano (probablemente 27/9): confirmar.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Grocery_and_butcher_shop_at_night%2C_Quebec_City.jpg/1920px-Grocery_and_butcher_shop_at_night%2C_Quebec_City.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Wilfredor / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-10-04",
+    "endDate": "2027-10-04",
+    "description": "Día Mundial de la Arquitectura: buen momento para ordenar los proyectos del estudio",
+    "title": "Día Mundial de la Arquitectura",
+    "slug": "dia-mundial-arquitectura-2027",
+    "apps": [
+      "construction"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.losandes.com.ar/mundo-club-house/por-que-el-1-de-julio-es-el-dia-del-arquitecto-en-argentina",
+    "note": "UIA: primer lunes de octubre (Dia Mundial del Habitat).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bd/VdA_58_chemin_des_chaumieres.jpg/1920px-VdA_58_chemin_des_chaumieres.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Velvet / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-10-08",
+    "endDate": "2027-10-08",
+    "description": "Día del Profe de Educación Física: un saludo a entrenadores y coaches",
+    "title": "Día del Profesor de Educación Física",
+    "slug": "dia-profesor-educacion-fisica-2027",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.cronica.com.ar/sociedad/Dia-del-Profesor-de-Educacion-Fisica-desde-cuando-y-por-que-se-conmemora-cada-8-de-octubre-20221008-0171.html",
+    "note": "Lo mas cercano a un Dia del Entrenador en Argentina; no encontre un Dia del Entrenador Personal oficial.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1d/Tired_blonde_woman_in_the_gym._End_of_training.jpg/1920px-Tired_blonde_woman_in_the_gym._End_of_training.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Nenad Stojkovic / Wikimedia Commons (CC BY 2.0)"
+  },
+  {
+    "date": "2027-10-17",
+    "endDate": "2027-10-17",
+    "description": "Día de la Madre: la fecha de más ventas de octubre, llega con stock y agenda llena",
+    "title": "Día de la Madre",
+    "slug": "dia-de-la-madre-2027",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://calcularsueldo.com.ar/interes-general/16229/feriados-2027-calendario-oficial-y-fines-de-semana-largos.html",
+    "note": "3er domingo de octubre (fecha comercial, no feriado).",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/Flower-bouquet-wild-flowers-Sitia-Crete-Greece.jpg/1920px-Flower-bouquet-wild-flowers-Sitia-Crete-Greece.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Petro Stelte / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-10-30",
+    "endDate": "2027-10-30",
+    "description": "Día de la Educación Física: un mimo para los que viven del movimiento",
+    "title": "Día de la Educación Física",
+    "slug": "dia-educacion-fisica-2027",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://billiken.lat/interesante/30-de-octubre-dia-de-la-educacion-fisica/",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1d/Tired_blonde_woman_in_the_gym._End_of_training.jpg/1920px-Tired_blonde_woman_in_the_gym._End_of_training.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Nenad Stojkovic / Wikimedia Commons (CC BY 2.0)"
+  },
+  {
+    "date": "2027-11-01",
+    "endDate": "2027-11-03",
+    "description": "Cyber Monday: tres días de descuentos online en todo el país",
+    "title": "Cyber Monday 2027",
+    "slug": "cyber-monday-2027",
+    "apps": [],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://www.cybermonday.com.ar/",
+    "note": "NO anunciado. Estimado por patron CACE: primer lunes de noviembre, 3 dias (2026 fue 2-4/11). Confirmar ~agosto 2027.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c4/Backlit_keyboard.jpg/1920px-Backlit_keyboard.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Colin / Wikimedia Commons (CC BY-SA 4.0)"
+  },
+  {
+    "date": "2027-11-05",
+    "endDate": "2027-11-07",
+    "description": "SouthFit Challenge: la final del crossfit latino en Buenos Aires",
+    "title": "SouthFit Challenge 2027",
+    "slug": "southfit-challenge-2027",
+    "apps": [
+      "gymhero",
+      "bunker"
+    ],
+    "confidence": "estimada",
+    "enabled": true,
+    "source": "https://www.allaccess.com.ar/event/atomik-southfit-challenge-2026",
+    "note": "Estimada: ediciones recientes a fines de oct / principios de nov (2023: 27-29/10 La Rural; 2026: 6-8/11). Confirmar con la organizacion.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/District_Crossfit_Class_Warfare-50.jpg/1920px-District_Crossfit_Class_Warfare-50.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: ROSE PHYSICAL THERAPY GROUP (photos · photo sets) / Wikimedia Commons (CC BY 2.0)"
+  },
+  {
+    "date": "2027-11-17",
+    "endDate": "2027-11-17",
+    "description": "Día de la Construcción: para los que levantan obras todos los días",
+    "title": "Día de la Construcción",
+    "slug": "dia-construccion-2027",
+    "apps": [
+      "construction"
+    ],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.ellitoral.com/informacion-general/dia-construccion_0_tDy5FVjqYh.amp.html",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/ba/QV_Building_construction_site%2C_Melbourne_-_March_2002.jpg/1920px-QV_Building_construction_site%2C_Melbourne_-_March_2002.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Diliff / Wikimedia Commons (CC BY 3.0)"
+  },
+  {
+    "date": "2027-11-26",
+    "endDate": "2027-11-28",
+    "description": "Black Friday: el finde de ofertas más grande de noviembre",
+    "title": "Black Friday 2027",
+    "slug": "black-friday-2027",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://www.universal-assistance.com/uablog/cuando-es-el-black-friday/",
+    "note": "Viernes siguiente al 4to jueves de noviembre (Thanksgiving 25/11/2027). Fecha por regla fija.",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a2/Fashionable_Woman_%28Unsplash%29.jpg/1920px-Fashionable_Woman_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: freestocks.org freestocks / Wikimedia Commons (CC0)"
+  },
+  {
+    "date": "2027-12-25",
+    "endDate": "2027-12-25",
+    "description": "Navidad: cerra diciembre con tu negocio ordenado y arranca enero sin papeles",
+    "title": "Navidad",
+    "slug": "navidad-2027",
+    "apps": [],
+    "confidence": "confirmada",
+    "enabled": true,
+    "source": "https://calcularsueldo.com.ar/interes-general/16229/feriados-2027-calendario-oficial-y-fines-de-semana-largos.html",
+    "imageSourceUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/97/Viborg_Christmas_street_illumination_2010-11-30.jpg/1920px-Viborg_Christmas_street_illumination_2010-11-30.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "imageCredit": "Foto: Kim Hansen / Wikimedia Commons (CC BY-SA 3.0)"
+  }
+]

@@ -39,6 +39,7 @@ import Inspiracion from './Inspiracion';
 import Competitors from './Competitors';
 import Trends from './Trends';
 import Anuncios from './Anuncios';
+import Promos from './Promos';
 
 /** CRM de cold calling: pipeline, lista, mapa, captación y remarketing. */
 export function CrmHub() {
@@ -150,6 +151,7 @@ export function MarketingHub() {
             ]} />
           ),
         },
+        { key: 'promos', label: 'Promos', element: <Promos /> },
         { key: 'anuncios', label: 'Anuncios', element: <Anuncios /> },
         { key: 'seo', label: 'SEO', element: <Seo /> },
         {

@@ -7,6 +7,7 @@
   <ItemGroup>
     <!-- Diccionario de tipos de mensaje (docs/conversaciones/v2/build_dict.py): semilla de reply_intents. -->
     <EmbeddedResource Include="Resources\intent-dictionary.json" LogicalName="intent-dictionary.json" />
+    <EmbeddedResource Include="Resources\promo-calendar.json" LogicalName="promo-calendar.json" />
   </ItemGroup>
 
   <ItemGroup>

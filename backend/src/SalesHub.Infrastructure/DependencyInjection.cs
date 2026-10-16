@@ -112,6 +112,10 @@ public static class DependencyInjection
         // MRR / pagos / churn por app (tab Negocio del Dashboard).
         services.AddHttpClient<TenantMetricsService>();
 
+        // Promos por calendario: cupón + landing en cada app + posteos (docs/promo-calendar).
+        services.AddHttpClient("promos");
+        services.AddScoped<Services.Promos.PromoEngine>();
+
         // Notifica al producto el cambio de estado de venta (status-back).
         services.AddHttpClient<ProductStatusNotifier>();
         services.AddScoped<IProductStatusNotifier>(sp => sp.GetRequiredService<ProductStatusNotifier>());

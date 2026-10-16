@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
+using SalesHub.Core.Domain.Entities.Promos;
 using SalesHub.Core.Domain.Entities.Social;
 using SalesHub.Infrastructure.Persistence;
+using SalesHub.Infrastructure.Services.Promos;
 using SalesHub.Infrastructure.Services.Social;
 
 namespace SalesHub.Workers;
@@ -180,6 +182,30 @@ public class SocialContentWorker : BackgroundService
             .Select(t => t.Text).FirstOrDefaultAsync(ct);
         var hint = string.IsNullOrWhiteSpace(theme) ? null
             : $"Enganchá el posteo con el tema/actualidad del día (con naturalidad, sin forzar): {theme}";
+
+        // Promo del calendario (PromoEngine): con una campaña Live para esta app, el primer posteo
+        // del día de cada red es el anuncio de la promo (código + % + "link en bio").
+        try
+        {
+            var nowUtc = DateTimeOffset.UtcNow;
+            var promo = await db.PromoCampaigns.AsNoTracking().Include(c => c.Event)
+                .Where(c => c.ProductKey == profile.ProductKey && c.Status == PromoCampaignStatus.Live
+                         && c.StartsAt <= nowUtc && c.EndsAt > nowUtc)
+                .OrderByDescending(c => c.StartsAt)
+                .FirstOrDefaultAsync(ct);
+            if (promo?.Event != null)
+            {
+                var dayStart = PromoEngine.ArStart(PromoEngine.TodayAr());
+                var promoToday = await db.SocialPosts.AnyAsync(s => s.ProductKey == profile.ProductKey
+                    && s.Platform == channel.Platform && s.PostType == ContentTypes.Promo.Key && s.CreatedAt >= dayStart, ct);
+                if (!promoToday)
+                {
+                    type = ContentTypes.Promo;
+                    hint = PromoEngine.PostHint(promo.Event, promo);
+                }
+            }
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "No pude chequear promo activa para {P}", profile.ProductKey); }
 
         // (B) Estilo de gancho: rota el arranque del caption para que no salgan todos con
         // la misma pregunta retórica.
