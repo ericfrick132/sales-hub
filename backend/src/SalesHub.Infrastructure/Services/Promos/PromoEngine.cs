@@ -145,6 +145,20 @@ public class PromoEngine
             }
         }
 
+        // 2b) Campañas que salieron con el copy de respaldo (Claude caído / sin crédito, sin bullets):
+        // cuando Claude vuelve, se regenera el copy y se re-empuja a la app.
+        if (_claude.IsConfigured && !_claude.IsPaused)
+        {
+            var bare = await _db.PromoCampaigns.Include(c => c.Event)
+                .Where(c => c.Status == PromoCampaignStatus.Live && c.EndsAt > nowUtc && c.Bullets.Count == 0)
+                .Take(6).ToListAsync(ct);
+            foreach (var c in bare.Where(c => c.Event != null))
+            {
+                c.Headline = "";
+                await LaunchAsync(c.Event!, c.ProductKey, bases, ct, startsNow: c.StartsAt <= nowUtc);
+            }
+        }
+
         // 3) Siempre hay promo: si una app quedó sin campaña vigente, se adelanta la PRÓXIMA fecha
         // de su calendario y arranca ya (así el link fijo de la bio nunca cae en la home).
         var liveApps = await _db.PromoCampaigns.AsNoTracking()
