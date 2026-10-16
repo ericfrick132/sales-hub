@@ -162,14 +162,8 @@ public class MetaAdsSyncService
     {
         var parts = ad.Name.Split(" - ", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return;
-        var app = Slug(parts[0]);
-        if (app.Length == 0) return;
-        // "PlayCrew B2B" → playcrew: exacto primero, si no el nombre del anuncio que EMPIEZA con la app.
-        var match = products.Where(p => Slug(p.Key) == app || Slug(p.Display) == app)
-            .Concat(products.Where(p => (Slug(p.Display).Length > 2 && app.StartsWith(Slug(p.Display)))
-                                     || (Slug(p.Key).Length > 2 && app.StartsWith(Slug(p.Key)))))
-            .Select(p => p.Key).FirstOrDefault();
-        ad.ProductKey = match;
+        if (Slug(parts[0]).Length == 0) return;
+        ad.ProductKey = ProductFromName(ad.Name, products);
         if (parts.Length >= 3)
         {
             ad.Rubro = Trunc(Slug(parts[1]), 80);
@@ -178,6 +172,23 @@ public class MetaAdsSyncService
                      : angle.StartsWith("antes") ? "antes-despues"
                      : Trunc(angle, 80);
         }
+    }
+
+    /// <summary>
+    /// App de un anuncio/campaña por su nombre ("GymHero - Personas (CTWA)", "PlayCrew B2B - …"):
+    /// lo de antes del primer " - " contra ProductKey/DisplayName; exacto primero, si no el que EMPIEZA con la app.
+    /// </summary>
+    public static string? ProductFromName(string? name, IReadOnlyList<(string Key, string Display)> products)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var parts = name.Split(" - ", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return null;
+        var app = Slug(parts[0]);
+        if (app.Length == 0) return null;
+        return products.Where(p => Slug(p.Key) == app || Slug(p.Display) == app)
+            .Concat(products.Where(p => (Slug(p.Display).Length > 2 && app.StartsWith(Slug(p.Display)))
+                                     || (Slug(p.Key).Length > 2 && app.StartsWith(Slug(p.Key)))))
+            .Select(p => p.Key).FirstOrDefault();
     }
 
     /// <summary>"Hola! Tengo una barbería y quiero…" → "la barberia". Sin artículo ("Tengo canchas de fútbol") → null.</summary>

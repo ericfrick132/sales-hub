@@ -105,6 +105,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<OnboardingAudio> OnboardingAudios => Set<OnboardingAudio>();
     public DbSet<Pitch> Pitches => Set<Pitch>();
     public DbSet<MetaAd> MetaAds => Set<MetaAd>();
+    /// <summary>Rendimiento diario de cada anuncio por provincia (mapa de anuncios, MetaGeoSyncService).</summary>
+    public DbSet<MetaGeoDaily> MetaGeoDaily => Set<MetaGeoDaily>();
     public DbSet<LeadPitchState> LeadPitchStates => Set<LeadPitchState>();
     public DbSet<ConversationFeedback> ConversationFeedbacks => Set<ConversationFeedback>();
     public DbSet<AppTenant> AppTenants => Set<AppTenant>();

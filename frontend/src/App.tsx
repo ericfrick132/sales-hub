@@ -86,6 +86,7 @@ export default function App() {
             <Route path="/warmr" element={<GoTab to="/marketing" view="posteos" sub="warmr" />} />
             <Route path="/seo" element={<GoTab to="/marketing" view="seo" />} />
             <Route path="/anuncios" element={<GoTab to="/marketing" view="anuncios" />} />
+            <Route path="/anuncios/mapa" element={<GoTab to="/marketing" view="mapa-anuncios" />} />
             <Route path="/instagram/accounts" element={<GoTab to="/marketing" view="instagram" sub="cuentas" />} />
             <Route path="/instagram/follow" element={<GoTab to="/marketing" view="instagram" sub="follow" />} />
             <Route path="/inspiracion" element={<GoTab to="/marketing" view="competencia" sub="inspiracion" />} />

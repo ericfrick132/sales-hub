@@ -2613,6 +2613,141 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("meta_ads", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.MetaGeoDaily", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("AdId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("ad_id");
+
+                    b.Property<string>("AdName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("ad_name");
+
+                    b.Property<string>("AdsetId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("adset_id");
+
+                    b.Property<string>("AdsetName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("adset_name");
+
+                    b.Property<string>("CampaignId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("campaign_id");
+
+                    b.Property<string>("CampaignName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("campaign_name");
+
+                    b.Property<long>("Clicks")
+                        .HasColumnType("bigint")
+                        .HasColumnName("clicks");
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("country");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("date");
+
+                    b.Property<long>("Depth2")
+                        .HasColumnType("bigint")
+                        .HasColumnName("depth2");
+
+                    b.Property<long>("Depth3")
+                        .HasColumnType("bigint")
+                        .HasColumnName("depth3");
+
+                    b.Property<long>("FirstReplies")
+                        .HasColumnType("bigint")
+                        .HasColumnName("first_replies");
+
+                    b.Property<long>("Impressions")
+                        .HasColumnType("bigint")
+                        .HasColumnName("impressions");
+
+                    b.Property<long>("LinkClicks")
+                        .HasColumnType("bigint")
+                        .HasColumnName("link_clicks");
+
+                    b.Property<long>("MessagingConnections")
+                        .HasColumnType("bigint")
+                        .HasColumnName("messaging_connections");
+
+                    b.Property<string>("ProductKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<long>("Reach")
+                        .HasColumnType("bigint")
+                        .HasColumnName("reach");
+
+                    b.Property<string>("Region")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("region");
+
+                    b.Property<decimal>("Spend")
+                        .HasPrecision(14, 4)
+                        .HasColumnType("numeric(14,4)")
+                        .HasColumnName("spend");
+
+                    b.Property<DateTimeOffset>("SyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at");
+
+                    b.Property<long>("UniqueClicks")
+                        .HasColumnType("bigint")
+                        .HasColumnName("unique_clicks");
+
+                    b.Property<long>("VideoViews3s")
+                        .HasColumnType("bigint")
+                        .HasColumnName("video_views3s");
+
+                    b.HasKey("Id")
+                        .HasName("pk_meta_geo_daily");
+
+                    b.HasIndex("ProductKey")
+                        .HasDatabaseName("ix_meta_geo_daily_product_key");
+
+                    b.HasIndex("AccountId", "Date")
+                        .HasDatabaseName("ix_meta_geo_daily_account_id_date");
+
+                    b.HasIndex("Date", "AdId", "Region")
+                        .IsUnique()
+                        .HasDatabaseName("ix_meta_geo_daily_date_ad_id_region");
+
+                    b.ToTable("meta_geo_daily", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.OnboardingAudio", b =>
                 {
                     b.Property<Guid>("Id")

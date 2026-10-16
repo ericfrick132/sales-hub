@@ -31,3 +31,13 @@
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
   }
 }
+
+/* Tooltip del mapa de anuncios por provincia (Marketing → Mapa de anuncios). */
+.ads-map-tip {
+  @apply rounded-md border border-slate-200 shadow-md text-slate-700;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+  min-width: 13rem;
+}
