@@ -8,6 +8,8 @@ export type AuthUser = {
   email: string;
   role: 'Admin' | 'Seller';
   verticalsWhitelist: string[];
+  /** Sin acceso a los chats (se oculta del menú; la API devuelve 403). */
+  noChats?: boolean;
 };
 
 type State = {

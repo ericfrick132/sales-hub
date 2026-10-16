@@ -89,3 +89,4 @@ public record UpdateSellerRequest(
     bool? AutoArchiveChats = null);
 
 public record ToggleSendingRequest(bool Enabled);
+public record ChatAccessRequest(bool Enabled);

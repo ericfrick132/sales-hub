@@ -13,4 +13,10 @@ public static class RuntimeFlagExtensions
         var flag = await db.RuntimeFlags.AsNoTracking().FirstOrDefaultAsync(f => f.Key == key, ct);
         return flag?.Enabled ?? fallback;
     }
+
+    /// <summary>Fila de RuntimeFlags que le saca los chats a un vendedor (Enabled=true = sin acceso).</summary>
+    public static string NoChatsKey(Guid sellerId) => $"no-chats:{sellerId}";
+
+    public static Task<bool> HasNoChatsAsync(this ApplicationDbContext db, Guid sellerId, CancellationToken ct = default)
+        => db.IsFlagOnAsync(NoChatsKey(sellerId), false, ct);
 }

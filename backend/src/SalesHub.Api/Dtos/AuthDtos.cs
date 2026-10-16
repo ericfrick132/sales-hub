@@ -10,4 +10,5 @@ public record AuthResponse(
     string DisplayName,
     string Email,
     string Role,
-    List<string> VerticalsWhitelist);
+    List<string> VerticalsWhitelist,
+    bool NoChats = false);

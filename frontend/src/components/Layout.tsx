@@ -15,7 +15,7 @@ export default function Layout() {
 
   const unread = useQuery({
     queryKey: ['unread-count'],
-    enabled: !!user,
+    enabled: !!user && !user.noChats,
     queryFn: async () => (await api.get<{ count: number }>('/conversations/unread-count')).data.count,
     refetchInterval: 20000
   });
@@ -66,7 +66,7 @@ export default function Layout() {
         </button>
       </div>
       <nav className="flex-1 py-3 space-y-1 px-3 overflow-y-auto">
-        {items.map((l) => <NavRow key={l.to} item={l} pathname={pathname} />)}
+        {items.filter((l) => !(user.noChats && l.to === '/conversations')).map((l) => <NavRow key={l.to} item={l} pathname={pathname} />)}
       </nav>
       <Link to="/manual" className="mx-3 text-xs text-slate-400 hover:text-white px-3 py-1">
         Manual

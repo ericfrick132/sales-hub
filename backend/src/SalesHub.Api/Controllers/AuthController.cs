@@ -35,7 +35,7 @@ public class AuthController : ControllerBase
         seller.LastLoginAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return new AuthResponse(_jwt.Issue(seller), seller.Id, seller.SellerKey, seller.DisplayName,
-            seller.Email, seller.Role.ToString(), seller.VerticalsWhitelist);
+            seller.Email, seller.Role.ToString(), seller.VerticalsWhitelist, await _db.HasNoChatsAsync(seller.Id, ct));
     }
 
     [HttpPost("google")]
@@ -58,7 +58,7 @@ public class AuthController : ControllerBase
         await _db.SaveChangesAsync(ct);
 
         return new AuthResponse(_jwt.Issue(seller), seller.Id, seller.SellerKey, seller.DisplayName,
-            seller.Email, seller.Role.ToString(), seller.VerticalsWhitelist);
+            seller.Email, seller.Role.ToString(), seller.VerticalsWhitelist, await _db.HasNoChatsAsync(seller.Id, ct));
     }
 
     [HttpGet("me")]
@@ -69,7 +69,7 @@ public class AuthController : ControllerBase
         var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == id, ct);
         if (seller is null) return NotFound();
         return new AuthResponse("", seller.Id, seller.SellerKey, seller.DisplayName, seller.Email,
-            seller.Role.ToString(), seller.VerticalsWhitelist);
+            seller.Role.ToString(), seller.VerticalsWhitelist, await _db.HasNoChatsAsync(seller.Id, ct));
     }
 }
 

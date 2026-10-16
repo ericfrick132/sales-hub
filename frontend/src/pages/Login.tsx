@@ -20,7 +20,7 @@ export default function Login() {
       setAuth(data.accessToken, {
         sellerId: data.sellerId, sellerKey: data.sellerKey,
         displayName: data.displayName, email: data.email,
-        role: data.role, verticalsWhitelist: data.verticalsWhitelist ?? []
+        role: data.role, verticalsWhitelist: data.verticalsWhitelist ?? [], noChats: !!data.noChats
       });
       toast.success(`Hola ${data.displayName}`);
       nav('/', { replace: true });
@@ -38,7 +38,7 @@ export default function Login() {
       setAuth(data.accessToken, {
         sellerId: data.sellerId, sellerKey: data.sellerKey,
         displayName: data.displayName, email: data.email,
-        role: data.role, verticalsWhitelist: data.verticalsWhitelist ?? []
+        role: data.role, verticalsWhitelist: data.verticalsWhitelist ?? [], noChats: !!data.noChats
       });
       toast.success(`Hola ${data.displayName}`);
       nav('/', { replace: true });

@@ -12,6 +12,7 @@ namespace SalesHub.Api.Controllers;
 [ApiController]
 [Route("api/conversations")]
 [Authorize]
+[TypeFilter(typeof(SalesHub.Api.Auth.BlockNoChatsFilter))]
 public class ConversationsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;

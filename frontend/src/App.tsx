@@ -38,7 +38,7 @@ export default function App() {
         <Route path="/dashboard" element={<MyDashboard />} />
         <Route path="/crm" element={<CrmHub />} />
         <Route path="/leads/:id" element={<LeadDetail />} />
-        <Route path="/conversations" element={<Conversations />} />
+        <Route path="/conversations" element={user.noChats ? <Navigate to="/" replace /> : <Conversations />} />
         <Route path="/manual" element={<Manual />} />
         {/* El vendedor conecta su línea acá; el admin la ve dentro de Dispositivos. */}
         <Route path="/connect" element={admin ? <GoTab to="/devices" view="mi-linea" /> : <Connect />} />

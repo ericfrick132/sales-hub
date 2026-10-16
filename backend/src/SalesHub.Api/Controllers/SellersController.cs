@@ -181,6 +181,21 @@ public class SellersController : ControllerBase
     /// A quién le pasa este vendedor los leads que lleva a demo (ej. la cold caller → el que da
     /// las demos). SellerId=null lo quita: se queda con sus demos.
     /// </summary>
+    /// <summary>Saca (Enabled=false) o devuelve (true) el acceso a los chats de un vendedor o admin.</summary>
+    [HttpPut("{id:guid}/chat-access")]
+    public async Task<IActionResult> SetChatAccess(Guid id, [FromBody] ChatAccessRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        if (!await _db.Sellers.AnyAsync(s => s.Id == id, ct)) return NotFound();
+        var key = RuntimeFlagExtensions.NoChatsKey(id);
+        var row = await _db.RuntimeFlags.FirstOrDefaultAsync(f => f.Key == key, ct);
+        if (row is null) { row = new RuntimeFlag { Key = key }; _db.RuntimeFlags.Add(row); }
+        row.Enabled = !req.Enabled;
+        row.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { sellerId = id, chatAccess = req.Enabled });
+    }
+
     [HttpPut("{id:guid}/demo-handoff")]
     public async Task<ActionResult<SellerDto>> SetDemoHandoff(Guid id, [FromBody] DemoHandoffRequest req, CancellationToken ct)
     {
