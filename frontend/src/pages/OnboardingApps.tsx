@@ -288,8 +288,8 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
             </label>
             <label className="space-y-0.5 sm:col-span-3">
               <div className="text-slate-600">
-                Pregunta antes de la demo (opcional). Vacío = recomendado: el bot manda la demo directo después del pitch,
-                sin pedir permiso, y sigue con la pregunta del cierre.
+                Pregunta antes de la demo ("te paso el link?"): el link va si dice que sí, y si no contesta va igual con el
+                seguimiento. Vacío = el bot manda la demo directo después del pitch y sigue con la pregunta del cierre.
               </div>
               <input className="input w-full" value={form.demoOffer ?? ''}
                 placeholder="te interesa ver una demo?"
@@ -301,6 +301,23 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
                 placeholder="mira, aca lo podes ver andando[NUEVO_MENSAJE]https://turnos-pro.com/demo-app"
                 onChange={(e) => setForm((f) => ({ ...f, demoLink: e.target.value }))} />
             </label>
+            {[0, 1].map((i) => (
+              <label key={i} className="space-y-0.5 sm:col-span-3">
+                <div className="text-slate-600">
+                  {i === 0
+                    ? 'Seguimiento si no contesta (a las 3 h): re-saludo como si nada, con un gancho. Si contesta, sigue la persona. Admite {nombre} y {a|b}. Vacío = sin seguimiento.'
+                    : '2º seguimiento (24 h después del 1º). Vacío = solo uno.'}
+                </div>
+                <textarea className="input w-full h-16" value={form.followUpMessages?.[i] ?? ''}
+                  placeholder={i === 0 ? 'hola {nombre}! como va?[NUEVO_MENSAJE]este mes tenemos una promo para los que arrancan, queres que te cuente?' : 'buenas {nombre}! la promo de este mes sigue en pie, si queres te cuento como es'}
+                  onChange={(e) => setForm((f) => {
+                    const arr = [...(f.followUpMessages ?? [])];
+                    while (arr.length < 2) arr.push('');
+                    arr[i] = e.target.value;
+                    return { ...f, followUpMessages: arr };
+                  })} />
+              </label>
+            ))}
             <label className="space-y-0.5 sm:col-span-3">
               <div className="text-slate-600">Pregunta del cierre (después de los precios o de la demo)</div>
               <input className="input w-full" value={form.startQuestion ?? ''}

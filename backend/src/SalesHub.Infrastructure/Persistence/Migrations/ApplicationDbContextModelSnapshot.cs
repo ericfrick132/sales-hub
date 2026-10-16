@@ -2716,6 +2716,13 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("first_steps_message");
 
+                    b.Property<List<string>>("FollowUpMessages")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("follow_up_messages")
+                        .HasDefaultValueSql("'{}'");
+
                     b.Property<int>("HandoffAfterQuestions")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")

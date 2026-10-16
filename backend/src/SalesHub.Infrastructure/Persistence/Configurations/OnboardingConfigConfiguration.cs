@@ -22,6 +22,7 @@ public class OnboardingConfigConfiguration : IEntityTypeConfiguration<Onboarding
         // Default explícito: ADD COLUMN NOT NULL de un array sin default revienta con 23502
         // si la tabla tiene filas (nos pasó con reengage_media_asset_ids, 2026-07-20).
         b.Property(x => x.ReengageMediaCaptions).HasDefaultValueSql("'{}'");
+        b.Property(x => x.FollowUpMessages).HasDefaultValueSql("'{}'");
         b.Property(x => x.KnownBusinessQuestion).HasDefaultValue(string.Empty);
         b.Property(x => x.KnownBusinessGreeting).HasDefaultValue(string.Empty);
         b.Property(x => x.PricesMessage).HasDefaultValue(string.Empty);

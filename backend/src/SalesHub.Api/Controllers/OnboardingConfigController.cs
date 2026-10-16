@@ -35,7 +35,8 @@ public class OnboardingConfigController : ControllerBase
         string? KnownBusinessQuestion = null, List<AnglePitch>? AnglePitches = null,
         // Saludo con lo que dijo el anuncio y paso de precios (ver OnboardingConfig). null = no tocar.
         string? KnownBusinessGreeting = null, string? PricesMessage = null, List<Guid>? PricesMediaAssetIds = null,
-        string? StartQuestion = null, string? DemoOffer = null, string? DemoLink = null);
+        string? StartQuestion = null, string? DemoOffer = null, string? DemoLink = null,
+        List<string>? FollowUpMessages = null);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -63,7 +64,7 @@ public class OnboardingConfigController : ControllerBase
                 c?.PresentAs ?? "", c?.HandoffMessage ?? "", c?.DemoEventTypeUri ?? "", c?.DemoPitch ?? "",
                 c?.KnownBusinessQuestion ?? "", c?.AnglePitches ?? new(),
                 c?.KnownBusinessGreeting ?? "", c?.PricesMessage ?? "", c?.PricesMediaAssetIds ?? new(), c?.StartQuestion ?? "",
-                c?.DemoOffer ?? "", c?.DemoLink ?? "");
+                c?.DemoOffer ?? "", c?.DemoLink ?? "", c?.FollowUpMessages ?? new());
         });
         return Ok(result);
     }
@@ -119,6 +120,8 @@ public class OnboardingConfigController : ControllerBase
         if (dto.PricesMessage is not null) c.PricesMessage = dto.PricesMessage.Trim();
         if (dto.PricesMediaAssetIds is not null) c.PricesMediaAssetIds = dto.PricesMediaAssetIds.Where(g => g != Guid.Empty).ToList();
         if (dto.StartQuestion is not null) c.StartQuestion = dto.StartQuestion.Trim();
+        if (dto.FollowUpMessages is not null)
+            c.FollowUpMessages = dto.FollowUpMessages.Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim()).ToList();
         if (dto.DemoOffer is not null) c.DemoOffer = dto.DemoOffer.Trim();
         if (dto.DemoLink is not null) c.DemoLink = dto.DemoLink.Trim();
         if (dto.AnglePitches is not null)

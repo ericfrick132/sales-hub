@@ -462,6 +462,8 @@ export interface OnboardingAppConfig {
   /** Demo después del pitch: la pregunta ("te interesa ver una demo?") y lo que manda si dice que sí (el link). */
   demoOffer?: string;
   demoLink?: string;
+  /** Seguimiento si se queda callado: [0] a las ~3 h, [1] a las ~24 h. Re-saludo con gancho; si contesta va a la persona. */
+  followUpMessages?: string[];
 }
 
 export interface AnglePitch {

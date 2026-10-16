@@ -1042,9 +1042,9 @@ public class ConversationAgentService
     }
 
     /// <summary>
-    /// Pre-calificación: el lead se quedó callado en un paso del guion → seguimiento sin IA según el paso
-    /// (pregunta pendiente, link de la demo, "para cuando"). El 1º a las 3 h de nuestro último mensaje, el
-    /// 2º a las 24 h; máx. 2 por paso. Solo de 9 a 21 h de Argentina y charlas de menos de 5 días.
+    /// Pre-calificación: el lead se quedó callado en un paso del guion → re-saludo de seguimiento sin IA
+    /// (FollowUpMessages de la app). El 1º a las 3 h de nuestro último mensaje, el 2º a las 24 h del 1º.
+    /// Solo de 9 a 21 h de Argentina y charlas de menos de 5 días.
     /// </summary>
     private async Task<int> FollowUpStalledStagesAsync(CancellationToken ct)
     {
@@ -1065,11 +1065,11 @@ public class ConversationAgentService
             where l.SellerId != null && l.BotMutedAt == null && l.Seller!.BotPausedAt == null
                 && l.Product != null && keys.Contains(l.Product.ProductKey)
                 && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
-                    || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk)
-                && !(o.FollowUpStep == o.Step && o.FollowUpCount >= 2)
+                    || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
+                    || (o.Step == OnboardingService.StepAwaitFollowUpReply && o.FollowUpCount < 2))
             let last = _db.ConversationMessages.Where(m => m.LeadId == l.Id).OrderByDescending(m => m.Timestamp).FirstOrDefault()
             where last != null && last.Direction == MessageDirection.Outbound && last.Timestamp > tooOld
-                && last.Timestamp < (o.FollowUpStep == o.Step && o.FollowUpCount >= 1 ? secondAfter : firstAfter)
+                && last.Timestamp < (o.Step == OnboardingService.StepAwaitFollowUpReply ? secondAfter : firstAfter)
             select l.Id
         ).Take(BatchSize).ToListAsync(ct);
 
@@ -1112,7 +1112,8 @@ public class ConversationAgentService
                 && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
                 && !(l.Product != null && prequalKeys.Contains(l.Product.ProductKey) && _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
                     && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
-                        || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk)))
+                        || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
+                        || o.Step == OnboardingService.StepAwaitFollowUpReply)))
                 && l.FirstReplyAt != null
                 && (l.Status == LeadStatus.Replied || l.Status == LeadStatus.Interested)
                 && l.AiSuggestedReply == null
@@ -1143,7 +1144,8 @@ public class ConversationAgentService
                 && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
                 && !(l.Product != null && prequalKeys.Contains(l.Product.ProductKey) && _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
                     && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
-                        || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk)))
+                        || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
+                        || o.Step == OnboardingService.StepAwaitFollowUpReply)))
                 && l.FirstReplyAt == null
                 && l.Status == LeadStatus.Sent
                 // Solo leads CALIENTES (anuncios/forms/app-fed, source >= 400): a los scrapeados

@@ -62,6 +62,9 @@ public class OnboardingService
     /// <summary>El pitch cerró con "te interesa ver una demo?": sí → link + cierre (StepAwaitStart); otra cosa → la persona.</summary>
     public const int StepAwaitDemoLink = -33;
 
+    /// <summary>Se quedó callado y le mandamos el re-saludo de seguimiento (FollowUpStep = dónde había quedado). Contesta → la persona.</summary>
+    public const int StepAwaitFollowUpReply = -34;
+
 
     /// <summary>En el saludo pregunta qué es / cómo funciona (y no el precio): eso lo contesta el pitch, no hace falta la persona.</summary>
     private static readonly Regex ExplainRx = new(
@@ -253,59 +256,24 @@ public class OnboardingService
         step is >= 1 and <= 10 or StepAwaitDemoLink or StepAwaitStart or StepAwaitPricesOk;
 
     /// <summary>
-    /// Seguimiento sin IA según DÓNDE se quedó la charla (el paso del guion), no según el texto.
-    /// Máx. 2 por paso; si el lead avanza, arranca de cero. Null = no toca (todavía no, o ya se le
-    /// insistió lo suficiente). Mensajes cortos, uno o dos: nada de volver a mandar el pitch.
+    /// Seguimiento sin IA al lead que se quedó callado en la pre-calificación: un re-saludo "como si nada"
+    /// con el gancho de la config (<see cref="OnboardingConfig.FollowUpMessages"/>), no "seguis por ahi?".
+    /// Máx. uno por mensaje cargado (2). El paso donde había quedado se guarda en FollowUpStep y la
+    /// charla queda esperando: si contesta, va a la persona (no es la respuesta a la pregunta pendiente).
     /// </summary>
     public async Task<string?> StageFollowUpAsync(Lead lead, OnboardingConfig cfg, CancellationToken ct)
     {
         var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
-        if (ob is null || !IsFollowUpStage(ob.Step)) return null;
-        var count = ob.FollowUpStep == ob.Step ? ob.FollowUpCount : 0;
-        if (count >= 2) return null;
-        var seed = 200 + ob.Step * 10 + count;
-
-        string text;
-        var nextStep = ob.Step;
-        if (ob.Step == StepAwaitDemoLink)
-        {
-            // Le ofrecimos el link y no contestó: se lo pasamos igual (sin pedir permiso dos veces) y queda
-            // esperando el "para cuando" como si hubiera dicho que sí.
-            if (string.IsNullOrWhiteSpace(cfg.DemoLink)) return null;
-            text = Join(Spin("{te lo paso igual asi lo ves cuando puedas|te lo dejo por aca asi lo ves tranqui}", lead.Id, seed),
-                Spin(cfg.DemoLink, lead.Id, 97));
-            nextStep = StepAwaitStart;
-            count = -1; // el paso cambia: el contador del paso nuevo arranca en 0
-        }
-        else if (ob.Step == StepAwaitStart)
-        {
-            text = count == 0
-                ? Spin("{pudiste verlo?|pudiste chusmearlo?|llegaste a verlo?}", lead.Id, seed)
-                : Spin("{si queres lo vemos juntos en 15 min y te lo dejo armado con tus datos, decime que dia te queda comodo|cuando tengas un rato lo vemos juntos en 15 min, decime que dia te sirve}", lead.Id, seed);
-        }
-        else if (ob.Step == StepAwaitPricesOk)
-        {
-            text = count == 0
-                ? Spin("{te paso los precios?|queres que te pase los precios?}", lead.Id, seed)
-                : Spin("{cualquier cosa me escribis y te paso los precios|te dejo por aca, cuando quieras te paso los precios}", lead.Id, seed);
-        }
-        else
-        {
-            // Una pregunta del guion sin contestar. 1º un toque corto; 2º se la dejamos de nuevo, más liviana.
-            var questions = await QuestionsForAsync(lead, cfg, ob, ct);
-            var pending = ob.Step - 1 < questions.Count ? LastSegment(questions[ob.Step - 1]) : null;
-            text = count == 0 || string.IsNullOrWhiteSpace(pending)
-                ? Spin("{seguis por ahi?|estas por ahi?|pudiste ver?}", lead.Id, seed)
-                : Join(Spin("{te dejo la pregunta por aca, cuando puedas me contas|cuando tengas un minuto me contas}", lead.Id, seed), pending);
-        }
-
-        ob.Step = nextStep;
-        ob.FollowUpStep = nextStep;
+        if (ob is null || !(IsFollowUpStage(ob.Step) || ob.Step == StepAwaitFollowUpReply)) return null;
+        var count = ob.Step == StepAwaitFollowUpReply ? ob.FollowUpCount : 0;
+        if (count >= cfg.FollowUpMessages.Count) return null;
+        if (ob.Step != StepAwaitFollowUpReply) ob.FollowUpStep = ob.Step;
+        ob.Step = StepAwaitFollowUpReply;
         ob.FollowUpCount = count + 1;
         ob.LastFollowUpAt = DateTimeOffset.UtcNow;
         ob.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return PresentAs(text, cfg);
+        return PresentAs(Spin(cfg.FollowUpMessages[count], lead.Id, 200 + count), cfg);
     }
 
     private static bool DemoStepEnabled(OnboardingConfig cfg) =>
@@ -477,6 +445,17 @@ public class OnboardingService
                 ? new OnboardingResult("{dale|de una}, ahi te paso", OffScript: false, Provisioned: false,
                     MediaAssetIds: cfg.PricesMediaAssetIds, PostMediaText: Join(prices, start))
                 : new OnboardingResult(Join(prices, start), OffScript: false, Provisioned: false);
+        }
+        // ── Contestó el re-saludo de seguimiento ("si, contame", "cual es la promo?"): la persona sigue ──
+        if (ob.Step == StepAwaitFollowUpReply)
+        {
+            ob.Step = StepHumanHandoff;
+            ob.UpdatedAt = DateTimeOffset.UtcNow;
+            lead.Status = LeadStatus.Interested;
+            await _db.SaveChangesAsync(ct);
+            var said = msg.Length > 80 ? msg[..80] + "…" : msg;
+            return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                Handoff: $"contesto al seguimiento (promo): {said}");
         }
         // ── Demo: dijo que sí → link + "para cuando…"; no, precio u otra pregunta → la persona ──
         if (ob.Step == StepAwaitDemoLink)

@@ -101,6 +101,13 @@ public class OnboardingConfig
     public string TrialDiscountNudge { get; set; } = string.Empty;
 
     /// <summary>
+    /// Pre-calificación: seguimiento al lead que se quedó callado. [0] a las ~3 h, [1] a las ~24 h.
+    /// Es un re-saludo "como si nada" con un gancho (la promo), no "seguis por ahi?". Si contesta, va a la
+    /// persona. Admite {nombre} y variantes {a|b}. Vacío = no se le hace seguimiento.
+    /// </summary>
+    public List<string> FollowUpMessages { get; set; } = new();
+
+    /// <summary>
     /// "Primeros pasos" de la app (bullet list corta). El SuccessMessage cierra con "avisame
     /// cuando estas adentro y te paso los primeros pasos" — cuando el lead responde CUALQUIER
     /// cosa despues del alta, el bot manda esto UNA vez (marca LeadOnboarding.FirstStepsSentAt).
