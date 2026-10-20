@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+      - "tools/ig-follow-extension/**"
       - ".github/workflows/deploy-frontend.yml"
   workflow_dispatch:
 
@@ -35,6 +36,8 @@ jobs:
         env:
           VITE_API_URL: https://api.sales.efcloud.tech/api
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ vars.VITE_GOOGLE_OAUTH_CLIENT_ID }}
+      - name: Zip de la extensión de Chrome (se baja desde /instagram/follow)
+        run: cd ../tools/ig-follow-extension && zip -r ../../frontend/dist/ig-follow-extension.zip . -x '.*'
       - name: SPA 404 fallback + CNAME
         run: |
           # 404.html "spa-github-pages": redirige preservando el path como

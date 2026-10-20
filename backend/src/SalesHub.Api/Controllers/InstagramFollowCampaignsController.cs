@@ -135,20 +135,22 @@ public class InstagramFollowCampaignsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCampaignRequest req)
     {
+        var sourceMode = Enum.TryParse<InstagramFollowSourceMode>(req.SourceMode, ignoreCase: true, out var m)
+            ? m
+            : InstagramFollowSourceMode.Followers;
+        var isList = sourceMode == InstagramFollowSourceMode.List;
+
         if (string.IsNullOrWhiteSpace(req.SourceHandle))
-            return BadRequest(new { error = "SourceHandle requerido" });
+            return BadRequest(new { error = isList ? "Nombre de la lista requerido" : "SourceHandle requerido" });
 
         var account = await _db.InstagramAccounts.FirstOrDefaultAsync(a => a.Id == req.InstagramAccountId);
         if (account is null) return BadRequest(new { error = "InstagramAccount no existe" });
 
-        // Normalizar a handle limpio: tolera URL completa (instagram.com/x/), @, barras.
-        var handle = CleanHandle(req.SourceHandle);
+        // En modo lista el SourceHandle es solo el nombre; si no, handle limpio (tolera URL, @, barras).
+        var handle = isList ? req.SourceHandle.Trim() : CleanHandle(req.SourceHandle);
+        if (handle.Length > 64) handle = handle[..64];
         if (string.IsNullOrEmpty(handle))
             return BadRequest(new { error = "SourceHandle inválido (poné solo el usuario, ej: accesogym)" });
-
-        var sourceMode = Enum.TryParse<InstagramFollowSourceMode>(req.SourceMode, ignoreCase: true, out var m)
-            ? m
-            : InstagramFollowSourceMode.Followers;
 
         var campaign = new InstagramFollowCampaign
         {
@@ -175,7 +177,34 @@ public class InstagramFollowCampaignsController : ControllerBase
             "Campaña follow creada: {Id} (source={Source}, modo={Mode}, account={User}, rate={Rate}/d)",
             campaign.Id, handle, sourceMode, account.Username, campaign.DailyRate);
 
+        if (isList && req.Handles is { Count: > 0 })
+        {
+            campaign.InstagramAccount = account;
+            var result = await _follow.EnqueueHandlesAsync(campaign, req.Handles);
+            return Ok(new { id = campaign.Id, result.Enqueued, result.Duplicates, result.Invalid });
+        }
+
         return Ok(new { id = campaign.Id });
+    }
+
+    /// <summary>
+    /// Agrega handles a una campaña de lista. Body: { handles: ["club_x", "instagram.com/y", "@z"] }.
+    /// Saltea repetidos (en la campaña o ya seguidos por la cuenta) e inválidos.
+    /// </summary>
+    [HttpPost("{id:guid}/handles")]
+    public async Task<IActionResult> AddHandles(Guid id, [FromBody] AddHandlesRequest req)
+    {
+        var campaign = await _db.InstagramFollowCampaigns
+            .Include(c => c.InstagramAccount)
+            .FirstOrDefaultAsync(c => c.Id == id);
+        if (campaign is null) return NotFound();
+        if (campaign.SourceMode != InstagramFollowSourceMode.List)
+            return BadRequest(new { error = "Solo las campañas de lista aceptan handles importados" });
+        if (req.Handles is not { Count: > 0 })
+            return BadRequest(new { error = "handles vacío" });
+
+        var result = await _follow.EnqueueHandlesAsync(campaign, req.Handles);
+        return Ok(result);
     }
 
     [HttpPatch("{id:guid}")]
@@ -187,7 +216,10 @@ public class InstagramFollowCampaignsController : ControllerBase
         if (req.IsActive.HasValue) campaign.IsActive = req.IsActive.Value;
         if (!string.IsNullOrWhiteSpace(req.SourceHandle))
         {
-            var handle = CleanHandle(req.SourceHandle);
+            var handle = campaign.SourceMode == InstagramFollowSourceMode.List
+                ? req.SourceHandle.Trim()
+                : CleanHandle(req.SourceHandle);
+            if (handle.Length > 64) handle = handle[..64];
             if (string.IsNullOrEmpty(handle))
                 return BadRequest(new { error = "SourceHandle inválido (poné solo el usuario, ej: accesogym)" });
             campaign.SourceHandle = handle;
@@ -347,7 +379,7 @@ public class InstagramFollowCampaignsController : ControllerBase
     {
         public Guid InstagramAccountId { get; init; }
         public string SourceHandle { get; init; } = string.Empty;
-        /// <summary>"Followers" (default) o "Following".</summary>
+        /// <summary>"Followers" (default), "Following" o "List".</summary>
         public string? SourceMode { get; init; }
         public int DailyRate { get; init; } = 30;
         /// <summary>Ventana horaria local AR (null = default 10-22 del entity).</summary>
@@ -358,6 +390,13 @@ public class InstagramFollowCampaignsController : ControllerBase
         public string? Keywords { get; init; }
         public int ScrapeBatchSize { get; init; } = 100;
         public int MinQueuedThreshold { get; init; } = 20;
+        /// <summary>Solo modo "List": handles a encolar al crear (opcional, se pueden sumar después).</summary>
+        public List<string>? Handles { get; init; }
+    }
+
+    public record AddHandlesRequest
+    {
+        public List<string>? Handles { get; init; }
     }
 
     public record UpdateCampaignRequest

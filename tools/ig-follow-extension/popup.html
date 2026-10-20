@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>IG Follow Lista</title>
+  <style>
+    :root { --bg: #fff; --fg: #0f172a; --muted: #64748b; --line: #e2e8f0; --brand: #2563eb; --warn: #b45309; --bad: #be123c; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0f172a; --fg: #e2e8f0; --muted: #94a3b8; --line: #334155; --brand: #60a5fa; --warn: #fbbf24; --bad: #fb7185; }
+    }
+    body { margin: 0; width: 360px; padding: 14px; font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+    h1 { font-size: 15px; margin: 0 0 10px; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+    .stat { border: 1px solid var(--line); border-radius: 6px; padding: 6px; text-align: center; }
+    .stat b { display: block; font-size: 16px; }
+    .stat span { color: var(--muted); font-size: 11px; }
+    .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+    label { color: var(--muted); font-size: 11px; }
+    input[type=number] { width: 52px; }
+    input, textarea { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; font: inherit; }
+    textarea { width: 100%; box-sizing: border-box; height: 90px; font-family: ui-monospace, monospace; font-size: 11px; }
+    button { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 5px; padding: 5px 9px; cursor: pointer; font: inherit; }
+    button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+    #status { margin: 8px 0; color: var(--muted); }
+    #status.warn { color: var(--warn); }
+    #status.bad { color: var(--bad); }
+    details { margin-top: 8px; }
+    #log { max-height: 140px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>IG Follow Lista</h1>
+
+  <div class="stats">
+    <div class="stat"><b id="sToday">0</b><span>hoy</span></div>
+    <div class="stat"><b id="sQueue">0</b><span>en cola</span></div>
+    <div class="stat"><b id="sDone">0</b><span>seguidos total</span></div>
+  </div>
+
+  <div id="status">Pausado</div>
+
+  <div class="row">
+    <button id="start" class="primary">Arrancar</button>
+    <button id="pause">Pausar</button>
+    <button id="unblock" hidden>Quitar bloqueo</button>
+  </div>
+
+  <div class="row">
+    <label>Tope/día</label><input id="dailyCap" type="number" min="1" max="60" />
+    <label>Pausa min</label><input id="minGapMin" type="number" min="1" />
+    <label>max</label><input id="maxGapMin" type="number" min="1" />
+  </div>
+  <div class="row">
+    <label>Horario desde</label><input id="hourStart" type="number" min="0" max="23" />
+    <label>hasta</label><input id="hourEnd" type="number" min="0" max="23" />
+    <label>h</label>
+  </div>
+
+  <label>Agregar a la cola (handles o links, uno por línea) — o cargá un .txt</label>
+  <textarea id="handles" placeholder="clubpadelnorte&#10;@crossfit_sur&#10;https://instagram.com/estudio.pilates"></textarea>
+  <div class="row">
+    <button id="add">Agregar</button>
+    <input id="file" type="file" accept=".txt,.csv" />
+  </div>
+  <div class="row">
+    <button id="clear">Vaciar cola</button>
+    <button id="export">Exportar log</button>
+  </div>
+
+  <details>
+    <summary>Últimos movimientos</summary>
+    <div id="log"></div>
+  </details>
+
+  <script src="popup.js"></script>
+</body>
+</html>

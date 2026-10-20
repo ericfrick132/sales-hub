@@ -144,7 +144,8 @@ public class InstagramFollowService
         var pending = await _db.InstagramFollowActions
             .CountAsync(a => a.CampaignId == campaign.Id && a.Status == InstagramFollowActionStatus.Pending, ct);
 
-        if (pending < campaign.MinQueuedThreshold)
+        // Las campañas de lista no scrapean: la cola es lo que se importó.
+        if (campaign.SourceMode != InstagramFollowSourceMode.List && pending < campaign.MinQueuedThreshold)
         {
             await TopUpQueueAsync(campaign, account, ct);
         }
@@ -249,6 +250,84 @@ public class InstagramFollowService
             _log.LogError(ex, "Error en top-up de campaña {Id}", campaign.Id);
         }
     }
+
+    /// <summary>
+    /// Encola una lista importada de handles (campañas <see cref="InstagramFollowSourceMode.List"/>).
+    /// Acepta URLs/@/handles, descarta los inválidos y saltea los que ya están en la campaña o
+    /// que la cuenta ya siguió desde otra campaña. El orden de la lista se respeta.
+    /// </summary>
+    public async Task<EnqueueHandlesResult> EnqueueHandlesAsync(
+        InstagramFollowCampaign campaign,
+        IEnumerable<string> rawHandles,
+        CancellationToken ct = default)
+    {
+        var invalid = 0;
+        var handles = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in rawHandles)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            var handle = CleanHandle(raw).ToLowerInvariant();
+            if (!ValidHandleRx.IsMatch(handle) || ReservedPaths.Contains(handle)) { invalid++; continue; }
+            if (seen.Add(handle)) handles.Add(handle);
+        }
+
+        var username = campaign.InstagramAccount?.Username
+            ?? await _db.InstagramAccounts.Where(a => a.Id == campaign.InstagramAccountId)
+                .Select(a => a.Username).FirstOrDefaultAsync(ct);
+
+        var taken = await _db.InstagramFollowActions
+            .Where(a => handles.Contains(a.TargetHandle)
+                && (a.CampaignId == campaign.Id
+                    || (a.InstagramAccountId == campaign.InstagramAccountId
+                        && a.Status == InstagramFollowActionStatus.Done)))
+            .Select(a => a.TargetHandle)
+            .Distinct()
+            .ToListAsync(ct);
+        var takenSet = new HashSet<string>(taken, StringComparer.OrdinalIgnoreCase);
+
+        var enqueued = 0;
+        var now = DateTimeOffset.UtcNow;
+        foreach (var handle in handles)
+        {
+            if (takenSet.Contains(handle)) continue;
+            if (string.Equals(handle, username, StringComparison.OrdinalIgnoreCase)) continue;
+
+            _db.InstagramFollowActions.Add(new InstagramFollowAction
+            {
+                Id = Guid.NewGuid(),
+                CampaignId = campaign.Id,
+                InstagramAccountId = campaign.InstagramAccountId,
+                TargetHandle = handle,
+                Status = InstagramFollowActionStatus.Pending,
+                // Desfasaje de 1 ms por posición: la cola sale con OrderBy(EnqueuedAt) y así
+                // mantiene el orden de la lista importada.
+                EnqueuedAt = now.AddMilliseconds(enqueued)
+            });
+            enqueued++;
+        }
+
+        campaign.TotalEnqueued += enqueued;
+        campaign.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        _log.LogInformation("Lista campaña {Id}: {Enqueued} encolados, {Dup} repetidos, {Invalid} inválidos",
+            campaign.Id, enqueued, handles.Count - enqueued, invalid);
+
+        return new EnqueueHandlesResult(enqueued, handles.Count - enqueued, invalid);
+    }
+
+    public record EnqueueHandlesResult(int Enqueued, int Duplicates, int Invalid);
+
+    // Usuario de IG: letras, números, punto y guion bajo, hasta 30.
+    private static readonly System.Text.RegularExpressions.Regex ValidHandleRx =
+        new(@"^[a-z0-9._]{1,30}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // Rutas de instagram.com que no son perfiles (links a posts/reels que quedan en los scrapes).
+    private static readonly HashSet<string> ReservedPaths = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "p", "reel", "reels", "explore", "accounts", "stories", "tv", "direct", "share"
+    };
 
     /// <summary>Ejecuta un follow individual y actualiza estado.</summary>
     private async Task ExecuteFollowAsync(

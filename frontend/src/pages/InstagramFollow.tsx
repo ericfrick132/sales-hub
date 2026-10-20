@@ -20,6 +20,25 @@ function cleanHandle(raw: string): string {
   return s.replace(/^@/, '').replace(/^\/+|\/+$/g, '').split(/[/?]/)[0];
 }
 
+// Lista pegada → handles limpios y únicos (el backend vuelve a validar y deduplicar).
+function parseHandles(raw: string): string[] {
+  const out = new Set<string>();
+  for (const part of raw.split(/[\n,;\s]+/)) {
+    const h = cleanHandle(part).toLowerCase();
+    if (/^[a-z0-9._]{1,30}$/.test(h)) out.add(h);
+  }
+  return [...out];
+}
+
+// El workflow de deploy del front zipea tools/ig-follow-extension y lo publica en la raíz.
+const EXTENSION_ZIP_URL = '/ig-follow-extension.zip';
+
+const MODE_LABEL: Record<string, string> = {
+  Followers: 'sus seguidores',
+  Following: 'sus seguidos',
+  List: 'una lista importada'
+};
+
 interface Campaign {
   id: string;
   instagramAccountId: string;
@@ -69,7 +88,9 @@ export default function InstagramFollow() {
 
   const [accountId, setAccountId] = useState('');
   const [sourceHandle, setSourceHandle] = useState('');
-  const [sourceMode, setSourceMode] = useState<'Followers' | 'Following'>('Followers');
+  const [sourceMode, setSourceMode] = useState<'Followers' | 'Following' | 'List'>('Followers');
+  const [handlesText, setHandlesText] = useState('');
+  const [addHandlesText, setAddHandlesText] = useState('');
   const [dailyRate, setDailyRate] = useState(30);
   const [maxTotal, setMaxTotal] = useState(0);
   const [hourStart, setHourStart] = useState(10);
@@ -99,17 +120,23 @@ export default function InstagramFollow() {
       (
         await api.post('/instagram-follow-campaigns', {
           instagramAccountId: accountId,
-          sourceHandle: sourceHandle.trim().replace(/^@/, ''),
+          sourceHandle: sourceMode === 'List' ? sourceHandle.trim() : sourceHandle.trim().replace(/^@/, ''),
           sourceMode,
+          handles: sourceMode === 'List' ? parseHandles(handlesText) : undefined,
           dailyRate,
           activeHourStart: hourStart,
           activeHourEnd: hourEnd,
           maxTotalFollows: maxTotal
         })
       ).data,
-    onSuccess: () => {
-      toast.success('Campaña creada');
+    onSuccess: (data: { enqueued?: number; duplicates?: number; invalid?: number }) => {
+      toast.success(
+        data.enqueued != null
+          ? `Campaña creada · ${data.enqueued} encolados (${data.duplicates} repetidos, ${data.invalid} inválidos)`
+          : 'Campaña creada'
+      );
       setSourceHandle('');
+      setHandlesText('');
       setMaxTotal(0);
       qc.invalidateQueries({ queryKey: ['ig-follow-campaigns'] });
     },
@@ -158,6 +185,20 @@ export default function InstagramFollow() {
     onError: (e: any) => toast.error(e.response?.data?.error ?? 'Falló')
   });
 
+  const addHandlesMut = useMutation({
+    mutationFn: async ({ id, handles }: { id: string; handles: string[] }) =>
+      (await api.post(`/instagram-follow-campaigns/${id}/handles`, { handles })).data as {
+        enqueued: number; duplicates: number; invalid: number;
+      },
+    onSuccess: (r) => {
+      toast.success(`${r.enqueued} encolados (${r.duplicates} repetidos, ${r.invalid} inválidos)`);
+      setAddHandlesText('');
+      qc.invalidateQueries({ queryKey: ['ig-follow-campaigns'] });
+      qc.invalidateQueries({ queryKey: ['ig-follow-campaign'] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error ?? 'Falló')
+  });
+
   const deleteMut = useMutation({
     mutationFn: async (id: string) =>
       (await api.delete(`/instagram-follow-campaigns/${id}`)).data,
@@ -193,6 +234,47 @@ export default function InstagramFollow() {
         </p>
       </header>
 
+      <details className="card p-4 border-amber-200 bg-amber-50/30">
+        <summary className="font-semibold cursor-pointer">
+          Extensión de Chrome — seguir una lista desde tu compu (sin proxy)
+        </summary>
+        <div className="mt-3 space-y-3 text-sm text-slate-700">
+          <p>
+            Sigue de a una las cuentas de una lista desde <b>tu Chrome</b>, con tu sesión de Instagram y
+            la IP de tu casa. No pasa por el server. Por defecto: 15 por día, pausas al azar de 8 a 30 min,
+            de 10 a 22 h. Si Instagram muestra "Intentá de nuevo más tarde", frena 24 h sola.
+          </p>
+          <a className="btn-primary inline-block" href={EXTENSION_ZIP_URL} download>
+            Descargar extensión (.zip)
+          </a>
+          <ol className="space-y-2 list-decimal list-inside">
+            <li><b>Descomprimí el .zip</b> en una carpeta que no vayas a borrar (ej. Documentos/ig-follow-extension).</li>
+            <li>
+              En Chrome abrí <code className="px-1 rounded bg-slate-100">chrome://extensions</code> y prendé{' '}
+              <b>Modo de desarrollador</b> (arriba a la derecha).
+            </li>
+            <li><b>Cargar descomprimida</b> → elegí la carpeta del paso 1.</li>
+            <li>Fijá el ícono "IG Follow Lista" en la barra (el ícono de la pieza de rompecabezas → el pin).</li>
+            <li>
+              <b>Logueate en instagram.com</b> en esa ventana de Chrome con la cuenta que va a seguir. Si usás
+              varias cuentas, armá un perfil de Chrome por cuenta e instalá la extensión en cada uno.
+            </li>
+            <li>
+              Abrí la extensión, cargá el <b>.txt con los handles</b> (uno por línea; acepta @usuario o links
+              de instagram.com) o pegalos, y tocá <b>Arrancar</b>.
+            </li>
+            <li>
+              Dejá Chrome abierto y la compu sin dormirse. El popup muestra cuándo va el próximo follow, lo
+              que lleva hoy y la cola; con <b>Exportar log</b> bajás un CSV con lo que hizo.
+            </li>
+          </ol>
+          <p className="text-xs text-slate-500">
+            Para actualizarla: bajá el .zip de nuevo, reemplazá la carpeta y tocá el ícono de recargar de la
+            extensión en chrome://extensions. La cola y el log se mantienen.
+          </p>
+        </div>
+      </details>
+
       <section className="card p-4 space-y-3">
         <h2 className="font-semibold">Nueva campaña</h2>
 
@@ -216,10 +298,12 @@ export default function InstagramFollow() {
           </div>
 
           <div className="sm:col-span-2">
-            <label className="text-xs text-slate-500">Perfil source (de quién tomar las cuentas)</label>
+            <label className="text-xs text-slate-500">
+              {sourceMode === 'List' ? 'Nombre de la lista' : 'Perfil source (de quién tomar las cuentas)'}
+            </label>
             <input
               className="input"
-              placeholder="ej: gimnasiocompetidor"
+              placeholder={sourceMode === 'List' ? 'ej: leads crossfy' : 'ej: gimnasiocompetidor'}
               value={sourceHandle}
               onChange={(e) => setSourceHandle(e.target.value)}
             />
@@ -230,11 +314,27 @@ export default function InstagramFollow() {
             <select
               className="input"
               value={sourceMode}
-              onChange={(e) => setSourceMode(e.target.value as 'Followers' | 'Following')}>
+              onChange={(e) => setSourceMode(e.target.value as 'Followers' | 'Following' | 'List')}>
               <option value="Followers">Seguidores del perfil (followers)</option>
               <option value="Following">Cuentas que el perfil sigue (following)</option>
+              <option value="List">Una lista de cuentas (pegar handles)</option>
             </select>
           </div>
+
+          {sourceMode === 'List' && (
+            <div className="sm:col-span-4">
+              <label className="text-xs text-slate-500">
+                Handles o links de Instagram (uno por línea, o separados por coma) ·{' '}
+                {parseHandles(handlesText).length} detectados
+              </label>
+              <textarea
+                className="input h-32 font-mono text-xs"
+                placeholder={'clubpadelnorte\n@crossfit_sur\nhttps://instagram.com/estudio.pilates'}
+                value={handlesText}
+                onChange={(e) => setHandlesText(e.target.value)}
+              />
+            </div>
+          )}
 
           <div>
             <label className="text-xs text-slate-500">Follows / día</label>
@@ -286,7 +386,12 @@ export default function InstagramFollow() {
           <div className="sm:col-span-2 flex items-end">
             <button
               className="btn-primary"
-              disabled={!accountId || !sourceHandle.trim() || createMut.isPending}
+              disabled={
+                !accountId ||
+                !sourceHandle.trim() ||
+                (sourceMode === 'List' && parseHandles(handlesText).length === 0) ||
+                createMut.isPending
+              }
               onClick={() => createMut.mutate()}>
               {createMut.isPending ? 'Creando…' : 'Crear campaña'}
             </button>
@@ -307,7 +412,9 @@ export default function InstagramFollow() {
                 selectedId === c.id ? 'bg-brand-50' : ''
               }`}>
               <div className="flex items-center justify-between gap-2">
-                <div className="font-medium">@{cleanHandle(c.sourceHandle)}</div>
+                <div className="font-medium">
+                  {c.sourceMode === 'List' ? c.sourceHandle : `@${cleanHandle(c.sourceHandle)}`}
+                </div>
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded ${
                     c.isActive
@@ -319,7 +426,7 @@ export default function InstagramFollow() {
               </div>
               <div className="text-xs text-slate-500 mt-0.5">
                 desde @{c.instagramAccountUsername} · {c.dailyRate}/día ·{' '}
-                {c.sourceMode === 'Following' ? 'sus seguidos' : 'sus seguidores'}
+                {MODE_LABEL[c.sourceMode] ?? 'sus seguidores'}
                 {c.activeHourStart != null && c.activeHourEnd != null
                   ? ` · ${c.activeHourStart}-${c.activeHourEnd}h`
                   : ' · 24h'}
@@ -328,7 +435,7 @@ export default function InstagramFollow() {
                 hoy: <b>{c.followedToday}</b>/{c.dailyRate} · seguidos:{' '}
                 <b>{c.totalFollowed}</b> · cola: {c.pending}
               </div>
-              {c.lastScrapeAt && c.totalEnqueued === 0 && (
+              {c.sourceMode !== 'List' && c.lastScrapeAt && c.totalEnqueued === 0 && (
                 <div className="text-[11px] text-amber-600 mt-1 leading-snug">
                   ⚠ El último scrape no encontró seguidores. Suele pasar si el perfil es privado
                   o si Instagram limita la lista de seguidores para esta cuenta.
@@ -347,10 +454,12 @@ export default function InstagramFollow() {
             <div className="card p-4 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="font-semibold">@{detailQ.data.sourceHandle}</h3>
+                  <h3 className="font-semibold">
+                    {detailQ.data.sourceMode === 'List' ? detailQ.data.sourceHandle : `@${detailQ.data.sourceHandle}`}
+                  </h3>
                   <div className="text-xs text-slate-500">
-                    cuenta: @{detailQ.data.instagramAccountUsername} ·{' '}
-                    siguiendo {detailQ.data.sourceMode === 'Following' ? 'a sus seguidos' : 'a sus seguidores'}
+                    cuenta: @{detailQ.data.instagramAccountUsername} · siguiendo a{' '}
+                    {MODE_LABEL[detailQ.data.sourceMode] ?? 'sus seguidores'}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -428,6 +537,7 @@ export default function InstagramFollow() {
                     />
                   </div>
                 </div>
+                {detailQ.data.sourceMode !== 'List' && (
                 <div>
                   <label className="text-xs text-slate-500">Perfil source (corregir)</label>
                   <input
@@ -441,11 +551,33 @@ export default function InstagramFollow() {
                     }}
                   />
                 </div>
+                )}
                 <div className="text-xs text-slate-500">
                   Último scrape: {detailQ.data.lastScrapeAt ? new Date(detailQ.data.lastScrapeAt).toLocaleString() : '—'}<br />
                   Último follow: {detailQ.data.lastFollowAt ? new Date(detailQ.data.lastFollowAt).toLocaleString() : '—'}
                 </div>
               </div>
+
+              {detailQ.data.sourceMode === 'List' && (
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-500">
+                    Agregar handles a la lista · {parseHandles(addHandlesText).length} detectados
+                  </label>
+                  <textarea
+                    className="input h-24 font-mono text-xs"
+                    value={addHandlesText}
+                    onChange={(e) => setAddHandlesText(e.target.value)}
+                  />
+                  <button
+                    className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
+                    disabled={parseHandles(addHandlesText).length === 0 || addHandlesMut.isPending}
+                    onClick={() =>
+                      addHandlesMut.mutate({ id: detailQ.data!.id, handles: parseHandles(addHandlesText) })
+                    }>
+                    {addHandlesMut.isPending ? 'Agregando…' : 'Agregar a la cola'}
+                  </button>
+                </div>
+              )}
 
               <div>
                 <h4 className="font-semibold text-sm mb-2">Últimas 100 acciones</h4>
