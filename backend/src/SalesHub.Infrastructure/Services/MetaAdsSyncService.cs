@@ -48,7 +48,7 @@ public class MetaAdsSyncService
         var now = DateTimeOffset.UtcNow;
         var saved = 0;
 
-        const string fields = "id,name,effective_status,created_time,creative{title,body,object_story_spec}";
+        const string fields = "id,name,effective_status,created_time,creative{title,body,object_story_spec,video_id}";
         const string filter = "[{\"field\":\"effective_status\",\"operator\":\"NOT_IN\",\"value\":[\"DELETED\",\"ARCHIVED\"]}]";
         foreach (var acct in accounts)
         {
@@ -71,7 +71,10 @@ public class MetaAdsSyncService
                 {
                     ad.Title = Trunc(Str(cr, "title"), 256);
                     ad.Body = Str(cr, "body");
+                    ad.VideoId = null;
                     ReadStorySpec(cr, ad);
+                    // Sin video_data (p. ej. creativo dinámico) queda el video_id del creativo.
+                    ad.VideoId ??= Str(cr, "video_id");
                 }
                 ParseName(ad, products.Select(p => (p.ProductKey, p.DisplayName)).ToList());
                 ad.BusinessRef = BusinessRefFromPrefill(ad.PrefillText);
@@ -89,9 +92,10 @@ public class MetaAdsSyncService
     /// el mensaje. Tolera tildes, mayúsculas, espacios dobles y que el lead agregue algo antes o
     /// después. Si cambió el rubro ("Tengo un estudio de uñas y capilares y quiero…"), alcanza con
     /// que contenga la parte del anuncio desde "y quiero" ("quiero que mis clientes reserven asi de
-    /// rapido"), que es propia de cada anuncio.
+    /// rapido"), que es propia de cada anuncio. Si varios anuncios dejan el mismo texto (la misma copia
+    /// en AR, UY y MX), gana el del país del celular del lead.
     /// </summary>
-    public async Task<MetaAd?> MatchAsync(string? adId, string? text, CancellationToken ct)
+    public async Task<MetaAd?> MatchAsync(string? adId, string? text, CancellationToken ct, string? phone = null)
     {
         if (!string.IsNullOrWhiteSpace(adId))
         {
@@ -102,16 +106,45 @@ public class MetaAdsSyncService
         if (norm.Length < 12) return null;
         var candidates = await _db.MetaAds.AsNoTracking().Where(a => a.PrefillText != null && a.PrefillText != "").ToListAsync(ct);
         var withText = candidates.Select(a => (Ad: a, P: IntentText.Normalize(a.PrefillText))).Where(x => x.P.Length >= 12).ToList();
-        // El más reciente primero: dos anuncios con el mismo pre-armado (copias) → el vigente.
-        return Best(withText.Where(x => norm.Contains(x.P)))
-            ?? Best(withText.Where(x => PrefillTail(x.P) is { } tail && norm.Contains(tail)));
+        var full = withText.Where(x => norm.Contains(x.P)).ToList();
+        var matches = full.Count > 0 ? full : withText.Where(x => PrefillTail(x.P) is { } tail && norm.Contains(tail)).ToList();
+        if (matches.Count == 0) return null;
 
-        static MetaAd? Best(IEnumerable<(MetaAd Ad, string P)> xs) => xs
-            .OrderByDescending(x => x.Ad.Status == "ACTIVE")
+        var leadCountry = ArAreaCodes.Resolve(phone).Country;
+        var adCountry = leadCountry is null || matches.Count == 1
+            ? new Dictionary<string, string>()
+            : await AdCountriesAsync(matches.Select(x => x.Ad).ToList(), ct);
+        // Mismo país que el lead primero; después el activo, el pre-armado más largo y el más reciente (copias → la vigente).
+        return matches
+            .OrderByDescending(x => leadCountry is not null && adCountry.GetValueOrDefault(x.Ad.AdId) == leadCountry)
+            .ThenByDescending(x => x.Ad.Status == "ACTIVE")
             .ThenByDescending(x => x.P.Length)
             .ThenByDescending(x => x.Ad.AdCreatedAt)
             .Select(x => x.Ad)
-            .FirstOrDefault();
+            .First();
+    }
+
+    /// <summary>
+    /// País de cada anuncio: la etiqueta del nombre ("PlayCrew - MX - padel - …") o, si no tiene, el
+    /// país donde más impresiones tuvo (meta_geo_daily). Sin datos queda afuera del diccionario.
+    /// </summary>
+    private async Task<Dictionary<string, string>> AdCountriesAsync(List<MetaAd> ads, CancellationToken ct)
+    {
+        var result = new Dictionary<string, string>();
+        foreach (var ad in ads)
+        {
+            var tag = ad.Name.Split(" - ", StringSplitOptions.TrimEntries)
+                .FirstOrDefault(p => p.Length == 2 && p.All(char.IsAsciiLetterUpper));
+            if (tag is not null) result[ad.AdId] = tag;
+        }
+        var rest = ads.Select(a => a.AdId).Where(id => !result.ContainsKey(id)).ToList();
+        if (rest.Count == 0) return result;
+        var byGeo = await _db.MetaGeoDaily.AsNoTracking().Where(x => rest.Contains(x.AdId))
+            .GroupBy(x => new { x.AdId, x.Country }).Select(g => new { g.Key.AdId, g.Key.Country, Impr = g.Sum(x => x.Impressions) })
+            .ToListAsync(ct);
+        foreach (var g in byGeo.GroupBy(x => x.AdId))
+            result[g.Key] = g.MaxBy(x => x.Impr)!.Country;
+        return result;
     }
 
     /// <summary>"hola tengo un gimnasio y quiero conocer gymhero" → "quiero conocer gymhero" (null si es muy corto para identificar el anuncio).</summary>
@@ -134,6 +167,7 @@ public class MetaAdsSyncService
             if (oss.TryGetProperty(key, out data)) { found = true; break; }
         if (!found) return;
 
+        ad.VideoId = Str(data, "video_id");
         if (data.TryGetProperty("call_to_action", out var cta) && cta.TryGetProperty("value", out var v))
         {
             var link = Str(v, "link") ?? string.Empty;

@@ -17,8 +17,9 @@ public class MetaAdsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly MetaAdsSyncService _sync;
+    private readonly MetaAdMediaService _media;
 
-    public MetaAdsController(ApplicationDbContext db, MetaAdsSyncService sync) { _db = db; _sync = sync; }
+    public MetaAdsController(ApplicationDbContext db, MetaAdsSyncService sync, MetaAdMediaService media) { _db = db; _sync = sync; _media = media; }
 
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
@@ -45,7 +46,7 @@ public class MetaAdsController : ControllerBase
                 return new
                 {
                     a.AdId, a.Name, a.Status, a.ProductKey, a.Rubro, a.Angle, a.BusinessRef, a.PrefillText,
-                    a.Title, a.Body, a.DestinationPhone, a.AdCreatedAt,
+                    a.Title, a.Body, a.DestinationPhone, a.AdCreatedAt, a.VideoId,
                     lineInstance = line?.InstanceName,
                     lineStatus = line?.Status.ToString(),
                     lineListenOnly = line?.ListenOnly ?? false,
@@ -53,6 +54,23 @@ public class MetaAdsController : ControllerBase
                 };
             }),
         });
+    }
+
+    /// <summary>Miniatura de cada anuncio (?adId=…&amp;adId=…, hasta 300): { adId: url }. Las URLs de Meta vencen: no guardarlas.</summary>
+    [HttpGet("media")]
+    public async Task<IActionResult> Media([FromQuery(Name = "adId")] List<string>? adIds, CancellationToken ct)
+    {
+        var ids = (adIds ?? new()).SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Distinct().Take(300).ToList();
+        return Ok(await _media.ThumbnailsAsync(ids, ct));
+    }
+
+    /// <summary>URL para reproducir el video del anuncio (vence en horas: se pide al abrirlo).</summary>
+    [HttpGet("{adId}/video")]
+    public async Task<IActionResult> Video(string adId, CancellationToken ct)
+    {
+        var url = await _media.VideoUrlAsync(adId, ct);
+        return url is null ? NotFound(new { error = "Este anuncio no tiene video o Meta no lo devolvió." }) : Ok(new { url });
     }
 
     [HttpPost("sync")]

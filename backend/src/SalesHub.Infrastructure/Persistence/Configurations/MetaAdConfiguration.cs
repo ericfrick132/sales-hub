@@ -21,6 +21,7 @@ public class MetaAdConfiguration : IEntityTypeConfiguration<MetaAd>
         b.Property(x => x.PrefillText).HasMaxLength(512);
         b.Property(x => x.Title).HasMaxLength(256);
         b.Property(x => x.DestinationPhone).HasMaxLength(32);
+        b.Property(x => x.VideoId).HasMaxLength(40);
         b.HasIndex(x => x.ProductKey);
     }
 }

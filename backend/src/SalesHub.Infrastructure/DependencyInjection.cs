@@ -154,6 +154,7 @@ public static class DependencyInjection
         services.AddSingleton<ChatHistoryImporter>();          // chats de Evolution → ingest (sync periódico + historial de un teléfono nuevo)            // leads que entraron a cada teléfono (gráfico + reporte diario)
         services.AddScoped<MetaAdsSyncService>();         // anuncios de Meta → meta_ads (rubro/ángulo por anuncio para el guion)
         services.AddMemoryCache();                        // alcance exacto en vivo del mapa de anuncios (cache 15 min)
+        services.AddScoped<MetaAdMediaService>();         // miniatura y video de cada anuncio (rendimiento de anuncios)
         services.AddScoped<MetaGeoSyncService>();         // rendimiento por provincia → meta_geo_daily (mapa de anuncios)
         services.AddScoped<MetaGeoReportService>();       // KPIs/provincias/anuncios del mapa + leads por código de área
         services.AddScoped<PitchEngine>();                 // pitch por anuncio (pasos, follow-ups, avance por respuesta)

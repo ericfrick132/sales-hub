@@ -40,6 +40,7 @@ import Competitors from './Competitors';
 import Trends from './Trends';
 import Anuncios from './Anuncios';
 import MapaAnuncios from './MapaAnuncios';
+import RendimientoAnuncios from './RendimientoAnuncios';
 import Promos from './Promos';
 
 /** CRM de cold calling: pipeline, lista, mapa, captación y remarketing. */
@@ -154,6 +155,7 @@ export function MarketingHub() {
         },
         { key: 'promos', label: 'Promos', element: <Promos /> },
         { key: 'anuncios', label: 'Anuncios', element: <Anuncios /> },
+        { key: 'rendimiento-anuncios', label: 'Rendimiento de anuncios', element: <RendimientoAnuncios /> },
         { key: 'mapa-anuncios', label: 'Mapa de anuncios', element: <MapaAnuncios /> },
         { key: 'seo', label: 'SEO', element: <Seo /> },
         {

@@ -2604,6 +2604,11 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("title");
 
+                    b.Property<string>("VideoId")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("video_id");
+
                     b.HasKey("AdId")
                         .HasName("pk_meta_ads");
 

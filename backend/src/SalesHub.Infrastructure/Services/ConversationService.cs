@@ -941,7 +941,7 @@ public class ConversationService
     {
         var hasReferral = incoming.Ad is not null;
         // El anuncio exacto (por referral o por su texto pre-armado): trae app, rubro y ángulo.
-        var metaAd = await _metaAds.MatchAsync(incoming.Ad?.SourceId, incoming.Text, ct);
+        var metaAd = await _metaAds.MatchAsync(incoming.Ad?.SourceId, incoming.Text, ct, phone);
         if (!hasReferral && metaAd is null) return null;
 
         // Resuelve entre las apps que atiende ESTA línea (puede ser más de una); el anuncio manda.

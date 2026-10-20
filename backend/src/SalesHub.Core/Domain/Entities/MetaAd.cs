@@ -30,6 +30,8 @@ public class MetaAd
     public string? Body { get; set; }
     /// <summary>Número de WhatsApp al que apunta el anuncio.</summary>
     public string? DestinationPhone { get; set; }
+    /// <summary>Video del creativo (el de la biblioteca de la cuenta). La URL para reproducirlo vence: se pide en vivo (MetaAdMediaService).</summary>
+    public string? VideoId { get; set; }
 
     public DateTimeOffset? AdCreatedAt { get; set; }
     public DateTimeOffset SyncedAt { get; set; } = DateTimeOffset.UtcNow;
