@@ -96,9 +96,14 @@ async function followOnPage() {
       .map((el) => ({ el, text: (el.innerText || '').trim() }));
   };
 
+  // Sin sesión IG muestra el perfil igual, pero con links a "Iniciar sesión" y sin el inbox.
+  const loggedOut = () =>
+    location.pathname.startsWith('/accounts/login') ||
+    (!!document.querySelector('a[href*="/accounts/login"]') && !document.querySelector('a[href*="/direct/"]'));
+
   for (let i = 0; i < 30; i++) {
     const body = document.body?.innerText || '';
-    if (location.pathname.startsWith('/accounts/login')) return 'login';
+    if (i >= 4 && loggedOut()) return 'login';
     if (GONE.test(body)) return 'not_found';
     const list = buttons();
     if (list.some((b) => DONE.test(b.text))) return 'already';
@@ -150,10 +155,18 @@ async function runOne() {
     patch.running = false;
     patch.lastError = 'Instagram pide login: iniciá sesión en esta ventana de Chrome y dale Reanudar.';
   } else if (result === 'error' || result === 'no_button') {
-    // Reintenta una vez más tarde: lo manda al final de la cola, salvo que ya haya fallado antes.
-    const fails = log.filter((e) => e.handle === handle && (e.result === 'error' || e.result === 'no_button')).length;
-    patch.queue = fresh.queue.filter((h) => h !== handle);
-    if (fails < 2) patch.queue.push(handle);
+    // 3 seguidos sin botón/errores = no es el perfil, es la página (IG cambió el diseño, sesión
+    // rara): se pausa sin descartar nada, para no quemar la lista entera.
+    const last = log.slice(-3);
+    if (last.length === 3 && last.every((e) => e.result === 'error' || e.result === 'no_button')) {
+      patch.running = false;
+      patch.lastError = 'No encuentro el botón "Seguir" en 3 perfiles seguidos. Pausado sin tocar la cola: revisá que Instagram cargue bien en este Chrome.';
+    } else {
+      // Reintenta una vez más tarde: lo manda al final de la cola, salvo que ya haya fallado antes.
+      const fails = log.filter((e) => e.handle === handle && (e.result === 'error' || e.result === 'no_button')).length;
+      patch.queue = fresh.queue.filter((h) => h !== handle);
+      if (fails < 2) patch.queue.push(handle);
+    }
   } else {
     patch.queue = fresh.queue.filter((h) => h !== handle);
   }
