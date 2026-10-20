@@ -17,7 +17,7 @@ public class AppTenant
 
     public string? Name { get; set; }
 
-    /// <summary>"trial" | "trial_expired" | "active" | "past_due" | "cancelled".</summary>
+    /// <summary>"trial" | "trial_expired" | "free" | "active" | "past_due" | "cancelled". "free" = plan Gratis: no es pago, ni trial, ni baja.</summary>
     public string Status { get; set; } = string.Empty;
 
     public string? Plan { get; set; }

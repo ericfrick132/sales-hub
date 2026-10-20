@@ -245,8 +245,8 @@ public class DashboardController : ControllerBase
     }
 
     public record BusinessApp(string ProductKey, bool Connected, DateTimeOffset? LastSyncAt, string? Error,
-        decimal MrrUsd, int Active, int Trial, int PastDue, int NewPaid, int Cancelled, double? ChurnPct, double? TrialToPaidPct);
-    public record BusinessTotals(decimal MrrUsd, int Active, int Trial, int NewPaid, int Cancelled);
+        decimal MrrUsd, int Active, int Trial, int Free, int PastDue, int NewPaid, int Cancelled, double? ChurnPct, double? TrialToPaidPct);
+    public record BusinessTotals(decimal MrrUsd, int Active, int Trial, int Free, int NewPaid, int Cancelled);
     public record BusinessDay(string Date, Dictionary<string, decimal> ByProduct);
     public record BusinessResult(int Days, decimal UsdArs, BusinessTotals Totals, List<BusinessApp> Apps, List<BusinessDay> Daily);
 
@@ -287,6 +287,8 @@ public class DashboardController : ControllerBase
                 Math.Round(active.Sum(t => metrics.ToUsd(t.MonthlyAmount, t.Currency)), 2),
                 active.Count,
                 mine.Count(t => t.Status == "trial"),
+                // Plan Gratis: cuenta viva que no paga (no es trial ni baja).
+                mine.Count(t => t.Status == "free"),
                 mine.Count(t => t.Status == "past_due"),
                 mine.Count(t => t.FirstPaidAt >= since),
                 cancelled,
@@ -302,7 +304,7 @@ public class DashboardController : ControllerBase
 
         var connectedApps = apps.Where(a => a.Connected).ToList();
         return new BusinessResult(days, metrics.UsdArs,
-            new BusinessTotals(connectedApps.Sum(a => a.MrrUsd), connectedApps.Sum(a => a.Active), connectedApps.Sum(a => a.Trial),
+            new BusinessTotals(connectedApps.Sum(a => a.MrrUsd), connectedApps.Sum(a => a.Active), connectedApps.Sum(a => a.Trial), connectedApps.Sum(a => a.Free),
                 connectedApps.Sum(a => a.NewPaid), connectedApps.Sum(a => a.Cancelled)),
             apps, daily);
     }

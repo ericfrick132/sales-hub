@@ -13,6 +13,7 @@ interface AppBusiness {
   mrrUsd: number;
   active: number;
   trial: number;
+  free: number;
   pastDue: number;
   newPaid: number;
   cancelled: number;
@@ -22,7 +23,7 @@ interface AppBusiness {
 interface Business {
   days: number;
   usdArs: number;
-  totals: { mrrUsd: number; active: number; trial: number; newPaid: number; cancelled: number };
+  totals: { mrrUsd: number; active: number; trial: number; free: number; newPaid: number; cancelled: number };
   apps: AppBusiness[];
   daily: { date: string; byProduct: Record<string, number> }[];
 }
@@ -49,10 +50,11 @@ export default function BusinessTab({ colorOf, nameOf }: { colorOf: (k: string) 
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <Tile label="MRR total" value={usd(data.totals.mrrUsd)} sub={data.usdArs > 0 ? `ARS convertido a ${data.usdArs.toLocaleString('es-AR')}` : undefined} />
         <Tile label="Clientes pagos" value={data.totals.active} />
         <Tile label="En trial" value={data.totals.trial} />
+        <Tile label="En Gratis" value={data.totals.free ?? 0} />
         <Tile label={`Altas pagas · ${data.days}d`} value={data.totals.newPaid} />
         <Tile label={`Bajas · ${data.days}d`} value={data.totals.cancelled} />
       </div>
@@ -89,11 +91,12 @@ export default function BusinessTab({ colorOf, nameOf }: { colorOf: (k: string) 
               <th className="px-3 py-2 text-right">MRR</th>
               <th className="px-3 py-2 text-right">Pagos</th>
               <th className="px-3 py-2 text-right">Trial</th>
+              <th className="px-3 py-2 text-right">Gratis</th>
               <th className="px-3 py-2 text-right">Pago vencido</th>
               <th className="px-3 py-2 text-right">Altas {data.days}d</th>
               <th className="px-3 py-2 text-right">Bajas {data.days}d</th>
               <th className="px-3 py-2 text-right">Churn</th>
-              <th className="px-3 py-2 text-right">Trial → pago</th>
+              <th className="px-3 py-2 text-right">Alta → pago</th>
               <th className="px-3 py-2 text-left">Última sync</th>
             </tr>
           </thead>
@@ -109,6 +112,7 @@ export default function BusinessTab({ colorOf, nameOf }: { colorOf: (k: string) 
                     <td className="px-3 py-2 text-right tabular-nums font-semibold whitespace-nowrap">{usd(a.mrrUsd)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{a.active}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{a.trial}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{a.free ?? 0}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{a.pastDue}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{a.newPaid}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{a.cancelled}</td>
@@ -116,7 +120,7 @@ export default function BusinessTab({ colorOf, nameOf }: { colorOf: (k: string) 
                     <td className="px-3 py-2 text-right tabular-nums">{a.trialToPaidPct == null ? '—' : `${a.trialToPaidPct.toFixed(0)}%`}</td>
                   </>
                 ) : (
-                  <td colSpan={8} className="px-3 py-2 text-xs">{a.error ?? 'sin datos: la app todavía no reporta'}</td>
+                  <td colSpan={9} className="px-3 py-2 text-xs">{a.error ?? 'sin datos: la app todavía no reporta'}</td>
                 )}
                 <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{fmtSync(a.lastSyncAt)}</td>
               </tr>
@@ -125,7 +129,7 @@ export default function BusinessTab({ colorOf, nameOf }: { colorOf: (k: string) 
         </table>
       </section>
       <p className="text-xs text-slate-400">
-        Churn = bajas del período sobre los pagos al inicio del período. Trial → pago = trials que arrancaron en el período y ya pagan.
+        Churn = bajas del período sobre los pagos al inicio del período. Gratis = cuentas en el plan gratis (no pagan, no son trial ni baja). Alta → pago = cuentas creadas en el período (trial o Gratis) que ya pagan.
       </p>
     </div>
   );
