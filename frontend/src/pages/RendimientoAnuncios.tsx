@@ -42,8 +42,23 @@ const STATUS_LABEL: Record<string, string> = { ACTIVE: 'Activo', PAUSED: 'Pausad
 // En "solo activos" cuentan también los que Meta está revisando: van a salir.
 const RUNNING = new Set(['ACTIVE', 'IN_PROCESS', 'PENDING_REVIEW']);
 
-// Para pintar mejor/peor solo se comparan anuncios con datos suficientes.
+// Solo se pintan los anuncios con datos suficientes.
 const MIN_IMPRESSIONS = 1000;
+
+// Escala de 5 colores contra el promedio global (ponderado) de los anuncios de la tabla.
+// ratio = valor / promedio (o promedio / valor si menos es mejor): > 1 es mejor que la media.
+const LEVELS = [
+  { min: 1.3, label: 'Muy bien', cls: 'bg-emerald-200 text-emerald-900 font-semibold' },
+  { min: 1.1, label: 'Bien', cls: 'bg-emerald-50 text-emerald-800' },
+  { min: 0.9, label: 'En la media', cls: 'bg-slate-50 text-slate-700' },
+  { min: 0.7, label: 'Mal', cls: 'bg-orange-100 text-orange-800' },
+  { min: 0, label: 'Muy mal', cls: 'bg-red-200 text-red-900 font-semibold' },
+];
+const levelOf = (v: number | null, avg: number | null, lowerIsBetter: boolean) => {
+  if (v == null || avg == null || avg <= 0 || v < 0) return null;
+  const ratio = lowerIsBetter ? (v === 0 ? Infinity : avg / v) : v / avg;
+  return LEVELS.find((l) => ratio >= l.min) ?? LEVELS[LEVELS.length - 1];
+};
 
 type ColKey = 'spend' | 'impressions' | 'hookRate' | 'ctr' | 'conversations' | 'costPerConversation' | 'leads' | 'costPerLead' | 'leadsQualified' | 'leadsClosed';
 const COLS: { key: ColKey; label: string; hint: string; fmt: (n: number | null) => string; rank?: 'high' | 'low' }[] = [
@@ -113,21 +128,6 @@ export default function RendimientoAnuncios() {
     });
   }, [table.data, adsById, onlyRunning, sortKey, sortDir]);
 
-  // Mejor y peor de cada métrica de calidad, entre los que tienen volumen.
-  const extremes = useMemo(() => {
-    const out = new Map<ColKey, { best: number; worst: number }>();
-    const pool = rows.filter((r) => r.m.impressions >= MIN_IMPRESSIONS);
-    if (pool.length < 2) return out;
-    for (const c of COLS.filter((x) => x.rank)) {
-      const vals = pool.map((r) => r.m[c.key]).filter((v): v is number => v != null);
-      if (vals.length < 2) continue;
-      const hi = Math.max(...vals), lo = Math.min(...vals);
-      if (hi === lo) continue;
-      out.set(c.key, c.rank === 'high' ? { best: hi, worst: lo } : { best: lo, worst: hi });
-    }
-    return out;
-  }, [rows]);
-
   const thumbs = useQuery({
     queryKey: ['meta-ads-media', rows.map((r) => r.adId).sort().join(',')],
     queryFn: async () => {
@@ -166,8 +166,8 @@ export default function RendimientoAnuncios() {
   return (
     <div className="space-y-4">
       <div className="text-sm text-slate-600">
-        Cada anuncio con su video y cómo rinde. Tocá la miniatura para ver el video. En verde el mejor y en rojo el peor de cada
-        columna, entre los anuncios con más de {num(MIN_IMPRESSIONS)} impresiones.
+        Cada anuncio con su video y cómo rinde. Tocá la miniatura para ver el video. Enganche, CTR, $ / chat y $ / lead se pintan
+        contra el promedio de todos los anuncios de la tabla (solo los que tienen más de {num(MIN_IMPRESSIONS)} impresiones).
       </div>
       {f && !f.configured && <div className="card p-3 text-sm text-red-700">Falta el token de Meta (Meta:AdsAccessToken) en el servidor.</div>}
 
@@ -248,12 +248,11 @@ export default function RendimientoAnuncios() {
                     </td>
                     {COLS.map((c) => {
                       const v = r.m[c.key];
-                      const ex = extremes.get(c.key);
-                      const ok = r.m.impressions >= MIN_IMPRESSIONS && v != null && ex;
+                      const lvl = c.rank && r.m.impressions >= MIN_IMPRESSIONS
+                        ? levelOf(v, totals[c.key as keyof typeof totals] as number | null, c.rank === 'low') : null;
                       return (
-                        <td key={c.key} className={clsx('py-2 px-2 text-right tabular-nums whitespace-nowrap',
-                          ok && v === ex.best && 'bg-emerald-50 text-emerald-800 font-semibold',
-                          ok && v === ex.worst && 'bg-red-50 text-red-700')}>
+                        <td key={c.key} title={lvl ? `${lvl.label} (promedio ${c.fmt(totals[c.key as keyof typeof totals] as number | null)})` : undefined}
+                          className={clsx('py-2 px-2 text-right tabular-nums whitespace-nowrap', lvl?.cls)}>
                           {c.fmt(v)}
                         </td>
                       );
@@ -264,6 +263,14 @@ export default function RendimientoAnuncios() {
             </tbody>
           </table>
         )}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+        {LEVELS.map((l, i) => (
+          <span key={l.label} className={clsx('px-2 py-0.5 rounded', l.cls)}>
+            {l.label}{[' (+30 % o más)', ' (+10 a 30 %)', ' (±10 %)', ' (−10 a 30 %)', ' (−30 % o más)'][i]}
+          </span>
+        ))}
+        <span className="text-slate-400">vs. el promedio de la tabla; en costos, más barato es mejor.</span>
       </div>
       <div className="text-[11px] text-slate-400">
         Chats = conversaciones que cuenta Meta. Leads = los que llegaron a sales-hub y se reconocieron por el mensaje que deja escrito el anuncio.
