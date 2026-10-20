@@ -42,7 +42,7 @@ const STATUS_LABEL: Record<string, string> = { ACTIVE: 'Activo', PAUSED: 'Pausad
 // En "solo activos" cuentan también los que Meta está revisando: van a salir.
 const RUNNING = new Set(['ACTIVE', 'IN_PROCESS', 'PENDING_REVIEW']);
 
-// Solo se pintan los anuncios con datos suficientes.
+// Debajo de esto el color vale igual, pero se avisa que hay pocos datos.
 const MIN_IMPRESSIONS = 1000;
 
 // Escala de 5 colores contra referencias del mercado (no contra nuestro propio promedio).
@@ -52,12 +52,14 @@ const MIN_IMPRESSIONS = 1000;
 // lead: no hay referencia pública para leads de WhatsApp (los de formulario de SaaS rondan USD 36-75 y no son
 // comparables): se usa la de chats, un poco más exigente porque no todo chat termina en lead.
 const LEVELS = [
-  { label: 'Muy bien', cls: 'bg-emerald-200 text-emerald-900 font-semibold' },
-  { label: 'Bien', cls: 'bg-emerald-50 text-emerald-800' },
-  { label: 'En la media', cls: 'bg-slate-50 text-slate-700' },
-  { label: 'Mal', cls: 'bg-orange-100 text-orange-800' },
-  { label: 'Muy mal', cls: 'bg-red-200 text-red-900 font-semibold' },
+  { label: 'Muy bien', cls: 'bg-emerald-300 text-emerald-950 font-semibold' },
+  { label: 'Bien', cls: 'bg-emerald-100 text-emerald-900' },
+  { label: 'En la media', cls: 'bg-yellow-100 text-yellow-900' },
+  { label: 'Mal', cls: 'bg-orange-200 text-orange-900' },
+  { label: 'Muy mal', cls: 'bg-red-300 text-red-950 font-semibold' },
 ];
+// Columnas de volumen (no son buenas ni malas): 5 tonos de azul por quintil dentro de la tabla.
+const BLUES = ['bg-sky-50 text-sky-900', 'bg-sky-100 text-sky-900', 'bg-sky-200 text-sky-950', 'bg-sky-300 text-sky-950', 'bg-sky-500 text-white font-semibold'];
 // Cortes de "muy bien" a "mal": [muy bien desde, bien desde, media desde, mal desde]; debajo/encima, muy mal.
 const BENCH: Partial<Record<ColKey, { cuts: [number, number, number, number]; lowerIsBetter?: boolean; ref: string }>> = {
   hookRate: { cuts: [40, 30, 25, 15], ref: 'mercado: 25-30 % es la media, 40 %+ excelente' },
@@ -70,6 +72,15 @@ const levelOf = (k: ColKey, v: number | null) => {
   if (v == null || !b) return null;
   const i = b.cuts.findIndex((c) => (b.lowerIsBetter ? v <= c : v >= c));
   return LEVELS[i < 0 ? 4 : i];
+};
+/** Nivel de una celda. Costo sin chats/leads pero con gasto: el costo real es MÁS que lo gastado → se pinta solo si ya es malo. */
+const cellLevel = (k: ColKey, m: M) => {
+  const v = m[k];
+  if (v != null) return levelOf(k, v);
+  const none = k === 'costPerConversation' ? m.conversations === 0 : k === 'costPerLead' ? m.leads === 0 : false;
+  if (!none || m.spend <= 0) return null;
+  const lvl = levelOf(k, m.spend);
+  return lvl && LEVELS.indexOf(lvl) >= 3 ? lvl : null;
 };
 
 type ColKey = 'spend' | 'impressions' | 'hookRate' | 'ctr' | 'conversations' | 'costPerConversation' | 'leads' | 'costPerLead' | 'leadsQualified' | 'leadsClosed';
@@ -140,6 +151,21 @@ export default function RendimientoAnuncios() {
     });
   }, [table.data, adsById, onlyRunning, sortKey, sortDir]);
 
+  // Cortes de quintil por columna de volumen (sobre los valores > 0 de la tabla).
+  const volumeBreaks = useMemo(() => {
+    const out = new Map<ColKey, number[]>();
+    for (const c of COLS.filter((x) => !BENCH[x.key])) {
+      const vals = rows.map((r) => r.m[c.key]).filter((v): v is number => v != null && v > 0).sort((a, b) => a - b);
+      if (vals.length) out.set(c.key, [0.2, 0.4, 0.6, 0.8].map((q) => vals[Math.min(vals.length - 1, Math.floor(q * vals.length))]));
+    }
+    return out;
+  }, [rows]);
+  const volumeTone = (k: ColKey, v: number | null) => {
+    const br = volumeBreaks.get(k);
+    if (v == null || v <= 0 || !br) return 'bg-slate-50 text-slate-400';
+    return BLUES[br.filter((b) => v >= b).length];
+  };
+
   const thumbs = useQuery({
     queryKey: ['meta-ads-media', rows.map((r) => r.adId).sort().join(',')],
     queryFn: async () => {
@@ -179,7 +205,7 @@ export default function RendimientoAnuncios() {
     <div className="space-y-4">
       <div className="text-sm text-slate-600">
         Cada anuncio con su video y cómo rinde. Tocá la miniatura para ver el video. Enganche, CTR, $ / chat y $ / lead se pintan
-        contra referencias del mercado (solo los anuncios con más de {num(MIN_IMPRESSIONS)} impresiones; pasá el mouse para ver la referencia).
+        contra referencias del mercado (pasá el mouse para ver la referencia); el volumen, en azul, contra el resto de la tabla.
       </div>
       {f && !f.configured && <div className="card p-3 text-sm text-red-700">Falta el token de Meta (Meta:AdsAccessToken) en el servidor.</div>}
 
@@ -260,10 +286,21 @@ export default function RendimientoAnuncios() {
                     </td>
                     {COLS.map((c) => {
                       const v = r.m[c.key];
-                      const lvl = r.m.impressions >= MIN_IMPRESSIONS ? levelOf(c.key, v) : null;
+                      const few = r.m.impressions < MIN_IMPRESSIONS ? ` · pocos datos (menos de ${num(MIN_IMPRESSIONS)} impresiones)` : '';
+                      if (BENCH[c.key]) {
+                        const lvl = cellLevel(c.key, r.m);
+                        const noResults = v == null && lvl ? ` · gastó ${usd(r.m.spend)} sin ${c.key === 'costPerLead' ? 'leads' : 'chats'}` : '';
+                        return (
+                          <td key={c.key} title={lvl ? `${lvl.label} — ${BENCH[c.key]?.ref}${noResults}${few}` : `Sin datos todavía${few}`}
+                            className={clsx('py-2 px-2 text-right tabular-nums whitespace-nowrap', lvl?.cls ?? 'bg-slate-100 text-slate-400', few && 'italic')}>
+                            {v == null && lvl ? `> ${usd(r.m.spend)}` : c.fmt(v)}
+                          </td>
+                        );
+                      }
+                      const tone = volumeTone(c.key, v);
                       return (
-                        <td key={c.key} title={lvl ? `${lvl.label} — ${BENCH[c.key]?.ref}` : undefined}
-                          className={clsx('py-2 px-2 text-right tabular-nums whitespace-nowrap', lvl?.cls)}>
+                        <td key={c.key} title={`${c.hint}${few}`}
+                          className={clsx('py-2 px-2 text-right tabular-nums whitespace-nowrap', tone)}>
                           {c.fmt(v)}
                         </td>
                       );
@@ -278,8 +315,12 @@ export default function RendimientoAnuncios() {
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
         {LEVELS.map((l) => <span key={l.label} className={clsx('px-2 py-0.5 rounded', l.cls)}>{l.label}</span>)}
         <span className="text-slate-400">
-          Referencias: enganche media 25-30 % · CTR media 1-1,5 % · $ / chat media USD 1-1,5 · $ / lead media USD 2-3.
+          Referencias: enganche media 25-30 % · CTR media 1-1,5 % · $ / chat media USD 1-1,5 · $ / lead media USD 2-3. En cursiva: pocos datos.
         </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+        {BLUES.map((b, i) => <span key={b} className={clsx('px-2 py-0.5 rounded', b)}>{['Menos', '', '', '', 'Más'][i] || '·'}</span>)}
+        <span className="text-slate-400">Volumen (gasto, impresiones, chats, leads, interesados, cerrados) comparado entre los anuncios de la tabla.</span>
       </div>
       <div className="text-[11px] text-slate-400">
         Chats = conversaciones que cuenta Meta. Leads = los que llegaron a sales-hub y se reconocieron por el mensaje que deja escrito el anuncio.
