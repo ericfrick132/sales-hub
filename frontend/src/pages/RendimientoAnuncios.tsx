@@ -45,19 +45,31 @@ const RUNNING = new Set(['ACTIVE', 'IN_PROCESS', 'PENDING_REVIEW']);
 // Solo se pintan los anuncios con datos suficientes.
 const MIN_IMPRESSIONS = 1000;
 
-// Escala de 5 colores contra el promedio global (ponderado) de los anuncios de la tabla.
-// ratio = valor / promedio (o promedio / valor si menos es mejor): > 1 es mejor que la media.
+// Escala de 5 colores contra referencias del mercado (no contra nuestro propio promedio).
+// Fuentes (oct 2026): enganche = 3 s / impresiones, Meta en frío: <25 % flojo, 30-40 % bueno, 40 %+ excelente
+// (Motion, Hawky, Madgicx). CTR (todos los clics): software 0,9-1,3 %, todas las industrias ~1,6 % (Superads,
+// Two Minute Reports). Costo por conversación de anuncios a mensajes: USD 0,30-1,50 (Stackmatix). Costo por
+// lead: no hay referencia pública para leads de WhatsApp (los de formulario de SaaS rondan USD 36-75 y no son
+// comparables): se usa la de chats, un poco más exigente porque no todo chat termina en lead.
 const LEVELS = [
-  { min: 1.3, label: 'Muy bien', cls: 'bg-emerald-200 text-emerald-900 font-semibold' },
-  { min: 1.1, label: 'Bien', cls: 'bg-emerald-50 text-emerald-800' },
-  { min: 0.9, label: 'En la media', cls: 'bg-slate-50 text-slate-700' },
-  { min: 0.7, label: 'Mal', cls: 'bg-orange-100 text-orange-800' },
-  { min: 0, label: 'Muy mal', cls: 'bg-red-200 text-red-900 font-semibold' },
+  { label: 'Muy bien', cls: 'bg-emerald-200 text-emerald-900 font-semibold' },
+  { label: 'Bien', cls: 'bg-emerald-50 text-emerald-800' },
+  { label: 'En la media', cls: 'bg-slate-50 text-slate-700' },
+  { label: 'Mal', cls: 'bg-orange-100 text-orange-800' },
+  { label: 'Muy mal', cls: 'bg-red-200 text-red-900 font-semibold' },
 ];
-const levelOf = (v: number | null, avg: number | null, lowerIsBetter: boolean) => {
-  if (v == null || avg == null || avg <= 0 || v < 0) return null;
-  const ratio = lowerIsBetter ? (v === 0 ? Infinity : avg / v) : v / avg;
-  return LEVELS.find((l) => ratio >= l.min) ?? LEVELS[LEVELS.length - 1];
+// Cortes de "muy bien" a "mal": [muy bien desde, bien desde, media desde, mal desde]; debajo/encima, muy mal.
+const BENCH: Partial<Record<ColKey, { cuts: [number, number, number, number]; lowerIsBetter?: boolean; ref: string }>> = {
+  hookRate: { cuts: [40, 30, 25, 15], ref: 'mercado: 25-30 % es la media, 40 %+ excelente' },
+  ctr: { cuts: [2.5, 1.5, 1, 0.7], ref: 'mercado: 1-1,5 % es la media (software ~1 %)' },
+  costPerConversation: { cuts: [0.5, 1, 1.5, 3], lowerIsBetter: true, ref: 'mercado: USD 0,30-1,50 por conversación' },
+  costPerLead: { cuts: [1, 2, 3, 5], lowerIsBetter: true, ref: 'sin referencia pública para leads de WhatsApp: USD 2-3 = media' },
+};
+const levelOf = (k: ColKey, v: number | null) => {
+  const b = BENCH[k];
+  if (v == null || !b) return null;
+  const i = b.cuts.findIndex((c) => (b.lowerIsBetter ? v <= c : v >= c));
+  return LEVELS[i < 0 ? 4 : i];
 };
 
 type ColKey = 'spend' | 'impressions' | 'hookRate' | 'ctr' | 'conversations' | 'costPerConversation' | 'leads' | 'costPerLead' | 'leadsQualified' | 'leadsClosed';
@@ -167,7 +179,7 @@ export default function RendimientoAnuncios() {
     <div className="space-y-4">
       <div className="text-sm text-slate-600">
         Cada anuncio con su video y cómo rinde. Tocá la miniatura para ver el video. Enganche, CTR, $ / chat y $ / lead se pintan
-        contra el promedio de todos los anuncios de la tabla (solo los que tienen más de {num(MIN_IMPRESSIONS)} impresiones).
+        contra referencias del mercado (solo los anuncios con más de {num(MIN_IMPRESSIONS)} impresiones; pasá el mouse para ver la referencia).
       </div>
       {f && !f.configured && <div className="card p-3 text-sm text-red-700">Falta el token de Meta (Meta:AdsAccessToken) en el servidor.</div>}
 
@@ -248,10 +260,9 @@ export default function RendimientoAnuncios() {
                     </td>
                     {COLS.map((c) => {
                       const v = r.m[c.key];
-                      const lvl = c.rank && r.m.impressions >= MIN_IMPRESSIONS
-                        ? levelOf(v, totals[c.key as keyof typeof totals] as number | null, c.rank === 'low') : null;
+                      const lvl = r.m.impressions >= MIN_IMPRESSIONS ? levelOf(c.key, v) : null;
                       return (
-                        <td key={c.key} title={lvl ? `${lvl.label} (promedio ${c.fmt(totals[c.key as keyof typeof totals] as number | null)})` : undefined}
+                        <td key={c.key} title={lvl ? `${lvl.label} — ${BENCH[c.key]?.ref}` : undefined}
                           className={clsx('py-2 px-2 text-right tabular-nums whitespace-nowrap', lvl?.cls)}>
                           {c.fmt(v)}
                         </td>
@@ -265,12 +276,10 @@ export default function RendimientoAnuncios() {
         )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
-        {LEVELS.map((l, i) => (
-          <span key={l.label} className={clsx('px-2 py-0.5 rounded', l.cls)}>
-            {l.label}{[' (+30 % o más)', ' (+10 a 30 %)', ' (±10 %)', ' (−10 a 30 %)', ' (−30 % o más)'][i]}
-          </span>
-        ))}
-        <span className="text-slate-400">vs. el promedio de la tabla; en costos, más barato es mejor.</span>
+        {LEVELS.map((l) => <span key={l.label} className={clsx('px-2 py-0.5 rounded', l.cls)}>{l.label}</span>)}
+        <span className="text-slate-400">
+          Referencias: enganche media 25-30 % · CTR media 1-1,5 % · $ / chat media USD 1-1,5 · $ / lead media USD 2-3.
+        </span>
       </div>
       <div className="text-[11px] text-slate-400">
         Chats = conversaciones que cuenta Meta. Leads = los que llegaron a sales-hub y se reconocieron por el mensaje que deja escrito el anuncio.
