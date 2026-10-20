@@ -26,6 +26,8 @@ type Filters = {
   ads: { id: string; name: string; productKey: string | null; campaignId: string; format: string; spend: number; lastDate: string }[];
   formats: { key: string; label: string }[];
   regions: { name: string; country: string }[];
+  countries: string[];
+  tableDims: { key: string; label: string }[];
 };
 type RegionRow = { region: string; country: string; inArgentina: boolean; selected: boolean; m: M };
 type AdRow = { adId: string; adName: string; campaignId: string | null; campaignName: string | null; productKey: string | null; format: string; m: M };
@@ -36,6 +38,13 @@ type Summary = {
   daily: { date: string; spend: number; impressions: number; clicks: number; conversations: number; leads: number }[];
   regions: RegionRow[]; ads: AdRow[];
   formats: { format: string; label: string; ads: number; m: M }[];
+};
+
+type TableData = {
+  from: string; to: string; days: number;
+  dims: { key: string; label: string }[];
+  weekdayCount: Record<string, number>;
+  rows: { keys: { id: string; label: string; sort: string }[]; m: M }[];
 };
 
 // ── formato ─────────────────────────────────────────────────────────────────────────────
@@ -110,7 +119,12 @@ function presetRange(key: string, today: string): [string, string] {
 const todayAr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
 
 // Claves de la URL (además de ?view= del hub).
-const P = { range: 'rango', from: 'desde', to: 'hasta', app: 'app', campaign: 'campania', ad: 'anuncio', format: 'formato', region: 'provincia', metric: 'metrica' };
+const P = {
+  range: 'rango', from: 'desde', to: 'hasta', app: 'app', campaign: 'campania', ad: 'anuncio', format: 'formato', region: 'provincia',
+  country: 'pais', metric: 'metrica', dim: 'agrupar', cell: 'celda',
+};
+const COUNTRY_NAMES: Record<string, string> = { AR: 'Argentina', UY: 'Uruguay', MX: 'México', ES: 'España', CL: 'Chile', CO: 'Colombia', PY: 'Paraguay' };
+const countryName = (c: string) => COUNTRY_NAMES[c] ?? c;
 
 export default function MapaAnuncios() {
   const qc = useQueryClient();
@@ -131,9 +145,10 @@ export default function MapaAnuncios() {
   const ads = params.getAll(P.ad);
   const formats = params.getAll(P.format);
   const regions = params.getAll(P.region);
+  const countries = params.getAll(P.country);
   const metric = (METRICS.find((m) => m.key === params.get(P.metric))?.key ?? 'spend') as MetricKey;
   const metricDef = METRICS.find((m) => m.key === metric)!;
-  const anyFilter = apps.length + campaigns.length + ads.length + formats.length + regions.length > 0 || preset !== '30d';
+  const anyFilter = apps.length + campaigns.length + ads.length + formats.length + regions.length + countries.length > 0 || preset !== '30d';
 
   /** Cambia un parámetro de la URL sin tocar el resto (ni la tab del hub). */
   function update(mut: (sp: URLSearchParams) => void) {
@@ -145,7 +160,7 @@ export default function MapaAnuncios() {
   const toggleIn = (key: string, list: string[], v: string) => setList(key, list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const setPreset = (k: string) => update((sp) => { sp.delete(P.from); sp.delete(P.to); if (k === '30d') sp.delete(P.range); else sp.set(P.range, k); });
   const setCustom = (f: string, t: string) => update((sp) => { sp.set(P.range, 'custom'); sp.set(P.from, f); sp.set(P.to, t); });
-  const clearAll = () => update((sp) => { Object.values(P).filter((k) => k !== P.metric).forEach((k) => sp.delete(k)); });
+  const clearAll = () => update((sp) => { Object.values(P).filter((k) => k !== P.metric && k !== P.dim && k !== P.cell).forEach((k) => sp.delete(k)); });
   const toggleRegion = (name: string) => {
     const k = regionKey(name);
     const has = regions.some((r) => regionKey(r) === k);
@@ -159,8 +174,9 @@ export default function MapaAnuncios() {
     ads.forEach((v) => sp.append('adId', v));
     formats.forEach((v) => sp.append('format', v));
     regions.forEach((v) => sp.append('region', v));
+    countries.forEach((v) => sp.append('country', v));
     return sp.toString();
-  }, [from, to, apps.join(), campaigns.join(), ads.join(), formats.join(), regions.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [from, to, apps.join(), campaigns.join(), ads.join(), formats.join(), regions.join(), countries.join()]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const summary = useQuery({
     queryKey: ['meta-geo-summary', qs],
@@ -267,6 +283,14 @@ export default function MapaAnuncios() {
           ))}
           {(f?.products ?? []).length === 0 && <span className="text-xs text-slate-400">sin datos todavía</span>}
         </div>
+        {(f?.countries ?? []).length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-medium text-slate-500 w-16">País</span>
+            {(f?.countries ?? []).map((c) => (
+              <Chip key={c} active={countries.includes(c)} onClick={() => toggleIn(P.country, countries, c)}>{countryName(c)}</Chip>
+            ))}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs font-medium text-slate-500 w-16">Formato</span>
           {(f?.formats ?? []).map((x) => (
@@ -356,6 +380,9 @@ export default function MapaAnuncios() {
               )}
             </section>
           </div>
+
+          {/* Tabla dinámica */}
+          <PivotSection qs={qs} dimsOptions={f?.tableDims ?? []} params={params} update={update} />
 
           {/* Serie diaria */}
           <section className="card p-3 space-y-2">
@@ -450,6 +477,166 @@ export default function MapaAnuncios() {
         </div>
       )}
     </div>
+  );
+}
+
+// ── tabla dinámica ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Agrupa por 1 o 2 dimensiones elegidas (app, campaña, conjunto, anuncio, país, provincia, día de la semana, fecha).
+ * Con una: tabla con todas las métricas. Con dos: matriz (filas × columnas) de la métrica elegida.
+ * Las filas salen de los datos: una campaña, anuncio o país nuevo aparece solo.
+ */
+function PivotSection({ qs, dimsOptions, params, update }: {
+  qs: string;
+  dimsOptions: { key: string; label: string }[];
+  params: URLSearchParams;
+  update: (mut: (sp: URLSearchParams) => void) => void;
+}) {
+  const dims = params.getAll(P.dim).length ? params.getAll(P.dim).slice(0, 2) : ['adset'];
+  const [rowDim, colDim] = [dims[0], dims[1] ?? ''];
+  const cell = (METRICS.find((m) => m.key === params.get(P.cell))?.key ?? 'spend') as MetricKey;
+  const cellDef = METRICS.find((m) => m.key === cell)!;
+  const [perDay, setPerDay] = useState(false);
+
+  const setDims = (r: string, c: string) => update((sp) => {
+    sp.delete(P.dim);
+    if (r !== 'adset' || c) { sp.append(P.dim, r); if (c && c !== r) sp.append(P.dim, c); }
+  });
+
+  const tq = `${qs}&${[rowDim, colDim].filter(Boolean).map((d) => `dim=${d}`).join('&')}`;
+  const table = useQuery({
+    queryKey: ['meta-geo-table', tq],
+    queryFn: async () => (await api.get<TableData>(`/meta-geo/table?${tq}`)).data,
+    placeholderData: keepPreviousData,
+  });
+  const t = table.data;
+  const label = (k: string) => dimsOptions.find((d) => d.key === k)?.label ?? k;
+
+  // Promedio por día: con "día de la semana" divide por cuántas veces cae ese día en el rango; si no, por los días del rango.
+  const isVolume = ['spend', 'reach', 'impressions', 'conversations', 'leads'].includes(cell);
+  const divisor = (keys: { id: string }[]) => {
+    if (!perDay || !t) return 1;
+    const wi = t.dims.findIndex((d) => d.key === 'weekday');
+    if (wi >= 0) return t.weekdayCount[keys[wi].id] ?? 1;
+    return t.dims.some((d) => d.key === 'date') ? 1 : t.days;
+  };
+  const cellValue = (r: TableData['rows'][number]) => {
+    const v = r.m[cell] as number | null;
+    return v == null || !isVolume ? v : v / divisor(r.keys);
+  };
+
+  // Matriz: columnas ordenadas por su clave (días de la semana y fechas en orden; el resto alfabético).
+  const matrix = useMemo(() => {
+    if (!t || t.dims.length < 2) return null;
+    const cols = new Map<string, { label: string; sort: string }>();
+    const rows = new Map<string, { label: string; cells: Map<string, TableData['rows'][number]>; total: number }>();
+    for (const r of t.rows) {
+      const [rk, ck] = r.keys;
+      cols.set(ck.id, { label: ck.label, sort: ck.sort });
+      const row = rows.get(rk.id) ?? { label: rk.label, cells: new Map(), total: 0 };
+      row.cells.set(ck.id, r);
+      row.total += r.m.spend;
+      rows.set(rk.id, row);
+    }
+    const colList = [...cols.entries()].sort((a, b) => a[1].sort.localeCompare(b[1].sort, 'es', { numeric: true }));
+    const rowList = [...rows.entries()].sort((a, b) => b[1].total - a[1].total);
+    return { colList, rowList };
+  }, [t]);
+
+  const heat = useMemo(() => {
+    if (!matrix) return () => undefined;
+    const vals = matrix.rowList.flatMap(([, r]) => [...r.cells.values()].map(cellValue)).filter((v): v is number => v != null && v > 0);
+    const max = Math.max(0, ...vals);
+    return (v: number | null) => {
+      if (v == null || v <= 0 || max === 0) return undefined;
+      const a = cellDef.lowerIsBetter ? 0.08 + 0.4 * (1 - v / max) : 0.08 + 0.5 * (v / max);
+      return `rgba(42,120,214,${a.toFixed(2)})`;
+    };
+  }, [matrix, cell, perDay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <section className="card p-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-semibold">Tabla dinámica</h2>
+        <div className="flex flex-wrap items-center gap-2 ml-auto text-sm">
+          <label className="flex items-center gap-1 text-slate-500">Filas
+            <select className="input !w-auto !py-1" value={rowDim} onChange={(e) => setDims(e.target.value, colDim === e.target.value ? '' : colDim)}>
+              {dimsOptions.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-slate-500">Columnas
+            <select className="input !w-auto !py-1" value={colDim} onChange={(e) => setDims(rowDim, e.target.value)}>
+              <option value="">— métricas —</option>
+              {dimsOptions.filter((d) => d.key !== rowDim).map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+            </select>
+          </label>
+          {colDim && (
+            <label className="flex items-center gap-1 text-slate-500">Celda
+              <select className="input !w-auto !py-1" value={cell}
+                onChange={(e) => update((sp) => (e.target.value === 'spend' ? sp.delete(P.cell) : sp.set(P.cell, e.target.value)))}>
+                {METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+              </select>
+            </label>
+          )}
+          {colDim && isVolume && (
+            <label className="flex items-center gap-1 text-slate-500">
+              <input type="checkbox" checked={perDay} onChange={(e) => setPerDay(e.target.checked)} /> promedio por día
+            </label>
+          )}
+        </div>
+      </div>
+
+      {table.isError && <div className="text-sm text-red-700">No se pudo cargar la tabla.</div>}
+      {!t ? <div className="text-slate-500 text-sm">Cargando…</div> : (
+        <div className={clsx('transition-opacity', table.isFetching && 'opacity-60')}>
+          {!matrix ? (
+            <SortTable
+              rows={t.rows}
+              rowKey={(r) => r.keys.map((k) => k.id).join('|')}
+              initialSort="spend"
+              columns={[
+                { key: 'k0', label: label(rowDim), value: (r) => r.keys[0].sort, render: (r) => <span className="whitespace-nowrap">{r.keys[0].label}</span> },
+                ...metricColumns<TableData['rows'][number]>({ reachApprox: true }),
+              ]}
+            />
+          ) : matrix.rowList.length === 0 ? <Empty /> : (
+            <div className="overflow-x-auto -mx-3 px-3">
+              <table className="text-sm">
+                <thead>
+                  <tr className="text-left text-slate-500 border-b border-slate-200">
+                    <th className="py-1.5 pr-3 font-medium">{label(rowDim)} × {label(colDim)}</th>
+                    {matrix.colList.map(([id, c]) => <th key={id} className="py-1.5 px-2 font-medium text-right whitespace-nowrap">{c.label}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {matrix.rowList.map(([id, r]) => (
+                    <tr key={id} className="border-t border-slate-100">
+                      <td className="py-1.5 pr-3 whitespace-nowrap max-w-[22rem] truncate" title={r.label}>{r.label}</td>
+                      {matrix.colList.map(([cid]) => {
+                        const c = r.cells.get(cid);
+                        const v = c ? cellValue(c) : null;
+                        return (
+                          <td key={cid} className="py-1.5 px-2 text-right tabular-nums whitespace-nowrap" style={{ background: heat(v) }}>
+                            {c ? cellDef.fmt(v) : <span className="text-slate-300">—</span>}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="text-[11px] text-slate-400 mt-1">
+                Más oscuro = {cellDef.lowerIsBetter ? 'más barato' : 'más'}.
+                {perDay && isVolume && ' Valores promediados por día.'}
+                {(rowDim === 'weekday' || colDim === 'weekday') && ` Días en el rango: ${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d, i) => `${d} ${t.weekdayCount[String(i)] ?? 0}`).join(' · ')}.`}
+                {' '}Conversaciones = conexiones de mensajería que Meta atribuye a la región.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

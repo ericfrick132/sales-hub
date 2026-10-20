@@ -25,7 +25,7 @@ public class MetaGeoController : ControllerBase
 
     /// <summary>
     /// KPIs, serie diaria, provincias, anuncios y formatos. Listas repetibles:
-    /// ?from=2026-09-17&amp;to=2026-10-16&amp;product=gymhero&amp;product=turnospro&amp;campaignId=…&amp;adId=…&amp;format=pov&amp;region=Córdoba
+    /// ?from=2026-09-17&amp;to=2026-10-16&amp;product=gymhero&amp;product=turnospro&amp;campaignId=…&amp;adId=…&amp;format=pov&amp;region=Córdoba&amp;country=MX
     /// </summary>
     [HttpGet("summary")]
     public async Task<IActionResult> Summary(
@@ -35,14 +35,38 @@ public class MetaGeoController : ControllerBase
         [FromQuery(Name = "adId")] List<string>? adIds,
         [FromQuery(Name = "format")] List<string>? formats,
         [FromQuery(Name = "region")] List<string>? regions,
+        [FromQuery(Name = "country")] List<string>? countries,
         CancellationToken ct)
     {
-        static List<string> Clean(List<string>? xs) => (xs ?? new())
-            .SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            .Distinct().ToList();
-        var q = new MetaGeoQuery(from, to, Clean(products), Clean(campaignIds), Clean(adIds), Clean(formats), Clean(regions));
+        var q = new MetaGeoQuery(from, to, Clean(products), Clean(campaignIds), Clean(adIds), Clean(formats), Clean(regions),
+            Clean(countries).Select(c => c.ToUpperInvariant()).ToList());
         return Ok(await _report.SummaryAsync(q, ct));
     }
+
+    /// <summary>
+    /// Tabla dinámica: agrupa por 1 o 2 dimensiones (?dim=adset&amp;dim=weekday; ver
+    /// <see cref="MetaGeoReportService.TableDims"/>) con los mismos filtros que /summary.
+    /// </summary>
+    [HttpGet("table")]
+    public async Task<IActionResult> Table(
+        [FromQuery] DateOnly? from, [FromQuery] DateOnly? to,
+        [FromQuery(Name = "dim")] List<string>? dims,
+        [FromQuery(Name = "product")] List<string>? products,
+        [FromQuery(Name = "campaignId")] List<string>? campaignIds,
+        [FromQuery(Name = "adId")] List<string>? adIds,
+        [FromQuery(Name = "format")] List<string>? formats,
+        [FromQuery(Name = "region")] List<string>? regions,
+        [FromQuery(Name = "country")] List<string>? countries,
+        CancellationToken ct)
+    {
+        var q = new MetaGeoQuery(from, to, Clean(products), Clean(campaignIds), Clean(adIds), Clean(formats), Clean(regions),
+            Clean(countries).Select(c => c.ToUpperInvariant()).ToList());
+        return Ok(await _report.TableAsync(q, Clean(dims), ct));
+    }
+
+    private static List<string> Clean(List<string>? xs) => (xs ?? new())
+        .SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        .Distinct().ToList();
 
     /// <summary>Fuerza la sync. Sin days: últimos 3 días (90 si una cuenta no tiene filas). days=90 rehace el backfill.</summary>
     [HttpPost("sync")]

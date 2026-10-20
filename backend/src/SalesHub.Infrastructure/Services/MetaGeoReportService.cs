@@ -36,7 +36,7 @@ public static class AdFormat
 public record MetaGeoQuery(
     DateOnly? From, DateOnly? To,
     IReadOnlyList<string> Products, IReadOnlyList<string> CampaignIds, IReadOnlyList<string> AdIds,
-    IReadOnlyList<string> Formats, IReadOnlyList<string> Regions);
+    IReadOnlyList<string> Formats, IReadOnlyList<string> Regions, IReadOnlyList<string> Countries);
 
 /// <summary>Métricas de una porción (total, provincia, anuncio, formato, día). Los ratios son null sin denominador.</summary>
 public record GeoMetrics(
@@ -79,6 +79,7 @@ public class MetaGeoReportService
                                campaignId = g.Max(x => x.CampaignId), spend = g.Sum(x => x.Spend), lastDate = g.Max(x => x.Date) })
             .ToListAsync(ct);
         var regions = await q.GroupBy(x => new { x.Region, x.Country }).Select(g => new { g.Key.Region, g.Key.Country }).ToListAsync(ct);
+        var countries = await q.GroupBy(x => x.Country).Select(g => new { code = g.Key, spend = g.Sum(x => x.Spend) }).ToListAsync(ct);
         var minDate = await q.MinAsync(x => (DateOnly?)x.Date, ct);
         var maxDate = await q.MaxAsync(x => (DateOnly?)x.Date, ct);
         var lastSyncAt = await q.MaxAsync(x => (DateTimeOffset?)x.SyncedAt, ct);
@@ -99,6 +100,8 @@ public class MetaGeoReportService
             ads = ads.Select(a => new { a.id, a.name, a.productKey, a.campaignId, format = AdFormat.Infer(a.name), a.spend, a.lastDate })
                 .OrderByDescending(a => a.lastDate).ThenByDescending(a => a.spend),
             formats = AdFormat.Labels.Select(kv => new { key = kv.Key, label = kv.Value }),
+            countries = countries.OrderByDescending(c => c.spend).Select(c => c.code),
+            tableDims = TableDims.Select(kv => new { key = kv.Key, label = kv.Value }),
             // Todas las provincias (aunque no tengan datos) + lo que vino de afuera.
             regions = ArRegions.All.Select(r => new { name = r, country = "AR" })
                 .Concat(regions.Where(r => !(r.Country == "AR" && ArRegions.Canonical(r.Region) is not null))
@@ -109,7 +112,14 @@ public class MetaGeoReportService
 
     // ── resumen ─────────────────────────────────────────────────────────────────────────
 
-    public async Task<object> SummaryAsync(MetaGeoQuery q, CancellationToken ct)
+    /// <summary>Lead de un anuncio ya ubicado (país/provincia por el código de área) y con su anuncio resuelto.</summary>
+    private sealed record GeoLead(string AdId, string? ProductKey, string? CampaignId, string? CampaignName, string? AdsetId,
+        string? AdsetName, string AdName, string Format, string Country, string? Province, DateOnly Date, LeadStatus Status);
+
+    private sealed record Loaded(DateOnly From, DateOnly To, int Days, List<MetaGeoDaily> Rows, List<GeoLead> Leads, HashSet<string> RegionKeys);
+
+    /// <summary>Filas del rango y leads de anuncios con los filtros "de anuncio" (app, campaña, anuncio, formato, país).</summary>
+    private async Task<Loaded> LoadAsync(MetaGeoQuery q, CancellationToken ct)
     {
         var today = MetaGeoSyncService.TodayAr();
         var to = q.To ?? today;
@@ -117,21 +127,18 @@ public class MetaGeoReportService
         if (from > to) (from, to) = (to, from);
         var days = to.DayNumber - from.DayNumber + 1;
 
-        // 1) Filas del rango con los filtros "de anuncio" (app, campaña, anuncio, formato).
         var rowsQ = _db.MetaGeoDaily.AsNoTracking().Where(x => x.Date >= from && x.Date <= to);
         if (q.Products.Count > 0) rowsQ = rowsQ.Where(x => x.ProductKey != null && q.Products.Contains(x.ProductKey));
         if (q.CampaignIds.Count > 0) rowsQ = rowsQ.Where(x => q.CampaignIds.Contains(x.CampaignId));
         if (q.AdIds.Count > 0) rowsQ = rowsQ.Where(x => q.AdIds.Contains(x.AdId));
+        if (q.Countries.Count > 0) rowsQ = rowsQ.Where(x => q.Countries.Contains(x.Country));
         var rows = await rowsQ.ToListAsync(ct);
         if (q.Formats.Count > 0) rows = rows.Where(x => q.Formats.Contains(AdFormat.Infer(x.AdName))).ToList();
 
-        var regionKeys = q.Regions.Select(ArRegions.Key).Where(k => k.Length > 0).ToHashSet();
-        bool InRegion(string region) => regionKeys.Count == 0 || regionKeys.Contains(ArRegions.Key(region));
-
-        // 2) Leads de sales-hub que vinieron de un anuncio, con los mismos filtros.
         var adInfo = await _db.MetaGeoDaily.AsNoTracking().GroupBy(x => x.AdId)
             .Select(g => new { AdId = g.Key, Name = g.Max(x => x.AdName), CampaignId = g.Max(x => x.CampaignId),
-                               CampaignName = g.Max(x => x.CampaignName), ProductKey = g.Max(x => x.ProductKey) })
+                               CampaignName = g.Max(x => x.CampaignName), AdsetId = g.Max(x => x.AdsetId),
+                               AdsetName = g.Max(x => x.AdsetName), ProductKey = g.Max(x => x.ProductKey) })
             .ToDictionaryAsync(x => x.AdId, ct);
         var metaAdNames = await _db.MetaAds.AsNoTracking().ToDictionaryAsync(a => a.AdId, a => a.Name, ct);
         var fromUtc = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(-3));
@@ -148,18 +155,25 @@ public class MetaGeoReportService
             var (country, province) = ArAreaCodes.Resolve(l.WhatsappPhone ?? l.RawPhone);
             province ??= country is null or "AR" ? ArRegions.Canonical(l.Province) : null;
             var name = info?.Name ?? metaAdNames.GetValueOrDefault(l.AdId!) ?? string.Empty;
-            return new
-            {
-                AdId = l.AdId!, l.ProductKey, CampaignId = info?.CampaignId, Format = AdFormat.Infer(name),
-                Country = country ?? "AR", Province = province,
-                Date = DateOnly.FromDateTime(l.CreatedAt.ToOffset(TimeSpan.FromHours(-3)).DateTime), l.Status,
-            };
+            return new GeoLead(l.AdId!, l.ProductKey, info?.CampaignId, info?.CampaignName, info?.AdsetId, info?.AdsetName, name,
+                AdFormat.Infer(name), country ?? "AR", province,
+                DateOnly.FromDateTime(l.CreatedAt.ToOffset(TimeSpan.FromHours(-3)).DateTime), l.Status);
         })
         .Where(l => q.CampaignIds.Count == 0 || (l.CampaignId != null && q.CampaignIds.Contains(l.CampaignId)))
         .Where(l => q.Formats.Count == 0 || q.Formats.Contains(l.Format))
+        .Where(l => q.Countries.Count == 0 || q.Countries.Contains(l.Country))
         .ToList();
 
-        // 3) Alcance exacto en vivo (por provincia y total) para estos filtros.
+        var regionKeys = q.Regions.Select(ArRegions.Key).Where(k => k.Length > 0).ToHashSet();
+        return new Loaded(from, to, days, rows, leads, regionKeys);
+    }
+
+    public async Task<object> SummaryAsync(MetaGeoQuery q, CancellationToken ct)
+    {
+        var (from, to, days, rows, leads, regionKeys) = await LoadAsync(q, ct);
+        bool InRegion(string region) => regionKeys.Count == 0 || regionKeys.Contains(ArRegions.Key(region));
+
+        // Alcance exacto en vivo (por provincia y total) para estos filtros.
         var live = await LiveReachAsync(q, rows, from, to, ct);
 
         // ── por provincia (el mapa no se filtra por provincia: la selección se resalta) ──
@@ -215,15 +229,15 @@ public class MetaGeoReportService
             var ar = rowsByAd.GetValueOrDefault(id) ?? new List<MetaGeoDaily>();
             var acc = Acc.Of(ar);
             if (leadsByAd.TryGetValue(id, out var st)) acc.AddLeads(st);
-            var info = adInfo.GetValueOrDefault(id);
-            var name = ar.LastOrDefault()?.AdName ?? info?.Name ?? metaAdNames.GetValueOrDefault(id) ?? id;
+            var lead = fl.FirstOrDefault(l => l.AdId == id);
+            var name = ar.LastOrDefault()?.AdName ?? (string.IsNullOrEmpty(lead?.AdName) ? null : lead.AdName) ?? id;
             return new
             {
                 adId = id,
                 adName = name,
-                campaignId = ar.LastOrDefault()?.CampaignId ?? info?.CampaignId,
-                campaignName = ar.LastOrDefault()?.CampaignName ?? info?.CampaignName,
-                productKey = ar.LastOrDefault()?.ProductKey ?? info?.ProductKey ?? fl.FirstOrDefault(l => l.AdId == id)?.ProductKey,
+                campaignId = ar.LastOrDefault()?.CampaignId ?? lead?.CampaignId,
+                campaignName = ar.LastOrDefault()?.CampaignName ?? lead?.CampaignName,
+                productKey = ar.LastOrDefault()?.ProductKey ?? lead?.ProductKey,
                 format = AdFormat.Infer(name),
                 m = acc.ToMetrics(null),
             };
@@ -251,6 +265,109 @@ public class MetaGeoReportService
             regions,
             ads,
             formats,
+        };
+    }
+
+    // ── tabla dinámica ──────────────────────────────────────────────────────────────────
+
+    /// <summary>Dimensiones de la tabla dinámica. Los valores salen de los datos, no de listas fijas.</summary>
+    public static readonly IReadOnlyDictionary<string, string> TableDims = new Dictionary<string, string>
+    {
+        ["app"] = "App", ["campaign"] = "Campaña", ["adset"] = "Conjunto", ["ad"] = "Anuncio", ["format"] = "Formato",
+        ["country"] = "País", ["region"] = "Provincia / estado", ["weekday"] = "Día de la semana", ["date"] = "Fecha",
+    };
+
+    private static readonly string[] WeekdayNames = { "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo" };
+
+    /// <summary>
+    /// Agrupa por 1 o 2 dimensiones (<see cref="TableDims"/>) con los mismos filtros que el resumen.
+    /// Cada celda trae sus métricas; el alcance es la suma diaria (aprox.). Una campaña cuya app no se
+    /// reconoce toma como app lo de antes del primer " - " o " | " de su nombre, así nada queda afuera.
+    /// </summary>
+    public async Task<object> TableAsync(MetaGeoQuery q, IReadOnlyList<string> dims, CancellationToken ct)
+    {
+        var (from, to, days, rows, leads, regionKeys) = await LoadAsync(q, ct);
+        dims = dims.Where(TableDims.ContainsKey).Distinct().Take(2).ToList();
+        if (dims.Count == 0) dims = new[] { "campaign" };
+
+        var productNames = await _db.Products.AsNoTracking().Where(p => p.ProductKey != "")
+            .ToDictionaryAsync(p => p.ProductKey, p => p.DisplayName, ct);
+        string App(string? productKey, string? campaignName)
+        {
+            if (productKey is not null) return productNames.GetValueOrDefault(productKey, productKey);
+            var head = (campaignName ?? string.Empty).Split(new[] { " - ", " | " }, StringSplitOptions.TrimEntries)[0];
+            return head.Length > 0 ? head : "Sin app";
+        }
+        static int Dow(DateOnly d) => ((int)d.DayOfWeek + 6) % 7; // lunes = 0
+
+        (string Id, string Label, string Sort) RowKey(string dim, MetaGeoDaily x) => dim switch
+        {
+            "app" => (App(x.ProductKey, x.CampaignName), App(x.ProductKey, x.CampaignName), App(x.ProductKey, x.CampaignName)),
+            "campaign" => (x.CampaignId, x.CampaignName, x.CampaignName),
+            "adset" => (x.AdsetId, x.AdsetName, x.AdsetName),
+            "ad" => (x.AdId, x.AdName, x.AdName),
+            "format" => (AdFormat.Infer(x.AdName), AdFormat.Labels.GetValueOrDefault(AdFormat.Infer(x.AdName), "Otro"), AdFormat.Infer(x.AdName)),
+            "country" => (x.Country, x.Country, x.Country),
+            "region" => ($"{x.Country}|{x.Region}", x.Region, $"{x.Country}|{x.Region}"),
+            "weekday" => (Dow(x.Date).ToString(), WeekdayNames[Dow(x.Date)], Dow(x.Date).ToString()),
+            _ => (x.Date.ToString("yyyy-MM-dd"), x.Date.ToString("dd/MM"), x.Date.ToString("yyyy-MM-dd")),
+        };
+        (string Id, string Label, string Sort) LeadKey(string dim, GeoLead l) => dim switch
+        {
+            "app" => (App(l.ProductKey, l.CampaignName), App(l.ProductKey, l.CampaignName), App(l.ProductKey, l.CampaignName)),
+            "campaign" => (l.CampaignId ?? "?", l.CampaignName ?? "(sin datos de Meta)", l.CampaignName ?? "~"),
+            "adset" => (l.AdsetId ?? "?", l.AdsetName ?? "(sin datos de Meta)", l.AdsetName ?? "~"),
+            "ad" => (l.AdId, l.AdName.Length > 0 ? l.AdName : l.AdId, l.AdName),
+            "format" => (l.Format, AdFormat.Labels.GetValueOrDefault(l.Format, "Otro"), l.Format),
+            "country" => (l.Country, l.Country, l.Country),
+            "region" => l.Province is not null
+                ? ($"{l.Country}|{l.Province}", l.Province, $"{l.Country}|{l.Province}")
+                : ($"{l.Country}|?", $"Sin provincia ({l.Country})", $"{l.Country}|~"),
+            "weekday" => (Dow(l.Date).ToString(), WeekdayNames[Dow(l.Date)], Dow(l.Date).ToString()),
+            _ => (l.Date.ToString("yyyy-MM-dd"), l.Date.ToString("dd/MM"), l.Date.ToString("yyyy-MM-dd")),
+        };
+
+        // Provincia elegida: filtra las filas (los leads, por su provincia del código de área).
+        var fr = rows.Where(x => regionKeys.Count == 0 || regionKeys.Contains(ArRegions.Key(x.Region))).ToList();
+        var fl = leads.Where(l => regionKeys.Count == 0 || (l.Province != null && regionKeys.Contains(ArRegions.Key(l.Province)))).ToList();
+
+        var cells = new Dictionary<string, (List<(string Id, string Label, string Sort)> Keys, List<MetaGeoDaily> Rows, List<LeadStatus> Leads)>();
+        (List<(string Id, string Label, string Sort)> Keys, List<MetaGeoDaily> Rows, List<LeadStatus> Leads) Cell(List<(string Id, string Label, string Sort)> keys)
+        {
+            var id = string.Join("\u001f", keys.Select(k => k.Id));
+            if (!cells.TryGetValue(id, out var c)) cells[id] = c = (keys, new List<MetaGeoDaily>(), new List<LeadStatus>());
+            return c;
+        }
+        foreach (var x in fr) Cell(dims.Select(d => RowKey(d, x)).ToList()).Rows.Add(x);
+        foreach (var l in fl) Cell(dims.Select(d => LeadKey(d, l)).ToList()).Leads.Add(l.Status);
+
+        var result = cells.Values.Select(c =>
+        {
+            var acc = Acc.Of(c.Rows);
+            acc.AddLeads(c.Leads);
+            // Nombre más reciente (un anuncio/campaña renombrado aparece una sola vez).
+            var keys = c.Keys.Select((k, i) =>
+            {
+                var latest = c.Rows.Count > 0 && dims[i] is "campaign" or "adset" or "ad"
+                    ? RowKey(dims[i], c.Rows.MaxBy(r => r.Date)!).Label : k.Label;
+                return new { id = k.Id, label = latest, sort = k.Sort };
+            }).ToList();
+            return new { keys, m = acc.ToMetrics(null) };
+        })
+        .Where(r => r.m.Impressions > 0 || r.m.Spend > 0 || r.m.Leads > 0)
+        .OrderByDescending(r => r.m.Spend)
+        .ToList();
+
+        // Cuántas veces cae cada día de la semana en el rango (para promediar por día).
+        var weekdayCount = Enumerable.Range(0, days).Select(i => Dow(from.AddDays(i)))
+            .GroupBy(d => d).ToDictionary(g => g.Key.ToString(), g => g.Count());
+
+        return new
+        {
+            from, to, days,
+            dims = dims.Select(d => new { key = d, label = TableDims[d] }),
+            weekdayCount,
+            rows = result,
         };
     }
 
