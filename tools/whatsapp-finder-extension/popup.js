@@ -11,12 +11,6 @@ const LABEL = {
 const send = (type) => chrome.runtime.sendMessage({ type });
 const fmtTime = (ms) => new Date(ms).toLocaleString('es-AR', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
 
-function handleOf(v) {
-  if (!v) return null;
-  const m = String(v).match(/instagram\.com\/([A-Za-z0-9_.]+)/i);
-  const h = (m ? m[1] : String(v)).replace(/^@/, '').replace(/\.+$/, '').toLowerCase();
-  return /^[a-z0-9._]{1,30}$/.test(h) && !['p', 'reel', 'reels', 'explore', 'accounts'].includes(h) ? h : null;
-}
 
 async function render() {
   const s = await chrome.storage.local.get(null);
@@ -61,40 +55,10 @@ async function render() {
     .map(([k, r]) => `<div>${fmtTime(r.at)} · ${k.split('|')[1]} · ${LABEL[r.status] ?? r.status}${r.phone ? ' · ' + r.source : ''}</div>`).join('');
 }
 
-async function addItems(raw) {
-  let rows;
-  try { rows = JSON.parse(raw); } catch { $('status').textContent = 'El archivo no es JSON.'; return; }
-  if (!Array.isArray(rows)) rows = Object.values(rows).find(Array.isArray) ?? [];
-  const s = await chrome.storage.local.get(['queue', 'results']);
-  const queue = s.queue ?? [];
-  const done = s.results ?? {};
-  const seen = new Set(queue.map((q) => q.key));
-  let added = 0;
-  for (const r of rows) {
-    if (!r.dataset || r.externalId == null || !r.name || r.phone) continue;
-    const key = `${r.dataset}|${r.externalId}`;
-    if (seen.has(key) || (done[key] && done[key].status !== 'error')) continue;
-    seen.add(key);
-    queue.push({ key, dataset: r.dataset, externalId: String(r.externalId), name: r.name, city: r.city || '',
-                 country: r.country || '', instagram: handleOf(r.instagram), website: r.website || null });
-    added++;
-  }
-  await chrome.storage.local.set({ queue });
-  $('status').textContent = `${added} agregados a la cola.`;
-  setTimeout(render, 1500);
-}
 
 $('start').onclick = async () => { await send('start'); render(); };
 $('pause').onclick = async () => { await send('pause'); render(); };
 $('unblock').onclick = async () => { await send('unblock'); render(); };
-$('file').onchange = async (e) => {
-  const file = e.target.files?.[0];
-  if (file) await addItems(await file.text());
-  e.target.value = '';
-};
-$('clear').onclick = async () => {
-  if (confirm('¿Vaciar la cola? Los resultados se mantienen.')) { await chrome.storage.local.set({ queue: [] }); render(); }
-};
 $('export').onclick = async () => {
   const { results = {} } = await chrome.storage.local.get('results');
   const rows = Object.entries(results).map(([key, r]) => {
@@ -110,9 +74,7 @@ $('export').onclick = async () => {
 document.querySelectorAll('.onlyApp').forEach((c) => {
   c.onchange = async () => {
     const onlyApps = [...document.querySelectorAll('.onlyApp')].filter((x) => x.checked).map((x) => x.value);
-    const { queue = [] } = await chrome.storage.local.get('queue');
-    // La cola local se filtra a las apps elegidas; el resto sigue pendiente en sales-hub.
-    await chrome.storage.local.set({ onlyApps, queue: onlyApps.length ? queue.filter((q) => onlyApps.includes(q.app)) : queue });
+    await chrome.storage.local.set({ onlyApps });
     render();
   };
 });

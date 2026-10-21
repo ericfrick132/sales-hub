@@ -278,16 +278,17 @@ async function sync() {
   } catch { /* sin red: se reintenta con el próximo resultado */ }
 }
 
-// Pide a sales-hub los próximos negocios sin teléfono cuando quedan pocos en la cola.
+// Pide a sales-hub el próximo negocio sin teléfono, de a uno: así el servidor decide siempre cuál
+// sigue (prioridad, apps que ya llegaron a su tope, apps de esta extensión) y no hay cola local que filtrar.
 async function refill() {
   const s = await getState();
-  if (!s.apiKey || s.queue.length >= 5) return;
+  if (!s.apiKey || s.queue.length > 0) return;
   const skip = [...s.queue.map((q) => q.key), ...s.unsynced.map((u) => `${u.dataset}|${u.externalId}`)];
   try {
     const r = await fetch(`${API}/finder-queue`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Audience-Key': s.apiKey },
-      body: JSON.stringify({ limit: 30, skip, excludeProducts: appsDone(s), onlyProducts: s.onlyApps })
+      body: JSON.stringify({ limit: 1, skip, excludeProducts: appsDone(s), onlyProducts: s.onlyApps })
     });
     if (r.status === 401) { await setState({ lastError: 'sales-hub rechazó la clave: copiala de nuevo desde Públicos.' }); return; }
     if (!r.ok) return;
@@ -376,11 +377,6 @@ async function lookup(item, s) {
 }
 
 async function runOne() {
-  // Las apps que ya llegaron a su tope del día salen de la cola local (siguen pendientes en sales-hub).
-  const pre = await getState();
-  const done = appsDone(pre);
-  if (done.length && pre.queue.some((q) => done.includes(q.app)))
-    await setState({ queue: pre.queue.filter((q) => !done.includes(q.app)) });
   await refill();
   const s = await getState();
   if (!s.running || s.queue.length === 0) return schedule(0);
