@@ -254,23 +254,31 @@ public class AudienceLeadService
 
     public async Task<List<AudienceSummaryRow>> SummaryAsync(CancellationToken ct = default)
     {
-        return await _db.AudienceLeads
+        // Proyección anónima para que EF lo traduzca a un GROUP BY; el record y el orden se arman en memoria.
+        var rows = await _db.AudienceLeads
             .GroupBy(a => new { a.ProductKey, a.Competitor, a.Dataset, a.Segment, a.Country })
-            .Select(g => new AudienceSummaryRow(
+            .Select(g => new
+            {
                 g.Key.ProductKey, g.Key.Competitor, g.Key.Dataset, g.Key.Segment, g.Key.Country,
-                g.Count(),
-                g.Count(a => a.Phone != null),
-                g.Count(a => a.WhatsappProbable),
-                g.Count(a => a.PhoneSource == "competidor" || (a.PhoneSource != null && a.PhoneSource.StartsWith("cruce:"))),
-                g.Count(a => a.PhoneSource != null && a.PhoneSource.StartsWith("instagram")),
-                g.Count(a => a.PhoneSource != null && a.PhoneSource.StartsWith("web")),
-                g.Count(a => a.PhoneSource == "lead"),
-                g.Count(a => a.PhoneSource == "google_places"),
-                g.Count(a => a.FinderStatus != null),
-                g.Count(a => a.Phone == null && a.FinderStatus == null),
-                g.Count(a => a.Phone == null && a.FinderStatus == "google" && a.PlacesCheckedAt == null)))
-            .OrderBy(r => r.ProductKey).ThenBy(r => r.Dataset).ThenBy(r => r.Country)
+                Total = g.Count(),
+                WithPhone = g.Count(a => a.Phone != null),
+                Whatsapp = g.Count(a => a.WhatsappProbable),
+                FromCompetitor = g.Count(a => a.PhoneSource == "competidor" || (a.PhoneSource != null && a.PhoneSource.StartsWith("cruce:"))),
+                FromInstagram = g.Count(a => a.PhoneSource != null && a.PhoneSource.StartsWith("instagram")),
+                FromWeb = g.Count(a => a.PhoneSource != null && a.PhoneSource.StartsWith("web")),
+                FromLeads = g.Count(a => a.PhoneSource == "lead"),
+                FromGoogle = g.Count(a => a.PhoneSource == "google_places"),
+                FinderDone = g.Count(a => a.FinderStatus != null),
+                FinderPending = g.Count(a => a.Phone == null && a.FinderStatus == null),
+                GooglePending = g.Count(a => a.Phone == null && a.FinderStatus == "google" && a.PlacesCheckedAt == null),
+            })
             .ToListAsync(ct);
+        return rows
+            .Select(r => new AudienceSummaryRow(r.ProductKey, r.Competitor, r.Dataset, r.Segment, r.Country, r.Total,
+                r.WithPhone, r.Whatsapp, r.FromCompetitor, r.FromInstagram, r.FromWeb, r.FromLeads, r.FromGoogle,
+                r.FinderDone, r.FinderPending, r.GooglePending))
+            .OrderBy(r => r.ProductKey).ThenBy(r => r.Dataset).ThenBy(r => r.Country)
+            .ToList();
     }
 
     /// <summary>Últimos números conseguidos después de la carga (extensión, leads o Google).</summary>

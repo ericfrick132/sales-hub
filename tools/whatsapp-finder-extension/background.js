@@ -92,7 +92,12 @@ async function schedule(delayMs) {
     await setState({ nextAt: 0 });
     return;
   }
-  if (s.queue.length === 0) delayMs = Math.max(delayMs, IDLE_MIN * 60_000);
+  // Se pide de a uno: con la cola vacía primero se pregunta a sales-hub, y solo si no hay pendientes
+  // se espera IDLE_MIN.
+  if (s.queue.length === 0) {
+    await refill();
+    if ((await getState()).queue.length === 0) delayMs = Math.max(delayMs, IDLE_MIN * 60_000);
+  }
   const at = nextSlot(s, Math.max(Date.now() + delayMs, s.blockedUntil, s.restUntil));
   await chrome.alarms.create(ALARM, { when: at });
   await setState({ nextAt: at });
