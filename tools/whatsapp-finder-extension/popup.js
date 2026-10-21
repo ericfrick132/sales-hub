@@ -1,6 +1,8 @@
 const $ = (id) => document.getElementById(id);
-const NUM_FIELDS = ['dailyCap', 'minGapSec', 'maxGapSec', 'hourStart', 'hourEnd'];
-const NUM_DEFAULTS = { dailyCap: 250, minGapSec: 25, maxGapSec: 70, hourStart: 9, hourEnd: 23 };
+const NUM_FIELDS = ['dailyCap', 'minGapSec', 'maxGapSec', 'hourStart', 'hourEnd', 'followCap', 'followGapMin',
+  'workMin', 'workMax', 'restMin', 'restMax'];
+const NUM_DEFAULTS = { dailyCap: 250, minGapSec: 25, maxGapSec: 70, hourStart: 9, hourEnd: 23, followCap: 200, followGapMin: 3,
+  workMin: 50, workMax: 70, restMin: 20, restMax: 40 };
 const LABEL = {
   ok: 'número', google: 'para Google', error: 'error'
 };
@@ -25,6 +27,10 @@ async function render() {
   $('sGoogle').textContent = results.filter(([, r]) => r.status === 'google').length;
 
   for (const f of NUM_FIELDS) if (document.activeElement !== $(f)) $(f).value = s[f] ?? NUM_DEFAULTS[f];
+  $('follow').checked = s.follow ?? true;
+  const fToday = s.followToday?.day === new Date().toLocaleDateString('sv') ? s.followToday.n : 0;
+  const fBlocked = (s.followBlockedUntil ?? 0) > Date.now();
+  $('sFollow').textContent = fBlocked ? 'pausa' : `${fToday}/${s.followCap ?? NUM_DEFAULTS.followCap}`;
 
   if (document.activeElement !== $('apiKey')) $('apiKey').value = s.apiKey ?? '';
   const pending = (s.unsynced ?? []).length;
@@ -38,6 +44,7 @@ async function render() {
   else if (blocked) { st.textContent = `Instagram frenó. Retoma ${fmtTime(s.blockedUntil)}.`; st.className = 'warn'; }
   else if (!s.apiKey) st.textContent = 'Falta la clave de sales-hub';
   else if (!s.running) st.textContent = 'Pausado';
+  else if ((s.restUntil ?? 0) > Date.now()) st.textContent = `Descansando hasta ${fmtTime(s.restUntil)}`;
   else if (!(s.queue ?? []).length) st.textContent = `Sin pendientes en sales-hub · vuelve a mirar ${s.nextAt ? fmtTime(s.nextAt) : 'en un rato'}`;
   else if (s.nextAt) st.textContent = `Andando · próximo ${fmtTime(s.nextAt)}`;
   else st.textContent = 'Andando';
@@ -92,6 +99,7 @@ $('export').onclick = async () => {
   a.click();
 };
 
+$('follow').onchange = async () => { await chrome.storage.local.set({ follow: $('follow').checked }); render(); };
 $('apiKey').onchange = async () => {
   await chrome.storage.local.set({ apiKey: $('apiKey').value.trim(), lastError: '' });
   await send('sync');

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Buscar WhatsApp",
-  "version": "1.3.0",
-  "description": "Busca el WhatsApp de cada negocio de una lista: primero en su Instagram, después en su web. Despacio y con tope diario.",
+  "version": "1.4.0",
+  "description": "Busca el WhatsApp de cada negocio de una lista: primero en su Instagram (y la sigue, con tope propio), después en su web. En ráfagas, despacio y con tope diario.",
   "permissions": ["storage", "alarms", "tabs", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },

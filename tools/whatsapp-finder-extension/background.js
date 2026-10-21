@@ -20,9 +20,23 @@ const DEFAULTS = {
   hourStart: 9,
   hourEnd: 23,          // exclusiva
   blockedUntil: 0,      // IG mostró "intentá más tarde"
+  // Ráfagas como una persona: trabaja un rato (50-70 min) y descansa (20-40 min), al azar.
+  workMin: 50,
+  workMax: 70,
+  restMin: 20,
+  restMax: 40,
+  sessionStart: 0,      // inicio de la ráfaga actual
+  sessionLen: 0,        // ms que dura esta ráfaga
+  restUntil: 0,         // descansando hasta
   nextAt: 0,
   lastError: '',
   igToday: { day: '', n: 0 },
+  follow: true,         // además de buscar el número, seguir la cuenta (con su propio tope)
+  followCap: 200,       // follows por día (Eric 21/10: su cuenta aguanta 200)
+  followGapMin: 3,      // minutos mínimos entre follows (×1 a ×1,6 al azar)
+  followToday: { day: '', n: 0 },
+  lastFollowAt: 0,
+  followBlockedUntil: 0,
   apiKey: '',           // clave de Marketing → Competencia → Públicos
   unsynced: []          // resultados que todavía no llegaron a sales-hub
 };
@@ -38,6 +52,10 @@ const setState = (patch) => chrome.storage.local.set(patch);
 const todayKey = (d = new Date()) => d.toLocaleDateString('sv');
 const rand = (min, max) => min + Math.random() * (max - min);
 const igCount = (s) => (s.igToday.day === todayKey() ? s.igToday.n : 0);
+const followCount = (s) => (s.followToday.day === todayKey() ? s.followToday.n : 0);
+// ¿Toca seguir en este perfil? Tope diario, pausa mínima entre follows y sin bloqueo de follow vigente.
+const canFollow = (s) => s.follow && followCount(s) < s.followCap && Date.now() >= s.followBlockedUntil &&
+  Date.now() - s.lastFollowAt >= s.followGapMin * 60_000 * rand(1, 1.6);
 
 function inWindow(s, d = new Date()) {
   const h = d.getHours();
@@ -62,7 +80,7 @@ async function schedule(delayMs) {
     return;
   }
   if (s.queue.length === 0) delayMs = Math.max(delayMs, IDLE_MIN * 60_000);
-  const at = nextSlot(s, Math.max(Date.now() + delayMs, s.blockedUntil));
+  const at = nextSlot(s, Math.max(Date.now() + delayMs, s.blockedUntil, s.restUntil));
   await chrome.alarms.create(ALARM, { when: at });
   await setState({ nextAt: at });
 }
@@ -138,8 +156,27 @@ async function igSearchOnPage(name, city) {
 
 // Lee el perfil: abre la bio completa ("más"), busca links de WhatsApp con número, un número en el
 // texto y devuelve los links externos que vale la pena abrir (en orden de utilidad).
-async function igProfileOnPage() {
+async function igProfileOnPage(doFollow) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const FOLLOW = /^(seguir|follow|seguir también|follow back)$/i;
+  const FOLLOWING = /^(siguiendo|following|solicitado|requested|pendiente)$/i;
+  const headerButtons = (h) => [...h.querySelectorAll('button, div[role="button"]')].map((el) => ({ el, text: (el.innerText || '').trim() }));
+  // Seguir: solo el botón del header (abajo están las "Sugerencias" con su propio "Seguir").
+  const follow = async (h, res) => {
+    if (!doFollow) return res;
+    const list = headerButtons(h);
+    if (list.some((b) => FOLLOWING.test(b.text))) return { ...res, follow: 'already' };
+    const btn = list.find((b) => FOLLOW.test(b.text));
+    if (!btn) return { ...res, follow: 'no_button' };
+    await sleep(1500 + Math.random() * 2500);
+    btn.el.click();
+    for (let j = 0; j < 16; j++) {
+      await sleep(500);
+      if (BLOCK.test(document.body?.innerText || '')) return { ...res, follow: 'blocked' };
+      if (headerButtons(h).some((b) => FOLLOWING.test(b.text))) return { ...res, follow: 'followed' };
+    }
+    return { ...res, follow: 'no_button' };
+  };
   const BLOCK = /(intent[aá] de nuevo más tarde|inténtalo de nuevo más tarde|try again later|restringimos|we restrict)/i;
   const GONE = /(esta página no está disponible|sorry, this page isn't available|page isn't available)/i;
   const loggedOut = () => location.pathname.startsWith('/accounts/login') ||
@@ -171,16 +208,16 @@ async function igProfileOnPage() {
       if (more) { more.click(); await sleep(800 + Math.random() * 700); }
       const links = [...header.querySelectorAll('a[href]')].map((a) => unwrap(a.href)).filter((h) => /^https?:/i.test(h));
       const wa = links.map(waNumber).find(Boolean);
-      if (wa) return { status: 'ok', phone: wa, source: 'instagram_link' };
+      if (wa) return follow(header, { status: 'ok', phone: wa, source: 'instagram_link' });
       // Número en la bio: preferir la línea que habla de WhatsApp / teléfono.
       const lines = header.innerText.split('\n');
       const cand = [...lines.filter((l) => /(whats|wsp|wpp|wa\b|📲|📱|☎|📞|tel|cel|turnos|reservas)/i.test(l)), ...lines];
       for (const l of cand) {
         const m = l.match(/\+?\d[\d\s\-().]{7,}\d/);
-        if (m && m[0].replace(/\D/g, '').length >= 8) return { status: 'ok', phone: m[0], source: 'instagram_bio' };
+        if (m && m[0].replace(/\D/g, '').length >= 8) return follow(header, { status: 'ok', phone: m[0], source: 'instagram_bio' });
       }
       const external = [...new Set(links.filter((h) => !USELESS.test(h)))].sort((a, b) => rank(a) - rank(b));
-      return { status: 'no_phone', links: external };
+      return follow(header, { status: 'no_phone', links: external });
     }
     await sleep(500);
   }
@@ -255,6 +292,8 @@ async function refill() {
 // ---- Un negocio por vez ----
 
 async function lookup(item, s) {
+  let followPending = canFollow(s);
+  let followResult = null;
   let handle = item.instagram;
   let website = item.website;
   let igLinks = [];
@@ -263,13 +302,18 @@ async function lookup(item, s) {
   const steps = [];
   const step = (name, result, detail) => steps.push({ step: name, result, detail: detail || null, at: new Date().toISOString() });
   const host = (u) => { try { return new URL(/^https?:/i.test(u) ? u : `https://${u}`).hostname; } catch { return String(u).slice(0, 60); } };
-  const done = (r) => ({ ...r, steps, igUsed });
+  const done = (r) => ({ ...r, steps, igUsed, followResult });
 
   const profile = async (h) => {
     let p;
-    try { p = await inTab(`https://www.instagram.com/${h}/`, igProfileOnPage); }
+    try { p = await inTab(`https://www.instagram.com/${h}/`, igProfileOnPage, [followPending]); }
     catch (e) { p = { status: 'error', error: String(e?.message || e) }; }
     step('ig_profile', p?.status || 'error', p?.status === 'ok' ? `@${h} · ${p.source}` : p?.error ? `@${h} · ${p.error}` : `@${h}`);
+    if (p?.follow) {
+      step('ig_follow', p.follow, `@${h}`);
+      followResult = p.follow;
+      followPending = false;
+    }
     return p;
   };
 
@@ -322,7 +366,13 @@ async function runOne() {
   await refill();
   const s = await getState();
   if (!s.running || s.queue.length === 0) return schedule(0);
-  if (Date.now() < s.blockedUntil || !inWindow(s) || igCount(s) >= s.dailyCap) return schedule(0);
+  if (Date.now() < s.blockedUntil || Date.now() < s.restUntil || !inWindow(s) || igCount(s) >= s.dailyCap) return schedule(0);
+
+  // Ráfaga nueva si no hay una en curso o la anterior quedó vieja (cerró el horario, se apagó la compu).
+  const now = Date.now();
+  if (!s.sessionStart || now - s.sessionStart > s.sessionLen + s.restMax * 60_000) {
+    await setState({ sessionStart: now, sessionLen: rand(s.workMin, s.workMax) * 60_000 });
+  }
 
   const item = s.queue[0];
   let r;
@@ -337,6 +387,12 @@ async function runOne() {
   const fresh = await getState();
   const patch = { lastError: error };
   if (r.igUsed) patch.igToday = { day: todayKey(), n: igCount(fresh) + 1 };
+  if (r.followResult === 'followed') {
+    patch.followToday = { day: todayKey(), n: followCount(fresh) + 1 };
+    patch.lastFollowAt = Date.now();
+  } else if (r.followResult === 'blocked') {
+    patch.followBlockedUntil = Date.now() + 24 * 3_600_000; // deja de seguir 24 h, sigue buscando números
+  }
   const at = new Date().toISOString();
   const base = { dataset: item.dataset, externalId: item.externalId, steps: r.steps || [], at };
   let send = null;
@@ -360,6 +416,11 @@ async function runOne() {
     send = { ...base, ...res, at, status: retry ? 'retry' : r.status };
   }
   patch.unsynced = [...fresh.unsynced, send].slice(-5000);
+  // Terminó la ráfaga: descanso al azar antes de la próxima.
+  if (fresh.sessionStart && Date.now() - fresh.sessionStart >= fresh.sessionLen) {
+    patch.restUntil = Date.now() + rand(fresh.restMin, fresh.restMax) * 60_000;
+    patch.sessionStart = 0;
+  }
   await setState(patch);
   await sync();
 

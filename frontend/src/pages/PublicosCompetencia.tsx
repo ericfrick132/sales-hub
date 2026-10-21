@@ -25,14 +25,15 @@ interface EventRow {
 }
 
 const STEP_LABEL: Record<string, string> = {
-  ig_profile: 'IG perfil', ig_search: 'IG búsqueda', web: 'Web', leads: 'Base de leads', google: 'Google Maps', extension: 'Extensión'
+  ig_profile: 'IG perfil', ig_search: 'IG búsqueda', ig_follow: 'IG follow', web: 'Web', leads: 'Base de leads', google: 'Google Maps', extension: 'Extensión'
 };
 const RESULT_LABEL: Record<string, string> = {
   ok: 'número ✓', no_phone: 'sin número', not_found: 'no existe', no_match: 'no lo encontró', blocked: 'IG bloqueó',
-  login: 'IG pidió login', error: 'error', distinto: 'era otro lugar', sin_web: 'sin web'
+  login: 'IG pidió login', error: 'error', distinto: 'era otro lugar', sin_web: 'sin web',
+  followed: 'seguido ✓', already: 'ya lo seguía', no_button: 'sin botón Seguir'
 };
 const RESULT_CLASS: Record<string, string> = {
-  ok: 'text-emerald-600', blocked: 'text-rose-600', login: 'text-rose-600', error: 'text-amber-600'
+  ok: 'text-emerald-600', followed: 'text-emerald-600', blocked: 'text-rose-600', login: 'text-rose-600', error: 'text-amber-600'
 };
 const STATUS_LABEL: Record<string, string> = { ok: 'con número', google: 'para Google', error: 'error' };
 const fmtAt = (s: string) => new Date(s).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });

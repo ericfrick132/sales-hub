@@ -11,7 +11,7 @@
     body { margin: 0; width: 360px; padding: 14px; font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
     h1 { font-size: 15px; margin: 0 0 4px; }
     p.note { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
-    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 10px; }
     .stat { border: 1px solid var(--line); border-radius: 6px; padding: 6px; text-align: center; }
     .stat b { display: block; font-size: 16px; }
     .stat span { color: var(--muted); font-size: 11px; }
@@ -30,13 +30,14 @@
 </head>
 <body>
   <h1>Buscar WhatsApp</h1>
-  <p class="note">Instagram → web → (Google en el servidor). Los números son para públicos de Meta: no se les escribe.</p>
+  <p class="note">Instagram (mira y, si toca, sigue) → web → Google en el servidor. Los números son para públicos de Meta: no se les escribe.</p>
 
   <div class="stats">
     <div class="stat"><b id="sToday">0</b><span>IG hoy</span></div>
     <div class="stat"><b id="sQueue">0</b><span>en cola</span></div>
     <div class="stat"><b id="sFound">0</b><span>con número</span></div>
     <div class="stat"><b id="sGoogle">0</b><span>para Google</span></div>
+    <div class="stat"><b id="sFollow">0</b><span>follows hoy</span></div>
   </div>
 
   <div id="status">Pausado</div>
@@ -51,6 +52,15 @@
     <label>Perfiles IG/día</label><input id="dailyCap" type="number" min="1" max="1000" />
     <label>Pausa s</label><input id="minGapSec" type="number" min="5" />
     <label>a</label><input id="maxGapSec" type="number" min="5" />
+  </div>
+  <div class="row">
+    <label><input id="follow" type="checkbox" /> Dar follow</label>
+    <label>Follows/día</label><input id="followCap" type="number" min="0" max="500" />
+    <label>cada</label><input id="followGapMin" type="number" min="1" /><label>min</label>
+  </div>
+  <div class="row">
+    <label>Trabaja</label><input id="workMin" type="number" min="5" /><label>a</label><input id="workMax" type="number" min="5" /><label>min</label>
+    <label>· descansa</label><input id="restMin" type="number" min="1" /><label>a</label><input id="restMax" type="number" min="1" /><label>min</label>
   </div>
   <div class="row">
     <label>Horario desde</label><input id="hourStart" type="number" min="0" max="23" />
