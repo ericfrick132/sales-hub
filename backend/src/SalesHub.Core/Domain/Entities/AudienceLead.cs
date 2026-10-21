@@ -48,6 +48,11 @@ public class AudienceLead
     /// <summary>Resultado de la extensión "Buscar WhatsApp" (Instagram → web): ok / google (no lo encontró) / error.</summary>
     public string? FinderStatus { get; set; }
     public DateTimeOffset? FinderCheckedAt { get; set; }
+    /// <summary>
+    /// Historial de cada paso de la búsqueda, con fecha: [{step, result, detail, at}]. Pasos: ig_profile,
+    /// ig_search, web (de la extensión), leads, google (del servidor). Incluye bloqueos y errores.
+    /// </summary>
+    public string? FinderLog { get; set; }
     /// <summary>Última búsqueda en Google Places (con o sin resultado), para no pagarla dos veces.</summary>
     public DateTimeOffset? PlacesCheckedAt { get; set; }
 

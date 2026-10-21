@@ -17,11 +17,18 @@ public record AudienceRow(string Dataset, string Competitor, string ProductKey, 
     string? Country, double? Latitude, double? Longitude, string? Phone, string? PhoneType, bool WhatsappProbable,
     string? PhoneSource, string? Instagram, string? Website, string? Email, JsonElement? Raw);
 
+/// <summary>Un paso de la búsqueda de un negocio, con su fecha.</summary>
+/// <param name="Step">ig_profile, ig_search, web (extensión) · leads, google (servidor).</param>
+/// <param name="Result">ok, no_phone, not_found, no_match, blocked, login, error, distinto…</param>
+/// <param name="Detail">@handle, host de la web, fuente del número o mensaje de error.</param>
+public record FinderStep(string Step, string Result, string? Detail, DateTimeOffset At);
+
 /// <summary>Resultado de la extensión "Buscar WhatsApp" para un negocio.</summary>
-/// <param name="Status">ok (encontró número) / google (no lo encontró en IG ni en la web) / error.</param>
+/// <param name="Status">ok (encontró número) / google (no lo encontró en IG ni en la web) / error /
+/// blocked o login (IG frenó a mitad: solo se guarda el historial, el negocio sigue pendiente).</param>
 /// <param name="Source">instagram_link, instagram_bio, web_whatsapp, web_tel, web_texto.</param>
 public record FinderResult(string Dataset, string ExternalId, string Status, string? Phone, string? Source,
-    string? Instagram, string? Website);
+    string? Instagram, string? Website, List<FinderStep>? Steps = null, DateTimeOffset? At = null);
 
 public record AudienceSummaryRow(string ProductKey, string Competitor, string Dataset, string Segment, string? Country,
     int Total, int WithPhone, int Whatsapp, int FromCompetitor, int FromInstagram, int FromWeb, int FromLeads,
@@ -29,6 +36,10 @@ public record AudienceSummaryRow(string ProductKey, string Competitor, string Da
 
 public record AudienceRecentRow(string Name, string Dataset, string? City, string? Country, string? Phone,
     bool WhatsappProbable, string? PhoneSource, string? Instagram, DateTimeOffset UpdatedAt);
+
+/// <summary>Último paso por el que pasó un negocio (pantalla de Públicos, "Movimientos").</summary>
+public record AudienceEventRow(string Name, string ProductKey, string Dataset, string? City, string? FinderStatus,
+    string? Phone, string? PhoneSource, DateTimeOffset? CheckedAt, List<FinderStep> Steps);
 
 /// <summary>
 /// Tabla <c>audience_leads</c>: listados de la competencia para públicos de Meta (ver <see cref="AudienceLead"/>).
@@ -156,15 +167,22 @@ public class AudienceLeadService
         {
             var a = await _db.AudienceLeads.FirstOrDefaultAsync(x => x.Dataset == r.Dataset && x.ExternalId == r.ExternalId, ct);
             if (a is null) continue;
+            AppendLog(a, r.Steps);
+            n++;
+            // Bloqueo, login o error que se reintenta: el negocio sigue en la cola; solo queda el historial.
+            if (r.Status is "blocked" or "login" or "retry")
+            {
+                a.UpdatedAt = DateTimeOffset.UtcNow;
+                continue;
+            }
             a.FinderStatus = r.Status is "ok" or "google" or "error" ? r.Status : "error";
-            a.FinderCheckedAt = DateTimeOffset.UtcNow;
+            a.FinderCheckedAt = r.At ?? DateTimeOffset.UtcNow;
             a.Instagram ??= Cut(NormalizeInstagram(r.Instagram), 128);
             a.Website ??= Cut(r.Website, 512);
             if (r.Status == "ok" && a.Phone is null && !string.IsNullOrWhiteSpace(r.Phone))
                 SetPhone(a, r.Phone, r.Source ?? "instagram_bio",
                     waLink: r.Source is "instagram_link" or "web_whatsapp");
             a.UpdatedAt = DateTimeOffset.UtcNow;
-            n++;
         }
         await _db.SaveChangesAsync(ct);
         return n;
@@ -194,6 +212,7 @@ public class AudienceLeadService
             {
                 SetPhone(a, match.Value.Phone, "lead", waLink: false);
                 a.PlaceId ??= match.Value.PlaceId;
+                AppendLog(a, new() { new("leads", "ok", "mismo negocio en la base de leads", DateTimeOffset.UtcNow) });
                 fromLeads++;
             }
             else if (useGoogle && searched < maxGoogle)
@@ -201,15 +220,21 @@ public class AudienceLeadService
                 searched++;
                 var p = await _places.EnrichAsync(a.Name, a.Address, a.City, CountryName(a.Country), "es", ct);
                 a.PlacesCheckedAt = DateTimeOffset.UtcNow;
-                if (p is not null && IsSamePlace(a, p) && !string.IsNullOrWhiteSpace(p.Phone))
+                var (result, detail) =
+                    p is null ? ("no_match", "Google no lo encontró")
+                    : !IsSamePlace(a, p) ? ("distinto", $"otro lugar: {Cut(p.FormattedAddress, 120)}")
+                    : string.IsNullOrWhiteSpace(p.Phone) ? ("no_phone", "en Maps sin teléfono")
+                    : ("ok", "Google Maps");
+                if (result == "ok")
                 {
-                    SetPhone(a, p.Phone, "google_places", waLink: false);
+                    SetPhone(a, p!.Phone!, "google_places", waLink: false);
                     a.PlaceId = p.PlaceId;
                     a.Website ??= Cut(p.Website, 512);
                     a.Latitude ??= p.Latitude;
                     a.Longitude ??= p.Longitude;
                     fromGoogle++;
                 }
+                AppendLog(a, new() { new("google", result, detail, DateTimeOffset.UtcNow) });
             }
             else continue;
             a.UpdatedAt = DateTimeOffset.UtcNow;
@@ -250,6 +275,37 @@ public class AudienceLeadService
             .Select(a => new AudienceRecentRow(a.Name, a.Dataset, a.City, a.Country, a.Phone, a.WhatsappProbable,
                 a.PhoneSource, a.Instagram, a.UpdatedAt))
             .ToListAsync(ct);
+
+    /// <summary>Últimos negocios por los que pasó la búsqueda, con todos sus pasos.</summary>
+    public async Task<List<AudienceEventRow>> EventsAsync(int limit, CancellationToken ct = default)
+    {
+        var rows = await _db.AudienceLeads
+            .Where(a => a.FinderLog != null)
+            .OrderByDescending(a => a.UpdatedAt)
+            .Take(limit)
+            .Select(a => new { a.Name, a.ProductKey, a.Dataset, a.City, a.FinderStatus, a.Phone, a.PhoneSource, a.FinderCheckedAt, a.FinderLog })
+            .ToListAsync(ct);
+        return rows.Select(r => new AudienceEventRow(r.Name, r.ProductKey, r.Dataset, r.City, r.FinderStatus, r.Phone,
+            r.PhoneSource, r.FinderCheckedAt, ReadLog(r.FinderLog))).ToList();
+    }
+
+    private static readonly JsonSerializerOptions LogJson = new(JsonSerializerDefaults.Web);
+
+    private static List<FinderStep> ReadLog(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try { return JsonSerializer.Deserialize<List<FinderStep>>(json, LogJson) ?? new(); }
+        catch (JsonException) { return new(); }
+    }
+
+    /// <summary>Agrega pasos al historial del negocio (se guardan los últimos 60).</summary>
+    private static void AppendLog(AudienceLead a, List<FinderStep>? steps)
+    {
+        if (steps is null || steps.Count == 0) return;
+        var log = ReadLog(a.FinderLog);
+        log.AddRange(steps.Select(s => s with { Detail = Cut(s.Detail, 200), Result = Cut(s.Result, 32)!, Step = Cut(s.Step, 32)! }));
+        a.FinderLog = JsonSerializer.Serialize(log.TakeLast(60), LogJson);
+    }
 
     /// <summary>
     /// Guarda el número en E.164. Un link de WhatsApp es WhatsApp seguro; en Argentina un número

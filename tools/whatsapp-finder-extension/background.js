@@ -222,8 +222,9 @@ async function sync() {
     if (r.status === 401) { await setState({ lastError: 'sales-hub rechazó la clave: copiala de nuevo desde Públicos.' }); return; }
     if (!r.ok) return;
     const fresh = await getState();
-    const sent = new Set(batch.map((b) => `${b.dataset}|${b.externalId}`));
-    await setState({ unsynced: fresh.unsynced.filter((u) => !sent.has(`${u.dataset}|${u.externalId}`)) });
+    const id = (u) => `${u.dataset}|${u.externalId}|${u.at}`;
+    const sent = new Set(batch.map(id));
+    await setState({ unsynced: fresh.unsynced.filter((u) => !sent.has(id(u))) });
   } catch { /* sin red: se reintenta con el próximo resultado */ }
 }
 
@@ -258,44 +259,63 @@ async function lookup(item, s) {
   let website = item.website;
   let igLinks = [];
   let igUsed = false;
+  // Historial de lo que va pasando, con fecha: lo guarda sales-hub en audience_leads.finder_log.
+  const steps = [];
+  const step = (name, result, detail) => steps.push({ step: name, result, detail: detail || null, at: new Date().toISOString() });
+  const host = (u) => { try { return new URL(/^https?:/i.test(u) ? u : `https://${u}`).hostname; } catch { return String(u).slice(0, 60); } };
+  const done = (r) => ({ ...r, steps, igUsed });
+
+  const profile = async (h) => {
+    let p;
+    try { p = await inTab(`https://www.instagram.com/${h}/`, igProfileOnPage); }
+    catch (e) { p = { status: 'error', error: String(e?.message || e) }; }
+    step('ig_profile', p?.status || 'error', p?.status === 'ok' ? `@${h} · ${p.source}` : p?.error ? `@${h} · ${p.error}` : `@${h}`);
+    return p;
+  };
 
   // 1) Instagram (si el handle de la base ya no existe, se busca por nombre)
   if (handle) {
     igUsed = true;
-    const p = await inTab(`https://www.instagram.com/${handle}/`, igProfileOnPage);
-    if (p?.status === 'login' || p?.status === 'blocked') return { status: p.status, igUsed };
-    if (p?.status === 'ok') return { status: 'ok', phone: p.phone, source: p.source, instagram: handle, website, igUsed };
+    const p = await profile(handle);
+    if (p?.status === 'login' || p?.status === 'blocked') return done({ status: p.status });
+    if (p?.status === 'ok') return done({ status: 'ok', phone: p.phone, source: p.source, instagram: handle, website });
     if (p?.status === 'not_found') handle = null;
     else igLinks = p?.links || [];
   }
   if (!handle && !igLinks.length) {
     igUsed = true;
-    const r = await inTab('https://www.instagram.com/', igSearchOnPage, [item.name, item.city || '']);
-    if (r?.status === 'login' || r?.status === 'blocked') return { status: r.status, igUsed };
+    let r;
+    try { r = await inTab('https://www.instagram.com/', igSearchOnPage, [item.name, item.city || '']); }
+    catch (e) { r = { status: 'error', error: String(e?.message || e) }; }
+    step('ig_search', r?.status || 'error', r?.handle ? `"${item.name}" → @${r.handle}` : r?.error || `"${item.name}"`);
+    if (r?.status === 'login' || r?.status === 'blocked') return done({ status: r.status });
     handle = r?.handle && r.handle !== item.instagram ? r.handle : null;
   }
   if (handle && handle !== item.instagram) {
-    igUsed = true;
     await new Promise((r) => setTimeout(r, rand(3000, 8000)));
-    const p = await inTab(`https://www.instagram.com/${handle}/`, igProfileOnPage);
-    if (p?.status === 'login' || p?.status === 'blocked') return { status: p.status, igUsed };
-    if (p?.status === 'ok') return { status: 'ok', phone: p.phone, source: p.source, instagram: handle, website, igUsed };
+    const p = await profile(handle);
+    if (p?.status === 'login' || p?.status === 'blocked') return done({ status: p.status });
+    if (p?.status === 'ok') return done({ status: 'ok', phone: p.phone, source: p.source, instagram: handle, website });
     igLinks = p?.links || [];
   }
 
   // 2) Web: primero un link de WhatsApp Business de la bio, después la web de la base y los demás links.
   const waMsg = igLinks.filter((h) => /(wa\.me|whatsapp\.com)\/message\//i.test(h));
   const sites = [...new Set([...waMsg, website, ...igLinks].filter(Boolean))].slice(0, 2);
+  if (!sites.length) step('web', 'sin_web', 'no hay web ni links en la bio');
   for (const site of sites) {
     try {
       const w = await inTab(/^https?:/i.test(site) ? site : `https://${site}`, webOnPage);
-      if (w?.status === 'ok') return { status: 'ok', phone: w.phone, source: w.source, instagram: handle, website: website || site, igUsed };
-    } catch { /* web caída: prueba la siguiente */ }
+      step('web', w?.status || 'error', w?.status === 'ok' ? `${host(site)} · ${w.source}` : host(site));
+      if (w?.status === 'ok') return done({ status: 'ok', phone: w.phone, source: w.source, instagram: handle, website: website || site });
+    } catch (e) {
+      step('web', 'error', `${host(site)} · ${String(e?.message || e).slice(0, 80)}`);
+    }
   }
   website = website || sites.find((x) => !/whatsapp|wa\.me/i.test(x)) || null;
 
   // 3) Queda para Google Maps (servidor)
-  return { status: 'google', instagram: handle, website, igUsed };
+  return done({ status: 'google', instagram: handle, website });
 }
 
 async function runOne() {
@@ -311,29 +331,35 @@ async function runOne() {
     r = await lookup(item, s);
   } catch (e) {
     error = String(e?.message || e);
-    r = { status: 'error' };
+    r = { status: 'error', steps: [{ step: 'extension', result: 'error', detail: error.slice(0, 150), at: new Date().toISOString() }] };
   }
 
   const fresh = await getState();
   const patch = { lastError: error };
   if (r.igUsed) patch.igToday = { day: todayKey(), n: igCount(fresh) + 1 };
+  const at = new Date().toISOString();
+  const base = { dataset: item.dataset, externalId: item.externalId, steps: r.steps || [], at };
+  let send = null;
 
   if (r.status === 'blocked') {
     patch.blockedUntil = Date.now() + 24 * 3_600_000; // se deja en la cola y se para 24 h
+    send = { ...base, status: 'blocked' };
   } else if (r.status === 'login') {
     patch.running = false;
     patch.lastError = 'Instagram pide login: iniciá sesión en esta ventana de Chrome y dale Reanudar.';
+    send = { ...base, status: 'login' };
   } else {
     const prev = fresh.results[item.key];
     const fails = (prev?.status === 'error' ? prev.fails || 1 : 0) + (r.status === 'error' ? 1 : 0);
     patch.queue = fresh.queue.filter((q) => q.key !== item.key);
-    if (r.status === 'error' && fails < 2) patch.queue.push(item); // un reintento al final de la cola
+    const retry = r.status === 'error' && fails < 2;
+    if (retry) patch.queue.push(item); // un reintento al final de la cola
     const res = { phone: r.phone || null, source: r.source || null, instagram: r.instagram || item.instagram || null,
                   website: r.website || item.website || null, status: r.status, fails, at: Date.now() };
     patch.results = { ...fresh.results, [item.key]: res };
-    if (r.status !== 'error' || fails >= 2)
-      patch.unsynced = [...fresh.unsynced, { dataset: item.dataset, externalId: item.externalId, ...res }].slice(-5000);
+    send = { ...base, ...res, at, status: retry ? 'retry' : r.status };
   }
+  patch.unsynced = [...fresh.unsynced, send].slice(-5000);
   await setState(patch);
   await sync();
 

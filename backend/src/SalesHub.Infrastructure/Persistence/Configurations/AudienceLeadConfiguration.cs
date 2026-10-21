@@ -30,6 +30,8 @@ public class AudienceLeadConfiguration : IEntityTypeConfiguration<AudienceLead>
         b.Property(x => x.Email).HasMaxLength(256);
         b.Property(x => x.PlaceId).HasMaxLength(256);
         b.Property(x => x.FinderStatus).HasMaxLength(16);
+        b.Property(x => x.FinderLog).HasColumnType("jsonb");
+        b.HasIndex(x => x.FinderCheckedAt);
         b.Property(x => x.RawJson).HasColumnType("jsonb");
         b.HasIndex(x => new { x.Dataset, x.ExternalId }).IsUnique();
         b.HasIndex(x => new { x.ProductKey, x.Country, x.Segment });

@@ -18,6 +18,25 @@ interface RecentRow {
   whatsappProbable: boolean; phoneSource: string | null; instagram: string | null; updatedAt: string;
 }
 
+interface FinderStep { step: string; result: string; detail: string | null; at: string }
+interface EventRow {
+  name: string; productKey: string; dataset: string; city: string | null; finderStatus: string | null;
+  phone: string | null; phoneSource: string | null; checkedAt: string | null; steps: FinderStep[];
+}
+
+const STEP_LABEL: Record<string, string> = {
+  ig_profile: 'IG perfil', ig_search: 'IG búsqueda', web: 'Web', leads: 'Base de leads', google: 'Google Maps', extension: 'Extensión'
+};
+const RESULT_LABEL: Record<string, string> = {
+  ok: 'número ✓', no_phone: 'sin número', not_found: 'no existe', no_match: 'no lo encontró', blocked: 'IG bloqueó',
+  login: 'IG pidió login', error: 'error', distinto: 'era otro lugar', sin_web: 'sin web'
+};
+const RESULT_CLASS: Record<string, string> = {
+  ok: 'text-emerald-600', blocked: 'text-rose-600', login: 'text-rose-600', error: 'text-amber-600'
+};
+const STATUS_LABEL: Record<string, string> = { ok: 'con número', google: 'para Google', error: 'error' };
+const fmtAt = (s: string) => new Date(s).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
 const PRODUCT_LABEL: Record<string, string> = { gymhero: 'GymHero', turnospro: 'TurnosPro', playcrew: 'PlayCrew' };
 const SOURCE_LABEL: Record<string, string> = {
   instagram_link: 'IG · link', instagram_bio: 'IG · bio', web_whatsapp: 'Web · WhatsApp', web_tel: 'Web · tel',
@@ -49,6 +68,11 @@ export default function PublicosCompetencia() {
   const recent = useQuery({
     queryKey: ['audience-recent'],
     queryFn: async () => (await api.get<RecentRow[]>('/audience/recent', { params: { limit: 40 } })).data,
+    refetchInterval: 30_000,
+  });
+  const events = useQuery({
+    queryKey: ['audience-events'],
+    queryFn: async () => (await api.get<EventRow[]>('/audience/events', { params: { limit: 60 } })).data,
     refetchInterval: 30_000,
   });
   const key = useQuery({
@@ -179,6 +203,32 @@ export default function PublicosCompetencia() {
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="card">
+        <div className="p-3 border-b border-slate-100 text-sm font-medium">Movimientos (cada paso de la búsqueda, con fecha)</div>
+        <div className="divide-y divide-slate-100 text-sm max-h-[32rem] overflow-y-auto">
+          {(events.data ?? []).map((e, i) => (
+            <div key={i} className="p-2 space-y-1">
+              <div className="flex gap-2 flex-wrap items-baseline">
+                <span className="font-medium">{e.name}</span>
+                <span className="text-xs text-slate-400">{PRODUCT_LABEL[e.productKey] ?? e.productKey} · {e.dataset}{e.city ? ` · ${e.city}` : ''}</span>
+                {e.finderStatus && <span className="text-xs text-slate-500">→ {STATUS_LABEL[e.finderStatus] ?? e.finderStatus}</span>}
+                {e.phone && <span className="font-mono text-xs">{e.phone}</span>}
+              </div>
+              <ol className="text-xs text-slate-500 space-y-0.5 pl-3">
+                {e.steps.map((st, j) => (
+                  <li key={j}>
+                    <span className="text-slate-400">{fmtAt(st.at)}</span> · {STEP_LABEL[st.step] ?? st.step}:{' '}
+                    <span className={RESULT_CLASS[st.result] ?? ''}>{RESULT_LABEL[st.result] ?? st.result}</span>
+                    {st.detail && <span className="text-slate-400"> · {st.detail}</span>}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
+          {events.data?.length === 0 && <div className="p-4 text-slate-500">Todavía no hay movimientos: la extensión arranca a las 9.</div>}
+        </div>
       </div>
 
       <div className="card">

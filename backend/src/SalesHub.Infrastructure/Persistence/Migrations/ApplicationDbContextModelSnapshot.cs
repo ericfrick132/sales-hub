@@ -365,6 +365,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("finder_checked_at");
 
+                    b.Property<string>("FinderLog")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("finder_log");
+
                     b.Property<string>("FinderStatus")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
@@ -454,6 +458,9 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_audience_leads");
+
+                    b.HasIndex("FinderCheckedAt")
+                        .HasDatabaseName("ix_audience_leads_finder_checked_at");
 
                     b.HasIndex("Instagram")
                         .HasDatabaseName("ix_audience_leads_instagram");

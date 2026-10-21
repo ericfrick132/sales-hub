@@ -40,6 +40,11 @@ public class AudienceController : ControllerBase
     public async Task<IActionResult> Recent([FromQuery] int limit = 50, CancellationToken ct = default) =>
         Ok(await _svc.RecentAsync(Math.Clamp(limit, 1, 200), ct));
 
+    /// <summary>Últimos movimientos: cada paso de la búsqueda (Instagram, web, leads, Google) con su fecha.</summary>
+    [HttpGet("events")]
+    public async Task<IActionResult> Events([FromQuery] int limit = 60, CancellationToken ct = default) =>
+        Ok(await _svc.EventsAsync(Math.Clamp(limit, 1, 300), ct));
+
     /// <summary>Clave para pegar en la extensión.</summary>
     [HttpGet("ingest-key")]
     public IActionResult Key() => Ok(new { key = AudienceLeadService.IngestKey(_jwt.SigningKey) });
