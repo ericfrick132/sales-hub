@@ -65,6 +65,13 @@ public class OnboardingService
     /// <summary>Se quedó callado y le mandamos el re-saludo de seguimiento (FollowUpStep = dónde había quedado). Contesta → la persona.</summary>
     public const int StepAwaitFollowUpReply = -34;
 
+    /// <summary>
+    /// Pre-calificación con el rubro del anuncio: el saludo ya salió con la 1ª pregunta
+    /// ("vi que tenes un gimnasio, buenisimo / comentame, como se llama el gimnasio?"). Su respuesta se lee
+    /// como al saludo ("bien y vos?" no es una duda) y lo que quede es la respuesta a la 1ª pregunta.
+    /// </summary>
+    public const int StepGreetedAsked = -35;
+
 
     /// <summary>En el saludo pregunta qué es / cómo funciona (y no el precio): eso lo contesta el pitch, no hace falta la persona.</summary>
     private static readonly Regex ExplainRx = new(
@@ -80,6 +87,13 @@ public class OnboardingService
     private static readonly Regex GreetWordsRx = new(
         @"\b(hola+|holis|buenas+|buen dia|buenos dias|buenas tardes|buenas noches|bien|bn|re|muy|todo|tranqui|gracias|joya|y|vos|vs|tu|usted|como|estas|andas|que tal|aca|andamos)\b|[,.;:!?¡¿]",
         RegexOptions.Compiled);
+
+    /// <summary>"bien", "todo bien", "re bien gracias" al principio de la respuesta: es al "como estas?", no el nombre.</summary>
+    private static readonly Regex GreetAckRx = new(
+        @"^\s*((hola+|buenas+|buen dia|buenas tardes|buenas noches|(todo|muy|re) bien|bien|bn|joya|tranqui|gracias)\b[\s,.!]*)+",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    /// <summary>"comentame, " del arranque de la 1ª pregunta: al recordarla va sin eso ("y como se llama el gimnasio?").</summary>
+    private static readonly Regex LeadInRx = new(@"^\s*(comentame|contame|decime)\s*,?\s*", RegexOptions.Compiled);
 
     private static readonly Regex PriceAskRx = new(@"precio|cuesta|cuanto (sale|es|vale|cobran)|valor|tarifa|costo|abono|mensual", RegexOptions.Compiled);
 
@@ -210,7 +224,9 @@ public class OnboardingService
 
     private static readonly Regex OpeningSoonRx = new(@"\babr(o|imos|e|iendo)\b|inaugur|por abrir|no abr|recien (arranco|empiezo|abr)|todavia no (arranque|empece)|estoy armando", RegexOptions.Compiled);
     /// <summary>El lead nos devolvió el saludo ("bien y vos?", "todo bien, vos?", "que tal vos").</summary>
-    private static readonly Regex ReciprocalRx = new(@"\b(y vos|y tu|vos|y usted|como (estas|andas|va)|que tal|todo bien)\b\s*\?*", RegexOptions.Compiled);
+    private static readonly Regex ReciprocalAnyCaseRx = new(ReciprocalPattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private const string ReciprocalPattern = @"\b(y vos|y tu|vos|y usted|como (estas|andas|va)|que tal|todo bien)\b\s*\?*";
+    private static readonly Regex ReciprocalRx = new(ReciprocalPattern, RegexOptions.Compiled);
 
     private static readonly Regex AsksToolRx = new(@"sistema|como (llevas|tomas|manejas|cobras|registras)|que usas", RegexOptions.Compiled);
 
@@ -253,7 +269,7 @@ public class OnboardingService
 
     /// <summary>Pasos de la pre-calificación donde el lead se puede quedar callado y le hacemos seguimiento.</summary>
     public static bool IsFollowUpStage(int step) =>
-        step is >= 1 and <= 10 or StepAwaitDemoLink or StepAwaitStart or StepAwaitPricesOk;
+        step is >= 1 and <= 10 or StepAwaitDemoLink or StepAwaitStart or StepAwaitPricesOk or StepGreetedAsked;
 
     /// <summary>
     /// Seguimiento sin IA al lead que se quedó callado en la pre-calificación: un re-saludo "como si nada"
@@ -619,7 +635,7 @@ public class OnboardingService
         if (n == 0) return new OnboardingResult(null, OffScript: true, Provisioned: false); // sin preguntas → IA libre
 
         // ── Pre-calificación: contestó el saludo → reacción corta + 1ª pregunta ──────────
-        if (ob.Step == StepGreeted)
+        if (ob.Step is StepGreeted or StepGreetedAsked)
         {
             var greetBurst = string.IsNullOrWhiteSpace(recentBurst) ? msg : recentBurst!;
             var (gKey, gConfident) = (await _intents.GetMatcherAsync(ct)).ClassifyWithConfidence(msg, "como estas?");
@@ -692,13 +708,33 @@ public class OnboardingService
                     return new OnboardingResult(PresentAs(questions[1], cfg), OffScript: false, Provisioned: false);
                 }
             }
-            ob.Step = 1;
-            ob.UpdatedAt = DateTimeOffset.UtcNow;
-            await _db.SaveChangesAsync(ct);
             // Si nos devolvió el "y vos?" contestamos "bien" y seguimos; si no, directo a la pregunta
             // (nadie contesta "que bueno" a un "bien" o a un "buenas tardes").
             var ack = askedBack ? "bien" : "";
-            return new OnboardingResult(Join(Spin(ack, lead.Id, 31), questions[0]), OffScript: false, Provisioned: false);
+            if (ob.Step == StepGreetedAsked)
+            {
+                // La 1ª pregunta ya salió con el saludo. Si solo contestó el "como estas?" se la recordamos
+                // corta; si dijo algo más, eso es la respuesta y sigue el guion normal desde la 1ª pregunta.
+                // Con el caso original: lo que queda se guarda como nombre del negocio.
+                var answer = GreetAckRx.Replace(ReciprocalAnyCaseRx.Replace(CopyStyle.Clean(msg), " "), " ").Trim();
+                ob.Step = 1;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                if (GreetWordsRx.Replace(answer.ToLowerInvariant(), " ").Trim().Length == 0)
+                {
+                    await _db.SaveChangesAsync(ct);
+                    return new OnboardingResult(Join(Spin(ack, lead.Id, 31), "y " + LeadInRx.Replace(LastSegment(questions[0]), "")),
+                        OffScript: false, Provisioned: false);
+                }
+                msg = answer;
+                burst = answer;
+            }
+            else
+            {
+                ob.Step = 1;
+                ob.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return new OnboardingResult(Join(Spin(ack, lead.Id, 31), questions[0]), OffScript: false, Provisioned: false);
+            }
         }
 
         // Hasta qué paso se juntan datos: autoservicio tiene paso de mail (n+1); asistida termina en la última pregunta (n).
@@ -807,10 +843,15 @@ public class OnboardingService
                 // Pre-calificación: primero el saludo solo, la 1ª pregunta va cuando conteste. Si el anuncio
                 // ya dijo qué tiene, se lo reconocemos ("vi que tenes una barberia, buenisimo").
                 reply = intro;
+                // Con eso el saludo queda cerrado en "buenisimo" y la charla se trababa 4 min hasta la
+                // 1ª pregunta: va todo junto y recién ahí se espera (pedido de Eric 2026-10-21).
+                ob.Step = StepGreeted;
                 if (ad?.PrefillText is { } prefill && !string.IsNullOrWhiteSpace(cfg.KnownBusinessGreeting)
                     && MetaAdsSyncService.HasPhraseFromPrefill(prefill) is { } tiene)
-                    reply = Join(intro, cfg.KnownBusinessGreeting.Replace("{tiene}", tiene));
-                ob.Step = StepGreeted;
+                {
+                    reply = Join(Join(intro, cfg.KnownBusinessGreeting.Replace("{tiene}", tiene)), questions[0]);
+                    ob.Step = StepGreetedAsked;
+                }
             }
             else
             {

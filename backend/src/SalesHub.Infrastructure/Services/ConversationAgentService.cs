@@ -1066,6 +1066,7 @@ public class ConversationAgentService
                 && l.Product != null && keys.Contains(l.Product.ProductKey)
                 && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
                     || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
+                    || o.Step == OnboardingService.StepGreetedAsked
                     || (o.Step == OnboardingService.StepAwaitFollowUpReply && o.FollowUpCount < 2))
             let last = _db.ConversationMessages.Where(m => m.LeadId == l.Id).OrderByDescending(m => m.Timestamp).FirstOrDefault()
             where last != null && last.Direction == MessageDirection.Outbound && last.Timestamp > tooOld
@@ -1113,7 +1114,7 @@ public class ConversationAgentService
                 && !(l.Product != null && prequalKeys.Contains(l.Product.ProductKey) && _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
                     && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
                         || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
-                        || o.Step == OnboardingService.StepAwaitFollowUpReply)))
+                        || o.Step == OnboardingService.StepAwaitFollowUpReply || o.Step == OnboardingService.StepGreetedAsked)))
                 && l.FirstReplyAt != null
                 && (l.Status == LeadStatus.Replied || l.Status == LeadStatus.Interested)
                 && l.AiSuggestedReply == null
@@ -1145,7 +1146,7 @@ public class ConversationAgentService
                 && !(l.Product != null && prequalKeys.Contains(l.Product.ProductKey) && _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
                     && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
                         || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
-                        || o.Step == OnboardingService.StepAwaitFollowUpReply)))
+                        || o.Step == OnboardingService.StepAwaitFollowUpReply || o.Step == OnboardingService.StepGreetedAsked)))
                 && l.FirstReplyAt == null
                 && l.Status == LeadStatus.Sent
                 // Solo leads CALIENTES (anuncios/forms/app-fed, source >= 400): a los scrapeados
