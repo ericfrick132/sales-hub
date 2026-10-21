@@ -44,6 +44,7 @@ const DEFAULTS = {
   appFollowCap: 65,
   onlyApps: [],
   appToday: { day: '', visits: {}, follows: {} },
+  igAccount: '',        // cuenta de IG activa en la ventana de trabajo
   igTabId: 0,           // ventana de trabajo: pestaña fija de Instagram
   webTabId: 0,          // y la de las webs
   apiKey: '',           // clave de Marketing → Competencia → Públicos
@@ -130,6 +131,10 @@ async function navigateTab(tabId, url, timeoutMs = 30_000) {
   await chrome.tabs.update(tabId, { url });
   await loaded;
 }
+
+// Cuenta de IG activa → app: con esa cuenta se busca y se sigue solo a negocios de esa app. Con otra
+// cuenta (o si no se reconoce) solo mira, no sigue a nadie.
+const ACCOUNT_APP = { playcrewpadel: 'playcrew', 'gymhero.fitness': 'gymhero', 'turnos.pro': 'turnospro' };
 
 const PLATFORM_IG = /^(agendapro|fresha|booksy|playtomic|atcsports|crossfy|wellhub|gympass|totalpass|fitpass|mindbody)/i;
 
@@ -296,6 +301,15 @@ function igPage() {
   };
 }
 
+// La cuenta activa: el link con foto de la barra lateral (la que tiene "Inicio" y "Configuración").
+function igWhoAmI() {
+  let nav = document.querySelector('svg[aria-label="Inicio"], svg[aria-label="Home"]')?.closest('a');
+  for (let i = 0; i < 10 && nav && !nav.querySelector('svg[aria-label="Configuración"], svg[aria-label="Settings"]'); i++) nav = nav.parentElement;
+  const a = nav && [...nav.querySelectorAll('a[href^="/"]')].find((x) => x.querySelector('img'));
+  const m = a?.getAttribute('href')?.match(/^\/([A-Za-z0-9._]+)\/$/);
+  return m ? m[1].toLowerCase() : null;
+}
+
 function igSearchOpen() {
   const sel = 'input[aria-label="Términos de búsqueda"], input[aria-label="Search input"], input[placeholder="Buscar"], input[placeholder="Search"]';
   if (document.querySelector(sel)) return true;
@@ -456,7 +470,7 @@ async function refill() {
     const r = await fetch(`${API}/finder-queue`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Audience-Key': s.apiKey },
-      body: JSON.stringify({ limit: 1, skip, excludeProducts: appsDone(s), onlyProducts: s.onlyApps })
+      body: JSON.stringify({ limit: 1, skip, excludeProducts: appsDone(s), onlyProducts: ACCOUNT_APP[s.igAccount] ? [ACCOUNT_APP[s.igAccount]] : s.onlyApps })
     });
     if (r.status === 401) { await setState({ lastError: 'sales-hub rechazó la clave: copiala de nuevo desde Públicos.' }); return; }
     if (!r.ok) return;
@@ -474,7 +488,7 @@ async function refill() {
 // ---- Un negocio por vez ----
 
 async function lookup(item, s) {
-  let followPending = canFollow(s, item.app);
+  let followPending = ACCOUNT_APP[s.igAccount] === item.app && canFollow(s, item.app);
   let followResult = null;
   // Cuentas de las plataformas (pie de las fichas de AgendaPro, Fresha…), no del negocio.
   let handle = PLATFORM_IG.test(item.instagram || '') ? null : item.instagram;
@@ -555,7 +569,24 @@ async function lookup(item, s) {
   return done({ status: 'google', instagram: handle, website });
 }
 
+// Mira qué cuenta de IG está activa; si cambió, descarta lo que tenía en cola para otra app.
+async function checkAccount() {
+  try {
+    const tabs = await workTabs();
+    if ((await igReady(tabs.ig)) !== 'ok') return;
+    const me = await run(tabs.ig, igWhoAmI);
+    const s = await getState();
+    if (!me || me === s.igAccount) return;
+    const app = ACCOUNT_APP[me];
+    await setState({ igAccount: me, queue: app ? s.queue.filter((q) => q.app === app) : s.queue });
+  } catch { /* se vuelve a mirar en el próximo turno */ }
+}
+
 async function runOne() {
+  {
+    const s0 = await getState();
+    if (s0.running && inWindow(s0) && Date.now() >= s0.restUntil && Date.now() >= s0.blockedUntil) await checkAccount();
+  }
   await refill();
   const s = await getState();
   if (!s.running || s.queue.length === 0) return schedule(0);
