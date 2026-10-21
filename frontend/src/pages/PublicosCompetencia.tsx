@@ -58,7 +58,6 @@ function sum(rows: SummaryRow[]) {
 export default function PublicosCompetencia() {
   const qc = useQueryClient();
   const [product, setProduct] = useState<string>('');
-  const [showKey, setShowKey] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const summary = useQuery({
@@ -76,12 +75,6 @@ export default function PublicosCompetencia() {
     queryFn: async () => (await api.get<EventRow[]>('/audience/events', { params: { limit: 60 } })).data,
     refetchInterval: 30_000,
   });
-  const key = useQuery({
-    queryKey: ['audience-key'],
-    enabled: showKey,
-    queryFn: async () => (await api.get<{ key: string }>('/audience/ingest-key')).data.key,
-  });
-
   const importFile = useMutation({
     mutationFn: async (file: File) => {
       const fd = new FormData();
@@ -130,19 +123,8 @@ export default function PublicosCompetencia() {
           </button>
           <input ref={fileRef} type="file" accept=".json,.gz" hidden
             onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile.mutate(f); e.target.value = ''; }} />
-          <button className="btn-secondary text-xs" onClick={() => setShowKey((v) => !v)}>Clave de la extensión</button>
         </div>
       </div>
-
-      {showKey && (
-        <div className="card p-4 text-sm flex items-center gap-3 flex-wrap">
-          <span className="text-slate-500">Pegala en la extensión "Públicos IG: WhatsApp + Follow" para que mande cada resultado acá:</span>
-          <code className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded">{key.data ?? '…'}</code>
-          {key.data && (
-            <button className="btn-secondary text-xs" onClick={() => { navigator.clipboard.writeText(key.data!); toast.success('Copiada'); }}>Copiar</button>
-          )}
-        </div>
-      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi label="Negocios" value={fmt(total.total)} />

@@ -30,7 +30,6 @@ async function render() {
   $('apps').textContent = 'Hoy: ' + Object.keys(APP_LABEL)
     .filter((a) => !only.length || only.includes(a))
     .map((a) => `${APP_LABEL[a]} ${day.visits[a] || 0}/${day.follows[a] || 0}`).join(' · ') + ' (perfiles/follows)';
-  if (document.activeElement !== $('apiKey')) $('apiKey').value = s.apiKey ?? '';
   const pending = (s.unsynced ?? []).length;
   $('sync').textContent = pending ? `${pending} resultados sin mandar a sales-hub` : '';
 
@@ -38,7 +37,7 @@ async function render() {
   const blocked = (s.blockedUntil ?? 0) > Date.now();
   $('unblock').hidden = !blocked;
   const set = (text, cls = '') => { st.textContent = text; st.className = cls; };
-  if (!s.apiKey) set('Falta la clave', 'warn');
+  if (!s.apiKey) set('Sin conectar a sales-hub', 'warn');
   else if (s.lastError) set(s.lastError, 'bad');
   else if (blocked) set(`Instagram frenó · retoma ${fmtTime(s.blockedUntil)}`, 'warn');
   else if (!s.running) set('Pausada');
@@ -62,13 +61,7 @@ document.querySelectorAll('.onlyApp').forEach((c) => {
   };
 });
 $('follow').onchange = async () => { await chrome.storage.local.set({ follow: $('follow').checked }); render(); };
-for (const id of ['apiKey', 'apiKeySetup']) {
-  $(id).onchange = async () => {
-    await chrome.storage.local.set({ apiKey: $(id).value.trim(), lastError: '' });
-    await send('sync');
-    render();
-  };
-}
+$('connect').onclick = () => chrome.tabs.create({ url: 'https://sales.efcloud.tech/' });
 
 for (const f of NUM_FIELDS) {
   $(f).onchange = async () => {
