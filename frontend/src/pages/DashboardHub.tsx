@@ -28,6 +28,8 @@ import BusinessTab from './BusinessTab';
 interface TrendDay {
   date: string; leads: number; byProduct: Record<string, number>; sent: number; replied: number; closed: number;
   adLeads: number; adByProduct: Record<string, number>; adReplied: number;
+  /** Conversaciones que cuenta Meta (solo ayer y hoy, en vivo); null si Meta no respondió. */
+  metaConversations: number | null; metaByProduct: Record<string, number> | null;
 }
 interface Trend {
   days: number; leads: number; sent: number; replied: number; closed: number;
@@ -109,7 +111,7 @@ export default function DashboardHub() {
 
       {/* Una sola fila de KPIs, sin repetir números en otras partes. */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <Kpi label="Leads nuevos" value={t?.leads ?? '—'} sub={`últimos ${days} días`} to="/crm?view=lista" />
+        <Kpi label="Todos los ingresos" value={t?.leads ?? '—'} sub={`últimos ${days} días · anuncios, Maps, chats`} to="/crm?view=lista" />
         <Kpi label="Contactados" value={t?.sent ?? '—'} sub="primer mensaje enviado" />
         <Kpi label="Respondieron" value={t?.replied ?? '—'} sub={t ? `${pct(t.replied, t.leads)} de los leads nuevos` : ''} tone="sky" />
         <Kpi label="Cuentas creadas" value={t?.closed ?? '—'} sub={t ? `${pct(t.closed, t.leads)} de los leads nuevos` : ''} tone="emerald" />
@@ -198,7 +200,11 @@ export default function DashboardHub() {
 
 // ── Leads de hoy ────────────────────────────────────────────────────────────
 
-/** Leads de anuncios (WhatsApp Ads + form de Meta) que entraron hoy (día AR; el último día de /dashboard/trend) vs ayer, por app. */
+/**
+ * Leads de anuncios (WhatsApp Ads + form de Meta + chats que traen el texto de un anuncio) que entraron hoy
+ * (día AR; el último día de /dashboard/trend) vs ayer, por app. Al lado, lo que cuenta Meta: incluye a quien
+ * ya era lead y volvió a escribir desde un anuncio, y chats sin texto del anuncio ("Hola") que el hub no puede atribuir.
+ */
 function TodayLeads({ daily, colorOf, nameOf }: { daily: TrendDay[]; colorOf: (k: string) => string; nameOf: (k: string) => string }) {
   const today = daily[daily.length - 1];
   const yesterday = daily[daily.length - 2];
@@ -218,8 +224,18 @@ function TodayLeads({ daily, colorOf, nameOf }: { daily: TrendDay[]; colorOf: (k
           )}
         </div>
         <div className="text-[11px] text-slate-500">
-          {today.adReplied} ya respondieron · WhatsApp Ads + form de Meta
+          {today.adReplied} ya respondieron · leads nuevos de anuncios
         </div>
+        {today.metaConversations != null && (
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            Meta cuenta <b className="tabular-nums text-slate-700">{today.metaConversations}</b> conversaciones
+            {yesterday?.metaConversations != null && <> (ayer {yesterday.metaConversations})</>}
+            {Object.keys(today.metaByProduct ?? {}).length > 0 && (
+              <> · {Object.entries(today.metaByProduct ?? {}).sort((a, b) => b[1] - a[1])
+                .map(([k, n]) => `${k === 'sin-app' ? 'Sin app' : nameOf(k)} ${n}`).join(' · ')}</>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap gap-1.5 sm:border-l sm:border-slate-100 sm:pl-6">
         {apps.length === 0 && <span className="text-sm text-slate-400">Todavía no entró ningún lead de anuncios hoy.</span>}

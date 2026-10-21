@@ -205,6 +205,37 @@ public class MetaGeoSyncService
         return new LiveReach(total, byRegion);
     }
 
+    // ── conversaciones en vivo ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Conversaciones de WhatsApp que Meta cuenta por día y app (onsite_conversion.messaging_conversation_started_7d,
+    /// level=campaign), pedidas en vivo: meta_geo_daily se sincroniza cada 6 h y para "hoy" queda atrasado.
+    /// App por el nombre de la campaña ("sin-app" si no se reconoce). null si Meta falla en alguna cuenta.
+    /// </summary>
+    public async Task<Dictionary<DateOnly, Dictionary<string, int>>?> LiveConversationsAsync(DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        if (!IsConfigured) return null;
+        var client = _http.CreateClient();
+        var products = (await _db.Products.AsNoTracking().Where(p => p.ProductKey != "")
+            .Select(p => new { p.ProductKey, p.DisplayName }).ToListAsync(ct))
+            .Select(p => (p.ProductKey, p.DisplayName)).ToList();
+        var result = new Dictionary<DateOnly, Dictionary<string, int>>();
+        foreach (var acct in await AccountsAsync(client, ct))
+        {
+            var ok = await PageAsync(client, InsightsUrl(acct, "campaign", null, from, to, "campaign_name,actions", null, true), el =>
+            {
+                if (!DateOnly.TryParse(Str(el, "date_start"), CultureInfo.InvariantCulture, out var date)) return;
+                var n = (int)Actions(el).GetValueOrDefault("onsite_conversion.messaging_conversation_started_7d");
+                if (n == 0) return;
+                var app = MetaAdsSyncService.ProductFromName(Str(el, "campaign_name"), products) ?? "sin-app";
+                var day = result.TryGetValue(date, out var d) ? d : result[date] = new Dictionary<string, int>();
+                day[app] = day.GetValueOrDefault(app) + n;
+            }, ct);
+            if (!ok) return null;
+        }
+        return result;
+    }
+
     // ── Graph ───────────────────────────────────────────────────────────────────────────
 
     private async Task<List<string>> AccountsAsync(HttpClient client, CancellationToken ct)

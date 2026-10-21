@@ -147,6 +147,23 @@ public class MetaAdsSyncService
         return result;
     }
 
+    /// <summary>
+    /// ¿El texto trae el pre-armado de algún anuncio? Mismo criterio que <see cref="MatchAsync"/>, pero con los
+    /// anuncios cargados una sola vez (para revisar muchos mensajes, ej. la métrica de leads de anuncios).
+    /// </summary>
+    public async Task<Func<string?, bool>> PrefillMatcherAsync(CancellationToken ct)
+    {
+        var prefills = (await _db.MetaAds.AsNoTracking().Where(a => a.PrefillText != null && a.PrefillText != "")
+                .Select(a => a.PrefillText).ToListAsync(ct))
+            .Select(IntentText.Normalize).Where(p => p.Length >= 12).Distinct().ToList();
+        var tails = prefills.Select(PrefillTail).OfType<string>().Distinct().ToList();
+        return text =>
+        {
+            var norm = IntentText.Normalize(text);
+            return norm.Length >= 12 && (prefills.Any(norm.Contains) || tails.Any(norm.Contains));
+        };
+    }
+
     /// <summary>"hola tengo un gimnasio y quiero conocer gymhero" → "quiero conocer gymhero" (null si es muy corto para identificar el anuncio).</summary>
     private static string? PrefillTail(string normalizedPrefill)
     {

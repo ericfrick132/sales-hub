@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using SalesHub.Api.Dtos;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
@@ -183,7 +184,8 @@ public class DashboardController : ControllerBase
     }
 
     public record TrendDay(string Date, int Leads, Dictionary<string, int> ByProduct, int Sent, int Replied, int Closed,
-        int AdLeads, Dictionary<string, int> AdByProduct, int AdReplied);
+        int AdLeads, Dictionary<string, int> AdByProduct, int AdReplied,
+        int? MetaConversations, Dictionary<string, int>? MetaByProduct);
     public record TrendResult(int Days, int Leads, int Sent, int Replied, int Closed,
         Dictionary<string, int> ByProduct, Dictionary<string, int> BySource, List<TrendDay> Daily);
 
@@ -193,7 +195,11 @@ public class DashboardController : ControllerBase
     /// propia fecha). Totales del período + leads por app y por origen del mismo período.
     /// </summary>
     [HttpGet("trend")]
-    public async Task<ActionResult<TrendResult>> Trend([FromQuery] int days = 30, CancellationToken ct = default)
+    public async Task<ActionResult<TrendResult>> Trend(
+        [FromServices] SalesHub.Infrastructure.Services.MetaAdsSyncService metaAds,
+        [FromServices] SalesHub.Infrastructure.Services.MetaGeoSyncService metaGeo,
+        [FromServices] IMemoryCache cache,
+        [FromQuery] int days = 30, CancellationToken ct = default)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
         days = Math.Clamp(days, 1, 180);
@@ -209,7 +215,7 @@ public class DashboardController : ControllerBase
         // Ventana acotada (≤180 días) → se agrupa en memoria por día AR.
         var created = await _db.Leads.AsNoTracking()
             .Where(l => l.CreatedAt >= since)
-            .Select(l => new { l.CreatedAt, l.ProductKey, l.Source, l.FirstReplyAt })
+            .Select(l => new { l.Id, l.CreatedAt, l.ProductKey, l.Source, l.FirstReplyAt })
             .ToListAsync(ct);
         var sent = await _db.Leads.AsNoTracking()
             .Where(l => l.SentAt >= since).Select(l => l.SentAt!.Value).ToListAsync(ct);
@@ -217,6 +223,32 @@ public class DashboardController : ControllerBase
             .Where(l => l.FirstReplyAt >= since).Select(l => l.FirstReplyAt!.Value).ToListAsync(ct);
         var closed = await _db.Leads.AsNoTracking()
             .Where(l => l.ClosedAt >= since && l.Status == LeadStatus.Closed).Select(l => l.ClosedAt!.Value).ToListAsync(ct);
+
+        // Chats nuevos que el hub no reconoció como anuncio al entrar (Meta casi nunca manda el referral y el
+        // texto pre-armado puede llegar en el 2º o 3er mensaje) pero que lo traen en sus primeros mensajes:
+        // cuentan como de anuncio. Solo para la métrica; el origen del lead no se toca (no prende el bot).
+        var inboundIds = created.Where(l => l.Source == LeadSource.WhatsAppInbound).Select(l => l.Id).ToList();
+        var adByText = new HashSet<Guid>();
+        if (inboundIds.Count > 0)
+        {
+            var isPrefill = await metaAds.PrefillMatcherAsync(ct);
+            var firstMsgs = await _db.ConversationMessages.AsNoTracking()
+                .Where(m => inboundIds.Contains(m.LeadId) && m.Direction == MessageDirection.Inbound)
+                .Select(m => new { m.LeadId, m.Text, m.Timestamp })
+                .ToListAsync(ct);
+            foreach (var g in firstMsgs.GroupBy(m => m.LeadId))
+                if (g.OrderBy(m => m.Timestamp).Take(3).Any(m => isPrefill(m.Text))) adByText.Add(g.Key);
+        }
+
+        // Lo que Meta cuenta como conversaciones iniciadas, en vivo para ayer y hoy (caché 5 min).
+        var todayAr = DateOnly.FromDateTime(nowAr.DateTime);
+        var metaFrom = todayAr.AddDays(-1) < firstDay ? firstDay : todayAr.AddDays(-1);
+        var metaConv = await cache.GetOrCreateAsync($"dashboard-meta-conv-{metaFrom:yyyyMMdd}", async e =>
+        {
+            e.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
+            try { return await metaGeo.LiveConversationsAsync(metaFrom, todayAr, ct); }
+            catch (Exception) { return null; }
+        });
 
         var createdByDay = created.GroupBy(l => Day(l.CreatedAt)).ToDictionary(g => g.Key, g => g.ToList());
         var sentByDay = sent.GroupBy(Day).ToDictionary(g => g.Key, g => g.Count());
@@ -229,13 +261,17 @@ public class DashboardController : ControllerBase
             var key = firstDay.AddDays(i).ToString("yyyy-MM-dd");
             var dayLeads = createdByDay.TryGetValue(key, out var dl) ? dl : [];
             // "De anuncios" = click-to-WhatsApp + formulario de Meta (lo que se paga en Ads).
-            var adLeads = dayLeads.Where(l => l.Source is LeadSource.WhatsAppAd or LeadSource.MetaLeadAd).ToList();
+            var adLeads = dayLeads.Where(l => l.Source is LeadSource.WhatsAppAd or LeadSource.MetaLeadAd || adByText.Contains(l.Id)).ToList();
+            var date = firstDay.AddDays(i);
+            Dictionary<string, int>? metaDay = metaConv is null || date < metaFrom ? null
+                : metaConv.TryGetValue(date, out var md) ? md : new Dictionary<string, int>();
             daily.Add(new TrendDay(key, dayLeads.Count,
                 dayLeads.GroupBy(l => l.ProductKey == "" ? "sin-app" : l.ProductKey).ToDictionary(g => g.Key, g => g.Count()),
                 sentByDay.GetValueOrDefault(key), repliedByDay.GetValueOrDefault(key), closedByDay.GetValueOrDefault(key),
                 adLeads.Count,
                 adLeads.GroupBy(l => l.ProductKey == "" ? "sin-app" : l.ProductKey).ToDictionary(g => g.Key, g => g.Count()),
-                adLeads.Count(l => l.FirstReplyAt != null)));
+                adLeads.Count(l => l.FirstReplyAt != null),
+                metaDay?.Values.Sum(), metaDay));
         }
 
         return new TrendResult(days, created.Count, sent.Count, replied.Count, closed.Count,
