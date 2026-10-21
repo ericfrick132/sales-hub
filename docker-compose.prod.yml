@@ -1,12 +1,16 @@
 services:
   saleshub-api:
+    # La imagen la arma GitHub Actions (build-api.yml) y Watchtower la baja sola. El build local queda
+    # solo de emergencia: docker compose -f docker-compose.prod.yml build saleshub-api
     build:
       context: ./backend
       args:
         PROJECT: SalesHub.Api
-    image: sales-hub:latest
+    image: ghcr.io/ericfrick132/sales-hub-api:latest
     container_name: saleshub-api
     restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     env_file:
       - .env
     environment:
@@ -64,6 +68,17 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  # Deploy sin ssh: cada minuto mira si hay imagen nueva en ghcr.io y reinicia SOLO los contenedores
+  # con la etiqueta com.centurylinklabs.watchtower.enable (saleshub-api). No toca Evolution ni n8n.
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    container_name: watchtower
+    restart: unless-stopped
+    command: --label-enable --interval 60 --cleanup
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    mem_limit: 100m
 
 volumes:
   wa-reader-data:
