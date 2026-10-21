@@ -515,7 +515,6 @@ async function refill() {
   } catch { /* sin red: se reintenta en el próximo turno */ }
 }
 
-// Estado de la extensión a sales-hub (Públicos lo muestra): versión, cuenta, qué está haciendo.
 // Instalada "descomprimida", los archivos se leen del disco: si la carpeta trae otra versión
 // (git pull o el .zip nuevo copiado encima), se recarga sola sin pasar por chrome://extensions.
 async function reloadIfUpdated() {
@@ -525,6 +524,7 @@ async function reloadIfUpdated() {
   } catch { /* carpeta a medio copiar: se reintenta en el próximo heartbeat */ }
 }
 
+// Estado de la extensión a sales-hub (Públicos lo muestra): versión, cuenta, qué está haciendo.
 async function heartbeat() {
   await reloadIfUpdated();
   const s = await getState();
