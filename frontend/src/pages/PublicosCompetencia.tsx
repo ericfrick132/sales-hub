@@ -205,6 +205,48 @@ export default function PublicosCompetencia() {
         })}
       </div>
 
+      <details className="card p-4">
+        <summary className="font-semibold cursor-pointer">Instalar la extensión "Públicos IG" en otra compu</summary>
+        <div className="mt-3 space-y-3 text-sm text-slate-700">
+          <p>
+            Busca el WhatsApp de cada negocio de los batches abiertos (bio de Instagram → web → Google) y lo sigue
+            desde la cuenta de la app. Trabaja sola en una ventana aparte, con pausas al azar, y reporta acá arriba.
+          </p>
+          <a className="btn-primary inline-block" href="/publicos-ig-extension.zip" download>
+            Descargar extensión (.zip)
+          </a>
+          <ol className="space-y-2 list-decimal list-inside">
+            <li><b>Descomprimí el .zip</b> en una carpeta que no vayas a borrar (ej. Documentos/publicos-ig).</li>
+            <li>
+              En Chrome abrí <code className="px-1 rounded bg-slate-100">chrome://extensions</code> y prendé{' '}
+              <b>Modo de desarrollador</b> (arriba a la derecha).
+            </li>
+            <li><b>Cargar descomprimida</b> → elegí la carpeta del paso 1. Tiene que aparecer "Públicos IG: WhatsApp + Follow".</li>
+            <li>Fijá el ícono en la barra (la pieza de rompecabezas → el pin).</li>
+            <li>
+              <b>Abrí sales-hub</b> (esta página) logueado con tu usuario: la extensión se conecta sola, no hay
+              que copiar ninguna clave.
+            </li>
+            <li>
+              <b>Logueate en instagram.com</b> en ese mismo Chrome con la cuenta de la app: @playcrewpadel
+              (PlayCrew), @gymhero.fitness (GymHero) o @turnos.pro (TurnosPro). Sigue solo a los negocios de la app
+              de la cuenta activa.
+            </li>
+            <li>
+              Armá un batch acá abajo (Batches → app → "Armar batch"). La extensión toma solo de los batches abiertos.
+            </li>
+            <li>
+              Dejá Chrome abierto, la compu sin dormirse y la ventana de trabajo que abre la extensión
+              <b> visible</b> (puede ser chica en un rincón, pero no minimizada). No la cierres.
+            </li>
+          </ol>
+          <p className="text-xs text-slate-500">
+            Para actualizarla: bajá el .zip de nuevo, reemplazá los archivos de la carpeta y tocá recargar en la
+            extensión (chrome://extensions). No hace falta volver a configurar nada.
+          </p>
+        </div>
+      </details>
+
       <div className="card overflow-x-auto">
         <div className="p-3 border-b border-slate-100 flex items-center gap-2 flex-wrap text-sm">
           <span className="font-medium mr-2">Batches de la extensión</span>
