@@ -105,7 +105,8 @@ public class AudienceLeadService
                     a.WhatsappProbable = r.WhatsappProbable;
                     a.PhoneSource = Cut(r.PhoneSource ?? "competidor", 64);
                 }
-                a.Instagram = Cut(NormalizeInstagram(r.Instagram), 128) ?? a.Instagram;
+                a.Instagram = Cut(NormalizeInstagram(r.Instagram), 128)
+                              ?? (a.Instagram != null && PlatformIg.IsMatch(a.Instagram) ? null : a.Instagram);
                 a.Website = Cut(r.Website, 512) ?? a.Website;
                 a.Email = Cut(r.Email, 256) ?? a.Email;
                 a.RawJson = r.Raw?.GetRawText() ?? a.RawJson;
@@ -390,8 +391,12 @@ public class AudienceLeadService
         if (string.IsNullOrWhiteSpace(s)) return null;
         var m = Regex.Match(s, @"instagram\.com/([A-Za-z0-9_.]+)");
         var h = (m.Success ? m.Groups[1].Value : s).Trim().TrimStart('@').Trim('.').ToLowerInvariant();
-        return h.Length == 0 || h is "p" or "reel" ? null : h;
+        return h.Length == 0 || h is "p" or "reel" || PlatformIg.IsMatch(h) ? null : h;
     }
+
+    /// <summary>Cuentas de las plataformas (el pie de las fichas de AgendaPro trae @agendapro_software), no del negocio.</summary>
+    private static readonly Regex PlatformIg =
+        new(@"^(agendapro|fresha|booksy|playtomic|atcsports|crossfy|wellhub|gympass|totalpass|fitpass|mindbody)", RegexOptions.Compiled);
 
     private static readonly string[] Generic =
         { "crossfit", "cross", "box", "gym", "gimnasio", "training", "club", "fitness", "centro", "studio", "estudio", "the", "de", "el", "la" };

@@ -120,13 +120,23 @@ function waitForTabLoad(tabId, timeoutMs = 30_000) {
   });
 }
 
+const PLATFORM_IG = /^(agendapro|fresha|booksy|playtomic|atcsports|crossfy|wellhub|gympass|totalpass|fitpass|mindbody)/i;
+
 async function inTab(url, func, args = []) {
   let tab;
   try {
     tab = await chrome.tabs.create({ url, active: false });
     await waitForTabLoad(tab.id);
-    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func, args });
-    return res?.result;
+    try {
+      const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func, args });
+      return res?.result;
+    } catch (e) {
+      // Instagram a veces redirige justo al inyectar ("Frame with ID 0 was removed"): un reintento.
+      if (!/frame|removed|navigat/i.test(String(e?.message || e))) throw e;
+      await new Promise((r) => setTimeout(r, 4000));
+      const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func, args });
+      return res?.result;
+    }
   } finally {
     if (tab?.id) chrome.tabs.remove(tab.id).catch(() => {});
   }
@@ -313,7 +323,8 @@ async function refill() {
 async function lookup(item, s) {
   let followPending = canFollow(s, item.app);
   let followResult = null;
-  let handle = item.instagram;
+  // Cuentas de las plataformas (pie de las fichas de AgendaPro, Fresha…), no del negocio.
+  let handle = PLATFORM_IG.test(item.instagram || '') ? null : item.instagram;
   let website = item.website;
   let igLinks = [];
   let igUsed = false;
