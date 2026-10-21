@@ -135,6 +135,10 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Comandos de consola (audience-import / audience-places): corren y salen sin levantar el server.
+if (SalesHub.Api.Services.AudienceCommands.IsCommand(args))
+    return await SalesHub.Api.Services.AudienceCommands.RunAsync(app.Services, args);
+
 // Artículos SEO escritos como archivos en el repo (SalesHub.Api/SeoSeed/<siteKey>/<slug>.json + .md)
 // → blog central (SeoArticles, Published). Idempotente; un error acá NUNCA frena el arranque.
 // Solo corre en el rol API: el componente "workers" de DO usa SalesHub.Workers/Program.cs.
@@ -179,3 +183,4 @@ app.MapGet("/", () => Results.Ok(new { status = "ok", service = "sales-hub", utc
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 
 app.Run();
+return 0;
