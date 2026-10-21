@@ -105,6 +105,7 @@ async function schedule(delayMs) {
   const at = nextSlot(s, Math.max(Date.now() + delayMs, s.blockedUntil, s.restUntil));
   await chrome.alarms.create(ALARM, { when: at });
   await setState({ nextAt: at });
+  heartbeat();
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -485,6 +486,34 @@ async function refill() {
   } catch { /* sin red: se reintenta en el próximo turno */ }
 }
 
+// Estado de la extensión a sales-hub (Públicos lo muestra): versión, cuenta, qué está haciendo.
+async function heartbeat() {
+  const s = await getState();
+  if (!s.apiKey) return;
+  const now = Date.now();
+  const state = !s.running ? 'pausada'
+    : now < s.blockedUntil ? 'bloqueada'
+    : now < s.restUntil ? 'descansando'
+    : !inWindow(s) ? 'fuera de horario'
+    : igCount(s) >= s.dailyCap ? 'tope del día'
+    : s.queue.length === 0 ? 'esperando batch'
+    : 'trabajando';
+  try {
+    await fetch(`${API}/finder-heartbeat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Audience-Key': s.apiKey },
+      body: JSON.stringify({
+        version: chrome.runtime.getManifest().version, account: s.igAccount || null, state,
+        nextAt: s.nextAt ? new Date(s.nextAt).toISOString() : null,
+        restUntil: s.restUntil > now ? new Date(s.restUntil).toISOString() : null,
+        blockedUntil: s.blockedUntil > now ? new Date(s.blockedUntil).toISOString() : null,
+        lastError: s.lastError || null, queue: s.queue.length, unsynced: s.unsynced.length,
+        igToday: igCount(s), followsToday: followCount(s), current: s.queue[0]?.name || null
+      })
+    });
+  } catch { /* sin red */ }
+}
+
 // ---- Un negocio por vez ----
 
 async function lookup(item, s) {
@@ -664,7 +693,9 @@ async function runOne() {
 
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === ALARM) runOne();
+  if (a.name === 'heartbeat') heartbeat();
 });
+chrome.alarms.create('heartbeat', { periodInMinutes: 2 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   (async () => {
@@ -674,6 +705,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     } else if (msg.type === 'pause') {
       await setState({ running: false, pausedByUser: true, nextAt: 0 });
       await chrome.alarms.clear(ALARM);
+      heartbeat();
     } else if (msg.type === 'reschedule') {
       const s = await getState();
       if (s.running) await schedule(rand(s.minGapSec, s.maxGapSec) * 1000);

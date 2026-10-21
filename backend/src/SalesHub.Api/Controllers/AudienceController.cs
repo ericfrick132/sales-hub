@@ -149,6 +149,25 @@ public class AudienceController : ControllerBase
         return Ok(new { applied = await _svc.ApplyFinderResultsAsync(results, ct) });
     }
 
+    /// <summary>Último estado que reportó cada extensión (en memoria: se pierde al reiniciar la API).</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (JsonElement State, DateTimeOffset At)> Heartbeats = new();
+
+    /// <summary>La extensión avisa cada 2 min qué está haciendo (sin login: header X-Audience-Key).</summary>
+    [HttpPost("finder-heartbeat")]
+    [AllowAnonymous]
+    public IActionResult FinderHeartbeat([FromBody] JsonElement state)
+    {
+        if (!KeyOk()) return Unauthorized();
+        var account = state.TryGetProperty("account", out var a) && a.ValueKind == JsonValueKind.String ? a.GetString()! : "(sin cuenta)";
+        Heartbeats[account] = (state.Clone(), DateTimeOffset.UtcNow);
+        return Ok();
+    }
+
+    /// <summary>Estado de las extensiones: lo último que reportó cada una y cuándo.</summary>
+    [HttpGet("finder-status")]
+    public IActionResult FinderStatus() =>
+        Ok(Heartbeats.OrderByDescending(h => h.Value.At).Select(h => new { account = h.Key, at = h.Value.At, state = h.Value.State }));
+
     private bool KeyOk()
     {
         var expected = Encoding.UTF8.GetBytes(AudienceLeadService.IngestKey(_jwt.SigningKey));

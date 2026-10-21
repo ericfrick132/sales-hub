@@ -24,6 +24,12 @@ interface EventRow {
   phone: string | null; phoneSource: string | null; checkedAt: string | null; steps: FinderStep[];
 }
 
+interface ExtStatus {
+  account: string; at: string;
+  state: { version: string; state: string; nextAt: string | null; restUntil: string | null; blockedUntil: string | null;
+    lastError: string | null; queue: number; unsynced: number; igToday: number; followsToday: number; current: string | null };
+}
+
 interface BatchRow {
   id: string; number: number; productKey: string; dataset: string | null; status: string; note: string | null;
   createdAt: string; retriedAt: string | null; closedAt: string | null; size: number; pending: number; found: number;
@@ -98,6 +104,11 @@ export default function PublicosCompetencia() {
     queryFn: async () => (await api.get<BatchRow[]>('/audience/batches')).data,
     refetchInterval: 20_000,
   });
+  const ext = useQuery({
+    queryKey: ['audience-ext'],
+    queryFn: async () => (await api.get<ExtStatus[]>('/audience/finder-status')).data,
+    refetchInterval: 20_000,
+  });
   const [bApp, setBApp] = useState('playcrew');
   const [bDataset, setBDataset] = useState('');
   const [bSize, setBSize] = useState(50);
@@ -170,6 +181,28 @@ export default function PublicosCompetencia() {
           sub={`IG ${fmt(total.fromInstagram)} · web ${fmt(total.fromWeb)} · leads ${fmt(total.fromLeads)} · Google ${fmt(total.fromGoogle)}`} />
         <Kpi label="Falta buscar" value={fmt(total.finderPending)}
           sub={`${fmt(total.googlePending)} esperan Google`} />
+      </div>
+
+      <div className="card p-3 text-sm space-y-1">
+        {(ext.data ?? []).length === 0 && <div className="text-slate-500">La extensión todavía no reportó (reporta cada 2 minutos si está instalada y conectada).</div>}
+        {(ext.data ?? []).map((e) => {
+          const stale = Date.now() - new Date(e.at).getTime() > 6 * 60_000;
+          const t = (s: string | null) => (s ? new Date(s).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '');
+          const st = e.state;
+          return (
+            <div key={e.account} className="flex flex-wrap gap-x-3 items-center">
+              <span className={`inline-block w-2 h-2 rounded-full ${stale ? 'bg-slate-400' : st.state === 'trabajando' ? 'bg-emerald-500' : st.state === 'bloqueada' ? 'bg-rose-500' : 'bg-amber-400'}`} />
+              <span className="font-medium">Extensión {st.version} · @{e.account}</span>
+              <span>{stale ? `sin señal desde las ${t(e.at)}` : st.state}</span>
+              {!stale && st.state === 'trabajando' && st.current && <span className="text-slate-500">con “{st.current}”</span>}
+              {!stale && st.restUntil && <span className="text-slate-500">hasta las {t(st.restUntil)}</span>}
+              {!stale && st.blockedUntil && <span className="text-rose-600">hasta las {t(st.blockedUntil)}</span>}
+              {!stale && st.nextAt && st.state !== 'pausada' && <span className="text-slate-500">próximo {t(st.nextAt)}</span>}
+              <span className="text-slate-500">hoy {st.igToday} perfiles · {st.followsToday} follows</span>
+              {st.lastError && <span className="text-rose-600">{st.lastError}</span>}
+            </div>
+          );
+        })}
       </div>
 
       <div className="card overflow-x-auto">
