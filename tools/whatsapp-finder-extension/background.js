@@ -516,7 +516,17 @@ async function refill() {
 }
 
 // Estado de la extensión a sales-hub (Públicos lo muestra): versión, cuenta, qué está haciendo.
+// Instalada "descomprimida", los archivos se leen del disco: si la carpeta trae otra versión
+// (git pull o el .zip nuevo copiado encima), se recarga sola sin pasar por chrome://extensions.
+async function reloadIfUpdated() {
+  try {
+    const disk = await fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' }).then((r) => r.json());
+    if (disk.version && disk.version !== chrome.runtime.getManifest().version) chrome.runtime.reload();
+  } catch { /* carpeta a medio copiar: se reintenta en el próximo heartbeat */ }
+}
+
 async function heartbeat() {
+  await reloadIfUpdated();
   const s = await getState();
   if (!s.apiKey) return;
   const now = Date.now();

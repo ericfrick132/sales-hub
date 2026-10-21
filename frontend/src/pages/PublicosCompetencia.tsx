@@ -241,8 +241,8 @@ export default function PublicosCompetencia() {
             </li>
           </ol>
           <p className="text-xs text-slate-500">
-            Para actualizarla: bajá el .zip de nuevo, reemplazá los archivos de la carpeta y tocá recargar en la
-            extensión (chrome://extensions). No hace falta volver a configurar nada.
+            Para actualizarla: bajá el .zip de nuevo y reemplazá los archivos de la carpeta. En unos minutos se
+            recarga sola (o tocá recargar en chrome://extensions). No hace falta volver a configurar nada.
           </p>
         </div>
       </details>
