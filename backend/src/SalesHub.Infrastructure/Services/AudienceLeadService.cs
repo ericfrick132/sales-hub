@@ -89,7 +89,14 @@ public class AudienceLeadService
                 a.Competitor = r.Competitor;
                 a.ProductKey = r.ProductKey;
                 a.Segment = r.Segment ?? "usa";
-                a.Name = Cut(r.Name, 256)!;
+                var name = Cut(r.Name, 256)!;
+                // Con nombre nuevo (p. ej. el real de la ficha en vez del slug) la búsqueda en IG vale otro intento.
+                if (a.Name != null && a.Name != name && a.Phone == null && a.FinderStatus == "google")
+                {
+                    a.FinderStatus = null;
+                    a.FinderCheckedAt = null;
+                }
+                a.Name = name;
                 a.Category = Cut(r.Category, 256);
                 a.Address = Cut(r.Address, 512) ?? a.Address;
                 a.City = Cut(r.City, 128) ?? a.City;
