@@ -215,6 +215,25 @@ public class AudienceLeadService
         return (await BatchesAsync(1, batch.Id, ct)).FirstOrDefault();
     }
 
+    /// <summary>
+    /// Devuelve a pendientes los negocios de la app que la extensión dio por "no lo encontró en IG" desde
+    /// <paramref name="since"/> (p. ej. por un error de la extensión). No toca los que tienen número.
+    /// </summary>
+    public async Task<int> ResetNoMatchAsync(string productKey, DateTimeOffset since, CancellationToken ct = default)
+    {
+        var rows = await _db.AudienceLeads
+            .Where(a => a.ProductKey == productKey && a.Phone == null && a.FinderStatus == "google" && a.FinderCheckedAt >= since)
+            .ToListAsync(ct);
+        var reset = rows.Where(a => ReadLog(a.FinderLog).Any(x => x.At >= since && x.Step == "ig_search" && x.Result == "no_match")).ToList();
+        foreach (var a in reset)
+        {
+            a.FinderStatus = null;
+            a.FinderCheckedAt = null;
+        }
+        await _db.SaveChangesAsync(ct);
+        return reset.Count;
+    }
+
     /// <summary>Cierra el batch: los que la extensión todavía no tocó vuelven a quedar libres.</summary>
     public async Task<bool> CloseBatchAsync(Guid id, CancellationToken ct = default)
     {

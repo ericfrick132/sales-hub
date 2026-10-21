@@ -64,6 +64,13 @@ public class AudienceController : ControllerBase
         return b is null ? BadRequest(new { error = "No hay pendientes para esa app/listado." }) : Ok(b);
     }
 
+    public record ResetNoMatchRequest(string ProductKey, DateTimeOffset Since);
+
+    /// <summary>Vuelve a pendientes los "no lo encontró en IG" de una app desde una fecha (tras arreglar un error).</summary>
+    [HttpPost("finder-reset-no-match")]
+    public async Task<IActionResult> ResetNoMatch([FromBody] ResetNoMatchRequest req, CancellationToken ct) =>
+        Ok(new { reset = await _svc.ResetNoMatchAsync(req.ProductKey, req.Since, ct) });
+
     /// <summary>Cierra el batch y libera los que todavía no se buscaron.</summary>
     [HttpPost("batches/{id:guid}/close")]
     public async Task<IActionResult> CloseBatch(Guid id, CancellationToken ct) =>

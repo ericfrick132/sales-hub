@@ -217,9 +217,11 @@ async function igSearch(tab, q) {
 async function igFind(tab, name, city) {
   const want = normName(name);
   if (want.length < 4) return { status: 'no_match' };
+  let seen = 0;
   for (const q of [...new Set([`${name} ${city || ''}`.trim(), name])]) {
     const res = await igSearch(tab, q);
     if (res === null) return { status: 'error', error: 'no se abrió el buscador' };
+    seen += res.length;
     const hit = res.find((r) => {
       const a = normName(r.name), b = normName(r.handle);
       return (a.length >= 4 && (a.includes(want) || want.includes(a))) || b.includes(want);
@@ -227,7 +229,13 @@ async function igFind(tab, name, city) {
     if (hit) return { status: 'ok', handle: hit.handle, results: res };
     await sleep(rand(1000, 2500));
   }
-  return { status: 'no_match' };
+  // Sin ningún resultado no es "no existe": el buscador no respondió (p. ej. la pestaña estaba oculta).
+  // Se marca error para que se reintente en vez de darlo por perdido.
+  if (seen === 0) {
+    const vis = await run(tab, () => document.visibilityState).catch(() => '?');
+    return { status: 'error', error: `el buscador no trajo resultados (pestaña ${vis})` };
+  }
+  return { status: 'no_match', seen };
 }
 
 // Entra al perfil desde el buscador (si no aparece, por URL, como quien la pega), lee la bio, mira un
@@ -567,7 +575,8 @@ async function lookup(item, s) {
     let r;
     try { r = await igFind(tabs.ig, item.name, item.city || ''); }
     catch (e) { r = { status: 'error', error: String(e?.message || e) }; }
-    step('ig_search', r?.status || 'error', r?.handle ? `"${item.name}" → @${r.handle}` : r?.error || `"${item.name}"`);
+    step('ig_search', r?.status || 'error', r?.handle ? `"${item.name}" → @${r.handle}` : r?.error || `"${item.name}" · ${r?.seen ?? 0} resultados`);
+    if (r?.status === 'error' && !website) return done({ status: 'error' });
     handle = r?.handle && r.handle !== (item.instagram || '').toLowerCase() ? r.handle : null;
     searchResults = r?.results || null;
   }
