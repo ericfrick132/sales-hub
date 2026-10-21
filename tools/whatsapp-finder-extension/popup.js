@@ -1,7 +1,7 @@
 const $ = (id) => document.getElementById(id);
 const NUM_FIELDS = ['dailyCap', 'minGapSec', 'maxGapSec', 'hourStart', 'hourEnd', 'followCap', 'followGapMin',
   'workMin', 'workMax', 'restMin', 'restMax', 'appVisitCap', 'appFollowCap'];
-const NUM_DEFAULTS = { dailyCap: 250, minGapSec: 25, maxGapSec: 70, hourStart: 9, hourEnd: 23, followCap: 200, followGapMin: 3,
+const NUM_DEFAULTS = { dailyCap: 250, minGapSec: 25, maxGapSec: 70, hourStart: 8, hourEnd: 23, followCap: 200, followGapMin: 3,
   workMin: 50, workMax: 70, restMin: 20, restMax: 40, appVisitCap: 85, appFollowCap: 65 };
 const APP_LABEL = { turnospro: 'TurnosPro', gymhero: 'GymHero', playcrew: 'PlayCrew' };
 const LABEL = {

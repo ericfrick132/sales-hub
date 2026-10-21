@@ -17,7 +17,7 @@ const DEFAULTS = {
   dailyCap: 250,        // perfiles de IG por día (las webs no cuentan)
   minGapSec: 25,
   maxGapSec: 70,
-  hourStart: 9,
+  hourStart: 8,
   hourEnd: 23,          // exclusiva
   blockedUntil: 0,      // IG mostró "intentá más tarde"
   // Ráfagas como una persona: trabaja un rato (50-70 min) y descansa (20-40 min), al azar.
