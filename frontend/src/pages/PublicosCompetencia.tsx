@@ -61,6 +61,9 @@ const RESULT_LABEL: Record<string, string> = {
 const RESULT_CLASS: Record<string, string> = {
   ok: 'text-emerald-600', followed: 'text-emerald-600', blocked: 'text-rose-600', login: 'text-rose-600', error: 'text-amber-600'
 };
+// En la búsqueda de IG, "ok" es que encontró la cuenta, no un número.
+const resultLabel = (st: { step: string; result: string }) =>
+  st.step === 'ig_search' && st.result === 'ok' ? 'encontrado ✓' : RESULT_LABEL[st.result] ?? st.result;
 const STATUS_LABEL: Record<string, string> = { ok: 'con número', google: 'para Google', error: 'error' };
 const fmtAt = (s: string) => new Date(s).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
@@ -440,7 +443,7 @@ export default function PublicosCompetencia() {
                 {e.steps.map((st, j) => (
                   <li key={j}>
                     <span className="text-slate-400">{fmtAt(st.at)}</span> · {STEP_LABEL[st.step] ?? st.step}:{' '}
-                    <span className={RESULT_CLASS[st.result] ?? ''}>{RESULT_LABEL[st.result] ?? st.result}</span>
+                    <span className={RESULT_CLASS[st.result] ?? ''}>{resultLabel(st)}</span>
                     {st.detail && <span className="text-slate-400"> · {st.detail}</span>}
                   </li>
                 ))}
@@ -516,7 +519,7 @@ function BatchLeads({ id }: { id: string }) {
               {l.steps.length === 0 ? <span className="text-slate-400">todavía no lo tomó</span> : l.steps.map((st, j) => (
                 <div key={j}>
                   <span className="text-slate-400">{fmtAt(st.at)}</span> · {STEP_LABEL[st.step] ?? st.step}:{' '}
-                  <span className={RESULT_CLASS[st.result] ?? ''}>{RESULT_LABEL[st.result] ?? st.result}</span>
+                  <span className={RESULT_CLASS[st.result] ?? ''}>{resultLabel(st)}</span>
                   {st.detail && <span className="text-slate-500"> — {st.detail}</span>}
                 </div>
               ))}
