@@ -37,6 +37,12 @@ const DEFAULTS = {
   followToday: { day: '', n: 0 },
   lastFollowAt: 0,
   followBlockedUntil: 0,
+  // Reparto por app: cada una tiene su tope diario dentro de los topes de la cuenta; cuando una llega,
+  // se sigue con las otras. onlyApps = esta extensión trabaja solo para esas apps (un perfil de Chrome por app).
+  appVisitCap: 85,
+  appFollowCap: 65,
+  onlyApps: [],
+  appToday: { day: '', visits: {}, follows: {} },
   apiKey: '',           // clave de Marketing → Competencia → Públicos
   unsynced: []          // resultados que todavía no llegaron a sales-hub
 };
@@ -53,8 +59,15 @@ const todayKey = (d = new Date()) => d.toLocaleDateString('sv');
 const rand = (min, max) => min + Math.random() * (max - min);
 const igCount = (s) => (s.igToday.day === todayKey() ? s.igToday.n : 0);
 const followCount = (s) => (s.followToday.day === todayKey() ? s.followToday.n : 0);
+const APPS = ['turnospro', 'gymhero', 'playcrew'];
+const appDay = (s) => (s.appToday.day === todayKey() ? s.appToday : { day: todayKey(), visits: {}, follows: {} });
+const appVisits = (s, app) => appDay(s).visits[app] || 0;
+const appFollows = (s, app) => appDay(s).follows[app] || 0;
+const appDone = (s, app) => !!app && appVisits(s, app) >= s.appVisitCap;
+const appsDone = (s) => APPS.filter((a) => appDone(s, a));
 // ¿Toca seguir en este perfil? Tope diario, pausa mínima entre follows y sin bloqueo de follow vigente.
-const canFollow = (s) => s.follow && followCount(s) < s.followCap && Date.now() >= s.followBlockedUntil &&
+const canFollow = (s, app) => s.follow && followCount(s) < s.followCap && Date.now() >= s.followBlockedUntil &&
+  (!app || appFollows(s, app) < s.appFollowCap) &&
   Date.now() - s.lastFollowAt >= s.followGapMin * 60_000 * rand(1, 1.6);
 
 function inWindow(s, d = new Date()) {
@@ -274,7 +287,7 @@ async function refill() {
     const r = await fetch(`${API}/finder-queue`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Audience-Key': s.apiKey },
-      body: JSON.stringify({ limit: 30, skip })
+      body: JSON.stringify({ limit: 30, skip, excludeProducts: appsDone(s), onlyProducts: s.onlyApps })
     });
     if (r.status === 401) { await setState({ lastError: 'sales-hub rechazó la clave: copiala de nuevo desde Públicos.' }); return; }
     if (!r.ok) return;
@@ -282,7 +295,7 @@ async function refill() {
     const fresh = await getState();
     const seen = new Set([...fresh.queue.map((q) => q.key), ...skip]);
     const add = items
-      .map((i) => ({ key: `${i.dataset}|${i.externalId}`, dataset: i.dataset, externalId: i.externalId, name: i.name,
+      .map((i) => ({ key: `${i.dataset}|${i.externalId}`, app: i.productKey, dataset: i.dataset, externalId: i.externalId, name: i.name,
                      city: i.city || '', country: i.country || '', instagram: i.instagram || null, website: i.website || null }))
       .filter((i) => !seen.has(i.key));
     if (add.length) await setState({ queue: [...fresh.queue, ...add] });
@@ -292,7 +305,7 @@ async function refill() {
 // ---- Un negocio por vez ----
 
 async function lookup(item, s) {
-  let followPending = canFollow(s);
+  let followPending = canFollow(s, item.app);
   let followResult = null;
   let handle = item.instagram;
   let website = item.website;
@@ -363,10 +376,16 @@ async function lookup(item, s) {
 }
 
 async function runOne() {
+  // Las apps que ya llegaron a su tope del día salen de la cola local (siguen pendientes en sales-hub).
+  const pre = await getState();
+  const done = appsDone(pre);
+  if (done.length && pre.queue.some((q) => done.includes(q.app)))
+    await setState({ queue: pre.queue.filter((q) => !done.includes(q.app)) });
   await refill();
   const s = await getState();
   if (!s.running || s.queue.length === 0) return schedule(0);
   if (Date.now() < s.blockedUntil || Date.now() < s.restUntil || !inWindow(s) || igCount(s) >= s.dailyCap) return schedule(0);
+  if (s.queue.length === 0 && (s.onlyApps.length ? s.onlyApps : APPS).every((a) => appDone(s, a))) return schedule(0);
 
   // Ráfaga nueva si no hay una en curso o la anterior quedó vieja (cerró el horario, se apagó la compu).
   const now = Date.now();
@@ -387,6 +406,14 @@ async function runOne() {
   const fresh = await getState();
   const patch = { lastError: error };
   if (r.igUsed) patch.igToday = { day: todayKey(), n: igCount(fresh) + 1 };
+  if (item.app && (r.igUsed || r.followResult === 'followed')) {
+    const d = appDay(fresh);
+    patch.appToday = {
+      day: d.day,
+      visits: { ...d.visits, [item.app]: (d.visits[item.app] || 0) + (r.igUsed ? 1 : 0) },
+      follows: { ...d.follows, [item.app]: (d.follows[item.app] || 0) + (r.followResult === 'followed' ? 1 : 0) }
+    };
+  }
   if (r.followResult === 'followed') {
     patch.followToday = { day: todayKey(), n: followCount(fresh) + 1 };
     patch.lastFollowAt = Date.now();

@@ -59,6 +59,17 @@
     <label>cada</label><input id="followGapMin" type="number" min="1" /><label>min</label>
   </div>
   <div class="row">
+    <label>Por app/día: perfiles</label><input id="appVisitCap" type="number" min="0" />
+    <label>follows</label><input id="appFollowCap" type="number" min="0" />
+  </div>
+  <div class="row">
+    <label>Solo para:</label>
+    <label><input type="checkbox" class="onlyApp" value="turnospro" /> TurnosPro</label>
+    <label><input type="checkbox" class="onlyApp" value="gymhero" /> GymHero</label>
+    <label><input type="checkbox" class="onlyApp" value="playcrew" /> PlayCrew</label>
+  </div>
+  <div id="apps" class="note"></div>
+  <div class="row">
     <label>Trabaja</label><input id="workMin" type="number" min="5" /><label>a</label><input id="workMax" type="number" min="5" /><label>min</label>
     <label>· descansa</label><input id="restMin" type="number" min="1" /><label>a</label><input id="restMax" type="number" min="1" /><label>min</label>
   </div>

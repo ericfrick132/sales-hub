@@ -117,7 +117,7 @@ public class AudienceLeadService
         return (inserted, updated);
     }
 
-    public record FinderItem(string Dataset, string ExternalId, string Name, string? City, string? Country,
+    public record FinderItem(string ProductKey, string Dataset, string ExternalId, string Name, string? City, string? Country,
         string? Instagram, string? Website);
 
     /// <summary>
@@ -136,12 +136,19 @@ public class AudienceLeadService
     /// Próximos negocios para la extensión: sin teléfono y sin pasar todavía por Instagram/web. Los que
     /// tienen Instagram van primero dentro de cada listado. <paramref name="skip"/> = claves
     /// "dataset|id" que la extensión ya tiene en cola o procesó y todavía no llegaron acá.
+    /// <paramref name="excludeProducts"/> = apps que ya llegaron a su tope del día en la extensión;
+    /// <paramref name="onlyProducts"/> = la extensión trabaja solo para esas apps (un perfil de Chrome por app).
     /// </summary>
-    public async Task<List<FinderItem>> FinderQueueAsync(int limit, IReadOnlyCollection<string> skip, CancellationToken ct = default)
+    public async Task<List<FinderItem>> FinderQueueAsync(int limit, IReadOnlyCollection<string> skip,
+        IReadOnlyCollection<string>? excludeProducts = null, IReadOnlyCollection<string>? onlyProducts = null,
+        CancellationToken ct = default)
     {
         var groups = await _db.AudienceLeads.Where(a => a.Phone == null && a.FinderStatus == null)
             .Select(a => new { a.ProductKey, a.Dataset }).Distinct().ToListAsync(ct);
-        var ordered = groups.OrderBy(g => Array.IndexOf(FinderPriority, $"{g.ProductKey}:{g.Dataset}") is var i && i >= 0 ? i : 99)
+        var ordered = groups
+            .Where(g => (excludeProducts == null || !excludeProducts.Contains(g.ProductKey))
+                        && (onlyProducts == null || onlyProducts.Count == 0 || onlyProducts.Contains(g.ProductKey)))
+            .OrderBy(g => Array.IndexOf(FinderPriority, $"{g.ProductKey}:{g.Dataset}") is var i && i >= 0 ? i : 99)
             .ThenBy(g => g.ProductKey).ThenBy(g => g.Dataset);
         var skipSet = skip.ToHashSet();
         var items = new List<FinderItem>();
@@ -151,7 +158,7 @@ public class AudienceLeadService
                 .Where(a => a.ProductKey == g.ProductKey && a.Dataset == g.Dataset && a.Phone == null && a.FinderStatus == null)
                 .OrderBy(a => a.Instagram == null).ThenBy(a => a.Name)
                 .Take(limit + skipSet.Count)
-                .Select(a => new FinderItem(a.Dataset, a.ExternalId, a.Name, a.City, a.Country, a.Instagram, a.Website))
+                .Select(a => new FinderItem(a.ProductKey, a.Dataset, a.ExternalId, a.Name, a.City, a.Country, a.Instagram, a.Website))
                 .ToListAsync(ct);
             items.AddRange(rows.Where(r => !skipSet.Contains($"{r.Dataset}|{r.ExternalId}")));
             if (items.Count >= limit) break;

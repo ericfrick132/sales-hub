@@ -1,8 +1,9 @@
 const $ = (id) => document.getElementById(id);
 const NUM_FIELDS = ['dailyCap', 'minGapSec', 'maxGapSec', 'hourStart', 'hourEnd', 'followCap', 'followGapMin',
-  'workMin', 'workMax', 'restMin', 'restMax'];
+  'workMin', 'workMax', 'restMin', 'restMax', 'appVisitCap', 'appFollowCap'];
 const NUM_DEFAULTS = { dailyCap: 250, minGapSec: 25, maxGapSec: 70, hourStart: 9, hourEnd: 23, followCap: 200, followGapMin: 3,
-  workMin: 50, workMax: 70, restMin: 20, restMax: 40 };
+  workMin: 50, workMax: 70, restMin: 20, restMax: 40, appVisitCap: 85, appFollowCap: 65 };
+const APP_LABEL = { turnospro: 'TurnosPro', gymhero: 'GymHero', playcrew: 'PlayCrew' };
 const LABEL = {
   ok: 'número', google: 'para Google', error: 'error'
 };
@@ -28,6 +29,13 @@ async function render() {
 
   for (const f of NUM_FIELDS) if (document.activeElement !== $(f)) $(f).value = s[f] ?? NUM_DEFAULTS[f];
   $('follow').checked = s.follow ?? true;
+  const only = s.onlyApps ?? [];
+  document.querySelectorAll('.onlyApp').forEach((c) => { c.checked = only.includes(c.value); });
+  const day = s.appToday?.day === new Date().toLocaleDateString('sv') ? s.appToday : { visits: {}, follows: {} };
+  $('apps').textContent = 'Hoy: ' + Object.keys(APP_LABEL)
+    .filter((a) => !only.length || only.includes(a))
+    .map((a) => `${APP_LABEL[a]} ${day.visits[a] || 0}/${s.appVisitCap ?? 85} perfiles · ${day.follows[a] || 0}/${s.appFollowCap ?? 65} follows`)
+    .join('  |  ') + (only.length ? '' : '  (sin tildar = todas)');
   const fToday = s.followToday?.day === new Date().toLocaleDateString('sv') ? s.followToday.n : 0;
   const fBlocked = (s.followBlockedUntil ?? 0) > Date.now();
   $('sFollow').textContent = fBlocked ? 'pausa' : `${fToday}/${s.followCap ?? NUM_DEFAULTS.followCap}`;
@@ -99,6 +107,15 @@ $('export').onclick = async () => {
   a.click();
 };
 
+document.querySelectorAll('.onlyApp').forEach((c) => {
+  c.onchange = async () => {
+    const onlyApps = [...document.querySelectorAll('.onlyApp')].filter((x) => x.checked).map((x) => x.value);
+    const { queue = [] } = await chrome.storage.local.get('queue');
+    // La cola local se filtra a las apps elegidas; el resto sigue pendiente en sales-hub.
+    await chrome.storage.local.set({ onlyApps, queue: onlyApps.length ? queue.filter((q) => onlyApps.includes(q.app)) : queue });
+    render();
+  };
+});
 $('follow').onchange = async () => { await chrome.storage.local.set({ follow: $('follow').checked }); render(); };
 $('apiKey').onchange = async () => {
   await chrome.storage.local.set({ apiKey: $('apiKey').value.trim(), lastError: '' });

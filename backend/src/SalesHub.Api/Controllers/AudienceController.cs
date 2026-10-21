@@ -94,7 +94,8 @@ public class AudienceController : ControllerBase
         return Accepted(new { started = true, max });
     }
 
-    public record FinderQueueRequest(int Limit = 30, List<string>? Skip = null);
+    public record FinderQueueRequest(int Limit = 30, List<string>? Skip = null,
+        List<string>? ExcludeProducts = null, List<string>? OnlyProducts = null);
 
     /// <summary>
     /// Próximos negocios para la extensión (sin login: header X-Audience-Key). POST para poder mandar
@@ -106,7 +107,7 @@ public class AudienceController : ControllerBase
     {
         if (!KeyOk()) return Unauthorized();
         var skip = (req.Skip ?? new()).Take(5000).ToList();
-        return Ok(await _svc.FinderQueueAsync(Math.Clamp(req.Limit, 1, 100), skip, ct));
+        return Ok(await _svc.FinderQueueAsync(Math.Clamp(req.Limit, 1, 100), skip, req.ExcludeProducts, req.OnlyProducts, ct));
     }
 
     /// <summary>Resultados de la extensión "Buscar WhatsApp" (sin login: header X-Audience-Key).</summary>
