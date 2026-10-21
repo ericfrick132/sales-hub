@@ -98,29 +98,46 @@ async function inTab(url, func, args = []) {
 
 // ---- Funciones que corren DENTRO de las páginas (no pueden usar nada de afuera) ----
 
-// Busca la cuenta por nombre + ciudad con el buscador de IG (usa la sesión de la pestaña).
+// Busca la cuenta por nombre + ciudad con el panel "Buscar" de la web de IG, como una persona
+// (el viejo /web/search/topsearch/ da 404 y /api/v1/users/search/ pide user-agent de la app).
 async function igSearchOnPage(name, city) {
-  const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/\b(crossfit|cross|box|gym|gimnasio|training|club|fitness|centro|studio|estudio|the|de|el|la)\b/g, ' ')
     .replace(/[^a-z0-9]/g, '');
+  const RESERVED = /^\/(popular|explore|reels?|direct|accounts|stories|p|tv|legal|about|web)\//;
+  for (let i = 0; i < 20 && !document.querySelector('svg[aria-label]'); i++) await sleep(500);
   if (location.pathname.startsWith('/accounts/login')) return { status: 'login' };
   const want = norm(name);
   if (want.length < 4) return { status: 'no_match' };
+  const icon = [...document.querySelectorAll('svg[aria-label]')].find((x) => /^(buscar|search)$/i.test(x.getAttribute('aria-label')));
+  icon?.closest('a,[role="button"],[role="link"]')?.click();
+  let input;
+  for (let i = 0; i < 10 && !input; i++) {
+    await sleep(500);
+    input = document.querySelector('input[aria-label="Términos de búsqueda"], input[aria-label="Search input"], input[placeholder="Buscar"], input[placeholder="Search"]');
+  }
+  if (!input) return { status: 'error' };
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
   for (const q of [`${name} ${city || ''}`.trim(), name]) {
-    const r = await fetch(`/web/search/topsearch/?context=blended&query=${encodeURIComponent(q)}`, { credentials: 'include' });
-    if (r.status === 429) return { status: 'blocked' };
-    if (!r.ok) continue;
-    const j = await r.json().catch(() => null);
-    for (const u of (j?.users || []).map((x) => x.user).slice(0, 8)) {
-      const a = norm(u.full_name), b = norm(u.username);
-      if ((a && (a.includes(want) || want.includes(a))) || b.includes(want)) return { status: 'ok', handle: u.username };
+    input.focus();
+    setter.call(input, q);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(3000 + Math.random() * 1500);
+    const results = [...document.querySelectorAll('a[href^="/"][role="link"]')]
+      .map((a) => ({ href: a.getAttribute('href'), lines: (a.innerText || '').split('\n') }))
+      .filter((r) => /^\/[A-Za-z0-9._]+\/$/.test(r.href) && !RESERVED.test(r.href) && r.lines[0]);
+    for (const r of results.slice(0, 8)) {
+      const handle = r.href.slice(1, -1);
+      const a = norm(r.lines[1]), b = norm(handle);
+      if ((a.length >= 4 && (a.includes(want) || want.includes(a))) || b.includes(want)) return { status: 'ok', handle };
     }
-    await new Promise((res) => setTimeout(res, 1500 + Math.random() * 2000));
   }
   return { status: 'no_match' };
 }
 
-// Lee el perfil: links de WhatsApp de la bio, número en el texto y el link externo.
+// Lee el perfil: abre la bio completa ("más"), busca links de WhatsApp con número, un número en el
+// texto y devuelve los links externos que vale la pena abrir (en orden de utilidad).
 async function igProfileOnPage() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const BLOCK = /(intent[aá] de nuevo más tarde|inténtalo de nuevo más tarde|try again later|restringimos|we restrict)/i;
@@ -135,9 +152,13 @@ async function igProfileOnPage() {
     return href;
   };
   const waNumber = (href) => {
-    const m = href.match(/(?:wa\.me\/|api\.whatsapp\.com\/send\/?\?(?:.*&)?phone=|whatsapp\.com\/send\/?\?(?:.*&)?phone=)\+?(\d{8,15})/i);
+    const m = href.match(/(?:wa\.me\/|whatsapp\.com\/send\/?\?(?:.*&)?phone=)\+?(\d{8,15})/i);
     return m ? m[1] : null;
   };
+  // Links que no son la web del negocio: grupos de WhatsApp, Threads, Maps, otras cuentas de IG.
+  const USELESS = /instagram\.com|threads\.(net|com)|chat\.whatsapp\.com|maps\.app\.goo\.gl|goo\.gl\/maps|google\.[a-z.]+\/maps|waze\.com/i;
+  // wa.me/message/… y api.whatsapp.com/message/… (link de WhatsApp Business sin número): al abrirlo muestra el número.
+  const rank = (h) => (/(wa\.me|whatsapp\.com)\/message\//i.test(h) ? 0 : /linktr\.ee|linkin\.bio|beacons\.ai|taplink|bio\.link|wa\.link/i.test(h) ? 1 : /facebook\.com/i.test(h) ? 3 : 2);
   for (let i = 0; i < 30; i++) {
     const body = document.body?.innerText || '';
     if (i >= 4 && loggedOut()) return { status: 'login' };
@@ -146,18 +167,19 @@ async function igProfileOnPage() {
     const header = document.querySelector('main header') || document.querySelector('header section');
     if (header && header.innerText.length > 20) {
       await sleep(1200 + Math.random() * 1500);
-      const links = [...header.querySelectorAll('a[href]')].map((a) => unwrap(a.href));
+      const more = [...header.querySelectorAll('div[role="button"], span')].find((e) => /^(más|more)$/i.test((e.innerText || '').trim()));
+      if (more) { more.click(); await sleep(800 + Math.random() * 700); }
+      const links = [...header.querySelectorAll('a[href]')].map((a) => unwrap(a.href)).filter((h) => /^https?:/i.test(h));
       const wa = links.map(waNumber).find(Boolean);
-      if (wa) return { status: 'ok', phone: wa, source: 'instagram_link', links };
-      const bio = header.innerText;
+      if (wa) return { status: 'ok', phone: wa, source: 'instagram_link' };
       // Número en la bio: preferir la línea que habla de WhatsApp / teléfono.
-      const lines = bio.split('\n');
+      const lines = header.innerText.split('\n');
       const cand = [...lines.filter((l) => /(whats|wsp|wpp|wa\b|📲|📱|☎|📞|tel|cel|turnos|reservas)/i.test(l)), ...lines];
       for (const l of cand) {
         const m = l.match(/\+?\d[\d\s\-().]{7,}\d/);
-        if (m && m[0].replace(/\D/g, '').length >= 8) return { status: 'ok', phone: m[0], source: 'instagram_bio', links };
+        if (m && m[0].replace(/\D/g, '').length >= 8) return { status: 'ok', phone: m[0], source: 'instagram_bio' };
       }
-      const external = links.filter((h) => !/instagram\.com|facebook\.com\/instagram|threads\.net/i.test(h));
+      const external = [...new Set(links.filter((h) => !USELESS.test(h)))].sort((a, b) => rank(a) - rank(b));
       return { status: 'no_phone', links: external };
     }
     await sleep(500);
@@ -165,17 +187,22 @@ async function igProfileOnPage() {
   return { status: 'error' };
 }
 
-// Busca WhatsApp / teléfono en una web (incluye linktree y similares).
+// Busca WhatsApp / teléfono en una web (linktree y similares incluidos). En la página de un link de
+// WhatsApp Business (wa.me/message/…) el número aparece en el texto.
 async function webOnPage() {
   await new Promise((r) => setTimeout(r, 2500));
+  const text = document.body?.innerText || '';
+  if (/whatsapp\.com$/i.test(location.hostname)) {
+    const m = text.match(/\+\d[\d\s\-()]{7,}\d/);
+    return m ? { status: 'ok', phone: m[0], source: 'web_whatsapp' } : { status: 'no_phone' };
+  }
   const hrefs = [...document.querySelectorAll('a[href]')].map((a) => a.href);
   for (const h of hrefs) {
-    const m = h.match(/(?:wa\.me\/|wa\.link\/|whatsapp\.com\/send\/?\?(?:.*&)?phone=)\+?(\d{8,15})/i);
+    const m = h.match(/(?:wa\.me\/|whatsapp\.com\/send\/?\?(?:.*&)?phone=)\+?(\d{8,15})/i);
     if (m) return { status: 'ok', phone: m[1], source: 'web_whatsapp' };
   }
   const tel = hrefs.find((h) => h.startsWith('tel:') && h.replace(/\D/g, '').length >= 8);
   if (tel) return { status: 'ok', phone: decodeURIComponent(tel.slice(4)), source: 'web_tel' };
-  const text = document.body?.innerText || '';
   const m = text.match(/(?:whats\s?app|wsp|wpp)[^\d+]{0,20}(\+?\d[\d\s\-().]{7,}\d)/i);
   if (m) return { status: 'ok', phone: m[1], source: 'web_texto' };
   return { status: 'no_phone' };
@@ -229,31 +256,43 @@ async function refill() {
 async function lookup(item, s) {
   let handle = item.instagram;
   let website = item.website;
+  let igLinks = [];
   let igUsed = false;
 
-  // 1) Instagram
-  if (!handle) {
+  // 1) Instagram (si el handle de la base ya no existe, se busca por nombre)
+  if (handle) {
+    igUsed = true;
+    const p = await inTab(`https://www.instagram.com/${handle}/`, igProfileOnPage);
+    if (p?.status === 'login' || p?.status === 'blocked') return { status: p.status, igUsed };
+    if (p?.status === 'ok') return { status: 'ok', phone: p.phone, source: p.source, instagram: handle, website, igUsed };
+    if (p?.status === 'not_found') handle = null;
+    else igLinks = p?.links || [];
+  }
+  if (!handle && !igLinks.length) {
     igUsed = true;
     const r = await inTab('https://www.instagram.com/', igSearchOnPage, [item.name, item.city || '']);
     if (r?.status === 'login' || r?.status === 'blocked') return { status: r.status, igUsed };
-    handle = r?.handle || null;
+    handle = r?.handle && r.handle !== item.instagram ? r.handle : null;
   }
-  if (handle) {
+  if (handle && handle !== item.instagram) {
     igUsed = true;
     await new Promise((r) => setTimeout(r, rand(3000, 8000)));
     const p = await inTab(`https://www.instagram.com/${handle}/`, igProfileOnPage);
     if (p?.status === 'login' || p?.status === 'blocked') return { status: p.status, igUsed };
     if (p?.status === 'ok') return { status: 'ok', phone: p.phone, source: p.source, instagram: handle, website, igUsed };
-    website = website || (p?.links || [])[0] || null;
+    igLinks = p?.links || [];
   }
 
-  // 2) Web
-  if (website) {
+  // 2) Web: primero un link de WhatsApp Business de la bio, después la web de la base y los demás links.
+  const waMsg = igLinks.filter((h) => /(wa\.me|whatsapp\.com)\/message\//i.test(h));
+  const sites = [...new Set([...waMsg, website, ...igLinks].filter(Boolean))].slice(0, 2);
+  for (const site of sites) {
     try {
-      const w = await inTab(/^https?:/i.test(website) ? website : `https://${website}`, webOnPage);
-      if (w?.status === 'ok') return { status: 'ok', phone: w.phone, source: w.source, instagram: handle, website, igUsed };
-    } catch { /* web caída: sigue a Google */ }
+      const w = await inTab(/^https?:/i.test(site) ? site : `https://${site}`, webOnPage);
+      if (w?.status === 'ok') return { status: 'ok', phone: w.phone, source: w.source, instagram: handle, website: website || site, igUsed };
+    } catch { /* web caída: prueba la siguiente */ }
   }
+  website = website || sites.find((x) => !/whatsapp|wa\.me/i.test(x)) || null;
 
   // 3) Queda para Google Maps (servidor)
   return { status: 'google', instagram: handle, website, igUsed };
@@ -339,5 +378,10 @@ async function ensureRunning() {
 }
 
 chrome.runtime.onStartup.addListener(ensureRunning);
-chrome.runtime.onInstalled.addListener(ensureRunning);
+// Al actualizar, la cola local se vacía y se vuelve a pedir a sales-hub, que decide el orden (los
+// resultados ya conseguidos se mantienen).
+chrome.runtime.onInstalled.addListener(async (d) => {
+  if (d.reason === 'update') await setState({ queue: [] });
+  await ensureRunning();
+});
 chrome.storage.onChanged.addListener((c) => { if (c.apiKey?.newValue) ensureRunning(); });

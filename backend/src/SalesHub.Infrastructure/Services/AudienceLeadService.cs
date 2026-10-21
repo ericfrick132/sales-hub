@@ -109,12 +109,16 @@ public class AudienceLeadService
     public record FinderItem(string Dataset, string ExternalId, string Name, string? City, string? Country,
         string? Instagram, string? Website);
 
-    /// <summary>Orden en que la extensión recorre los listados: primero los que no traen teléfono de origen.</summary>
+    /// <summary>
+    /// Orden en que la extensión recorre los listados ("app:dataset"; el mismo dataset puede estar en dos
+    /// apps, como AgendaPro). Eric 21/10: primero TurnosPro con AgendaPro.
+    /// </summary>
     private static readonly string[] FinderPriority =
     {
-        "crossfy-activos", "crossfy-sin-clases", "booksy-ar", "booksy-mx", "agendapro-ar", "mindbody-mx-uy",
-        "totalpass-mx", "atc-sin-uso", "atc-online", "wellhub-ar", "wellhub-mx", "playtomic-mx", "fitpass-mx",
-        "apps-marca-blanca-ar-uy"
+        "turnospro:agendapro-ar", "turnospro:fresha-ar", "turnospro:booksy-ar", "turnospro:booksy-mx",
+        "gymhero:crossfy-activos", "gymhero:crossfy-sin-clases", "gymhero:agendapro-ar", "gymhero:mindbody-mx-uy",
+        "gymhero:totalpass-mx", "playcrew:atc-sin-uso", "playcrew:atc-online", "gymhero:wellhub-ar", "gymhero:wellhub-mx",
+        "playcrew:playtomic-mx", "gymhero:fitpass-mx", "gymhero:apps-marca-blanca-ar-uy"
     };
 
     /// <summary>
@@ -124,15 +128,16 @@ public class AudienceLeadService
     /// </summary>
     public async Task<List<FinderItem>> FinderQueueAsync(int limit, IReadOnlyCollection<string> skip, CancellationToken ct = default)
     {
-        var datasets = await _db.AudienceLeads.Where(a => a.Phone == null && a.FinderStatus == null)
-            .Select(a => a.Dataset).Distinct().ToListAsync(ct);
-        var ordered = datasets.OrderBy(d => Array.IndexOf(FinderPriority, d) is var i && i >= 0 ? i : 99).ThenBy(d => d);
+        var groups = await _db.AudienceLeads.Where(a => a.Phone == null && a.FinderStatus == null)
+            .Select(a => new { a.ProductKey, a.Dataset }).Distinct().ToListAsync(ct);
+        var ordered = groups.OrderBy(g => Array.IndexOf(FinderPriority, $"{g.ProductKey}:{g.Dataset}") is var i && i >= 0 ? i : 99)
+            .ThenBy(g => g.ProductKey).ThenBy(g => g.Dataset);
         var skipSet = skip.ToHashSet();
         var items = new List<FinderItem>();
-        foreach (var d in ordered)
+        foreach (var g in ordered)
         {
             var rows = await _db.AudienceLeads
-                .Where(a => a.Dataset == d && a.Phone == null && a.FinderStatus == null)
+                .Where(a => a.ProductKey == g.ProductKey && a.Dataset == g.Dataset && a.Phone == null && a.FinderStatus == null)
                 .OrderBy(a => a.Instagram == null).ThenBy(a => a.Name)
                 .Take(limit + skipSet.Count)
                 .Select(a => new FinderItem(a.Dataset, a.ExternalId, a.Name, a.City, a.Country, a.Instagram, a.Website))
