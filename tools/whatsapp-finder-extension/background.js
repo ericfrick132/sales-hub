@@ -331,6 +331,12 @@ function igType(text) {
   const input = document.querySelector('input[aria-label="Términos de búsqueda"], input[aria-label="Search input"], input[placeholder="Buscar"], input[placeholder="Search"]');
   if (!input) return false;
   input.focus();
+  // En una ventana de fondo focus() no dispara el evento y Instagram no abre la lista de resultados:
+  // se lo avisamos a mano (React escucha focusin).
+  if (!document.hasFocus() && text.length === 1) {
+    input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    input.dispatchEvent(new FocusEvent('focus'));
+  }
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, text);
   input.dispatchEvent(new Event('input', { bubbles: true }));
   return true;
@@ -363,7 +369,7 @@ function igSearchDebug() {
   const input = document.querySelector('input[aria-label="Términos de búsqueda"], input[aria-label="Search input"], input[placeholder="Buscar"], input[placeholder="Search"]');
   const links = [...document.querySelectorAll('a[href^="/"]')].filter((a) => /^\/[A-Za-z0-9._]+\/$/.test(a.getAttribute('href')));
   const panel = input?.closest('div[role="dialog"], section, nav')?.innerText || '';
-  return `${innerWidth}px, ${document.visibilityState}, foco ${document.hasFocus() ? 'sí' : 'no'}, buscador ${input ? `"${input.value}"` : 'no está'}, ${links.length} links de perfil, panel: ${panel.replace(/\s+/g, ' ').slice(0, 120)}`;
+  return `${location.pathname}, ${innerWidth}px, ${document.visibilityState}, foco ${document.hasFocus() ? 'sí' : 'no'}, buscador ${input ? `"${input.value}"` : 'no está'}, ${links.length} links de perfil, panel: ${panel.replace(/\s+/g, ' ').slice(0, 120)}`;
 }
 
 function igClick(handle) {
