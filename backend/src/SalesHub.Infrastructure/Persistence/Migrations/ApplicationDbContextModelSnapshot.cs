@@ -361,6 +361,15 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("external_id");
 
+                    b.Property<DateTimeOffset?>("FinderCheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finder_checked_at");
+
+                    b.Property<string>("FinderStatus")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("finder_status");
+
                     b.Property<string>("Instagram")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
@@ -451,6 +460,9 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Phone")
                         .HasDatabaseName("ix_audience_leads_phone");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_audience_leads_updated_at");
 
                     b.HasIndex("Dataset", "ExternalId")
                         .IsUnique()

@@ -40,6 +40,7 @@ import Competitors from './Competitors';
 import Trends from './Trends';
 import Anuncios from './Anuncios';
 import MapaAnuncios from './MapaAnuncios';
+import PublicosCompetencia from './PublicosCompetencia';
 import RendimientoAnuncios from './RendimientoAnuncios';
 import Promos from './Promos';
 
@@ -172,6 +173,7 @@ export function MarketingHub() {
               { key: 'inspiracion', label: 'Inspiración', element: <Inspiracion /> },
               { key: 'competidores', label: 'Competidores', element: <Competitors /> },
               { key: 'tendencias', label: 'Tendencias', element: <Trends /> },
+              { key: 'publicos', label: 'Públicos', element: <PublicosCompetencia /> },
             ]} />
           ),
         },

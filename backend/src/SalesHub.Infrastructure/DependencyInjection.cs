@@ -157,6 +157,7 @@ public static class DependencyInjection
         services.AddScoped<MetaAdMediaService>();         // miniatura y video de cada anuncio (rendimiento de anuncios)
         services.AddScoped<MetaGeoSyncService>();         // rendimiento por provincia → meta_geo_daily (mapa de anuncios)
         services.AddScoped<MetaGeoReportService>();       // KPIs/provincias/anuncios del mapa + leads por código de área
+        services.AddScoped<AudienceLeadService>();        // listados de la competencia para públicos de Meta (no se contactan)
         services.AddScoped<PitchEngine>();                 // pitch por anuncio (pasos, follow-ups, avance por respuesta)
         services.AddScoped<ConversationFeedbackProvider>(); // 👍/👎 humanos → aprendizajes en el prompt
         services.AddSingleton<TakeoverSignal>(); // señal "+": salto de cola webhook→agente

@@ -26,6 +26,10 @@ async function render() {
 
   for (const f of NUM_FIELDS) if (document.activeElement !== $(f)) $(f).value = s[f] ?? NUM_DEFAULTS[f];
 
+  if (document.activeElement !== $('apiKey')) $('apiKey').value = s.apiKey ?? '';
+  const pending = (s.unsynced ?? []).length;
+  $('sync').textContent = !s.apiKey ? 'sin clave: no se manda a sales-hub' : pending ? `${pending} sin mandar` : 'al día con sales-hub';
+
   const st = $('status');
   st.className = '';
   const blocked = (s.blockedUntil ?? 0) > Date.now();
@@ -84,6 +88,12 @@ $('export').onclick = async () => {
   a.href = URL.createObjectURL(new Blob([JSON.stringify(rows)], { type: 'application/json' }));
   a.download = `whatsapp-finder-${new Date().toLocaleDateString('sv')}.json`;
   a.click();
+};
+
+$('apiKey').onchange = async () => {
+  await chrome.storage.local.set({ apiKey: $('apiKey').value.trim(), lastError: '' });
+  await send('sync');
+  render();
 };
 
 for (const f of NUM_FIELDS) {

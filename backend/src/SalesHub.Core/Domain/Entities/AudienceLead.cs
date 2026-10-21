@@ -5,7 +5,7 @@ namespace SalesHub.Core.Domain.Entities;
 /// armar públicos de Meta. NO es un <see cref="Lead"/> y vive en su propia tabla a propósito: el
 /// sender, la cadencia, el bot y el reparto a vendedores leen solo <c>leads</c>, así que nada de
 /// acá se contacta nunca. Usarlo para contactarlos necesita revisión legal antes (ley 25.326).
-/// Se carga y enriquece con <c>SalesHub.Api audience-import</c> / <c>audience-places</c>.
+/// Se carga y se sigue en Marketing → Competencia → Públicos (ver <c>AudienceLeadService</c>).
 /// </summary>
 public class AudienceLead
 {
@@ -45,6 +45,9 @@ public class AudienceLead
     public string? Website { get; set; }
     public string? Email { get; set; }
     public string? PlaceId { get; set; }
+    /// <summary>Resultado de la extensión "Buscar WhatsApp" (Instagram → web): ok / google (no lo encontró) / error.</summary>
+    public string? FinderStatus { get; set; }
+    public DateTimeOffset? FinderCheckedAt { get; set; }
     /// <summary>Última búsqueda en Google Places (con o sin resultado), para no pagarla dos veces.</summary>
     public DateTimeOffset? PlacesCheckedAt { get; set; }
 

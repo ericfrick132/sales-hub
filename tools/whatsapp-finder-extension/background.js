@@ -22,8 +22,12 @@ const DEFAULTS = {
   blockedUntil: 0,      // IG mostró "intentá más tarde"
   nextAt: 0,
   lastError: '',
-  igToday: { day: '', n: 0 }
+  igToday: { day: '', n: 0 },
+  apiKey: '',           // clave de Marketing → Competencia → Públicos
+  unsynced: []          // resultados que todavía no llegaron a sales-hub
 };
+
+const API = 'https://api.sales.efcloud.tech/api/audience/finder-results';
 
 async function getState() {
   return { ...DEFAULTS, ...(await chrome.storage.local.get(Object.keys(DEFAULTS))) };
@@ -175,6 +179,25 @@ async function webOnPage() {
   return { status: 'no_phone' };
 }
 
+// Manda los resultados pendientes a sales-hub; si falla quedan para el próximo intento.
+async function sync() {
+  const s = await getState();
+  if (!s.apiKey || s.unsynced.length === 0) return;
+  const batch = s.unsynced.slice(0, 200);
+  try {
+    const r = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Audience-Key': s.apiKey },
+      body: JSON.stringify(batch)
+    });
+    if (r.status === 401) { await setState({ lastError: 'sales-hub rechazó la clave: copiala de nuevo desde Públicos.' }); return; }
+    if (!r.ok) return;
+    const fresh = await getState();
+    const sent = new Set(batch.map((b) => `${b.dataset}|${b.externalId}`));
+    await setState({ unsynced: fresh.unsynced.filter((u) => !sent.has(`${u.dataset}|${u.externalId}`)) });
+  } catch { /* sin red: se reintenta con el próximo resultado */ }
+}
+
 // ---- Un negocio por vez ----
 
 async function lookup(item, s) {
@@ -239,13 +262,14 @@ async function runOne() {
     const fails = (prev?.status === 'error' ? prev.fails || 1 : 0) + (r.status === 'error' ? 1 : 0);
     patch.queue = fresh.queue.filter((q) => q.key !== item.key);
     if (r.status === 'error' && fails < 2) patch.queue.push(item); // un reintento al final de la cola
-    patch.results = {
-      ...fresh.results,
-      [item.key]: { phone: r.phone || null, source: r.source || null, instagram: r.instagram || item.instagram || null,
-                    website: r.website || item.website || null, status: r.status, fails, at: Date.now() }
-    };
+    const res = { phone: r.phone || null, source: r.source || null, instagram: r.instagram || item.instagram || null,
+                  website: r.website || item.website || null, status: r.status, fails, at: Date.now() };
+    patch.results = { ...fresh.results, [item.key]: res };
+    if (r.status !== 'error' || fails >= 2)
+      patch.unsynced = [...fresh.unsynced, { dataset: item.dataset, externalId: item.externalId, ...res }].slice(-5000);
   }
   await setState(patch);
+  await sync();
 
   const [min, max] = r.igUsed ? [fresh.minGapSec, fresh.maxGapSec] : [3, 10];
   return schedule(rand(min, max) * 1000);
@@ -266,6 +290,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     } else if (msg.type === 'reschedule') {
       const s = await getState();
       if (s.running) await schedule(rand(s.minGapSec, s.maxGapSec) * 1000);
+    } else if (msg.type === 'sync') {
+      await sync();
     } else if (msg.type === 'unblock') {
       await setState({ blockedUntil: 0 });
       const s = await getState();
