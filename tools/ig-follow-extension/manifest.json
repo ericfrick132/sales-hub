@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "IG Follow Lista",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Sigue de a una las cuentas de una lista, despacio y con tope diario.",
   "permissions": ["storage", "alarms", "tabs", "scripting"],
   "host_permissions": ["https://www.instagram.com/*"],

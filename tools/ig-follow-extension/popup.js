@@ -8,9 +8,13 @@ const LABEL = {
 
 const send = (type) => chrome.runtime.sendMessage({ type });
 
+// Si el texto trae links de instagram.com (JSON/CSV de una base con más columnas) se toman
+// SOLO los links: partir por espacios convertiría "Club Padel Norte" en tres handles.
 function parseHandles(raw) {
+  const links = raw.match(/instagram\.com\/[A-Za-z0-9_.]+/gi);
+  const parts = links ?? raw.split(/[\n,;\s]+/);
   const out = [];
-  for (let part of raw.split(/[\n,;\s]+/)) {
+  for (let part of parts) {
     part = part.trim();
     const i = part.toLowerCase().indexOf('instagram.com/');
     if (i >= 0) part = part.slice(i + 'instagram.com/'.length);
