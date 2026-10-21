@@ -4,96 +4,87 @@
   <meta charset="utf-8" />
   <title>Públicos IG: WhatsApp + Follow</title>
   <style>
-    :root { --bg: #fff; --fg: #0f172a; --muted: #64748b; --line: #e2e8f0; --brand: #2563eb; --warn: #b45309; --bad: #be123c; }
+    :root { --bg: #fff; --fg: #0f172a; --muted: #64748b; --line: #e2e8f0; --brand: #2563eb; --ok: #15803d; --warn: #b45309; --bad: #be123c; }
     @media (prefers-color-scheme: dark) {
-      :root { --bg: #0f172a; --fg: #e2e8f0; --muted: #94a3b8; --line: #334155; --brand: #60a5fa; --warn: #fbbf24; --bad: #fb7185; }
+      :root { --bg: #0f172a; --fg: #e2e8f0; --muted: #94a3b8; --line: #334155; --brand: #60a5fa; --ok: #4ade80; --warn: #fbbf24; --bad: #fb7185; }
     }
-    body { margin: 0; width: 360px; padding: 14px; font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
-    h1 { font-size: 15px; margin: 0 0 4px; }
-    p.note { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
-    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 10px; }
-    .stat { border: 1px solid var(--line); border-radius: 6px; padding: 6px; text-align: center; }
-    .stat b { display: block; font-size: 16px; }
-    .stat span { color: var(--muted); font-size: 11px; }
-    .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
-    label { color: var(--muted); font-size: 11px; }
-    input[type=number] { width: 52px; }
-    input { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; font: inherit; }
-    button { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 5px; padding: 5px 9px; cursor: pointer; font: inherit; }
-    button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
-    #status { margin: 8px 0; color: var(--muted); }
+    body { margin: 0; width: 300px; padding: 14px; font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    h1 { font-size: 14px; margin: 0; }
+    #status { margin: 4px 0 12px; color: var(--muted); }
+    #status.ok { color: var(--ok); }
     #status.warn { color: var(--warn); }
     #status.bad { color: var(--bad); }
-    details { margin-top: 8px; }
-    #log { max-height: 160px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 11px; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .stat b { display: block; font-size: 20px; }
+    .stat span { color: var(--muted); font-size: 11px; }
+    label { color: var(--muted); font-size: 11px; }
+    input[type=number] { width: 46px; }
+    input { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; font: inherit; }
+    button { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 5px; padding: 4px 10px; cursor: pointer; font: inherit; }
+    .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+    details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+    summary { cursor: pointer; color: var(--muted); }
+    .note { color: var(--muted); font-size: 11px; }
+    #setup p { margin: 0 0 6px; }
   </style>
 </head>
 <body>
-  <h1>Públicos IG: WhatsApp + Follow</h1>
-  <p class="note">Instagram (mira y, si toca, sigue) → web → Google en el servidor. Los números son para públicos de Meta: no se les escribe.</p>
-
-  <div class="stats">
-    <div class="stat"><b id="sToday">0</b><span>IG hoy</span></div>
-    <div class="stat"><b id="sQueue">0</b><span>en cola</span></div>
-    <div class="stat"><b id="sFound">0</b><span>con número</span></div>
-    <div class="stat"><b id="sGoogle">0</b><span>para Google</span></div>
-    <div class="stat"><b id="sFollow">0</b><span>follows hoy</span></div>
+  <div class="top">
+    <h1>Públicos IG</h1>
+    <button id="toggle">Pausar</button>
   </div>
+  <div id="status">…</div>
 
-  <div id="status">Pausado</div>
-
-  <div class="row">
-    <button id="start" class="primary">Arrancar</button>
-    <button id="pause">Pausar</button>
-    <button id="unblock" hidden>Quitar bloqueo</button>
+  <div id="setup" hidden>
+    <p>Pegá la clave de sales-hub (Marketing → Competencia → Públicos):</p>
+    <input id="apiKeySetup" type="password" style="width:100%;box-sizing:border-box" placeholder="clave" />
   </div>
 
-  <div class="row">
-    <label>Perfiles IG/día</label><input id="dailyCap" type="number" min="1" max="1000" />
-    <label>Pausa s</label><input id="minGapSec" type="number" min="5" />
-    <label>a</label><input id="maxGapSec" type="number" min="5" />
-  </div>
-  <div class="row">
-    <label><input id="follow" type="checkbox" /> Dar follow</label>
-    <label>Follows/día</label><input id="followCap" type="number" min="0" max="500" />
-    <label>cada</label><input id="followGapMin" type="number" min="1" /><label>min</label>
-  </div>
-  <div class="row">
-    <label>Por app/día: perfiles</label><input id="appVisitCap" type="number" min="0" />
-    <label>follows</label><input id="appFollowCap" type="number" min="0" />
-  </div>
-  <div class="row">
-    <label>Solo para:</label>
-    <label><input type="checkbox" class="onlyApp" value="turnospro" /> TurnosPro</label>
-    <label><input type="checkbox" class="onlyApp" value="gymhero" /> GymHero</label>
-    <label><input type="checkbox" class="onlyApp" value="playcrew" /> PlayCrew</label>
-  </div>
-  <div id="apps" class="note"></div>
-  <div class="row">
-    <label>Trabaja</label><input id="workMin" type="number" min="5" /><label>a</label><input id="workMax" type="number" min="5" /><label>min</label>
-    <label>· descansa</label><input id="restMin" type="number" min="1" /><label>a</label><input id="restMax" type="number" min="1" /><label>min</label>
-  </div>
-  <div class="row">
-    <label>Horario desde</label><input id="hourStart" type="number" min="0" max="23" />
-    <label>hasta</label><input id="hourEnd" type="number" min="0" max="23" />
-    <label>h</label>
-  </div>
+  <div id="main">
+    <div class="stats">
+      <div class="stat"><b id="sToday">0</b><span>perfiles hoy</span></div>
+      <div class="stat"><b id="sFollow">0</b><span>follows hoy</span></div>
+      <div class="stat"><b id="sFound">0</b><span>números</span></div>
+    </div>
 
-  <label>Clave de sales-hub (Marketing → Competencia → Públicos)</label>
-  <div class="row">
-    <input id="apiKey" type="password" style="flex:1" placeholder="pegá la clave" />
-    <span id="sync" class="note"></span>
+    <details>
+      <summary>Ajustes</summary>
+      <div class="row">
+        <label>Perfiles/día</label><input id="dailyCap" type="number" min="1" max="1000" />
+        <label><input id="follow" type="checkbox" /> follow</label>
+        <label>Follows/día</label><input id="followCap" type="number" min="0" max="500" />
+      </div>
+      <div class="row">
+        <label>Por app/día: perfiles</label><input id="appVisitCap" type="number" min="0" />
+        <label>follows</label><input id="appFollowCap" type="number" min="0" />
+      </div>
+      <div id="apps" class="note"></div>
+      <div class="row">
+        <label>Solo:</label>
+        <label><input type="checkbox" class="onlyApp" value="turnospro" /> TurnosPro</label>
+        <label><input type="checkbox" class="onlyApp" value="gymhero" /> GymHero</label>
+        <label><input type="checkbox" class="onlyApp" value="playcrew" /> PlayCrew</label>
+      </div>
+      <div class="row">
+        <label>Horario</label><input id="hourStart" type="number" min="0" max="23" />
+        <label>a</label><input id="hourEnd" type="number" min="0" max="23" /><label>h</label>
+      </div>
+      <div class="row">
+        <label>Trabaja</label><input id="workMin" type="number" min="5" /><label>–</label><input id="workMax" type="number" min="5" />
+        <label>min, descansa</label><input id="restMin" type="number" min="1" /><label>–</label><input id="restMax" type="number" min="1" /><label>min</label>
+      </div>
+      <div class="row">
+        <label>Entre perfiles</label><input id="minGapSec" type="number" min="5" /><label>–</label><input id="maxGapSec" type="number" min="5" />
+        <label>s · entre follows</label><input id="followGapMin" type="number" min="1" /><label>min</label>
+      </div>
+      <div class="row">
+        <label>Clave</label><input id="apiKey" type="password" style="flex:1" />
+      </div>
+      <div id="sync" class="note"></div>
+      <div class="row"><button id="unblock" hidden>Quitar bloqueo de Instagram</button></div>
+    </details>
   </div>
-
-  <p class="note">Los negocios los pide de a uno a sales-hub (Marketing → Competencia → Públicos).</p>
-  <div class="row">
-    <button id="export">Exportar resultados</button>
-  </div>
-
-  <details>
-    <summary>Últimos resultados</summary>
-    <div id="log"></div>
-  </details>
 
   <script src="popup.js"></script>
 </body>
