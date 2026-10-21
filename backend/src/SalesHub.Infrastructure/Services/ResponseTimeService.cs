@@ -106,7 +106,10 @@ public class ResponseTimeService : IResponseTimeService
                                ORDER BY c2."timestamp" DESC, c2.id DESC LIMIT 1), ''), 200) AS last_text,
                (l.bot_muted_at IS NOT NULL) AS bot_muted,
                l.status,
-               l.sla_alerted_at
+               l.sla_alerted_at,
+               (SELECT c3.intent_key FROM conversation_messages c3
+                 WHERE c3.lead_id = w.lead_id AND c3.direction = 1
+                 ORDER BY c3."timestamp" DESC, c3.id DESC LIMIT 1) AS last_intent
         FROM w
         JOIN leads l ON l.id = w.lead_id
         WHERE (@seller_id IS NULL OR l.seller_id = @seller_id)
@@ -117,32 +120,9 @@ public class ResponseTimeService : IResponseTimeService
         LIMIT @lim
         """;
 
-    private const string CountWaitingSql = """
-        WITH lo AS (
-            SELECT lead_id, MAX("timestamp") AS out_ts
-            FROM conversation_messages WHERE direction = 0 GROUP BY lead_id
-        ),
-        w AS (
-            SELECT c.lead_id, MIN(c."timestamp") AS waiting_since
-            FROM conversation_messages c
-            LEFT JOIN lo ON lo.lead_id = c.lead_id
-            WHERE c.direction = 1 AND (lo.out_ts IS NULL OR c."timestamp" > lo.out_ts)
-            GROUP BY c.lead_id
-        )
-        SELECT COUNT(*)
-        FROM w
-        JOIN leads l ON l.id = w.lead_id
-        WHERE (@seller_id IS NULL OR l.seller_id = @seller_id)
-          AND (@max_age <= 0 OR w.waiting_since >= NOW() - make_interval(hours => @max_age))
-        """;
-
+    /// <summary>Mismo criterio que <see cref="GetWaitingAsync"/> (sin los cierres), contando hasta 1.000.</summary>
     public async Task<int> CountWaitingAsync(Guid? sellerId = null, int maxAgeHours = 0, CancellationToken ct = default)
-    {
-        await using var cmd = await CommandAsync(CountWaitingSql, ct);
-        cmd.Parameters.Add(UuidParam("seller_id", sellerId));
-        cmd.Parameters.Add(new NpgsqlParameter("max_age", NpgsqlDbType.Integer) { Value = maxAgeHours });
-        return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct) ?? 0);
-    }
+        => (await GetWaitingAsync(sellerId, maxAgeHours, 1000, ct)).Count;
 
     public async Task<IReadOnlyList<WaitingChat>> GetWaitingAsync(
         Guid? sellerId = null, int maxAgeHours = 0, int limit = 200, CancellationToken ct = default)
@@ -156,6 +136,8 @@ public class ResponseTimeService : IResponseTimeService
         await using var r = await cmd.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
         {
+            // Si lo último que mandó el lead es un cierre ("gracias", "no gracias", "dale saludos"), no espera respuesta.
+            if (ClosingReply.IsClosing(r.IsDBNull(9) ? null : r.GetString(9), r.IsDBNull(13) ? null : r.GetString(13))) continue;
             rows.Add(new WaitingChat(
                 LeadId: r.GetGuid(0),
                 LeadName: r.GetString(1),
