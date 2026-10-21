@@ -27,7 +27,8 @@ const DEFAULTS = {
   unsynced: []          // resultados que todavía no llegaron a sales-hub
 };
 
-const API = 'https://api.sales.efcloud.tech/api/audience/finder-results';
+const API = 'https://api.sales.efcloud.tech/api/audience';
+const IDLE_MIN = 30;    // sin pendientes en sales-hub: vuelve a preguntar cada 30 min
 
 async function getState() {
   return { ...DEFAULTS, ...(await chrome.storage.local.get(Object.keys(DEFAULTS))) };
@@ -55,11 +56,12 @@ function nextSlot(s, fromMs) {
 
 async function schedule(delayMs) {
   const s = await getState();
-  if (!s.running || s.queue.length === 0) {
+  if (!s.running) {
     await chrome.alarms.clear(ALARM);
-    await setState({ nextAt: 0, running: s.running && s.queue.length > 0 });
+    await setState({ nextAt: 0 });
     return;
   }
+  if (s.queue.length === 0) delayMs = Math.max(delayMs, IDLE_MIN * 60_000);
   const at = nextSlot(s, Math.max(Date.now() + delayMs, s.blockedUntil));
   await chrome.alarms.create(ALARM, { when: at });
   await setState({ nextAt: at });
@@ -185,7 +187,7 @@ async function sync() {
   if (!s.apiKey || s.unsynced.length === 0) return;
   const batch = s.unsynced.slice(0, 200);
   try {
-    const r = await fetch(API, {
+    const r = await fetch(`${API}/finder-results`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Audience-Key': s.apiKey },
       body: JSON.stringify(batch)
@@ -196,6 +198,30 @@ async function sync() {
     const sent = new Set(batch.map((b) => `${b.dataset}|${b.externalId}`));
     await setState({ unsynced: fresh.unsynced.filter((u) => !sent.has(`${u.dataset}|${u.externalId}`)) });
   } catch { /* sin red: se reintenta con el próximo resultado */ }
+}
+
+// Pide a sales-hub los próximos negocios sin teléfono cuando quedan pocos en la cola.
+async function refill() {
+  const s = await getState();
+  if (!s.apiKey || s.queue.length >= 5) return;
+  const skip = [...s.queue.map((q) => q.key), ...s.unsynced.map((u) => `${u.dataset}|${u.externalId}`)];
+  try {
+    const r = await fetch(`${API}/finder-queue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Audience-Key': s.apiKey },
+      body: JSON.stringify({ limit: 30, skip })
+    });
+    if (r.status === 401) { await setState({ lastError: 'sales-hub rechazó la clave: copiala de nuevo desde Públicos.' }); return; }
+    if (!r.ok) return;
+    const items = await r.json();
+    const fresh = await getState();
+    const seen = new Set([...fresh.queue.map((q) => q.key), ...skip]);
+    const add = items
+      .map((i) => ({ key: `${i.dataset}|${i.externalId}`, dataset: i.dataset, externalId: i.externalId, name: i.name,
+                     city: i.city || '', country: i.country || '', instagram: i.instagram || null, website: i.website || null }))
+      .filter((i) => !seen.has(i.key));
+    if (add.length) await setState({ queue: [...fresh.queue, ...add] });
+  } catch { /* sin red: se reintenta en el próximo turno */ }
 }
 
 // ---- Un negocio por vez ----
@@ -234,6 +260,7 @@ async function lookup(item, s) {
 }
 
 async function runOne() {
+  await refill();
   const s = await getState();
   if (!s.running || s.queue.length === 0) return schedule(0);
   if (Date.now() < s.blockedUntil || !inWindow(s) || igCount(s) >= s.dailyCap) return schedule(0);
@@ -282,10 +309,10 @@ chrome.alarms.onAlarm.addListener((a) => {
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   (async () => {
     if (msg.type === 'start') {
-      await setState({ running: true, lastError: '' });
+      await setState({ running: true, pausedByUser: false, lastError: '' });
       await schedule(3_000);
     } else if (msg.type === 'pause') {
-      await setState({ running: false, nextAt: 0 });
+      await setState({ running: false, pausedByUser: true, nextAt: 0 });
       await chrome.alarms.clear(ALARM);
     } else if (msg.type === 'reschedule') {
       const s = await getState();
@@ -302,7 +329,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   return true;
 });
 
-chrome.runtime.onStartup.addListener(async () => {
+// Arranca sola en cuanto tiene la clave (salvo que la hayan pausado a mano) y rearma la alarma si
+// Chrome se reinició o el service worker se recargó.
+async function ensureRunning() {
   const s = await getState();
-  if (s.running && !(await chrome.alarms.get(ALARM))) await schedule(60_000);
-});
+  if (!s.apiKey || s.pausedByUser) return;
+  if (!s.running) await setState({ running: true });
+  if (!(await chrome.alarms.get(ALARM))) await schedule(10_000);
+}
+
+chrome.runtime.onStartup.addListener(ensureRunning);
+chrome.runtime.onInstalled.addListener(ensureRunning);
+chrome.storage.onChanged.addListener((c) => { if (c.apiKey?.newValue) ensureRunning(); });

@@ -89,16 +89,35 @@ public class AudienceController : ControllerBase
         return Accepted(new { started = true, max });
     }
 
+    public record FinderQueueRequest(int Limit = 30, List<string>? Skip = null);
+
+    /// <summary>
+    /// Próximos negocios para la extensión (sin login: header X-Audience-Key). POST para poder mandar
+    /// las claves que ya tiene en cola sin pasar el largo de una URL.
+    /// </summary>
+    [HttpPost("finder-queue")]
+    [AllowAnonymous]
+    public async Task<IActionResult> FinderQueue([FromBody] FinderQueueRequest req, CancellationToken ct)
+    {
+        if (!KeyOk()) return Unauthorized();
+        var skip = (req.Skip ?? new()).Take(5000).ToList();
+        return Ok(await _svc.FinderQueueAsync(Math.Clamp(req.Limit, 1, 100), skip, ct));
+    }
+
     /// <summary>Resultados de la extensión "Buscar WhatsApp" (sin login: header X-Audience-Key).</summary>
     [HttpPost("finder-results")]
     [AllowAnonymous]
     public async Task<IActionResult> FinderResults([FromBody] List<FinderResult> results, CancellationToken ct)
     {
-        var expected = Encoding.UTF8.GetBytes(AudienceLeadService.IngestKey(_jwt.SigningKey));
-        var given = Encoding.UTF8.GetBytes(Request.Headers[KeyHeader].ToString());
-        if (given.Length != expected.Length || !CryptographicOperations.FixedTimeEquals(given, expected))
-            return Unauthorized();
+        if (!KeyOk()) return Unauthorized();
         if (results.Count > 500) return BadRequest(new { error = "máximo 500 por envío" });
         return Ok(new { applied = await _svc.ApplyFinderResultsAsync(results, ct) });
+    }
+
+    private bool KeyOk()
+    {
+        var expected = Encoding.UTF8.GetBytes(AudienceLeadService.IngestKey(_jwt.SigningKey));
+        var given = Encoding.UTF8.GetBytes(Request.Headers[KeyHeader].ToString());
+        return given.Length == expected.Length && CryptographicOperations.FixedTimeEquals(given, expected);
     }
 }

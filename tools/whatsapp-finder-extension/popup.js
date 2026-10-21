@@ -36,7 +36,9 @@ async function render() {
   $('unblock').hidden = !blocked;
   if (s.lastError) { st.textContent = s.lastError; st.className = 'bad'; }
   else if (blocked) { st.textContent = `Instagram frenó. Retoma ${fmtTime(s.blockedUntil)}.`; st.className = 'warn'; }
-  else if (!s.running) st.textContent = (s.queue ?? []).length ? 'Pausado' : 'Cola vacía';
+  else if (!s.apiKey) st.textContent = 'Falta la clave de sales-hub';
+  else if (!s.running) st.textContent = 'Pausado';
+  else if (!(s.queue ?? []).length) st.textContent = `Sin pendientes en sales-hub · vuelve a mirar ${s.nextAt ? fmtTime(s.nextAt) : 'en un rato'}`;
   else if (s.nextAt) st.textContent = `Andando · próximo ${fmtTime(s.nextAt)}`;
   else st.textContent = 'Andando';
 
