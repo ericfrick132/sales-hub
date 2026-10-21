@@ -45,7 +45,12 @@ public class AudienceController : ControllerBase
     public async Task<IActionResult> Events([FromQuery] int limit = 60, CancellationToken ct = default) =>
         Ok(await _svc.EventsAsync(Math.Clamp(limit, 1, 300), ct));
 
-    /// <summary>Clave para pegar en la extensión.</summary>
+    /// <summary>Por día (hora argentina) y app: procesados, con número, follows y motivos de los que no salieron.</summary>
+    [HttpGet("finder-days")]
+    public async Task<IActionResult> FinderDays([FromQuery] int days = 14, CancellationToken ct = default) =>
+        Ok(await _svc.FinderDaysAsync(Math.Clamp(days, 1, 90), ct));
+
+    /// <summary>Clave de la extensión (la toma sola al abrir sales-hub).</summary>
     [HttpGet("ingest-key")]
     public IActionResult Key() => Ok(new { key = AudienceLeadService.IngestKey(_jwt.SigningKey) });
 

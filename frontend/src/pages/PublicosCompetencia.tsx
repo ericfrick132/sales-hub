@@ -24,6 +24,11 @@ interface EventRow {
   phone: string | null; phoneSource: string | null; checkedAt: string | null; steps: FinderStep[];
 }
 
+interface DayRow {
+  day: string; productKey: string; processed: number; found: number; foundInstagram: number; foundWeb: number;
+  foundGoogle: number; follows: number; reasons: Record<string, number>;
+}
+
 const STEP_LABEL: Record<string, string> = {
   ig_profile: 'IG perfil', ig_search: 'IG búsqueda', ig_follow: 'IG follow', web: 'Web', leads: 'Base de leads', google: 'Google Maps', extension: 'Extensión'
 };
@@ -75,6 +80,12 @@ export default function PublicosCompetencia() {
     queryFn: async () => (await api.get<EventRow[]>('/audience/events', { params: { limit: 60 } })).data,
     refetchInterval: 30_000,
   });
+  const days = useQuery({
+    queryKey: ['audience-days'],
+    queryFn: async () => (await api.get<DayRow[]>('/audience/finder-days', { params: { days: 14 } })).data,
+    refetchInterval: 60_000,
+  });
+
   const importFile = useMutation({
     mutationFn: async (file: File) => {
       const fd = new FormData();
@@ -186,6 +197,43 @@ export default function PublicosCompetencia() {
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="card overflow-x-auto">
+        <div className="p-3 border-b border-slate-100 text-sm font-medium">Por día: cuántos salieron y por qué no el resto</div>
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-500 border-b border-slate-200">
+            <tr>
+              <th className="text-left p-2">Día</th>
+              <th className="text-left p-2">App</th>
+              <th className="text-right p-2">Procesados</th>
+              <th className="text-right p-2">Con número</th>
+              <th className="text-right p-2">IG</th>
+              <th className="text-right p-2">Web</th>
+              <th className="text-right p-2">Google</th>
+              <th className="text-right p-2">Follows</th>
+              <th className="text-left p-2">Sin número, por qué</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(days.data ?? []).filter((d) => !product || d.productKey === product).map((d) => (
+              <tr key={d.day + d.productKey} className="border-b border-slate-100 align-top">
+                <td className="p-2 whitespace-nowrap">{new Date(d.day + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' })}</td>
+                <td className="p-2">{PRODUCT_LABEL[d.productKey] ?? d.productKey}</td>
+                <td className="p-2 text-right">{fmt(d.processed)}</td>
+                <td className="p-2 text-right font-medium text-emerald-600">{fmt(d.found)} <span className="text-slate-400 font-normal">{pct(d.found, d.processed)}</span></td>
+                <td className="p-2 text-right">{fmt(d.foundInstagram)}</td>
+                <td className="p-2 text-right">{fmt(d.foundWeb)}</td>
+                <td className="p-2 text-right">{fmt(d.foundGoogle)}</td>
+                <td className="p-2 text-right">{fmt(d.follows)}</td>
+                <td className="p-2 text-xs text-slate-600">
+                  {Object.entries(d.reasons).sort((a, b) => b[1] - a[1]).map(([r, n]) => `${r}: ${n}`).join(' · ') || '—'}
+                </td>
+              </tr>
+            ))}
+            {days.data?.length === 0 && <tr><td colSpan={9} className="p-4 text-slate-500">Todavía no hay búsquedas.</td></tr>}
+          </tbody>
+        </table>
       </div>
 
       <div className="card">

@@ -21,6 +21,10 @@ public record AudienceRow(string Dataset, string Competitor, string ProductKey, 
 /// <param name="Step">ig_profile, ig_search, web (extensión) · leads, google (servidor).</param>
 /// <param name="Result">ok, no_phone, not_found, no_match, blocked, login, error, distinto…</param>
 /// <param name="Detail">@handle, host de la web, fuente del número o mensaje de error.</param>
+/// <summary>Resumen de un día (hora argentina) y app: negocios procesados, con número, follows y por qué no salió el resto.</summary>
+public record FinderDayRow(string Day, string ProductKey, int Processed, int Found, int FoundInstagram, int FoundWeb,
+    int FoundGoogle, int Follows, Dictionary<string, int> Reasons);
+
 public record FinderStep(string Step, string Result, string? Detail, DateTimeOffset At);
 
 /// <summary>Resultado de la extensión "Buscar WhatsApp" para un negocio.</summary>
@@ -310,6 +314,63 @@ public class AudienceLeadService
             .ToListAsync(ct);
         return rows.Select(r => new AudienceEventRow(r.Name, r.ProductKey, r.Dataset, r.City, r.FinderStatus, r.Phone,
             r.PhoneSource, r.FinderCheckedAt, ReadLog(r.FinderLog))).ToList();
+    }
+
+    /// <summary>
+    /// Por día y app: cada negocio cuenta una vez por día con lo que pasó ese día (pasos de la extensión
+    /// y de Google). Si no salió número, el motivo es el más informativo de sus pasos.
+    /// </summary>
+    public async Task<List<FinderDayRow>> FinderDaysAsync(int days, CancellationToken ct = default)
+    {
+        var since = DateTimeOffset.UtcNow.AddDays(-days);
+        var rows = await _db.AudienceLeads
+            .Where(a => a.FinderLog != null && a.UpdatedAt >= since)
+            .Select(a => new { a.ProductKey, a.FinderLog })
+            .ToListAsync(ct);
+        var art = TimeSpan.FromHours(-3);
+        var attempts = rows.SelectMany(r => ReadLog(r.FinderLog)
+                .Where(st => st.At >= since)
+                .GroupBy(st => st.At.ToOffset(art).ToString("yyyy-MM-dd"))
+                .Select(g => (Day: g.Key, r.ProductKey, Steps: g.ToList())));
+        return attempts
+            .GroupBy(a => (a.Day, a.ProductKey))
+            .Select(g =>
+            {
+                int found = 0, ig = 0, web = 0, google = 0, follows = 0;
+                var reasons = new Dictionary<string, int>();
+                foreach (var (_, _, steps) in g)
+                {
+                    follows += steps.Count(x => x.Step == "ig_follow" && x.Result == "followed");
+                    var ok = steps.FirstOrDefault(x => x.Result == "ok" && x.Step is "ig_profile" or "web" or "google" or "leads");
+                    if (ok is not null)
+                    {
+                        found++;
+                        if (ok.Step == "ig_profile") ig++; else if (ok.Step == "web") web++; else google++;
+                        continue;
+                    }
+                    var reason = Reason(steps);
+                    reasons[reason] = reasons.GetValueOrDefault(reason) + 1;
+                }
+                return new FinderDayRow(g.Key.Day, g.Key.ProductKey, g.Count(), found, ig, web, google, follows, reasons);
+            })
+            .OrderByDescending(r => r.Day).ThenBy(r => r.ProductKey)
+            .ToList();
+    }
+
+    private static string Reason(List<FinderStep> steps)
+    {
+        bool Has(string step, string result) => steps.Any(x => x.Step == step && x.Result == result);
+        if (steps.Any(x => x.Result is "blocked")) return "Instagram frenó";
+        if (steps.Any(x => x.Result is "login")) return "Instagram pidió login";
+        if (steps.Any(x => x.Step is "google" or "leads") && !steps.Any(x => x.Step.StartsWith("ig_") || x.Step == "web"))
+            return Has("google", "distinto") ? "Google: otro negocio" : "Google: sin número";
+        var profile = Has("ig_profile", "no_phone");
+        if (profile && Has("web", "no_phone")) return "perfil y web sin número";
+        if (profile) return "perfil sin número ni web";
+        if (Has("ig_search", "no_match") || (Has("ig_profile", "not_found") && !profile)) return "no encontró el Instagram";
+        if (Has("web", "no_phone")) return "web sin número";
+        if (steps.Any(x => x.Result == "error")) return "error";
+        return "otro";
     }
 
     private static readonly JsonSerializerOptions LogJson = new(JsonSerializerDefaults.Web);
