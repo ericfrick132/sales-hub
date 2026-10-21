@@ -1,7 +1,7 @@
 // Públicos de competencia: listados de clientes de la competencia (Wellhub, ATC, Fresha, AgendaPro…)
 // para públicos de Meta, guardados en audience_leads. Nunca se contactan desde sales-hub.
 // Muestra cuántos tienen WhatsApp y de dónde salió cada número, con el avance de la extensión
-// "Buscar WhatsApp" (Instagram → web) y de la búsqueda en Google.
+// "Públicos IG: WhatsApp + Follow" (Instagram → web) y de la búsqueda en Google.
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -136,7 +136,7 @@ export default function PublicosCompetencia() {
 
       {showKey && (
         <div className="card p-4 text-sm flex items-center gap-3 flex-wrap">
-          <span className="text-slate-500">Pegala en la extensión "Buscar WhatsApp" para que mande cada resultado acá:</span>
+          <span className="text-slate-500">Pegala en la extensión "Públicos IG: WhatsApp + Follow" para que mande cada resultado acá:</span>
           <code className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded">{key.data ?? '…'}</code>
           {key.data && (
             <button className="btn-secondary text-xs" onClick={() => { navigator.clipboard.writeText(key.data!); toast.success('Copiada'); }}>Copiar</button>
