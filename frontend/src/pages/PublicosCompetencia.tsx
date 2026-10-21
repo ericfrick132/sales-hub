@@ -24,6 +24,13 @@ interface EventRow {
   phone: string | null; phoneSource: string | null; checkedAt: string | null; steps: FinderStep[];
 }
 
+interface BatchRow {
+  id: string; number: number; productKey: string; dataset: string | null; status: string; note: string | null;
+  createdAt: string; retriedAt: string | null; closedAt: string | null; size: number; pending: number; found: number;
+  foundInstagram: number; foundWeb: number; foundGoogle: number; follows: number; lastActivity: string | null;
+  reasons: Record<string, number>;
+}
+
 interface DayRow {
   day: string; productKey: string; processed: number; found: number; foundInstagram: number; foundWeb: number;
   foundGoogle: number; follows: number; reasons: Record<string, number>;
@@ -86,6 +93,25 @@ export default function PublicosCompetencia() {
     refetchInterval: 60_000,
   });
 
+  const batches = useQuery({
+    queryKey: ['audience-batches'],
+    queryFn: async () => (await api.get<BatchRow[]>('/audience/batches')).data,
+    refetchInterval: 20_000,
+  });
+  const [bApp, setBApp] = useState('playcrew');
+  const [bDataset, setBDataset] = useState('');
+  const [bSize, setBSize] = useState(50);
+  const refreshBatches = () => { qc.invalidateQueries({ queryKey: ['audience-batches'] }); qc.invalidateQueries({ queryKey: ['audience-summary'] }); };
+  const createBatch = useMutation({
+    mutationFn: async () => (await api.post<BatchRow>('/audience/batches', { productKey: bApp, dataset: bDataset || null, size: bSize })).data,
+    onSuccess: (b) => { toast.success(`Batch #${b.number}: ${b.size} negocios`); refreshBatches(); },
+    onError: (e: any) => toast.error(e?.response?.data?.error ?? 'No se pudo armar el batch'),
+  });
+  const batchAction = useMutation({
+    mutationFn: async (v: { id: string; action: 'close' | 'retry' }) => (await api.post(`/audience/batches/${v.id}/${v.action}`)).data,
+    onSuccess: (d: any, v) => { toast.success(v.action === 'close' ? 'Batch cerrado' : `${d?.requeued ?? 0} vuelven a la cola`); refreshBatches(); },
+  });
+
   const importFile = useMutation({
     mutationFn: async (file: File) => {
       const fd = new FormData();
@@ -144,6 +170,72 @@ export default function PublicosCompetencia() {
           sub={`IG ${fmt(total.fromInstagram)} · web ${fmt(total.fromWeb)} · leads ${fmt(total.fromLeads)} · Google ${fmt(total.fromGoogle)}`} />
         <Kpi label="Falta buscar" value={fmt(total.finderPending)}
           sub={`${fmt(total.googlePending)} esperan Google`} />
+      </div>
+
+      <div className="card overflow-x-auto">
+        <div className="p-3 border-b border-slate-100 flex items-center gap-2 flex-wrap text-sm">
+          <span className="font-medium mr-2">Batches de la extensión</span>
+          <select className="input text-xs" value={bApp} onChange={(e) => { setBApp(e.target.value); setBDataset(''); }}>
+            {Object.entries(PRODUCT_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <select className="input text-xs" value={bDataset} onChange={(e) => setBDataset(e.target.value)}>
+            <option value="">Todos los listados (por prioridad)</option>
+            {(summary.data ?? []).filter((r) => r.productKey === bApp && r.finderPending > 0).map((r) => (
+              <option key={r.dataset + r.country} value={r.dataset}>{r.competitor} · {r.dataset} ({fmt(r.finderPending)} pendientes)</option>
+            ))}
+          </select>
+          <input className="input text-xs w-20" type="number" min={1} max={2000} value={bSize} onChange={(e) => setBSize(Number(e.target.value) || 1)} />
+          <button className="btn-primary text-xs" disabled={createBatch.isPending} onClick={() => createBatch.mutate()}>
+            {createBatch.isPending ? 'Armando…' : `Armar batch de ${bSize}`}
+          </button>
+          <span className="text-xs text-slate-500">La extensión solo trabaja batches abiertos, del más viejo al más nuevo, con la cuenta de IG de esa app.</span>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="text-xs text-slate-500 border-b border-slate-200">
+            <tr>
+              <th className="text-left p-2">#</th>
+              <th className="text-left p-2">Armado</th>
+              <th className="text-left p-2">App · listado</th>
+              <th className="text-right p-2">Hechos</th>
+              <th className="text-right p-2">Con número</th>
+              <th className="text-right p-2">IG / Web / Google</th>
+              <th className="text-right p-2">Follows</th>
+              <th className="text-left p-2">Sin número, por qué</th>
+              <th className="text-left p-2">Estado</th>
+              <th className="p-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {(batches.data ?? []).filter((b) => !product || b.productKey === product).map((b) => {
+              const done = b.size - b.pending;
+              const state = b.status === 'closed' ? 'cerrado' : b.pending === 0 ? 'terminado' : b.lastActivity ? 'en curso' : 'en espera';
+              return (
+                <tr key={b.id} className="border-b border-slate-100 align-top">
+                  <td className="p-2 font-medium">#{b.number}</td>
+                  <td className="p-2 whitespace-nowrap">{fmtAt(b.createdAt)}{b.retriedAt && <div className="text-xs text-slate-500">reintento {fmtAt(b.retriedAt)}</div>}</td>
+                  <td className="p-2">{PRODUCT_LABEL[b.productKey] ?? b.productKey}{b.dataset && <span className="text-slate-500"> · {b.dataset}</span>}</td>
+                  <td className="p-2 text-right whitespace-nowrap">{fmt(done)}/{fmt(b.size)}</td>
+                  <td className="p-2 text-right font-medium text-emerald-600">{fmt(b.found)} <span className="text-slate-400 font-normal">{pct(b.found, done)}</span></td>
+                  <td className="p-2 text-right">{b.foundInstagram} / {b.foundWeb} / {b.foundGoogle}</td>
+                  <td className="p-2 text-right">{fmt(b.follows)}</td>
+                  <td className="p-2 text-xs text-slate-600">{Object.entries(b.reasons).sort((x, y) => y[1] - x[1]).map(([r, n]) => `${r}: ${n}`).join(' · ') || '—'}</td>
+                  <td className="p-2 text-xs whitespace-nowrap">{state}{b.lastActivity && <div className="text-slate-500">último {fmtAt(b.lastActivity)}</div>}</td>
+                  <td className="p-2 text-xs whitespace-nowrap space-x-2">
+                    {b.status !== 'closed' && b.pending > 0 && (
+                      <button className="underline text-rose-600" disabled={batchAction.isPending}
+                        onClick={() => { if (confirm(`¿Cerrar el batch #${b.number}? Los ${b.pending} que faltan quedan libres.`)) batchAction.mutate({ id: b.id, action: 'close' }); }}>Cerrar</button>
+                    )}
+                    {done - b.found > 0 && (
+                      <button className="underline text-brand-600" disabled={batchAction.isPending}
+                        onClick={() => { if (confirm(`¿Volver a buscar los ${done - b.found} del batch #${b.number} que salieron sin número?`)) batchAction.mutate({ id: b.id, action: 'retry' }); }}>Reintentar sin número</button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {batches.data?.length === 0 && <tr><td colSpan={10} className="p-4 text-slate-500">Todavía no hay batches: armá uno y la extensión lo toma en unos minutos.</td></tr>}
+          </tbody>
+        </table>
       </div>
 
       <div className="card overflow-x-auto">

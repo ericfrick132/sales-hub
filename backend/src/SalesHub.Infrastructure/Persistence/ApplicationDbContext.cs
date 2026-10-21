@@ -109,6 +109,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<MetaGeoDaily> MetaGeoDaily => Set<MetaGeoDaily>();
     /// <summary>Listados de la competencia para públicos de Meta. Nunca se contactan (no son leads).</summary>
     public DbSet<AudienceLead> AudienceLeads => Set<AudienceLead>();
+    public DbSet<FinderBatch> FinderBatches => Set<FinderBatch>();
     public DbSet<LeadPitchState> LeadPitchStates => Set<LeadPitchState>();
     public DbSet<ConversationFeedback> ConversationFeedbacks => Set<ConversationFeedback>();
     public DbSet<AppTenant> AppTenants => Set<AppTenant>();

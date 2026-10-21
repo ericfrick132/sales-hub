@@ -38,5 +38,20 @@ public class AudienceLeadConfiguration : IEntityTypeConfiguration<AudienceLead>
         b.HasIndex(x => x.Phone);
         b.HasIndex(x => x.Instagram);
         b.HasIndex(x => x.UpdatedAt);
+        b.HasIndex(x => x.FinderBatchId);
+    }
+}
+
+public class FinderBatchConfiguration : IEntityTypeConfiguration<FinderBatch>
+{
+    public void Configure(EntityTypeBuilder<FinderBatch> b)
+    {
+        b.ToTable("finder_batches");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.ProductKey).HasMaxLength(64);
+        b.Property(x => x.Dataset).HasMaxLength(64);
+        b.Property(x => x.Status).HasMaxLength(16);
+        b.Property(x => x.Note).HasMaxLength(256);
+        b.HasIndex(x => x.Status);
     }
 }

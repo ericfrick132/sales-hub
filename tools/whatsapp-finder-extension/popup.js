@@ -43,7 +43,9 @@ async function render() {
   else if (!s.running) set('Pausada');
   else if ((s.restUntil ?? 0) > Date.now()) set(`Descansando hasta las ${fmtTime(s.restUntil)}`);
   else if (s.nextAt && s.nextAt - Date.now() > 15 * 60_000) set(`Retoma a las ${fmtTime(s.nextAt)}`);
+  else if (!(s.queue ?? []).length) set('Esperando un batch (se arma en sales-hub → Públicos)');
   else set('Trabajando', 'ok');
+  if (s.igAccount && s.apiKey) st.textContent += ` · @${s.igAccount}`;
 }
 
 $('toggle').onclick = async () => {

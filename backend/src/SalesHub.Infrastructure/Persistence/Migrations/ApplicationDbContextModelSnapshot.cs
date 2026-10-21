@@ -361,6 +361,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("external_id");
 
+                    b.Property<Guid?>("FinderBatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("finder_batch_id");
+
                     b.Property<DateTimeOffset?>("FinderCheckedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("finder_checked_at");
@@ -458,6 +462,9 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_audience_leads");
+
+                    b.HasIndex("FinderBatchId")
+                        .HasDatabaseName("ix_audience_leads_finder_batch_id");
 
                     b.HasIndex("FinderCheckedAt")
                         .HasDatabaseName("ix_audience_leads_finder_checked_at");
@@ -1111,6 +1118,64 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_evolution_instances_seller_id");
 
                     b.ToTable("evolution_instances", (string)null);
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.FinderBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Dataset")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("dataset");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("note");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    b.Property<string>("ProductKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<DateTimeOffset?>("RetriedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("retried_at");
+
+                    b.Property<int>("Size")
+                        .HasColumnType("integer")
+                        .HasColumnName("size");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_finder_batches");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_finder_batches_status");
+
+                    b.ToTable("finder_batches", (string)null);
                 });
 
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.FollowupEvent", b =>

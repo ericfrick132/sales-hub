@@ -50,6 +50,30 @@ public class AudienceController : ControllerBase
     public async Task<IActionResult> FinderDays([FromQuery] int days = 14, CancellationToken ct = default) =>
         Ok(await _svc.FinderDaysAsync(Math.Clamp(days, 1, 90), ct));
 
+    /// <summary>Batches de la extensión con su avance.</summary>
+    [HttpGet("batches")]
+    public async Task<IActionResult> Batches(CancellationToken ct) => Ok(await _svc.BatchesAsync(30, null, ct));
+
+    public record CreateBatchRequest(string ProductKey, string? Dataset, int Size = 50, string? Note = null);
+
+    /// <summary>Arma un batch con N pendientes de la app (y del listado, si se elige).</summary>
+    [HttpPost("batches")]
+    public async Task<IActionResult> CreateBatch([FromBody] CreateBatchRequest req, CancellationToken ct)
+    {
+        var b = await _svc.CreateBatchAsync(req.ProductKey, req.Dataset, Math.Clamp(req.Size, 1, 2000), req.Note, ct);
+        return b is null ? BadRequest(new { error = "No hay pendientes para esa app/listado." }) : Ok(b);
+    }
+
+    /// <summary>Cierra el batch y libera los que todavía no se buscaron.</summary>
+    [HttpPost("batches/{id:guid}/close")]
+    public async Task<IActionResult> CloseBatch(Guid id, CancellationToken ct) =>
+        await _svc.CloseBatchAsync(id, ct) ? Ok() : NotFound();
+
+    /// <summary>Vuelve a poner en cola los del batch que terminaron sin número.</summary>
+    [HttpPost("batches/{id:guid}/retry")]
+    public async Task<IActionResult> RetryBatch(Guid id, CancellationToken ct) =>
+        Ok(new { requeued = await _svc.RetryBatchAsync(id, ct) });
+
     /// <summary>Clave de la extensión (la toma sola al abrir sales-hub).</summary>
     [HttpGet("ingest-key")]
     public IActionResult Key() => Ok(new { key = AudienceLeadService.IngestKey(_jwt.SigningKey) });

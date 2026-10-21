@@ -52,7 +52,7 @@ const DEFAULTS = {
 };
 
 const API = 'https://api.sales.efcloud.tech/api/audience';
-const IDLE_MIN = 30;    // sin pendientes en sales-hub: vuelve a preguntar cada 30 min
+const IDLE_MIN = 3;     // sin batch abierto en sales-hub: vuelve a preguntar cada 3 min
 
 async function getState() {
   return { ...DEFAULTS, ...(await chrome.storage.local.get(Object.keys(DEFAULTS))) };

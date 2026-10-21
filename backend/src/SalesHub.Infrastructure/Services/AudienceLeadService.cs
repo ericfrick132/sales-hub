@@ -25,6 +25,10 @@ public record AudienceRow(string Dataset, string Competitor, string ProductKey, 
 public record FinderDayRow(string Day, string ProductKey, int Processed, int Found, int FoundInstagram, int FoundWeb,
     int FoundGoogle, int Follows, Dictionary<string, int> Reasons);
 
+public record FinderBatchRow(Guid Id, int Number, string ProductKey, string? Dataset, string Status, string? Note,
+    DateTimeOffset CreatedAt, DateTimeOffset? RetriedAt, DateTimeOffset? ClosedAt, int Size, int Pending, int Found,
+    int FoundInstagram, int FoundWeb, int FoundGoogle, int Follows, DateTimeOffset? LastActivity, Dictionary<string, int> Reasons);
+
 public record FinderStep(string Step, string Result, string? Detail, DateTimeOffset At);
 
 /// <summary>Resultado de la extensión "Buscar WhatsApp" para un negocio.</summary>
@@ -155,19 +159,17 @@ public class AudienceLeadService
         IReadOnlyCollection<string>? excludeProducts = null, IReadOnlyCollection<string>? onlyProducts = null,
         CancellationToken ct = default)
     {
-        var groups = await _db.AudienceLeads.Where(a => a.Phone == null && a.FinderStatus == null)
-            .Select(a => new { a.ProductKey, a.Dataset }).Distinct().ToListAsync(ct);
-        var ordered = groups
-            .Where(g => (excludeProducts == null || !excludeProducts.Contains(g.ProductKey))
-                        && (onlyProducts == null || onlyProducts.Count == 0 || onlyProducts.Contains(g.ProductKey)))
-            .OrderBy(g => Array.IndexOf(FinderPriority, $"{g.ProductKey}:{g.Dataset}") is var i && i >= 0 ? i : 99)
-            .ThenBy(g => g.ProductKey).ThenBy(g => g.Dataset);
+        // Solo negocios de batches abiertos (se arman a mano desde Públicos), del más viejo al más nuevo.
+        var batches = (await _db.FinderBatches.Where(b => b.Status == "open").OrderBy(b => b.Number)
+                .Select(b => new { b.Id, b.ProductKey }).ToListAsync(ct))
+            .Where(b => (excludeProducts == null || !excludeProducts.Contains(b.ProductKey))
+                        && (onlyProducts == null || onlyProducts.Count == 0 || onlyProducts.Contains(b.ProductKey)));
         var skipSet = skip.ToHashSet();
         var items = new List<FinderItem>();
-        foreach (var g in ordered)
+        foreach (var batch in batches)
         {
             var rows = await _db.AudienceLeads
-                .Where(a => a.ProductKey == g.ProductKey && a.Dataset == g.Dataset && a.Phone == null && a.FinderStatus == null)
+                .Where(a => a.FinderBatchId == batch.Id && a.Phone == null && a.FinderStatus == null)
                 .OrderBy(a => a.Instagram == null).ThenBy(a => a.Name)
                 .Take(limit + skipSet.Count)
                 .Select(a => new FinderItem(a.ProductKey, a.Dataset, a.ExternalId, a.Name, a.City, a.Country, a.Instagram, a.Website))
@@ -176,6 +178,106 @@ public class AudienceLeadService
             if (items.Count >= limit) break;
         }
         return items.Take(limit).ToList();
+    }
+
+    /// <summary>
+    /// Arma un batch con <paramref name="size"/> pendientes (sin teléfono, sin buscar y sin batch) de la
+    /// app, en el orden de prioridad de los listados (o solo de <paramref name="dataset"/>).
+    /// </summary>
+    public async Task<FinderBatchRow?> CreateBatchAsync(string productKey, string? dataset, int size, string? note, CancellationToken ct = default)
+    {
+        var pending = _db.AudienceLeads.Where(a => a.ProductKey == productKey && a.Phone == null && a.FinderStatus == null && a.FinderBatchId == null);
+        if (!string.IsNullOrWhiteSpace(dataset)) pending = pending.Where(a => a.Dataset == dataset);
+        var datasets = (await pending.Select(a => a.Dataset).Distinct().ToListAsync(ct))
+            .OrderBy(d => Array.IndexOf(FinderPriority, $"{productKey}:{d}") is var i && i >= 0 ? i : 99).ThenBy(d => d);
+        var ids = new List<Guid>();
+        foreach (var d in datasets)
+        {
+            ids.AddRange(await pending.Where(a => a.Dataset == d)
+                .OrderBy(a => a.Instagram == null).ThenBy(a => a.Name)
+                .Take(size - ids.Count).Select(a => a.Id).ToListAsync(ct));
+            if (ids.Count >= size) break;
+        }
+        if (ids.Count == 0) return null;
+        var batch = new FinderBatch
+        {
+            Id = Guid.NewGuid(),
+            Number = (await _db.FinderBatches.MaxAsync(b => (int?)b.Number, ct) ?? 0) + 1,
+            ProductKey = productKey,
+            Dataset = string.IsNullOrWhiteSpace(dataset) ? null : dataset,
+            Size = ids.Count,
+            Note = Cut(note, 256),
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+        _db.FinderBatches.Add(batch);
+        await _db.SaveChangesAsync(ct);
+        await _db.AudienceLeads.Where(a => ids.Contains(a.Id)).ExecuteUpdateAsync(u => u.SetProperty(a => a.FinderBatchId, batch.Id), ct);
+        return (await BatchesAsync(1, batch.Id, ct)).FirstOrDefault();
+    }
+
+    /// <summary>Cierra el batch: los que la extensión todavía no tocó vuelven a quedar libres.</summary>
+    public async Task<bool> CloseBatchAsync(Guid id, CancellationToken ct = default)
+    {
+        var batch = await _db.FinderBatches.FirstOrDefaultAsync(b => b.Id == id, ct);
+        if (batch is null) return false;
+        batch.Status = "closed";
+        batch.ClosedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        await _db.AudienceLeads.Where(a => a.FinderBatchId == id && a.Phone == null && a.FinderStatus == null)
+            .ExecuteUpdateAsync(u => u.SetProperty(a => a.FinderBatchId, (Guid?)null), ct);
+        return true;
+    }
+
+    /// <summary>Vuelve a poner en cola los del batch que terminaron sin número (p. ej. después de arreglar un error).</summary>
+    public async Task<int> RetryBatchAsync(Guid id, CancellationToken ct = default)
+    {
+        var batch = await _db.FinderBatches.FirstOrDefaultAsync(b => b.Id == id, ct);
+        if (batch is null) return 0;
+        batch.Status = "open";
+        batch.ClosedAt = null;
+        batch.RetriedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return await _db.AudienceLeads.Where(a => a.FinderBatchId == id && a.Phone == null && a.FinderStatus != null)
+            .ExecuteUpdateAsync(u => u.SetProperty(a => a.FinderStatus, (string?)null).SetProperty(a => a.FinderCheckedAt, (DateTimeOffset?)null), ct);
+    }
+
+    /// <summary>Últimos batches con su avance: hechos, pendientes, con número (por origen), follows y motivos.</summary>
+    public async Task<List<FinderBatchRow>> BatchesAsync(int limit, Guid? only = null, CancellationToken ct = default)
+    {
+        var q = _db.FinderBatches.AsQueryable();
+        if (only is not null) q = q.Where(b => b.Id == only);
+        var batches = await q.OrderByDescending(b => b.Number).Take(limit).ToListAsync(ct);
+        var ids = batches.Select(b => (Guid?)b.Id).ToList();
+        var leads = await _db.AudienceLeads.Where(a => ids.Contains(a.FinderBatchId))
+            .Select(a => new { a.FinderBatchId, a.Phone, a.PhoneSource, a.FinderStatus, a.FinderLog })
+            .ToListAsync(ct);
+        return batches.Select(b =>
+        {
+            var from = b.RetriedAt ?? b.CreatedAt;
+            var mine = leads.Where(l => l.FinderBatchId == b.Id).ToList();
+            var reasons = new Dictionary<string, int>();
+            int ig = 0, web = 0, google = 0, follows = 0;
+            DateTimeOffset? last = null;
+            foreach (var l in mine)
+            {
+                var steps = ReadLog(l.FinderLog).Where(x => x.At >= b.CreatedAt).ToList();
+                follows += steps.Count(x => x.Step == "ig_follow" && x.Result == "followed");
+                if (steps.Count > 0 && (last is null || steps[^1].At > last)) last = steps[^1].At;
+                if (l.Phone is not null)
+                {
+                    if (l.PhoneSource?.StartsWith("instagram") == true) ig++;
+                    else if (l.PhoneSource?.StartsWith("web") == true) web++;
+                    else google++;
+                }
+                else if (l.FinderStatus is not null)
+                {
+                    var r = Reason(steps.Where(x => x.At >= from).ToList());
+                    reasons[r] = reasons.GetValueOrDefault(r) + 1;
+                }
+            }
+            return new FinderBatchRow(b.Id, b.Number, b.ProductKey, b.Dataset, b.Status, b.Note, b.CreatedAt, b.RetriedAt, b.ClosedAt,
+                mine.Count, mine.Count(l => l.Phone is null && l.FinderStatus is null), ig + web + google, ig, web, google, follows, last, reasons);
+        }).ToList();
     }
 
     /// <summary>Lo que manda la extensión. Un número ya cargado (del competidor u otra fuente) no se pisa.</summary>
