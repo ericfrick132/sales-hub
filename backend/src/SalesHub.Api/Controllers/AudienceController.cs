@@ -54,6 +54,10 @@ public class AudienceController : ControllerBase
     [HttpGet("batches")]
     public async Task<IActionResult> Batches(CancellationToken ct) => Ok(await _svc.BatchesAsync(30, null, ct));
 
+    /// <summary>Detalle de un batch: cada negocio con lo que se buscó, lo que hizo la extensión y el resultado.</summary>
+    [HttpGet("batches/{id:guid}/leads")]
+    public async Task<IActionResult> BatchLeads(Guid id, CancellationToken ct) => Ok(await _svc.BatchLeadsAsync(id, ct));
+
     public record CreateBatchRequest(string ProductKey, string? Dataset, int Size = 50, string? Note = null);
 
     /// <summary>Arma un batch con N pendientes de la app (y del listado, si se elige).</summary>

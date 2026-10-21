@@ -45,6 +45,11 @@ public record AudienceSummaryRow(string ProductKey, string Competitor, string Da
 public record AudienceRecentRow(string Name, string Dataset, string? City, string? Country, string? Phone,
     bool WhatsappProbable, string? PhoneSource, string? Instagram, DateTimeOffset UpdatedAt);
 
+/// <summary>Un negocio de un batch: qué se buscó, los pasos que hizo la extensión y en qué terminó.</summary>
+public record FinderBatchLeadRow(Guid Id, string Name, string Dataset, string? City, string? Instagram, string? Website,
+    string? FinderStatus, string? Phone, string? PhoneSource, bool Followed, string? Reason, DateTimeOffset? CheckedAt,
+    List<FinderStep> Steps);
+
 /// <summary>Último paso por el que pasó un negocio (pantalla de Públicos, "Movimientos").</summary>
 public record AudienceEventRow(string Name, string ProductKey, string Dataset, string? City, string? FinderStatus,
     string? Phone, string? PhoneSource, DateTimeOffset? CheckedAt, List<FinderStep> Steps);
@@ -425,6 +430,27 @@ public class AudienceLeadService
             .ToListAsync(ct);
 
     /// <summary>Últimos negocios por los que pasó la búsqueda, con todos sus pasos.</summary>
+    /// <summary>Negocios de un batch con sus pasos desde que se armó (incluye reintentos).</summary>
+    public async Task<List<FinderBatchLeadRow>> BatchLeadsAsync(Guid batchId, CancellationToken ct = default)
+    {
+        var since = await _db.FinderBatches.Where(b => b.Id == batchId).Select(b => (DateTimeOffset?)b.CreatedAt).FirstOrDefaultAsync(ct);
+        if (since is null) return new();
+        var rows = await _db.AudienceLeads
+            .Where(a => a.FinderBatchId == batchId)
+            .Select(a => new { a.Id, a.Name, a.Dataset, a.City, a.Instagram, a.Website, a.FinderStatus, a.Phone, a.PhoneSource, a.FinderCheckedAt, a.FinderLog })
+            .ToListAsync(ct);
+        return rows.Select(r =>
+            {
+                var steps = ReadLog(r.FinderLog).Where(st => st.At >= since).OrderBy(st => st.At).ToList();
+                var followed = steps.Any(x => x.Step == "ig_follow" && x.Result == "followed");
+                var reason = r.Phone is null && steps.Count > 0 ? Reason(steps) : null;
+                return new FinderBatchLeadRow(r.Id, r.Name, r.Dataset, r.City, r.Instagram, r.Website, r.FinderStatus,
+                    r.Phone, r.PhoneSource, followed, reason, r.FinderCheckedAt, steps);
+            })
+            .OrderBy(r => r.Steps.Count == 0).ThenByDescending(r => r.CheckedAt).ThenBy(r => r.Name)
+            .ToList();
+    }
+
     public async Task<List<AudienceEventRow>> EventsAsync(int limit, CancellationToken ct = default)
     {
         var rows = await _db.AudienceLeads

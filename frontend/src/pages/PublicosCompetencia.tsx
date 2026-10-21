@@ -2,7 +2,7 @@
 // para públicos de Meta, guardados en audience_leads. Nunca se contactan desde sales-hub.
 // Muestra cuántos tienen WhatsApp y de dónde salió cada número, con el avance de la extensión
 // "Públicos IG: WhatsApp + Follow" (Instagram → web) y de la búsqueda en Google.
-import { useMemo, useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
@@ -35,6 +35,14 @@ interface BatchRow {
   createdAt: string; retriedAt: string | null; closedAt: string | null; size: number; pending: number; found: number;
   foundInstagram: number; foundWeb: number; foundGoogle: number; follows: number; lastActivity: string | null;
   reasons: Record<string, number>;
+}
+
+interface FinderStep { step: string; result: string; detail: string | null; at: string }
+
+interface BatchLeadRow {
+  id: string; name: string; dataset: string; city: string | null; instagram: string | null; website: string | null;
+  finderStatus: string | null; phone: string | null; phoneSource: string | null; followed: boolean; reason: string | null;
+  checkedAt: string | null; steps: FinderStep[];
 }
 
 interface DayRow {
@@ -112,6 +120,7 @@ export default function PublicosCompetencia() {
   const [bApp, setBApp] = useState('playcrew');
   const [bDataset, setBDataset] = useState('');
   const [bSize, setBSize] = useState(50);
+  const [openBatch, setOpenBatch] = useState<string | null>(null);
   const refreshBatches = () => { qc.invalidateQueries({ queryKey: ['audience-batches'] }); qc.invalidateQueries({ queryKey: ['audience-summary'] }); };
   const createBatch = useMutation({
     mutationFn: async () => (await api.post<BatchRow>('/audience/batches', { productKey: bApp, dataset: bDataset || null, size: bSize })).data,
@@ -284,9 +293,16 @@ export default function PublicosCompetencia() {
             {(batches.data ?? []).filter((b) => !product || b.productKey === product).map((b) => {
               const done = b.size - b.pending;
               const state = b.status === 'closed' ? 'cerrado' : b.pending === 0 ? 'terminado' : b.lastActivity ? 'en curso' : 'en espera';
+              const isOpen = openBatch === b.id;
               return (
-                <tr key={b.id} className="border-b border-slate-100 align-top">
-                  <td className="p-2 font-medium">#{b.number}</td>
+                <Fragment key={b.id}>
+                <tr className="border-b border-slate-100 align-top">
+                  <td className="p-2 font-medium whitespace-nowrap">
+                    <button className="hover:text-brand-600" onClick={() => setOpenBatch(isOpen ? null : b.id)}
+                      title={isOpen ? 'Ocultar el detalle' : 'Ver qué buscó y qué logró con cada negocio'}>
+                      <span className="inline-block w-4 text-slate-400">{isOpen ? '▾' : '▸'}</span>#{b.number}
+                    </button>
+                  </td>
                   <td className="p-2 whitespace-nowrap">{fmtAt(b.createdAt)}{b.retriedAt && <div className="text-xs text-slate-500">reintento {fmtAt(b.retriedAt)}</div>}</td>
                   <td className="p-2">{PRODUCT_LABEL[b.productKey] ?? b.productKey}{b.dataset && <span className="text-slate-500"> · {b.dataset}</span>}</td>
                   <td className="p-2 text-right whitespace-nowrap">{fmt(done)}/{fmt(b.size)}</td>
@@ -306,6 +322,12 @@ export default function PublicosCompetencia() {
                     )}
                   </td>
                 </tr>
+                {isOpen && (
+                  <tr className="border-b border-slate-200 bg-slate-50/60">
+                    <td colSpan={10} className="p-2"><BatchLeads id={b.id} /></td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
             {batches.data?.length === 0 && <tr><td colSpan={10} className="p-4 text-slate-500">Todavía no hay batches: armá uno y la extensión lo toma en unos minutos.</td></tr>}
@@ -456,5 +478,58 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
       <div className="text-2xl font-bold">{value}</div>
       {sub && <div className="text-xs text-slate-500 mt-1">{sub}</div>}
     </div>
+  );
+}
+
+// Detalle de un batch: cada negocio con lo que se buscó, los pasos de la extensión y en qué terminó.
+function BatchLeads({ id }: { id: string }) {
+  const q = useQuery({
+    queryKey: ['audience-batch-leads', id],
+    queryFn: async () => (await api.get<BatchLeadRow[]>(`/audience/batches/${id}/leads`)).data,
+    refetchInterval: 30_000,
+  });
+  if (q.isLoading) return <div className="p-2 text-xs text-slate-500">Cargando…</div>;
+  if (!q.data?.length) return <div className="p-2 text-xs text-slate-500">El batch no tiene negocios.</div>;
+  return (
+    <table className="w-full text-xs bg-white rounded">
+      <thead className="text-slate-500 border-b border-slate-200">
+        <tr>
+          <th className="text-left p-2">Negocio</th>
+          <th className="text-left p-2">Buscó</th>
+          <th className="text-left p-2">Qué hizo</th>
+          <th className="text-left p-2">Resultado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {q.data.map((l) => (
+          <tr key={l.id} className="border-b border-slate-100 align-top">
+            <td className="p-2">
+              <div className="font-medium text-slate-800">{l.name}</div>
+              <div className="text-slate-500">{[l.city, l.dataset].filter(Boolean).join(' · ')}</div>
+            </td>
+            <td className="p-2 text-slate-600">
+              {l.instagram && !l.steps.some((st) => st.step === 'ig_search') ? <div>IG <a className="underline" href={`https://instagram.com/${l.instagram}`} target="_blank" rel="noreferrer">@{l.instagram}</a></div>
+                : <div>“{l.name}{l.city ? ` ${l.city}` : ''}” en el buscador de IG</div>}
+              {l.website && <div className="truncate max-w-[16rem]">web {l.website.replace(/^https?:\/\/(www\.)?/, '')}</div>}
+            </td>
+            <td className="p-2">
+              {l.steps.length === 0 ? <span className="text-slate-400">todavía no lo tomó</span> : l.steps.map((st, j) => (
+                <div key={j}>
+                  <span className="text-slate-400">{fmtAt(st.at)}</span> · {STEP_LABEL[st.step] ?? st.step}:{' '}
+                  <span className={RESULT_CLASS[st.result] ?? ''}>{RESULT_LABEL[st.result] ?? st.result}</span>
+                  {st.detail && <span className="text-slate-500"> — {st.detail}</span>}
+                </div>
+              ))}
+            </td>
+            <td className="p-2 whitespace-nowrap">
+              {l.phone
+                ? <div className="text-emerald-600 font-medium">{l.phone} <span className="text-slate-500 font-normal">{SOURCE_LABEL[l.phoneSource ?? ''] ?? l.phoneSource}</span></div>
+                : l.steps.length > 0 && <div className="text-slate-600">sin número: {l.reason}{l.finderStatus === 'google' && <span className="text-slate-500"> (sigue en Google)</span>}</div>}
+              {l.followed && <div className="text-emerald-600">seguido ✓</div>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
