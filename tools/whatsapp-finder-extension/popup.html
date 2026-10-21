@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Buscar WhatsApp</title>
+  <style>
+    :root { --bg: #fff; --fg: #0f172a; --muted: #64748b; --line: #e2e8f0; --brand: #2563eb; --warn: #b45309; --bad: #be123c; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0f172a; --fg: #e2e8f0; --muted: #94a3b8; --line: #334155; --brand: #60a5fa; --warn: #fbbf24; --bad: #fb7185; }
+    }
+    body { margin: 0; width: 360px; padding: 14px; font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+    h1 { font-size: 15px; margin: 0 0 4px; }
+    p.note { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+    .stat { border: 1px solid var(--line); border-radius: 6px; padding: 6px; text-align: center; }
+    .stat b { display: block; font-size: 16px; }
+    .stat span { color: var(--muted); font-size: 11px; }
+    .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+    label { color: var(--muted); font-size: 11px; }
+    input[type=number] { width: 52px; }
+    input { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; font: inherit; }
+    button { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 5px; padding: 5px 9px; cursor: pointer; font: inherit; }
+    button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+    #status { margin: 8px 0; color: var(--muted); }
+    #status.warn { color: var(--warn); }
+    #status.bad { color: var(--bad); }
+    details { margin-top: 8px; }
+    #log { max-height: 160px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>Buscar WhatsApp</h1>
+  <p class="note">Instagram → web → (Google en el servidor). Los números son para públicos de Meta: no se les escribe.</p>
+
+  <div class="stats">
+    <div class="stat"><b id="sToday">0</b><span>IG hoy</span></div>
+    <div class="stat"><b id="sQueue">0</b><span>en cola</span></div>
+    <div class="stat"><b id="sFound">0</b><span>con número</span></div>
+    <div class="stat"><b id="sGoogle">0</b><span>para Google</span></div>
+  </div>
+
+  <div id="status">Pausado</div>
+
+  <div class="row">
+    <button id="start" class="primary">Arrancar</button>
+    <button id="pause">Pausar</button>
+    <button id="unblock" hidden>Quitar bloqueo</button>
+  </div>
+
+  <div class="row">
+    <label>Perfiles IG/día</label><input id="dailyCap" type="number" min="1" max="1000" />
+    <label>Pausa s</label><input id="minGapSec" type="number" min="5" />
+    <label>a</label><input id="maxGapSec" type="number" min="5" />
+  </div>
+  <div class="row">
+    <label>Horario desde</label><input id="hourStart" type="number" min="0" max="23" />
+    <label>hasta</label><input id="hourEnd" type="number" min="0" max="23" />
+    <label>h</label>
+  </div>
+
+  <label>Cargar lista (.json de audience_export: dataset, externalId, name, city, instagram, website)</label>
+  <div class="row">
+    <input id="file" type="file" accept=".json" />
+  </div>
+  <div class="row">
+    <button id="export">Exportar resultados</button>
+    <button id="clear">Vaciar cola</button>
+  </div>
+
+  <details>
+    <summary>Últimos resultados</summary>
+    <div id="log"></div>
+  </details>
+
+  <script src="popup.js"></script>
+</body>
+</html>
