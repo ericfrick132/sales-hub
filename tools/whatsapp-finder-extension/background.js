@@ -232,8 +232,8 @@ async function igFind(tab, name, city) {
   // Sin ningún resultado no es "no existe": el buscador no respondió (p. ej. la pestaña estaba oculta).
   // Se marca error para que se reintente en vez de darlo por perdido.
   if (seen === 0) {
-    const vis = await run(tab, () => document.visibilityState).catch(() => '?');
-    return { status: 'error', error: `el buscador no trajo resultados (pestaña ${vis})` };
+    const dbg = await run(tab, igSearchDebug).catch((e) => String(e?.message || e));
+    return { status: 'error', error: `el buscador no trajo resultados (${dbg})` };
   }
   return { status: 'no_match', seen };
 }
@@ -337,12 +337,33 @@ function igType(text) {
 }
 
 function igResults() {
+  // Sin exigir role="link": según el ancho de la ventana Instagram arma la lista con otro marcado.
   const RESERVED = /^\/(popular|explore|reels?|direct|accounts|stories|p|tv|legal|about|web)\//;
-  return [...document.querySelectorAll('a[href^="/"][role="link"]')]
-    .map((a) => ({ href: a.getAttribute('href'), lines: (a.innerText || '').split('\n') }))
-    .filter((r) => /^\/[A-Za-z0-9._]+\/$/.test(r.href) && !RESERVED.test(r.href) && r.lines[0])
-    .slice(0, 10)
-    .map((r) => ({ handle: r.href.slice(1, -1).toLowerCase(), name: r.lines[1] || '' }));
+  const input = document.querySelector('input[aria-label="Términos de búsqueda"], input[aria-label="Search input"], input[placeholder="Buscar"], input[placeholder="Search"]');
+  if (!input) return [];
+  // El panel del buscador: el primer ancestro del input que tiene links a perfiles (así no entra el feed de atrás).
+  let box = input.parentElement;
+  const isProfile = (a) => /^\/[A-Za-z0-9._]+\/$/.test(a.getAttribute('href')) && !RESERVED.test(a.getAttribute('href')) && (a.innerText || '').trim();
+  while (box && box !== document.body && !box.querySelector('main') && ![...box.querySelectorAll('a[href^="/"]')].some(isProfile)) box = box.parentElement;
+  if (!box || box === document.body || box.querySelector('main')) return [];
+  const seen = new Map();
+  for (const a of box.querySelectorAll('a[href^="/"]')) {
+    const href = a.getAttribute('href');
+    if (!/^\/[A-Za-z0-9._]+\/$/.test(href) || RESERVED.test(href)) continue;
+    const lines = (a.innerText || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) continue;
+    const handle = href.slice(1, -1).toLowerCase();
+    if (!seen.has(handle)) seen.set(handle, { handle, name: lines[1] || '' });
+  }
+  return [...seen.values()].slice(0, 10);
+}
+
+// Qué había en pantalla cuando el buscador no trajo nada (para el log del batch).
+function igSearchDebug() {
+  const input = document.querySelector('input[aria-label="Términos de búsqueda"], input[aria-label="Search input"], input[placeholder="Buscar"], input[placeholder="Search"]');
+  const links = [...document.querySelectorAll('a[href^="/"]')].filter((a) => /^\/[A-Za-z0-9._]+\/$/.test(a.getAttribute('href')));
+  const panel = input?.closest('div[role="dialog"], section, nav')?.innerText || '';
+  return `${innerWidth}px, ${document.visibilityState}, foco ${document.hasFocus() ? 'sí' : 'no'}, buscador ${input ? `"${input.value}"` : 'no está'}, ${links.length} links de perfil, panel: ${panel.replace(/\s+/g, ' ').slice(0, 120)}`;
 }
 
 function igClick(handle) {
