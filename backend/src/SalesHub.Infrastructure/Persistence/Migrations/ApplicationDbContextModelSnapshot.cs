@@ -319,6 +319,25 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(512)")
                         .HasColumnName("address");
 
+                    b.Property<int>("CallCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("call_count");
+
+                    b.Property<string>("CallNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("call_notes");
+
+                    b.Property<string>("CallReason")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("call_reason");
+
+                    b.Property<string>("CallStatus")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("call_status");
+
                     b.Property<string>("Category")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
@@ -383,9 +402,21 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("instagram");
 
+                    b.Property<DateTimeOffset?>("LastCallAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_call_at");
+
+                    b.Property<Guid?>("LastCallBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_call_by");
+
                     b.Property<double?>("Latitude")
                         .HasColumnType("double precision")
                         .HasColumnName("latitude");
+
+                    b.Property<Guid?>("LeadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lead_id");
 
                     b.Property<double?>("Longitude")
                         .HasColumnType("double precision")
@@ -396,6 +427,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
                         .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("NextCallAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_call_at");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(32)
@@ -441,6 +476,16 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("raw_json");
 
+                    b.Property<string>("SecondaryPhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("secondary_phone");
+
+                    b.Property<string>("SecondaryPhoneSource")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("secondary_phone_source");
+
                     b.Property<string>("Segment")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -477,6 +522,9 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UpdatedAt")
                         .HasDatabaseName("ix_audience_leads_updated_at");
+
+                    b.HasIndex("CallStatus", "NextCallAt")
+                        .HasDatabaseName("ix_audience_leads_call_status_next_call_at");
 
                     b.HasIndex("Dataset", "ExternalId")
                         .IsUnique()

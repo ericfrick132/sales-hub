@@ -9,6 +9,7 @@ import MapPage from './Map';
 import SearchLeads from './SearchLeads';
 import Pipeline from './Pipeline';
 import LeadsImport from './LeadsImport';
+import Competencia from './Competencia';
 import Remarketing from './Remarketing';
 import VideoCampaigns from './VideoCampaigns';
 import Devices from './Devices';
@@ -50,6 +51,8 @@ export function CrmHub() {
   return (
     <TabbedPage
       tabs={[
+        // Primera a pedido de Eric (21/10/2026): la ven todos, lista común para llamar.
+        { key: 'competencia', label: 'Competencia', element: <Competencia /> },
         { key: 'pipeline', label: 'Pipeline', element: <Crm /> },
         { key: 'lista', label: admin ? 'Lista' : 'Mis leads', element: <MyLeads /> },
         { key: 'mapa', label: 'Mapa', element: <MapPage />, hidden: !admin },

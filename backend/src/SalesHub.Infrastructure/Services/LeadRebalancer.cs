@@ -121,7 +121,7 @@ public class LeadRebalancer
                      // Prospectos del historial de un teléfono: son para LLAMAR, no para que les
                      // salga un opener solo (ver OutboxEnqueueHelper). Sin esto, el sweep les
                      // arrancaría el guion de alta y los dejaría "En cola" sin nada encolado.
-                     && l.Source != LeadSource.Remarketing
+                     && l.Source != LeadSource.Remarketing && l.Source != LeadSource.Competencia
                      && l.WhatsappPhone != null && l.WhatsappPhone != "")
             .OrderBy(l => l.AssignedAt)
             .Take(OrphanBatchPerTick)

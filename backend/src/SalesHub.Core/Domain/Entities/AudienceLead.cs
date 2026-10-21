@@ -58,6 +58,28 @@ public class AudienceLead
     /// <summary>Última búsqueda en Google Places (con o sin resultado), para no pagarla dos veces.</summary>
     public DateTimeOffset? PlacesCheckedAt { get; set; }
 
+    /// <summary>
+    /// Otro número del negocio: el que aparece en su Instagram/web cuando ya teníamos uno distinto
+    /// (del listado del competidor o de Google). Se muestra en la tab Competencia para llamar.
+    /// </summary>
+    public string? SecondaryPhone { get; set; }
+    /// <summary>De dónde salió el secundario (instagram_link, instagram_bio, web_whatsapp, web_tel…).</summary>
+    public string? SecondaryPhoneSource { get; set; }
+
+    // ── Llamadas en frío (tab Competencia del CRM) ─────────────────────────────────────
+    /// <summary>Último resultado: no_atiende, volver, demo, interesado, no_interesa, equivocado. null = nunca se llamó.</summary>
+    public string? CallStatus { get; set; }
+    /// <summary>Motivo de baja del competidor o por qué no le interesa (lo que contó en la llamada).</summary>
+    public string? CallReason { get; set; }
+    public string? CallNotes { get; set; }
+    public int CallCount { get; set; }
+    public DateTimeOffset? LastCallAt { get; set; }
+    public Guid? LastCallBy { get; set; }
+    /// <summary>Cuándo volver a llamar (resultado "volver") o la demo agendada.</summary>
+    public DateTimeOffset? NextCallAt { get; set; }
+    /// <summary>Lead del Pipeline creado al mostrar interés o agendar demo (origen Competencia).</summary>
+    public Guid? LeadId { get; set; }
+
     /// <summary>Registro completo del listado (deportes, canchas, actividades, rating…).</summary>
     public string? RawJson { get; set; }
 

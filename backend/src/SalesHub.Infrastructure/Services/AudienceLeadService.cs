@@ -154,8 +154,9 @@ public class AudienceLeadService
     };
 
     /// <summary>
-    /// Próximos negocios para la extensión: sin teléfono y sin pasar todavía por Instagram/web. Los que
-    /// tienen Instagram van primero dentro de cada listado. <paramref name="skip"/> = claves
+    /// Próximos negocios para la extensión: sin pasar todavía por Instagram/web y sin teléfono, o con teléfono
+    /// pero con Instagram (para sumar el número de su perfil como secundario, Eric 21/10). Primero los que no
+    /// tienen teléfono; dentro de cada grupo, los que tienen Instagram. <paramref name="skip"/> = claves
     /// "dataset|id" que la extensión ya tiene en cola o procesó y todavía no llegaron acá.
     /// <paramref name="excludeProducts"/> = apps que ya llegaron a su tope del día en la extensión;
     /// <paramref name="onlyProducts"/> = la extensión trabaja solo para esas apps (un perfil de Chrome por app).
@@ -174,8 +175,8 @@ public class AudienceLeadService
         foreach (var batch in batches)
         {
             var rows = await _db.AudienceLeads
-                .Where(a => a.FinderBatchId == batch.Id && a.Phone == null && a.FinderStatus == null)
-                .OrderBy(a => a.Instagram == null).ThenBy(a => a.Name)
+                .Where(a => a.FinderBatchId == batch.Id && a.FinderStatus == null && (a.Phone == null || a.Instagram != null))
+                .OrderBy(a => a.Phone != null).ThenBy(a => a.Instagram == null).ThenBy(a => a.Name)
                 .Take(limit + skipSet.Count)
                 .Select(a => new FinderItem(a.ProductKey, a.Dataset, a.ExternalId, a.Name, a.City, a.Country, a.Instagram, a.Website))
                 .ToListAsync(ct);
@@ -186,12 +187,14 @@ public class AudienceLeadService
     }
 
     /// <summary>
-    /// Arma un batch con <paramref name="size"/> pendientes (sin teléfono, sin buscar y sin batch) de la
-    /// app, en el orden de prioridad de los listados (o solo de <paramref name="dataset"/>).
+    /// Arma un batch con <paramref name="size"/> pendientes (sin buscar y sin batch; sin teléfono, o con teléfono
+    /// e Instagram para el secundario) de la app, en el orden de prioridad de los listados (o solo de
+    /// <paramref name="dataset"/>). Dentro de cada listado, primero los que no tienen teléfono.
     /// </summary>
     public async Task<FinderBatchRow?> CreateBatchAsync(string productKey, string? dataset, int size, string? note, CancellationToken ct = default)
     {
-        var pending = _db.AudienceLeads.Where(a => a.ProductKey == productKey && a.Phone == null && a.FinderStatus == null && a.FinderBatchId == null);
+        var pending = _db.AudienceLeads.Where(a => a.ProductKey == productKey && a.FinderStatus == null && a.FinderBatchId == null
+            && (a.Phone == null || a.Instagram != null));
         if (!string.IsNullOrWhiteSpace(dataset)) pending = pending.Where(a => a.Dataset == dataset);
         var datasets = (await pending.Select(a => a.Dataset).Distinct().ToListAsync(ct))
             .OrderBy(d => Array.IndexOf(FinderPriority, $"{productKey}:{d}") is var i && i >= 0 ? i : 99).ThenBy(d => d);
@@ -199,7 +202,7 @@ public class AudienceLeadService
         foreach (var d in datasets)
         {
             ids.AddRange(await pending.Where(a => a.Dataset == d)
-                .OrderBy(a => a.Instagram == null).ThenBy(a => a.Name)
+                .OrderBy(a => a.Phone != null).ThenBy(a => a.Instagram == null).ThenBy(a => a.Name)
                 .Take(size - ids.Count).Select(a => a.Id).ToListAsync(ct));
             if (ids.Count >= size) break;
         }
@@ -247,7 +250,7 @@ public class AudienceLeadService
         batch.Status = "closed";
         batch.ClosedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        await _db.AudienceLeads.Where(a => a.FinderBatchId == id && a.Phone == null && a.FinderStatus == null)
+        await _db.AudienceLeads.Where(a => a.FinderBatchId == id && a.FinderStatus == null)
             .ExecuteUpdateAsync(u => u.SetProperty(a => a.FinderBatchId, (Guid?)null), ct);
         return true;
     }
@@ -273,7 +276,7 @@ public class AudienceLeadService
         var batches = await q.OrderByDescending(b => b.Number).Take(limit).ToListAsync(ct);
         var ids = batches.Select(b => (Guid?)b.Id).ToList();
         var leads = await _db.AudienceLeads.Where(a => ids.Contains(a.FinderBatchId))
-            .Select(a => new { a.FinderBatchId, a.Phone, a.PhoneSource, a.FinderStatus, a.FinderLog })
+            .Select(a => new { a.FinderBatchId, a.Phone, a.PhoneSource, a.SecondaryPhoneSource, a.FinderStatus, a.FinderLog })
             .ToListAsync(ct);
         return batches.Select(b =>
         {
@@ -287,10 +290,13 @@ public class AudienceLeadService
                 var steps = ReadLog(l.FinderLog).Where(x => x.At >= b.CreatedAt).ToList();
                 follows += steps.Count(x => x.Step == "ig_follow" && x.Result == "followed");
                 if (steps.Count > 0 && (last is null || steps[^1].At > last)) last = steps[^1].At;
-                if (l.Phone is not null)
+                // Lo que trajo la búsqueda: el número principal, o el secundario si el principal ya venía del listado.
+                var hadPhone = l.PhoneSource == "competidor" || l.PhoneSource?.StartsWith("cruce:") == true;
+                var found = hadPhone ? l.SecondaryPhoneSource : l.Phone is not null ? l.PhoneSource ?? "" : null;
+                if (found is not null)
                 {
-                    if (l.PhoneSource?.StartsWith("instagram") == true) ig++;
-                    else if (l.PhoneSource?.StartsWith("web") == true) web++;
+                    if (found.StartsWith("instagram")) ig++;
+                    else if (found.StartsWith("web")) web++;
                     else google++;
                 }
                 else if (l.FinderStatus is not null)
@@ -300,11 +306,14 @@ public class AudienceLeadService
                 }
             }
             return new FinderBatchRow(b.Id, b.Number, b.ProductKey, b.Dataset, b.Status, b.Note, b.CreatedAt, b.RetriedAt, b.ClosedAt,
-                mine.Count, mine.Count(l => l.Phone is null && l.FinderStatus is null), ig + web + google, ig, web, google, follows, last, reasons);
+                mine.Count, mine.Count(l => l.FinderStatus is null), ig + web + google, ig, web, google, follows, last, reasons);
         }).ToList();
     }
 
-    /// <summary>Lo que manda la extensión. Un número ya cargado (del competidor u otra fuente) no se pisa.</summary>
+    /// <summary>
+    /// Lo que manda la extensión. Un número ya cargado (del competidor u otra fuente) no se pisa: si el de
+    /// Instagram/web es otro, queda como secundario.
+    /// </summary>
     public async Task<int> ApplyFinderResultsAsync(IReadOnlyList<FinderResult> results, CancellationToken ct = default)
     {
         var n = 0;
@@ -324,9 +333,18 @@ public class AudienceLeadService
             a.FinderCheckedAt = r.At ?? DateTimeOffset.UtcNow;
             a.Instagram ??= Cut(NormalizeInstagram(r.Instagram), 128);
             a.Website ??= Cut(r.Website, 512);
-            if (r.Status == "ok" && a.Phone is null && !string.IsNullOrWhiteSpace(r.Phone))
-                SetPhone(a, r.Phone, r.Source ?? "instagram_bio",
-                    waLink: r.Source is "instagram_link" or "web_whatsapp");
+            if (r.Status == "ok" && !string.IsNullOrWhiteSpace(r.Phone))
+            {
+                var waLink = r.Source is "instagram_link" or "web_whatsapp";
+                if (a.Phone is null)
+                    SetPhone(a, r.Phone, r.Source ?? "instagram_bio", waLink);
+                else if (a.SecondaryPhone is null && NormalizePhone(a, r.Phone, waLink) is { } other
+                         && !SameNumber(a.Phone, other))
+                {
+                    a.SecondaryPhone = Cut("+" + other, 32);
+                    a.SecondaryPhoneSource = Cut(r.Source ?? "instagram_bio", 64);
+                }
+            }
             a.UpdatedAt = DateTimeOffset.UtcNow;
         }
         await _db.SaveChangesAsync(ct);
@@ -542,12 +560,28 @@ public class AudienceLeadService
     /// Guarda el número en E.164. Un link de WhatsApp es WhatsApp seguro; en Argentina un número
     /// marcado como celular (con 15 o 9) también. El resto queda sin clasificar.
     /// </summary>
-    private void SetPhone(AudienceLead a, string raw, string source, bool waLink)
+    /// <summary>Número en dígitos con código de país (sin "+"); null si es muy corto para ser un teléfono.</summary>
+    private string? NormalizePhone(AudienceLead a, string raw, bool waLink)
     {
         var prefix = a.Country switch { "MX" => "52", "UY" => "598", "CL" => "56", "PE" => "51", _ => "54" };
         var digits = new string(raw.Where(char.IsDigit).ToArray());
-        var normalized = waLink && digits.Length >= 10 ? digits : _phone.NormalizeBusiness(raw, prefix) ?? digits;
-        if (normalized.Length < 8) return;
+        var normalized = (waLink && digits.Length >= 10 ? digits : _phone.NormalizeBusiness(raw, prefix) ?? digits).TrimStart('+');
+        return normalized.Length < 8 ? null : normalized;
+    }
+
+    /// <summary>Mismo número aunque uno tenga el 9 de celular argentino o el 0/15: se comparan los últimos 8 dígitos.</summary>
+    private static bool SameNumber(string a, string b)
+    {
+        var da = new string(a.Where(char.IsDigit).ToArray());
+        var db = new string(b.Where(char.IsDigit).ToArray());
+        return da.Length >= 8 && db.Length >= 8 && da[^8..] == db[^8..];
+    }
+
+    private void SetPhone(AudienceLead a, string raw, string source, bool waLink)
+    {
+        var prefix = a.Country switch { "MX" => "52", "UY" => "598", "CL" => "56", "PE" => "51", _ => "54" };
+        var normalized = NormalizePhone(a, raw, waLink);
+        if (normalized is null) return;
         var mobile = waLink || (prefix == "54" && normalized.StartsWith("549"));
         a.Phone = Cut("+" + normalized.TrimStart('+'), 32);
         a.PhoneType = mobile ? "celular" : "desconocido";

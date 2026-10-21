@@ -170,7 +170,9 @@ public class IgDmController : ControllerBase
                     .Where(l => l.ProductKey == s.ProductKey && l.InstagramHandle != null && l.InstagramHandle != ""
                         && l.IgDmSentAt == null && l.IgDmError == null
                         && (l.IgDmClaimedAt == null || l.IgDmClaimedAt < claimCutoff)
-                        && l.InstagramScopedId == null && l.FirstReplyAt == null && NotContacted.Contains(l.Status))
+                        && l.InstagramScopedId == null && l.FirstReplyAt == null && NotContacted.Contains(l.Status)
+                        // Los de Competencia se llaman; nunca les sale un DM solo.
+                        && l.Source != LeadSource.Competencia)
                     .OrderByDescending(l => l.Score).ThenByDescending(l => l.CreatedAt)
                     .FirstOrDefaultAsync(ct);
                 if (lead is null)

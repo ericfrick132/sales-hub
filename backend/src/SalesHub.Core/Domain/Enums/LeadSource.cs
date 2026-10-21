@@ -19,6 +19,10 @@ public enum LeadSource
     // OutboxEnqueueHelper no les encola cadencia — son miles de contactos viejos y blastearlos
     // es el camino más corto a un ban (ban del 30/07/2026).
     Remarketing = 104,
+    // Negocio de un listado de la competencia (audience_leads) que en la llamada en frío de la tab
+    // "Competencia" del CRM mostró interés o agendó demo. Igual que Remarketing se labura a mano:
+    // sin cadencia, sin bot y sin DM automático de Instagram. NO pasa por el envío de Remarketing.
+    Competencia = 105,
     BrowserCapture = 200,
     InstagramScraper = 300,
     // Tenant/demo nuevo registrado en el propio producto (TurnosPro/GymHero) que entra

@@ -39,6 +39,12 @@ public class AudienceLeadConfiguration : IEntityTypeConfiguration<AudienceLead>
         b.HasIndex(x => x.Instagram);
         b.HasIndex(x => x.UpdatedAt);
         b.HasIndex(x => x.FinderBatchId);
+        b.Property(x => x.SecondaryPhone).HasMaxLength(32);
+        b.Property(x => x.SecondaryPhoneSource).HasMaxLength(64);
+        b.Property(x => x.CallStatus).HasMaxLength(16);
+        b.Property(x => x.CallReason).HasMaxLength(256);
+        b.Property(x => x.CallNotes).HasMaxLength(2000);
+        b.HasIndex(x => new { x.CallStatus, x.NextCallAt });
     }
 }
 
