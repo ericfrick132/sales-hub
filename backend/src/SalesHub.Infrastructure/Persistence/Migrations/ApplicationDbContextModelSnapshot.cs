@@ -380,6 +380,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("external_id");
 
+                    b.Property<int>("FinderAttempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("finder_attempts");
+
                     b.Property<Guid?>("FinderBatchId")
                         .HasColumnType("uuid")
                         .HasColumnName("finder_batch_id");

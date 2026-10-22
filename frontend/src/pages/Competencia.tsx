@@ -36,7 +36,7 @@ const STATUS_CHIPS = [
 const APP_NAMES: Record<string, string> = { playcrew: 'PlayCrew', gymhero: 'GymHero', turnospro: 'TurnosPro' };
 const SOURCE_NAMES: Record<string, string> = {
   competidor: 'del listado', instagram_link: 'Instagram', instagram_bio: 'Instagram', web_whatsapp: 'web',
-  web_tel: 'web', web_texto: 'web', google_places: 'Google', lead: 'CRM',
+  web_tel: 'web', web_texto: 'web', google_places: 'Google Maps', google_panel: 'Google', google_wa: 'Google', google_tel: 'Google', lead: 'CRM',
 };
 const srcName = (s: string | null) => (s ? SOURCE_NAMES[s] ?? (s.startsWith('cruce:') ? 'otro listado' : s) : '');
 const fmt = (iso: string | null) =>

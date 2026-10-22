@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Públicos IG: WhatsApp + Follow",
-  "version": "1.8.5",
-  "description": "Busca el WhatsApp de cada negocio de una lista: primero en su Instagram (y la sigue, con tope propio), después en su web. En ráfagas, despacio y con tope diario.",
+  "version": "1.9.0",
+  "description": "Busca el WhatsApp de cada negocio de una lista: primero en su Instagram (y la sigue, con tope propio), después en su web y en Google. En ráfagas, despacio y con tope diario.",
   "permissions": [
     "storage",
     "alarms",

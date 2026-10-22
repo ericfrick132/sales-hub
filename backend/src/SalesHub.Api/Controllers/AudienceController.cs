@@ -58,13 +58,13 @@ public class AudienceController : ControllerBase
     [HttpGet("batches/{id:guid}/leads")]
     public async Task<IActionResult> BatchLeads(Guid id, CancellationToken ct) => Ok(await _svc.BatchLeadsAsync(id, ct));
 
-    public record CreateBatchRequest(string ProductKey, string? Dataset, int Size = 50, string? Note = null);
+    public record CreateBatchRequest(string ProductKey, string? Dataset, int Size = 50, string? Note = null, bool IncludeFailed = false);
 
     /// <summary>Arma un batch con N pendientes de la app (y del listado, si se elige).</summary>
     [HttpPost("batches")]
     public async Task<IActionResult> CreateBatch([FromBody] CreateBatchRequest req, CancellationToken ct)
     {
-        var b = await _svc.CreateBatchAsync(req.ProductKey, req.Dataset, Math.Clamp(req.Size, 1, 2000), req.Note, ct);
+        var b = await _svc.CreateBatchAsync(req.ProductKey, req.Dataset, Math.Clamp(req.Size, 1, 2000), req.Note, req.IncludeFailed, ct);
         return b is null ? BadRequest(new { error = "No hay pendientes para esa app/listado." }) : Ok(b);
     }
 

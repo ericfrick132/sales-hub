@@ -27,7 +27,8 @@ interface EventRow {
 interface ExtStatus {
   account: string; at: string;
   state: { version: string; state: string; nextAt: string | null; restUntil: string | null; blockedUntil: string | null;
-    lastError: string | null; queue: number; unsynced: number; igToday: number; followsToday: number; current: string | null };
+    lastError: string | null; queue: number; unsynced: number; igToday: number; followsToday: number; current: string | null;
+    googleToday?: number; googleBlockedUntil?: string | null };
 }
 
 interface BatchRow {
@@ -51,12 +52,12 @@ interface DayRow {
 }
 
 const STEP_LABEL: Record<string, string> = {
-  ig_profile: 'IG perfil', ig_search: 'IG búsqueda', ig_follow: 'IG follow', web: 'Web', leads: 'Base de leads', google: 'Google Maps', extension: 'Extensión'
+  ig_profile: 'IG perfil', ig_search: 'IG búsqueda', ig_follow: 'IG follow', web: 'Web', google_search: 'Google búsqueda', leads: 'Base de leads', google: 'Google Maps', extension: 'Extensión'
 };
 const RESULT_LABEL: Record<string, string> = {
   ok: 'número ✓', no_phone: 'sin número', not_found: 'no existe', no_match: 'no lo encontró', blocked: 'IG bloqueó',
   login: 'IG pidió login', error: 'error', distinto: 'era otro lugar', sin_web: 'sin web',
-  followed: 'seguido ✓', already: 'ya lo seguía', no_button: 'sin botón Seguir'
+  followed: 'seguido ✓', already: 'ya lo seguía', no_button: 'sin botón Seguir', captcha: 'Google pidió captcha (pausa 24 h)'
 };
 const RESULT_CLASS: Record<string, string> = {
   ok: 'text-emerald-600', followed: 'text-emerald-600', blocked: 'text-rose-600', login: 'text-rose-600', error: 'text-amber-600'
@@ -123,10 +124,12 @@ export default function PublicosCompetencia() {
   const [bApp, setBApp] = useState('playcrew');
   const [bDataset, setBDataset] = useState('');
   const [bSize, setBSize] = useState(50);
+  // Suma los que no salieron en pasadas anteriores (hasta 2 reintentos), para re-correrlos después de cambiar la extensión.
+  const [bFailed, setBFailed] = useState(false);
   const [openBatch, setOpenBatch] = useState<string | null>(null);
   const refreshBatches = () => { qc.invalidateQueries({ queryKey: ['audience-batches'] }); qc.invalidateQueries({ queryKey: ['audience-summary'] }); };
   const createBatch = useMutation({
-    mutationFn: async () => (await api.post<BatchRow>('/audience/batches', { productKey: bApp, dataset: bDataset || null, size: bSize })).data,
+    mutationFn: async () => (await api.post<BatchRow>('/audience/batches', { productKey: bApp, dataset: bDataset || null, size: bSize, includeFailed: bFailed })).data,
     onSuccess: (b) => { toast.success(`Batch #${b.number}: ${b.size} negocios`); refreshBatches(); },
     onError: (e: any) => toast.error(e?.response?.data?.error ?? 'No se pudo armar el batch'),
   });
@@ -210,7 +213,7 @@ export default function PublicosCompetencia() {
               {!stale && st.restUntil && <span className="text-slate-500">hasta las {t(st.restUntil)}</span>}
               {!stale && st.blockedUntil && <span className="text-rose-600">hasta las {t(st.blockedUntil)}</span>}
               {!stale && st.nextAt && st.state !== 'pausada' && <span className="text-slate-500">próximo {t(st.nextAt)}</span>}
-              <span className="text-slate-500">hoy {st.igToday} perfiles · {st.followsToday} follows</span>
+              <span className="text-slate-500">hoy {st.igToday} perfiles · {st.followsToday} follows · {st.googleToday ?? 0} en Google{st.googleBlockedUntil ? ' (Google en pausa por captcha)' : ''}</span>
               {st.lastError && <span className="text-rose-600">{st.lastError}</span>}
             </div>
           );
@@ -272,6 +275,10 @@ export default function PublicosCompetencia() {
             ))}
           </select>
           <input className="input text-xs w-20" type="number" min={1} max={2000} value={bSize} onChange={(e) => setBSize(Number(e.target.value) || 1)} />
+          <label className="flex items-center gap-1 text-xs text-slate-600" title="Suma los que no salieron antes (sin número o con error), hasta 2 reintentos por negocio">
+            <input type="checkbox" checked={bFailed} onChange={(e) => setBFailed(e.target.checked)} />
+            Incluir fallidos (hasta 2 reintentos)
+          </label>
           <button className="btn-primary text-xs" disabled={createBatch.isPending} onClick={() => createBatch.mutate()}>
             {createBatch.isPending ? 'Armando…' : `Armar batch de ${bSize}`}
           </button>

@@ -191,7 +191,10 @@ public class AudienceLeadService
     /// e Instagram para el secundario) de la app, en el orden de prioridad de los listados (o solo de
     /// <paramref name="dataset"/>). Dentro de cada listado, primero los que no tienen teléfono.
     /// </summary>
-    public async Task<FinderBatchRow?> CreateBatchAsync(string productKey, string? dataset, int size, string? note, CancellationToken ct = default)
+    public const int MaxFinderAttempts = 3;
+
+    public async Task<FinderBatchRow?> CreateBatchAsync(string productKey, string? dataset, int size, string? note,
+        bool includeFailed = false, CancellationToken ct = default)
     {
         var pending = _db.AudienceLeads.Where(a => a.ProductKey == productKey && a.FinderStatus == null && a.FinderBatchId == null
             && (a.Phone == null || a.Instagram != null));
@@ -205,6 +208,20 @@ public class AudienceLeadService
                 .OrderBy(a => a.Phone != null).ThenBy(a => a.Instagram == null).ThenBy(a => a.Name)
                 .Take(size - ids.Count).Select(a => a.Id).ToListAsync(ct));
             if (ids.Count >= size) break;
+        }
+        // Los que no salieron en pasadas anteriores (sin número, "google" o error), hasta 2 reintentos: para volver a
+        // correrlos después de cambiar algo en la extensión. No toca los que están en un batch abierto.
+        var retried = new List<Guid>();
+        if (includeFailed && ids.Count < size)
+        {
+            var openBatches = _db.FinderBatches.Where(b => b.Status == "open").Select(b => (Guid?)b.Id);
+            var failed = _db.AudienceLeads.Where(a => a.ProductKey == productKey && a.Phone == null
+                && (a.FinderStatus == "google" || a.FinderStatus == "error") && a.FinderAttempts < MaxFinderAttempts
+                && !openBatches.Contains(a.FinderBatchId));
+            if (!string.IsNullOrWhiteSpace(dataset)) failed = failed.Where(a => a.Dataset == dataset);
+            retried = await failed.OrderBy(a => a.FinderAttempts).ThenBy(a => a.Instagram == null).ThenBy(a => a.Name)
+                .Take(size - ids.Count).Select(a => a.Id).ToListAsync(ct);
+            ids.AddRange(retried);
         }
         if (ids.Count == 0) return null;
         var batch = new FinderBatch
@@ -220,6 +237,9 @@ public class AudienceLeadService
         _db.FinderBatches.Add(batch);
         await _db.SaveChangesAsync(ct);
         await _db.AudienceLeads.Where(a => ids.Contains(a.Id)).ExecuteUpdateAsync(u => u.SetProperty(a => a.FinderBatchId, batch.Id), ct);
+        if (retried.Count > 0)
+            await _db.AudienceLeads.Where(a => retried.Contains(a.Id)).ExecuteUpdateAsync(u => u
+                .SetProperty(a => a.FinderStatus, (string?)null).SetProperty(a => a.FinderCheckedAt, (DateTimeOffset?)null), ct);
         return (await BatchesAsync(1, batch.Id, ct)).FirstOrDefault();
     }
 
@@ -330,12 +350,13 @@ public class AudienceLeadService
                 continue;
             }
             a.FinderStatus = r.Status is "ok" or "google" or "error" ? r.Status : "error";
+            a.FinderAttempts++;
             a.FinderCheckedAt = r.At ?? DateTimeOffset.UtcNow;
             a.Instagram ??= Cut(NormalizeInstagram(r.Instagram), 128);
             a.Website ??= Cut(r.Website, 512);
             if (r.Status == "ok" && !string.IsNullOrWhiteSpace(r.Phone))
             {
-                var waLink = r.Source is "instagram_link" or "web_whatsapp";
+                var waLink = r.Source is "instagram_link" or "web_whatsapp" or "google_wa";
                 if (a.Phone is null)
                     SetPhone(a, r.Phone, r.Source ?? "instagram_bio", waLink);
                 else if (a.SecondaryPhone is null && NormalizePhone(a, r.Phone, waLink) is { } other
@@ -358,14 +379,15 @@ public class AudienceLeadService
     /// salta el orden (para datasets que no van a pasar por la extensión).
     /// </summary>
     public async Task<(int Pending, int FromLeads, int FromGoogle, int Searched)> PlacesAsync(
-        string? dataset, int maxGoogle, bool useGoogle = true, bool onlyFinderDone = true, CancellationToken ct = default)
+        string? dataset, int maxGoogle, bool useGoogle = true, bool onlyFinderDone = true, CancellationToken ct = default, int? take = null)
     {
-        var pending = await _db.AudienceLeads
+        var query = _db.AudienceLeads
             .Where(a => a.Phone == null && a.PlacesCheckedAt == null
                         && (dataset == null || a.Dataset == dataset)
                         && (!onlyFinderDone || a.FinderStatus == "google"))
-            .OrderBy(a => a.Dataset).ThenBy(a => a.Name)
-            .ToListAsync(ct);
+            .OrderBy(a => a.Dataset).ThenBy(a => a.Name);
+        // take: la corrida automática toma solo lo que entra en el tope del día (no carga todo a memoria).
+        var pending = await (take is { } t ? query.Take(t) : query).ToListAsync(ct);
         int fromLeads = 0, fromGoogle = 0, searched = 0;
 
         foreach (var a in pending)
@@ -534,6 +556,8 @@ public class AudienceLeadService
         if (profile) return "perfil sin número ni web";
         if (Has("ig_search", "no_match") || (Has("ig_profile", "not_found") && !profile)) return "no encontró el Instagram";
         if (Has("web", "no_phone")) return "web sin número";
+        if (Has("google_search", "captcha")) return "Google pidió captcha";
+        if (Has("google_search", "no_phone")) return "ni IG, ni web, ni Google";
         if (steps.Any(x => x.Result == "error")) return "error";
         return "otro";
     }

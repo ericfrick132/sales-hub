@@ -2,8 +2,10 @@
 //   1) Instagram: el perfil (o, si no tenemos el handle, lo busca por nombre + ciudad) → link
 //      wa.me / api.whatsapp de la bio o un número en el texto de la bio.
 //   2) Su sitio web (el de la base o el link de la bio de IG) → links de WhatsApp / tel:.
-//   3) Lo que quede sin número sale como "google" y se busca después en el servidor
-//      (dotnet SalesHub.Api.dll audience-places --dataset …).
+//   3) Google: busca el nombre + ciudad tal cual (Eric 22/10) y lee el teléfono de la ficha de Maps, links de
+//      WhatsApp o el Instagram del negocio (si aparece, vuelve al paso 1 con ese perfil). Con tope diario; si
+//      Google muestra un captcha o la pantalla de consentimiento, deja de usarlo 24 h (nunca se saltea).
+//   4) Lo que quede sin número sale como "google" y el servidor lo busca solo en Google Places (tope diario).
 // Cada paso se agenda con chrome.alarms (sobrevive a que Chrome duerma el service worker). Trabaja en
 // una ventana propia con dos pestañas fijas: Instagram (se navega desde adentro: buscador, clic en el
 // resultado, scroll) y las webs. Todo el estado vive en chrome.storage.local.
@@ -38,6 +40,9 @@ const DEFAULTS = {
   followToday: { day: '', n: 0 },
   lastFollowAt: 0,
   followBlockedUntil: 0,
+  googleCap: 150,       // búsquedas en Google por día (Eric 22/10)
+  googleToday: { day: '', n: 0 },
+  googleBlockedUntil: 0, // Google mostró captcha / consentimiento: no se usa por 24 h
   // Reparto por app: cada una tiene su tope diario dentro de los topes de la cuenta; cuando una llega,
   // se sigue con las otras. onlyApps = esta extensión trabaja solo para esas apps (un perfil de Chrome por app).
   appVisitCap: 85,
@@ -288,6 +293,21 @@ async function igIdle(tab) {
   }
 }
 
+function canGoogle(s) {
+  const n = s.googleToday?.day === todayKey() ? s.googleToday.n : 0;
+  return Date.now() >= (s.googleBlockedUntil || 0) && n < (s.googleCap ?? 150);
+}
+
+async function googleSearch(tab, q) {
+  try {
+    await navigateTab(tab, `https://www.google.com/search?hl=es&q=${encodeURIComponent(q)}`);
+    await sleep(rand(2000, 3500));
+    return await run(tab, googleRead);
+  } finally {
+    chrome.tabs.update(tab, { url: 'about:blank' }).catch(() => {});
+  }
+}
+
 async function webVisit(tab, site) {
   try {
     await navigateTab(tab, /^https?:/i.test(site) ? site : `https://${site}`);
@@ -476,6 +496,31 @@ function webRead() {
   return { status: 'no_phone' };
 }
 
+// Resultados de Google para "nombre ciudad": WhatsApp en algún link, teléfono de la ficha del negocio (panel de
+// Maps), un tel:, o al menos su Instagram. Captcha o consentimiento = parar (no se clickea nada).
+function googleRead() {
+  const text = document.body?.innerText || '';
+  if (location.hostname.startsWith('consent.')) return { status: 'captcha', detail: 'pantalla de consentimiento' };
+  if (location.pathname.startsWith('/sorry') || document.querySelector('#captcha-form, iframe[src*="recaptcha"]')
+      || /tr[aá]fico inusual|unusual traffic/i.test(text)) return { status: 'captcha', detail: 'captcha' };
+  const real = [...document.querySelectorAll('a[href]')].map((a) => {
+    try { const u = new URL(a.href); return u.pathname === '/url' ? (u.searchParams.get('q') || u.searchParams.get('url') || a.href) : a.href; }
+    catch { return a.href; }
+  });
+  for (const h of real) {
+    const m = h.match(/(?:wa\.me\/|whatsapp\.com\/send\/?\?(?:.*&)?phone=)\+?(\d{8,15})/i);
+    if (m) return { status: 'ok', phone: m[1], source: 'google_wa' };
+  }
+  const panel = document.querySelector('[data-attrid*="phone"]');
+  const pt = panel?.innerText?.match(/\+?\d[\d\s\-().]{7,}\d/);
+  if (pt) return { status: 'ok', phone: pt[0], source: 'google_panel' };
+  const tel = real.find((h) => h.startsWith('tel:') && h.replace(/\D/g, '').length >= 8);
+  if (tel) return { status: 'ok', phone: decodeURIComponent(tel.slice(4)), source: 'google_tel' };
+  const ig = real.map((h) => h.match(/^https?:\/\/(?:www\.)?instagram\.com\/([A-Za-z0-9_.]{2,30})\/?(?:[?#]|$)/i))
+    .find((m) => m && !/^(p|reel|reels|explore|stories|accounts|tv|direct)$/i.test(m[1]));
+  return { status: 'no_phone', handle: ig ? ig[1].toLowerCase() : null, results: document.querySelectorAll('#search a h3').length };
+}
+
 // Manda los resultados pendientes a sales-hub; si falla quedan para el próximo intento.
 async function sync() {
   const s = await getState();
@@ -553,7 +598,9 @@ async function heartbeat() {
         restUntil: s.restUntil > now ? new Date(s.restUntil).toISOString() : null,
         blockedUntil: s.blockedUntil > now ? new Date(s.blockedUntil).toISOString() : null,
         lastError: s.lastError || null, queue: s.queue.length, unsynced: s.unsynced.length,
-        igToday: igCount(s), followsToday: followCount(s), current: s.queue[0]?.name || null
+        igToday: igCount(s), followsToday: followCount(s), current: s.queue[0]?.name || null,
+        googleToday: s.googleToday?.day === todayKey() ? s.googleToday.n : 0,
+        googleBlockedUntil: s.googleBlockedUntil > now ? new Date(s.googleBlockedUntil).toISOString() : null
       })
     });
   } catch { /* sin red */ }
@@ -569,11 +616,13 @@ async function lookup(item, s) {
   let website = item.website;
   let igLinks = [];
   let igUsed = false;
+  let googleUsed = false;
+  let googleBlocked = false;
   // Historial de lo que va pasando, con fecha: lo guarda sales-hub en audience_leads.finder_log.
   const steps = [];
   const step = (name, result, detail) => steps.push({ step: name, result, detail: detail || null, at: new Date().toISOString() });
   const host = (u) => { try { return new URL(/^https?:/i.test(u) ? u : `https://${u}`).hostname; } catch { return String(u).slice(0, 60); } };
-  const done = (r) => ({ ...r, steps, igUsed, followResult });
+  const done = (r) => ({ ...r, steps, igUsed, googleUsed, googleBlocked, followResult });
 
   const tabs = await workTabs();
   const profile = async (h, results) => {
@@ -640,7 +689,29 @@ async function lookup(item, s) {
   }
   website = website || sites.find((x) => !/whatsapp|wa\.me/i.test(x)) || null;
 
-  // 3) Queda para Google Maps (servidor)
+  // 3) Google: el nombre tal cual + ciudad
+  if (canGoogle(s)) {
+    googleUsed = true;
+    const q = `${item.name} ${item.city || ''}`.trim();
+    let g;
+    try { g = await googleSearch(tabs.web, q); }
+    catch (e) { g = { status: 'error', error: String(e?.message || e) }; }
+    step('google_search', g?.status || 'error',
+      g?.status === 'ok' ? `"${q}" · ${g.source}` : g?.handle ? `"${q}" → @${g.handle}` : g?.detail || g?.error || `"${q}" · ${g?.results ?? 0} resultados`);
+    if (g?.status === 'captcha') googleBlocked = true;
+    else if (g?.status === 'ok') return done({ status: 'ok', phone: g.phone, source: g.source, instagram: handle, website });
+    else if (g?.handle && !PLATFORM_IG.test(g.handle) && g.handle !== (handle || '').toLowerCase()) {
+      const st = await ready();
+      if (st === 'login' || st === 'blocked') return done({ status: st });
+      await sleep(rand(1500, 4000));
+      const p = await profile(g.handle);
+      if (p?.status === 'login' || p?.status === 'blocked') return done({ status: p.status });
+      if (p?.status === 'ok') return done({ status: 'ok', phone: p.phone, source: p.source, instagram: g.handle, website });
+      if (p?.status !== 'not_found') handle = handle || g.handle;
+    }
+  }
+
+  // 4) Queda para Google Places (servidor, automático con tope diario)
   return done({ status: 'google', instagram: handle, website });
 }
 
@@ -688,6 +759,11 @@ async function runOne() {
   const fresh = await getState();
   const patch = { lastError: error };
   if (r.igUsed) patch.igToday = { day: todayKey(), n: igCount(fresh) + 1 };
+  if (r.googleUsed) {
+    const gn = fresh.googleToday?.day === todayKey() ? fresh.googleToday.n : 0;
+    patch.googleToday = { day: todayKey(), n: gn + 1 };
+  }
+  if (r.googleBlocked) patch.googleBlockedUntil = Date.now() + 24 * 3_600_000;
   if (item.app && (r.igUsed || r.followResult === 'followed')) {
     const d = appDay(fresh);
     patch.appToday = {
@@ -733,7 +809,7 @@ async function runOne() {
   await setState(patch);
   await sync();
 
-  const [min, max] = r.igUsed ? [fresh.minGapSec, fresh.maxGapSec] : [3, 10];
+  const [min, max] = r.igUsed || r.googleUsed ? [fresh.minGapSec, fresh.maxGapSec] : [3, 10];
   return schedule(rand(min, max) * 1000);
 }
 

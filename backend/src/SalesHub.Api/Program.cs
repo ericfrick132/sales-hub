@@ -56,6 +56,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<RemarketingWorker>();                // remarketing con tope por línea por día (config en /remarketing, arranca apagado)
     builder.Services.AddHostedService<VideoCampaignWorker>();               // campañas con video (Marketing → Campaña con video), arrancan en borrador
     builder.Services.AddHostedService<LineHistoryImportWorker>();          // historial de un teléfono recién escaneado ("cargar para atrás" en /devices)
+    builder.Services.AddHostedService<AudiencePlacesWorker>();             // públicos: lo que la extensión no encontró → Google Places solo, tope Audience:PlacesDailyMax (100/día)
     builder.Services.AddHostedService<MetaAdsSyncWorker>();                // anuncios de Meta cada hora → meta_ads + cada 6 h rendimiento por provincia → meta_geo_daily (Meta:AdsAccessToken)
     builder.Services.AddHostedService<TenantMetricsWorker>();              // MRR/pagos/churn de cada app → tab Negocio del Dashboard (config TenantMetrics:Sources)
     builder.Services.AddHostedService<PromoWorker>();                      // promos por calendario: cupón + landing en cada app 7 días antes (flag 'promos', Marketing → Promos)

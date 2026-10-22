@@ -53,6 +53,11 @@ public class AudienceLead
     /// ig_search, web (de la extensión), leads, google (del servidor). Incluye bloqueos y errores.
     /// </summary>
     public string? FinderLog { get; set; }
+    /// <summary>
+    /// Cuántas veces la extensión lo terminó de buscar (con o sin número). Un batch puede volver a incluir los
+    /// que no salieron, hasta 3 pasadas en total (la primera + 2 reintentos, Eric 22/10).
+    /// </summary>
+    public int FinderAttempts { get; set; }
     /// <summary>Batch de la extensión al que se asignó (los batches se arman a mano desde Públicos).</summary>
     public Guid? FinderBatchId { get; set; }
     /// <summary>Última búsqueda en Google Places (con o sin resultado), para no pagarla dos veces.</summary>
