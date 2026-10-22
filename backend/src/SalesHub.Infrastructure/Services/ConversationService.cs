@@ -961,6 +961,7 @@ public class ConversationService
         }
         if (product is null) return null; // no sabemos de qué app → no creamos un lead mal taggeado
         var prequalOwner = IsHistory(incoming) ? null : await PrequalOwnerAsync(instance, product.ProductKey, ct);
+        var guest = prequalOwner is null && !IsHistory(incoming) && IsGuestOnAppLine(instance, product);
 
         var lead = new Lead
         {
@@ -979,13 +980,25 @@ public class ConversationService
             // Línea de APP: el bot atiende solo si la app tiene pre-calificación (contesta por la
             // misma línea, ver SellerLineSender.ResolveForLeadAsync); si no, la maneja un humano.
             // Historia: tampoco (sería contestarle a un anuncio de hace meses).
-            BotMutedAt = (instance.SellerId is null && prequalOwner is null) || IsHistory(incoming) ? DateTimeOffset.UtcNow : null,
+            // Anuncio de otra app que usa esta línea prestada: también contesta el bot (ver IsGuestOnAppLine).
+            BotMutedAt = (instance.SellerId is null && prequalOwner is null && !guest) || IsHistory(incoming) ? DateTimeOffset.UtcNow : null,
             CreatedAt = CreatedAtFor(incoming),
             UpdatedAt = DateTimeOffset.UtcNow,
         };
         _db.Leads.Add(lead);
         return lead;
     }
+
+    /// <summary>
+    /// Anuncio de OTRA app que sale con el número de una línea de app (ej. "EFCloud web" por el
+    /// número de GymHero mientras EFCloud no tiene WhatsApp Business propio). Esa app no tiene
+    /// guion de alta en esta línea: el bot le contesta con la IA y el playbook de SU producto,
+    /// por la misma línea. Hace falta que la app tenga piloto automático y playbook cargado.
+    /// </summary>
+    private static bool IsGuestOnAppLine(EvolutionInstance instance, Product product) =>
+        instance.SellerId is null && instance.ProductKey is not null && !instance.ListenOnly
+        && !LineProductKeys(instance).Contains(product.ProductKey, StringComparer.OrdinalIgnoreCase)
+        && product.AutoPilot && !string.IsNullOrWhiteSpace(product.AiSalesPlaybook);
 
     /// <summary>
     /// PROSPECTO de remarketing: un contacto del historial de un teléfono escaneado que todavía
