@@ -75,6 +75,8 @@ public class ApplicationDbContext : DbContext
     // Diccionario de tipos de mensaje del lead (respuestas sin IA), editable en /diccionario.
     public DbSet<ReplyIntent> ReplyIntents => Set<ReplyIntent>();
     public DbSet<IntentFeedback> IntentFeedbacks => Set<IntentFeedback>();
+    public DbSet<BotProposal> BotProposals => Set<BotProposal>();
+    public DbSet<BotLearningRun> BotLearningRuns => Set<BotLearningRun>();
 
     // Follow-up de abandono unificado y AGNÓSTICO: secuencias genéricas por (app, trigger) +
     // telemetría que reportan las apps, para reportes centralizados por app.

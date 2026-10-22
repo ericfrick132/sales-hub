@@ -20,6 +20,7 @@ import TodayChecklist from '../components/TodayChecklist';
 import PosteosHoy from '../components/PosteosHoy';
 import AdLeadsCard from '../components/AdLeadsCard';
 import InstagramFollowCard from '../components/InstagramFollowCard';
+import BotCards from '../components/BotCards';
 import Atencion from './Atencion';
 import Entradas from './Entradas';
 import AudioAnalytics from './AudioAnalytics';
@@ -161,6 +162,7 @@ export default function DashboardHub() {
               ]} />
             ),
           },
+          { key: 'bot', label: 'Bot: mejoras', element: <BotCards /> },
           {
             key: 'negocio', label: 'Negocio (MRR)', element: <BusinessTab colorOf={colorOf} nameOf={nameOf} />,
           },

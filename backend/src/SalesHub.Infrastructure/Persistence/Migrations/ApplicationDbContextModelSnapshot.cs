@@ -536,6 +536,129 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("audience_leads", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.BotLearningRun", b =>
+                {
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<int>("Conversations")
+                        .HasColumnType("integer")
+                        .HasColumnName("conversations");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("error");
+
+                    b.Property<int>("Proposals")
+                        .HasColumnType("integer")
+                        .HasColumnName("proposals");
+
+                    b.Property<DateTimeOffset>("RanAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ran_at");
+
+                    b.HasKey("Day")
+                        .HasName("pk_bot_learning_runs");
+
+                    b.ToTable("bot_learning_runs", (string)null);
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.BotProposal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AppliedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("applied_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by");
+
+                    b.Property<string>("ExamplesJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("examples_json");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("NewValue")
+                        .HasColumnType("text")
+                        .HasColumnName("new_value");
+
+                    b.Property<int>("Occurrences")
+                        .HasColumnType("integer")
+                        .HasColumnName("occurrences");
+
+                    b.Property<string>("OldValue")
+                        .HasColumnType("text")
+                        .HasColumnName("old_value");
+
+                    b.Property<string>("ProductKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<string>("Rationale")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("rationale");
+
+                    b.Property<DateTimeOffset?>("RolledBackAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("rolled_back_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Target")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("target");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bot_proposals");
+
+                    b.HasIndex("Day")
+                        .HasDatabaseName("ix_bot_proposals_day");
+
+                    b.HasIndex("Status", "CreatedAt")
+                        .HasDatabaseName("ix_bot_proposals_status_created_at");
+
+                    b.ToTable("bot_proposals", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.CityQueue", b =>
                 {
                     b.Property<Guid>("Id")

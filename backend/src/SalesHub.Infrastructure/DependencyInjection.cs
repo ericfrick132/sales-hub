@@ -148,6 +148,7 @@ public static class DependencyInjection
         services.AddScoped<LeadRebalancer>();
         services.AddScoped<ConversationService>();
         services.AddScoped<LeadEntryService>();
+        services.AddScoped<BotLearningService>();        // análisis diario de los chats del bot → propuestas (tarjetas del dashboard)
         services.AddScoped<RemarketingService>();
         services.AddScoped<VideoCampaignService>();
         services.AddScoped<PersonHandoffService>();
