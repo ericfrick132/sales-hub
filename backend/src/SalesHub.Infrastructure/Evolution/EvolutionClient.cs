@@ -303,10 +303,14 @@ public class EvolutionClient : IEvolutionClient
 
     private async Task<bool> SendTextUncheckedAsync(string instanceName, string jid, string message, CancellationToken ct)
     {
+        // linkPreview=false: sin esto Evolution 2.4 arma la preview como externalAdReply (formato de
+        // anuncio Click-to-WhatsApp) y WhatsApp acepta el mensaje pero no se lo muestra al lead —
+        // los links del bot se leían 31% vs 76% los mandados a mano. La URL sigue siendo clickeable.
         var body = new
         {
             number = jid,
-            text = message
+            text = message,
+            linkPreview = false
         };
         var resp = await _http.PostAsJsonAsync($"message/sendText/{Uri.EscapeDataString(instanceName)}", body, ct);
         if (!resp.IsSuccessStatusCode)
