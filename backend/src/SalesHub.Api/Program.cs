@@ -59,7 +59,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<AudiencePlacesWorker>();             // públicos: lo que la extensión no encontró → Google Places solo, tope Audience:PlacesDailyMax (100/día)
     builder.Services.AddHostedService<MetaAdsSyncWorker>();                // anuncios de Meta cada hora → meta_ads + cada 6 h rendimiento por provincia → meta_geo_daily (Meta:AdsAccessToken)
     builder.Services.AddHostedService<TenantMetricsWorker>();              // MRR/pagos/churn de cada app → tab Negocio del Dashboard (config TenantMetrics:Sources)
-    builder.Services.AddHostedService<ClaudeTaskSweepWorker>();            // tareas de Claude Code por audio: vence las que la Mac no tomó (12 h) o no devolvió (45 min)
+    builder.Services.AddHostedService<ClaudeTaskSweepWorker>();            // tareas de Claude Code por audio: vence las que la Mac no tomó (12 h) o no devolvió (3 h)
     builder.Services.AddHostedService<PromoWorker>();                      // promos por calendario: cupón + landing en cada app 7 días antes (flag 'promos', Marketing → Promos)
 
     // Workers de Instagram. Corren acá (no en un contenedor aparte) porque la imagen

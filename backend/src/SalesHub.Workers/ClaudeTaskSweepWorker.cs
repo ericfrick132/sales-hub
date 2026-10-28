@@ -3,7 +3,7 @@ using SalesHub.Infrastructure.Services;
 namespace SalesHub.Workers;
 
 /// <summary>
-/// Vence las tareas de Claude Code que la Mac nunca tomó (12 h) o tomó y no devolvió (45 min), y le avisa a
+/// Vence las tareas de Claude Code que la Mac nunca tomó (12 h) o tomó y no devolvió (3 h), y le avisa a
 /// Eric por WhatsApp. El poller también barre al consultar; esto cubre el caso de la Mac apagada.
 /// </summary>
 public class ClaudeTaskSweepWorker : BackgroundService
