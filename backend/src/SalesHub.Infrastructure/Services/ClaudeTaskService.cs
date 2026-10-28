@@ -25,8 +25,8 @@ public class ClaudeTaskService
     public static readonly TimeSpan PendingTtl = TimeSpan.FromHours(12);
     /// <summary>Cuánto espera el "sí" antes de descartar la tarea sin avisar.</summary>
     public static readonly TimeSpan ConfirmTtl = TimeSpan.FromMinutes(30);
-    /// <summary>Una tarea tomada sin resultado pasado esto se da por perdida (la Mac se apagó a mitad).</summary>
-    public static readonly TimeSpan RunningTtl = TimeSpan.FromMinutes(45);
+    /// <summary>Una tarea tomada sin resultado pasado esto se da por perdida (la Mac se apagó a mitad o se cerró la Terminal).</summary>
+    public static readonly TimeSpan RunningTtl = TimeSpan.FromHours(3);
     /// <summary>La Mac consulta cada ~20 s: sin consultas en este lapso la damos por apagada.</summary>
     private static readonly TimeSpan OnlineWindow = TimeSpan.FromSeconds(90);
     private const int MaxReply = 3500;
@@ -237,7 +237,7 @@ public class ClaudeTaskService
             var wasPending = t.Status == "pending";
             t.Status = wasPending ? "expired" : "failed";
             t.FinishedAt = now;
-            t.Error = wasPending ? "la Mac no se prendió en 12 h" : "la Mac no devolvió resultado en 45 min";
+            t.Error = wasPending ? "la Mac no se prendió en 12 h" : "la Mac no devolvió resultado en 3 h (¿se cerró la Terminal?)";
         }
         await _db.SaveChangesAsync(ct);
         foreach (var t in stale)
