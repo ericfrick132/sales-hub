@@ -185,6 +185,11 @@ export default function Crm() {
         </div>
       </div>
 
+      <CallGoals
+        admin={admin}
+        onPick={(sid, day) => { setCalledBy(sid); setCalledOn(day); }}
+      />
+
       {/* ══ Filtros rápidos ══ */}
       <div className="card p-3 space-y-3">
         <div className="flex flex-wrap gap-2">
@@ -291,7 +296,7 @@ export default function Crm() {
         <CrmCallMode
           filters={filters}
           stages={cols.map((c) => ({ key: c.key, label: c.label }))}
-          onClose={() => setCallMode(false)}
+          onClose={() => { setCallMode(false); qc.invalidateQueries({ queryKey: ['crm-call-goals'] }); }}
         />
       )}
 
@@ -409,6 +414,120 @@ function BoardColumn({ col, filters, perStage, over, onDragOver, onDragLeave, on
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+type CallGoalSeller = {
+  sellerId: string; name: string; target: number; today: number;
+  days: { date: string; calls: number }[]; daysMet: number; workDays: number;
+};
+
+const goalTone = (calls: number, target: number) =>
+  calls >= target ? 'bg-emerald-100 text-emerald-800'
+    : calls >= target / 2 ? 'bg-amber-100 text-amber-800'
+    : calls > 0 ? 'bg-red-100 text-red-700' : 'bg-slate-50 text-slate-400';
+
+/**
+ * Objetivo diario de llamadas. El vendedor ve cuántas lleva hoy; el admin, además, el
+ * cumplimiento de cada uno en los últimos 14 días (click en un día = filtra el tablero por
+ * esas llamadas). Cuentan sólo las registradas en el modo llamadas.
+ */
+function CallGoals({ admin, onPick }: { admin: boolean; onPick: (sellerId: string, day: string) => void }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const goals = useQuery({
+    queryKey: ['crm-call-goals'],
+    queryFn: async () => (await api.get<{ me?: CallGoalSeller; sellers?: CallGoalSeller[] }>('/crm/call-goals', { params: { days: 14 } })).data,
+    refetchInterval: 60000,
+  });
+  const me = goals.data?.me;
+  const sellers = goals.data?.sellers ?? [];
+  if (!me && sellers.length === 0) return null;
+
+  async function setTarget(s: CallGoalSeller) {
+    const v = window.prompt(`Objetivo diario de llamadas de ${s.name} (0 = sin objetivo)`, String(s.target));
+    if (v == null) return;
+    try {
+      await api.put(`/crm/call-goals/${s.sellerId}`, { target: Number(v) || 0 });
+      qc.invalidateQueries({ queryKey: ['crm-call-goals'] });
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo guardar');
+    }
+  }
+
+  const fmtD = (iso: string) => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
+  const isWeekend = (iso: string) => [0, 6].includes(new Date(`${iso}T12:00:00`).getDay());
+
+  return (
+    <div className="card p-3 space-y-3">
+      {me && (
+        <div className="flex items-center gap-3">
+          <div className="text-sm font-medium whitespace-nowrap">Llamadas de hoy</div>
+          <div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+            <div className={clsx('h-full rounded-full', me.today >= me.target ? 'bg-emerald-500' : 'bg-brand-500')}
+                 style={{ width: `${Math.min(100, (100 * me.today) / me.target)}%` }} />
+          </div>
+          <div className="text-sm tabular-nums whitespace-nowrap">
+            <span className="font-bold">{me.today}</span> / {me.target}
+            {me.today >= me.target && <span className="ml-1 text-emerald-600">✓</span>}
+          </div>
+        </div>
+      )}
+      {admin && sellers.length > 0 && (
+        <div>
+          <button className="text-sm font-medium flex items-center gap-1" onClick={() => setOpen((o) => !o)}>
+            <span className="text-slate-400 w-3">{open ? '▾' : '▸'}</span>
+            Cumplimiento de llamadas
+            <span className="font-normal text-slate-500 ml-2">
+              hoy: {sellers.map((s) => `${s.name} ${s.today}/${s.target}`).join(' · ')}
+            </span>
+          </button>
+          {open && (
+            <div className="overflow-x-auto mt-2">
+              <table className="text-xs">
+                <thead className="text-[11px] text-slate-400">
+                  <tr>
+                    <th className="px-2 py-1 text-left">Vendedor</th>
+                    <th className="px-2 py-1 text-right">Objetivo</th>
+                    {sellers[0].days.map((d) => (
+                      <th key={d.date} className={clsx('px-1 py-1 text-center font-normal', isWeekend(d.date) && 'text-slate-300')}>{fmtD(d.date)}</th>
+                    ))}
+                    <th className="px-2 py-1 text-right">Días cumplidos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sellers.map((s) => (
+                    <tr key={s.sellerId}>
+                      <td className="px-2 py-1 font-medium whitespace-nowrap">{s.name}</td>
+                      <td className="px-2 py-1 text-right">
+                        <button className="tabular-nums underline decoration-dotted" title="Cambiar objetivo" onClick={() => setTarget(s)}>{s.target}</button>
+                      </td>
+                      {s.days.map((d) => (
+                        <td key={d.date} className="px-0.5 py-1">
+                          <button
+                            title={`${s.name} · ${fmtD(d.date)}: ${d.calls} llamadas — ver en el tablero`}
+                            onClick={() => onPick(s.sellerId, d.date)}
+                            className={clsx('w-9 rounded py-0.5 tabular-nums text-center', goalTone(d.calls, s.target), isWeekend(d.date) && d.calls === 0 && 'opacity-40')}>
+                            {d.calls}
+                          </button>
+                        </td>
+                      ))}
+                      <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">
+                        {s.daysMet}/{s.workDays}
+                        {s.workDays > 0 && <span className="text-slate-400"> ({Math.round((100 * s.daysMet) / s.workDays)}%)</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Cuentan las llamadas registradas en el modo llamadas. Días cumplidos = días hábiles (lun a vie, sin hoy) en que llegó al objetivo. Click en un día para ver esas llamadas en el tablero.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

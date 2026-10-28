@@ -75,6 +75,12 @@ public class Seller
     /// </summary>
     public bool AutoArchiveChats { get; set; }
 
+    /// <summary>
+    /// Objetivo de llamadas por día (registradas en el modo llamadas del CRM). null = no tiene
+    /// objetivo: no aparece en el cumplimiento de /crm.
+    /// </summary>
+    public int? DailyCallTarget { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastLoginAt { get; set; }

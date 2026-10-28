@@ -746,6 +746,69 @@ public class CrmController : ControllerBase
         return Ok(new { id = lead.Id, status = lead.Status.ToString(), stage = StageKeyOf(lead.Status), text });
     }
 
+    public record CallGoalDay(string Date, int Calls);
+    public record CallGoalSeller(Guid SellerId, string Name, int Target, int Today, List<CallGoalDay> Days, int DaysMet, int WorkDays);
+
+    /// <summary>
+    /// Objetivo diario de llamadas (<see cref="Seller.DailyCallTarget"/>) y cuántas lleva cada uno,
+    /// contando las registradas en el modo llamadas, por día AR. <c>me</c> = el que mira (si tiene
+    /// objetivo); <c>sellers</c> = el cumplimiento de todos, sólo para admin. El % de cumplimiento
+    /// cuenta días hábiles (lun a vie) sin hoy, que todavía está en curso.
+    /// </summary>
+    [HttpGet("call-goals")]
+    public async Task<IActionResult> CallGoals([FromQuery] int days = 14, CancellationToken ct = default)
+    {
+        days = Math.Clamp(days, 1, 60);
+        var ar = TimeSpan.FromHours(-3);
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(ar).DateTime);
+        var firstDay = today.AddDays(-(days - 1));
+        var since = new DateTimeOffset(firstDay.Year, firstDay.Month, firstDay.Day, 0, 0, 0, ar);
+
+        var admin = CurrentUser.IsAdmin(User);
+        var me = CurrentUser.Id(User);
+        var sellers = await _db.Sellers.AsNoTracking()
+            .Where(x => x.IsActive && x.DailyCallTarget != null && (admin || x.Id == me))
+            .OrderBy(x => x.DisplayName)
+            .Select(x => new { x.Id, x.DisplayName, Target = x.DailyCallTarget!.Value })
+            .ToListAsync(ct);
+        var ids = sellers.Select(x => x.Id).ToList();
+
+        var callTimes = await _db.LeadNotes.AsNoTracking()
+            .Where(n => n.Kind == LeadNoteKind.Call && n.CreatedAt >= since && n.SellerId != null && ids.Contains(n.SellerId.Value))
+            .Select(n => new { SellerId = n.SellerId!.Value, n.CreatedAt })
+            .ToListAsync(ct);
+        var counts = callTimes
+            .GroupBy(c => (c.SellerId, Day: DateOnly.FromDateTime(c.CreatedAt.ToOffset(ar).DateTime)))
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var dates = Enumerable.Range(0, days).Select(i => firstDay.AddDays(i)).ToList();
+        var workDays = dates.Where(d => d < today && d.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)).ToList();
+        var rows = sellers.Select(x =>
+        {
+            int Calls(DateOnly d) => counts.GetValueOrDefault((x.Id, d));
+            return new CallGoalSeller(x.Id, x.DisplayName, x.Target, Calls(today),
+                dates.Select(d => new CallGoalDay(d.ToString("yyyy-MM-dd"), Calls(d))).ToList(),
+                workDays.Count(d => Calls(d) >= x.Target), workDays.Count);
+        }).ToList();
+
+        return Ok(new { me = rows.FirstOrDefault(r => r.SellerId == me), sellers = admin ? rows : null });
+    }
+
+    public record SetCallTargetRequest(int? Target);
+
+    /// <summary>Cambia el objetivo diario de llamadas de un vendedor (sólo admin). null o 0 = sin objetivo.</summary>
+    [HttpPut("call-goals/{sellerId:guid}")]
+    public async Task<IActionResult> SetCallTarget(Guid sellerId, [FromBody] SetCallTargetRequest req, CancellationToken ct)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var seller = await _db.Sellers.FirstOrDefaultAsync(x => x.Id == sellerId, ct);
+        if (seller is null) return NotFound();
+        seller.DailyCallTarget = req.Target is > 0 ? Math.Min(req.Target.Value, 500) : null;
+        seller.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { sellerId, target = seller.DailyCallTarget });
+    }
+
     public record AssignSellerRequest(Guid SellerId);
 
     /// <summary>

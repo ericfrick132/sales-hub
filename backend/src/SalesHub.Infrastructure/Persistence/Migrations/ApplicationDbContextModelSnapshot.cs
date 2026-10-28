@@ -4629,6 +4629,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int?>("DailyCallTarget")
+                        .HasColumnType("integer")
+                        .HasColumnName("daily_call_target");
+
                     b.Property<int>("DailyCap")
                         .HasColumnType("integer")
                         .HasColumnName("daily_cap");
