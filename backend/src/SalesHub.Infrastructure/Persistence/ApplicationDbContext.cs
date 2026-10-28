@@ -78,6 +78,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<BotProposal> BotProposals => Set<BotProposal>();
     public DbSet<BotLearningRun> BotLearningRuns => Set<BotLearningRun>();
     public DbSet<ClaudeTask> ClaudeTasks => Set<ClaudeTask>();
+    public DbSet<ClaudeTaskAttachment> ClaudeTaskAttachments => Set<ClaudeTaskAttachment>();
 
     // Follow-up de abandono unificado y AGNÓSTICO: secuencias genéricas por (app, trigger) +
     // telemetría que reportan las apps, para reportes centralizados por app.

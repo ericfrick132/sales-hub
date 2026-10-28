@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SalesHub.Core.Abstractions;
+using SalesHub.Core.Domain.Entities;
 using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Infrastructure.Services;
@@ -15,6 +16,8 @@ namespace SalesHub.Infrastructure.Services;
 ///  - Citar un mensaje de una tarea (los del bot llevan #código) o su audio sigue ESE thread: un audio citando
 ///    pide confirmación y retoma la sesión de esa tarea; un texto escrito citando va directo (no hay transcripción
 ///    que verificar); "sí"/"no" citando una confirmación decide esa tarea puntual.
+///  - Imagen: se adjunta a la tarea que espera el "sí"; con caption y sin tarea esperando, el caption es el
+///    pedido (pide confirmación). Una imagen suelta sin caption sigue la cadena (inspiración / PDF).
 /// Los audios reenviados al self-chat siguen yendo a transcripción (<see cref="AudioTranscriptionRelay"/>).
 ///
 /// Doble filtro, como el relay de transcripción: la línea tiene que ser la de <c>transcription_settings</c>
@@ -50,21 +53,23 @@ public class ClaudeTaskRelay
         _db = db; _evo = evo; _whisper = whisper; _tasks = tasks; _log = log;
     }
 
-    private sealed record Parsed(bool Voice, bool Forwarded, string? QuotedId, string? QuotedCode);
+    private sealed record Parsed(bool Voice, bool Image, string? Mime, string? Caption, bool Forwarded, string? QuotedId, string? QuotedCode);
 
     public async Task<bool> TryHandleAsync(ConversationService.IncomingMessage incoming, CancellationToken ct)
     {
         // Filtros baratos primero: la línea recibe todo el tráfico de leads.
         if (!incoming.FromMe || incoming.FromSync || !IsSelfChat(incoming)) return false;
         var msg = Parse(incoming.RawJson);
-        if (msg is null || msg.Forwarded) return false;
+        // Audio reenviado = transcripción; una captura reenviada sí sirve como imagen de la tarea.
+        if (msg is null || (msg.Forwarded && !msg.Image)) return false;
         var text = (incoming.Text ?? "").Trim();
+        var isText = !msg.Voice && !msg.Image;
         // Nuestros avisos (🤖) también llegan como fromMe en el self-chat.
-        if (!msg.Voice && (text.Length == 0 || text.StartsWith(ClaudeTaskService.Prefix.Trim(), StringComparison.Ordinal))) return false;
-        var answer = msg.Voice ? null : ParseAnswer(text);
+        if (isText && (text.Length == 0 || text.StartsWith(ClaudeTaskService.Prefix.Trim(), StringComparison.Ordinal))) return false;
+        var answer = isText ? ParseAnswer(text) : null;
         var quotes = msg.QuotedId is not null || msg.QuotedCode is not null;
         // Texto suelto que no es sí/no ni cita nada: no es nuestro.
-        if (!msg.Voice && answer is null && !quotes) return false;
+        if (isText && answer is null && !quotes) return false;
 
         if (!await _db.IsFlagOnAsync("claude_tasks", true, ct)) return false;
         var line = await _db.TranscriptionSettings.AsNoTracking().Select(s => s.InstanceName).FirstOrDefaultAsync(ct);
@@ -76,7 +81,16 @@ public class ClaudeTaskRelay
 
         var quoted = quotes ? await _tasks.FindQuotedAsync(owner, msg.QuotedCode, msg.QuotedId, ct) : null;
         // Un texto que cita algo que no es una tarea (otra nota del self-chat) no es nuestro.
-        if (!msg.Voice && answer is null && quoted is null) return false;
+        if (isText && answer is null && quoted is null) return false;
+
+        // Imagen: se adjunta a la tarea que espera el "sí" (la citada o la última). Sin tarea esperando, solo
+        // si trae caption (es el pedido); una imagen suelta sigue la cadena (inspiración / PDF).
+        ClaudeTask? waiting = null;
+        if (msg.Image)
+        {
+            waiting = await _tasks.FindWaitingAsync(owner, quoted is { Status: "confirm" } ? quoted : null, ct);
+            if (waiting is null && string.IsNullOrWhiteSpace(msg.Caption)) return false;
+        }
 
         if (incoming.MessageId is not null)
         {
@@ -92,7 +106,22 @@ public class ClaudeTaskRelay
             // "dale"/"no" citando una tarea ya terminada: se toma como instrucción para ese thread.
         }
 
-        if (!msg.Voice)
+        if (msg.Image)
+        {
+            var bytes = await _evo.GetMediaBase64Async(incoming.InstanceName, incoming.RawJson, ct);
+            if (bytes is null)
+            {
+                await _evo.SendTextAsync(incoming.InstanceName, owner,
+                    ClaudeTaskService.Prefix + "No pude bajar la imagen, mandala de nuevo.", ct);
+                return true;
+            }
+            waiting ??= await _tasks.CreateAsync(incoming.InstanceName, owner, msg.Caption!.Trim(), incoming.MessageId,
+                quoted, resumeLast: false, confirmed: false, ct);
+            await _tasks.AttachAsync(waiting, msg.Mime ?? "image/jpeg", bytes, ct);
+            return true;
+        }
+
+        if (isText)
         {
             await _tasks.CreateAsync(incoming.InstanceName, owner, text, null, quoted, false, confirmed: true, ct);
             return true;
@@ -147,6 +176,12 @@ public class ClaudeTaskRelay
             if (!doc.RootElement.TryGetProperty("message", out var m) || m.ValueKind != JsonValueKind.Object) return null;
 
             var voice = m.TryGetProperty("audioMessage", out var audio) && audio.ValueKind == JsonValueKind.Object;
+            // Imagen: imageMessage, o una foto mandada como archivo (documentMessage con mime de imagen).
+            JsonElement? media = m.TryGetProperty("imageMessage", out var img) && img.ValueKind == JsonValueKind.Object ? img
+                : m.TryGetProperty("documentMessage", out var docMsg) && docMsg.ValueKind == JsonValueKind.Object
+                  && (Str(docMsg, "mimetype") ?? "").StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? docMsg : null;
+            string? mime = media is { } me ? Str(me, "mimetype")?.Split(';')[0].Trim() : null;
+            string? caption = media is { } mc ? Str(mc, "caption") : null;
             JsonElement? ctx = null;
             foreach (var body in m.EnumerateObject())
                 if (body.Value.ValueKind == JsonValueKind.Object
@@ -171,13 +206,16 @@ public class ClaudeTaskRelay
                     if (code is { Success: true }) quotedCode = code.Groups[1].Value;
                 }
             }
-            return new Parsed(voice, forwarded, quotedId, quotedCode);
+            return new Parsed(voice, media is not null, mime, caption, forwarded, quotedId, quotedCode);
         }
         catch
         {
             return null;
         }
     }
+
+    private static string? Str(JsonElement el, string prop) =>
+        el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     private static string Digits(string? s)
     {

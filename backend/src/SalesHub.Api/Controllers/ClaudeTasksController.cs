@@ -41,6 +41,16 @@ public class ClaudeTasksController : ControllerBase
         return task is null ? NoContent() : Ok(task);
     }
 
+    /// <summary>Imagen adjunta N (desde 1) de una tarea que la Mac ya tomó.</summary>
+    [HttpGet("{id:guid}/attachments/{index:int}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Attachment(Guid id, int index, CancellationToken ct)
+    {
+        if (!KeyOk()) return Unauthorized();
+        var a = await _svc.GetAttachmentAsync(id, index, ct);
+        return a is null ? NotFound() : File(a.Data, a.MimeType);
+    }
+
     [HttpPost("{id:guid}/result")]
     [AllowAnonymous]
     public async Task<IActionResult> Result(Guid id, [FromBody] ClaudeTaskService.ResultIn body, CancellationToken ct)

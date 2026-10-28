@@ -26,3 +26,14 @@ public class ClaudeTaskConfiguration : IEntityTypeConfiguration<ClaudeTask>
         b.HasIndex(x => x.AudioMessageId);
     }
 }
+
+public class ClaudeTaskAttachmentConfiguration : IEntityTypeConfiguration<ClaudeTaskAttachment>
+{
+    public void Configure(EntityTypeBuilder<ClaudeTaskAttachment> b)
+    {
+        b.ToTable("claude_task_attachments");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.MimeType).HasMaxLength(64);
+        b.HasIndex(x => new { x.TaskId, x.Index }).IsUnique();
+    }
+}

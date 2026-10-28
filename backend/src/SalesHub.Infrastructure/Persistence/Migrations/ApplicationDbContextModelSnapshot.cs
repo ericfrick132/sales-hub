@@ -820,6 +820,46 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("claude_tasks", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.ClaudeTaskAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("data");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("integer")
+                        .HasColumnName("index");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("mime_type");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_claude_task_attachments");
+
+                    b.HasIndex("TaskId", "Index")
+                        .IsUnique()
+                        .HasDatabaseName("ix_claude_task_attachments_task_id_index");
+
+                    b.ToTable("claude_task_attachments", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.Competitor", b =>
                 {
                     b.Property<Guid>("Id")

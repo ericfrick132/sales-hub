@@ -38,7 +38,7 @@ public class ClaudeTaskService
         _db = db; _evo = evo; _log = log;
     }
 
-    public record NextTask(Guid Id, string Prompt, string? ResumeSessionId);
+    public record NextTask(Guid Id, string Prompt, string? ResumeSessionId, int Attachments);
     public record ResultIn(bool Ok, string? Result, string? SessionId, decimal? CostUsd, string? Error);
 
     /// <summary>Tarea citada: por el código (#a3f9c1) del mensaje citado o por el id del audio citado.</summary>
@@ -84,7 +84,7 @@ public class ClaudeTaskService
         if (confirmed)
             await NotifyAsync(task, $"Mandada: «{Cut(prompt, 300)}»\n{thread} {Where()}", ct);
         else
-            await NotifyAsync(task, $"Le voy a pedir a Claude:\n«{prompt}»\n({thread})\n\n¿Lo mando? Respondé sí o no, o mandá otro audio para corregirlo.", ct);
+            await NotifyAsync(task, $"Le voy a pedir a Claude:\n«{prompt}»\n({thread})\n\n¿Lo mando? Respondé sí o no, o mandá otro audio para corregirlo. Si mandás imágenes antes del sí, se las paso.", ct);
         return task;
     }
 
@@ -120,6 +120,42 @@ public class ClaudeTaskService
         return true;
     }
 
+    public const int MaxAttachments = 10;
+    private const int MaxAttachmentBytes = 8 * 1024 * 1024;
+
+    /// <summary>Tarea esperando el "sí" a la que se adjunta una imagen: la citada o la última.</summary>
+    public Task<ClaudeTask?> FindWaitingAsync(string replyTo, ClaudeTask? quoted, CancellationToken ct)
+    {
+        var since = DateTimeOffset.UtcNow - ConfirmTtl;
+        var q = _db.ClaudeTasks.Where(t => t.ReplyTo == replyTo && t.Status == "confirm" && t.CreatedAt >= since);
+        if (quoted is not null) q = q.Where(t => t.Id == quoted.Id);
+        return q.OrderByDescending(t => t.CreatedAt).FirstOrDefaultAsync(ct);
+    }
+
+    public async Task AttachAsync(ClaudeTask task, string mime, byte[] data, CancellationToken ct)
+    {
+        var count = await _db.ClaudeTaskAttachments.CountAsync(a => a.TaskId == task.Id, ct);
+        if (count >= MaxAttachments || data.Length > MaxAttachmentBytes)
+        {
+            await NotifyAsync(task, count >= MaxAttachments
+                ? $"Ya tiene {MaxAttachments} imágenes, esta no la adjunto."
+                : "Esa imagen pesa más de 8 MB, no la adjunto.", ct);
+            return;
+        }
+        _db.ClaudeTaskAttachments.Add(new ClaudeTaskAttachment { TaskId = task.Id, Index = count + 1, MimeType = mime, Data = data });
+        // Extiende la ventana de confirmación: está armando el pedido.
+        task.CreatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        await NotifyAsync(task, $"📎 Imagen {count + 1} adjuntada. ¿Lo mando? sí o no.", ct);
+    }
+
+    /// <summary>Imagen para el poller: solo de una tarea que la Mac ya tomó.</summary>
+    public Task<ClaudeTaskAttachment?> GetAttachmentAsync(Guid taskId, int index, CancellationToken ct) =>
+        _db.ClaudeTaskAttachments.AsNoTracking()
+            .Where(a => a.TaskId == taskId && a.Index == index
+                && _db.ClaudeTasks.Any(t => t.Id == taskId && t.Status == "running"))
+            .FirstOrDefaultAsync(ct);
+
     private static string Where() => MacOnline
         ? "La Mac la toma ahora."
         : $"💤 La Mac está apagada: la corro cuando se prenda (si no, vence en {PendingTtl.TotalHours:0} h).";
@@ -146,7 +182,8 @@ public class ClaudeTaskService
             task.Status = "running";
             task.ClaimedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
-            return new NextTask(task.Id, task.Prompt, task.ResumeSessionId);
+            var images = await _db.ClaudeTaskAttachments.CountAsync(a => a.TaskId == task.Id, ct);
+            return new NextTask(task.Id, task.Prompt, task.ResumeSessionId, images);
         }
         return null;
     }
