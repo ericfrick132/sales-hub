@@ -31,14 +31,20 @@ public class ClaudeTasksController : ControllerBase
 
     /// <summary>
     /// Crea (si hace falta) la línea privada en Evolution, sin fila en evolution_instances, y devuelve su estado
-    /// y el QR para escanear con el WhatsApp personal.
+    /// y el QR para escanear con el WhatsApp personal. <paramref name="reset"/> la borra y la crea de cero (si el
+    /// emparejamiento quedó trabado).
     /// </summary>
     [HttpPost("line")]
-    public async Task<IActionResult> Line(CancellationToken ct)
+    public async Task<IActionResult> Line([FromQuery] bool reset, CancellationToken ct)
     {
+        if (reset)
+        {
+            await _evo.DeleteInstanceAsync(ClaudeTaskService.LineName, ct);
+            await Task.Delay(TimeSpan.FromSeconds(3), ct);
+        }
         var status = await _evo.EnsureInstanceAsync(ClaudeTaskService.LineName, ct);
-        var qr = status.Status == "open" ? null : await _evo.GetQrCodeAsync(ClaudeTaskService.LineName, ct);
-        return Ok(new { status = status.Status, qr });
+        if (status.Status == "open") return Ok(new { status = status.Status });
+        return Ok(new { status = status.Status, qr = await _evo.GetQrCodeAsync(ClaudeTaskService.LineName, ct) });
     }
 
     /// <summary>Clave del poller (se copia una vez a la Mac).</summary>
