@@ -20,14 +20,15 @@ public class WebhookController : ControllerBase
     private readonly VoiceCalibrationRelay _calibration;
     private readonly ColdOpenAudioRelay _coldOpen;
     private readonly SalesHub.Api.AdminMenu.AdminMenuRelay _adminMenu;
+    private readonly ClaudeTaskRelay _claudeTasks;
     private readonly ILogger<WebhookController> _log;
 
     public WebhookController(ConversationService conv, AudioTranscriptionRelay relay, InspirationIntakeRelay inspiration,
         VoiceCalibrationRelay calibration, ColdOpenAudioRelay coldOpen, SalesHub.Api.AdminMenu.AdminMenuRelay adminMenu,
-        ILogger<WebhookController> log)
+        ClaudeTaskRelay claudeTasks, ILogger<WebhookController> log)
     {
         _conv = conv; _relay = relay; _inspiration = inspiration; _calibration = calibration; _coldOpen = coldOpen;
-        _adminMenu = adminMenu; _log = log;
+        _adminMenu = adminMenu; _claudeTasks = claudeTasks; _log = log;
     }
 
     [HttpPost("evolution")]
@@ -78,6 +79,10 @@ public class WebhookController : ControllerBase
                 // "grabar openers"). Corre antes que todo para consumir sus notas de voz.
                 if (await _coldOpen.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 if (await _calibration.TryHandleAsync(incoming, ct)) { handled++; continue; }
+                // Tareas para Claude Code: nota de voz propia (no reenviada) en el self-chat de la línea de
+                // transcripción → "¿Lo mando?" → con el sí, cola para la Mac. Antes del menú y de inspiración
+                // para que no se coman el "sí" (solo lo toma si hay una tarea esperando) ni el relay transcriba el audio.
+                if (await _claudeTasks.TryHandleAsync(incoming, ct)) { handled++; continue; }
                 // Bot de config del maestro: consume "menu"/"config" y todo mientras esté en modo menú
                 // (los números NO caen en inspiración). Devuelve false para el resto → sigue la cadena.
                 if (await _adminMenu.TryHandleAsync(incoming, ct)) { handled++; continue; }

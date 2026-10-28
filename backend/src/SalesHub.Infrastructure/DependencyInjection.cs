@@ -164,6 +164,9 @@ public static class DependencyInjection
         services.AddSingleton<TakeoverSignal>(); // señal "+": salto de cola webhook→agente
         // Relay de transcripción de audios (notas de voz → texto, sólo números de la allowlist).
         services.AddScoped<AudioTranscriptionRelay>();
+        // Tareas para Claude Code en la Mac por nota de voz en el self-chat de esa misma línea.
+        services.AddScoped<ClaudeTaskService>();
+        services.AddScoped<ClaudeTaskRelay>();
         // Intake de inspiraciones por WhatsApp (imágenes/ideas del número maestro → Posteos).
         services.AddScoped<Services.Social.InspirationIntakeRelay>();
         // Acumulador del modo batch: junta imágenes/texto/audio y responde un PDF (debounce).
