@@ -10,7 +10,8 @@ using SalesHub.Infrastructure.Persistence;
 namespace SalesHub.Infrastructure.Services;
 
 /// <summary>
-/// Tareas para Claude Code por WhatsApp, solo en el SELF-CHAT de la línea del relay de transcripción:
+/// Tareas para Claude Code por WhatsApp, solo en el SELF-CHAT de la línea privada de Eric
+/// (<see cref="ClaudeTaskService.LineName"/>, su WhatsApp personal):
 ///  - Nota de voz grabada (no reenviada): se transcribe y se le muestra a Eric ("¿Lo mando?"); recién con su
 ///    "sí" se encola en <see cref="ClaudeTaskService"/> y la Mac la corre. "no" la descarta; otro audio la reemplaza.
 ///  - Citar un mensaje de una tarea (los del bot llevan #código) o su audio sigue ESE thread: un audio citando
@@ -20,9 +21,8 @@ namespace SalesHub.Infrastructure.Services;
 ///    pedido (pide confirmación). Una imagen suelta sin caption sigue la cadena (inspiración / PDF).
 /// Los audios reenviados al self-chat siguen yendo a transcripción (<see cref="AudioTranscriptionRelay"/>).
 ///
-/// Doble filtro, como el relay de transcripción: la línea tiene que ser la de <c>transcription_settings</c>
-/// y el dueño tiene que estar en la allowlist. Crítico: las líneas de los vendedores también tienen
-/// self-chat, y esto termina ejecutando código en la Mac de Eric. Kill-switch: flag "claude_tasks".
+/// Doble filtro: la línea tiene que ser la privada y el dueño tiene que estar en la allowlist de transcripción.
+/// Crítico: esto termina ejecutando código en la Mac de Eric. Kill-switch: flag "claude_tasks".
 /// </summary>
 public class ClaudeTaskRelay
 {
@@ -57,7 +57,8 @@ public class ClaudeTaskRelay
 
     public async Task<bool> TryHandleAsync(ConversationService.IncomingMessage incoming, CancellationToken ct)
     {
-        // Filtros baratos primero: la línea recibe todo el tráfico de leads.
+        // Solo la línea privada; adentro, solo el self-chat.
+        if (!string.Equals(incoming.InstanceName, ClaudeTaskService.LineName, StringComparison.Ordinal)) return false;
         if (!incoming.FromMe || incoming.FromSync || !IsSelfChat(incoming)) return false;
         var msg = Parse(incoming.RawJson);
         // Audio reenviado = transcripción; una captura reenviada sí sirve como imagen de la tarea.
@@ -72,9 +73,6 @@ public class ClaudeTaskRelay
         if (isText && answer is null && !quotes) return false;
 
         if (!await _db.IsFlagOnAsync("claude_tasks", true, ct)) return false;
-        var line = await _db.TranscriptionSettings.AsNoTracking().Select(s => s.InstanceName).FirstOrDefaultAsync(ct);
-        if (string.IsNullOrWhiteSpace(line) || !string.Equals(line, incoming.InstanceName, StringComparison.OrdinalIgnoreCase))
-            return false;
         var owner = Digits(incoming.SenderJid);
         var allowed = await _db.TranscriptionPhones.AsNoTracking().Select(p => p.Phone).ToListAsync(ct);
         if (owner.Length < 8 || !allowed.Any(p => Suffix(Digits(p)) == Suffix(owner))) return false;

@@ -40,12 +40,17 @@ public class WebhookController : ControllerBase
             if (eventName is not ("messages.upsert" or "MESSAGES_UPSERT"))
                 return Ok(new { skipped = true, @event = eventName });
 
+            var instance = payload.TryGetProperty("instance", out var i) ? i.GetString() : null;
+            if (instance is null) return Ok(new { skipped = true, reason = "no instance" });
+
+            // Línea privada de Eric (su WhatsApp personal, solo para Claude): no se guarda ni se procesa NADA
+            // salvo su self-chat en el relay de tareas. Va antes del dump de diagnóstico a propósito.
+            if (instance == ClaudeTaskService.LineName)
+                return Ok(new { handled = await HandlePrivateLineAsync(instance, payload, ct) });
+
             // Diag temporal: dump payload para debuggear LIDs / IDs raros.
             try { await System.IO.File.WriteAllTextAsync("/tmp/saleshub-last-webhook.json", payload.GetRawText(), ct); }
             catch { /* no-op */ }
-
-            var instance = payload.TryGetProperty("instance", out var i) ? i.GetString() : null;
-            if (instance is null) return Ok(new { skipped = true, reason = "no instance" });
 
             if (!payload.TryGetProperty("data", out var data)) return Ok(new { skipped = true });
 
@@ -101,6 +106,24 @@ public class WebhookController : ControllerBase
             _log.LogError(ex, "Webhook processing failed");
             return Ok(new { error = ex.Message });
         }
+    }
+
+    private async Task<int> HandlePrivateLineAsync(string instance, JsonElement payload, CancellationToken ct)
+    {
+        if (!payload.TryGetProperty("data", out var data)) return 0;
+        var sender = payload.TryGetProperty("sender", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null;
+        var messages = new List<JsonElement>();
+        if (data.ValueKind == JsonValueKind.Array) messages.AddRange(data.EnumerateArray());
+        else if (data.TryGetProperty("messages", out var arr) && arr.ValueKind == JsonValueKind.Array) messages.AddRange(arr.EnumerateArray());
+        else messages.Add(data);
+
+        var handled = 0;
+        foreach (var msg in messages)
+        {
+            var incoming = EvolutionMessageParser.Parse(instance, msg, sender);
+            if (incoming is not null && await _claudeTasks.TryHandleAsync(incoming, ct)) handled++;
+        }
+        return handled;
     }
 
 }

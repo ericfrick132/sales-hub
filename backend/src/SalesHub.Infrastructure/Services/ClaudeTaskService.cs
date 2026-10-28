@@ -15,6 +15,12 @@ namespace SalesHub.Infrastructure.Services;
 public class ClaudeTaskService
 {
     public const string Prefix = "🤖 ";
+    /// <summary>
+    /// Línea privada de Eric (su WhatsApp personal) solo para esto: existe únicamente en Evolution, SIN fila en
+    /// evolution_instances, así no aparece en Devices/Conversaciones ni la recorre ningún worker. El webhook
+    /// la corta antes de todo y solo deja pasar su self-chat al relay.
+    /// </summary>
+    public const string LineName = "claude_eric";
     /// <summary>Cuánto espera en cola una tarea con la Mac apagada.</summary>
     public static readonly TimeSpan PendingTtl = TimeSpan.FromHours(12);
     /// <summary>Cuánto espera el "sí" antes de descartar la tarea sin avisar.</summary>

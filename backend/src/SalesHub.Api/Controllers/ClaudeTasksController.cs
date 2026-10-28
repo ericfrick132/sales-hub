@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using SalesHub.Core.Abstractions;
 using SalesHub.Infrastructure.Options;
 using SalesHub.Infrastructure.Services;
 
@@ -20,11 +21,24 @@ public class ClaudeTasksController : ControllerBase
     private const string KeyHeader = "X-Claude-Key";
 
     private readonly ClaudeTaskService _svc;
+    private readonly IEvolutionClient _evo;
     private readonly JwtOptions _jwt;
 
-    public ClaudeTasksController(ClaudeTaskService svc, IOptions<JwtOptions> jwt)
+    public ClaudeTasksController(ClaudeTaskService svc, IEvolutionClient evo, IOptions<JwtOptions> jwt)
     {
-        _svc = svc; _jwt = jwt.Value;
+        _svc = svc; _evo = evo; _jwt = jwt.Value;
+    }
+
+    /// <summary>
+    /// Crea (si hace falta) la línea privada en Evolution, sin fila en evolution_instances, y devuelve su estado
+    /// y el QR para escanear con el WhatsApp personal.
+    /// </summary>
+    [HttpPost("line")]
+    public async Task<IActionResult> Line(CancellationToken ct)
+    {
+        var status = await _evo.EnsureInstanceAsync(ClaudeTaskService.LineName, ct);
+        var qr = status.Status == "open" ? null : await _evo.GetQrCodeAsync(ClaudeTaskService.LineName, ct);
+        return Ok(new { status = status.Status, qr });
     }
 
     /// <summary>Clave del poller (se copia una vez a la Mac).</summary>
