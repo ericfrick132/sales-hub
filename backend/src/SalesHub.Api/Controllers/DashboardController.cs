@@ -345,6 +345,29 @@ public class DashboardController : ControllerBase
             apps, daily);
     }
 
+    public record BusinessTenant(string ExternalId, string? Name, string Status, string? Plan, decimal MonthlyAmount, string Currency,
+        decimal MonthlyUsd, DateTimeOffset? CreatedAt, DateTimeOffset? FirstPaidAt, DateTimeOffset? CancelledAt, DateTimeOffset LastSeenAt);
+
+    /// <summary>
+    /// Detalle de una app del tab Negocio (fila desplegable): los tenants que la app reporta como
+    /// pagos (active / past_due) con cuándo pagaron por primera vez y cuánto. Sirve para auditar
+    /// lo que reporta cada app en /api/hub/tenant-metrics.
+    /// </summary>
+    [HttpGet("business/{productKey}/tenants")]
+    public async Task<ActionResult<List<BusinessTenant>>> BusinessTenants(string productKey,
+        [FromServices] SalesHub.Infrastructure.Services.TenantMetricsService metrics, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        var rows = await _db.AppTenants.AsNoTracking()
+            .Where(t => t.ProductKey == productKey && (t.Status == "active" || t.Status == "past_due"))
+            .ToListAsync(ct);
+        return rows
+            .OrderByDescending(t => t.FirstPaidAt ?? DateTimeOffset.MinValue)
+            .Select(t => new BusinessTenant(t.ExternalId, t.Name, t.Status, t.Plan, t.MonthlyAmount, t.Currency,
+                Math.Round(metrics.ToUsd(t.MonthlyAmount, t.Currency), 2), t.CreatedAt, t.FirstPaidAt, t.CancelledAt, t.LastSeenAt))
+            .ToList();
+    }
+
     /// <summary>Fuerza la sync de tenants de todas las apps (sin esperar al worker).</summary>
     [HttpPost("business/sync")]
     public async Task<IActionResult> SyncBusiness([FromServices] SalesHub.Infrastructure.Services.TenantMetricsService metrics, CancellationToken ct)
