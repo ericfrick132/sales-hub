@@ -29,9 +29,11 @@ type Card = {
   originSellerName?: string;
   /** El teléfono salió del Instagram del negocio. */
   phoneFromInstagram?: boolean;
+  /** Llamadas registradas en el modo llamadas y la última: quién, cuándo, resultado. */
+  callCount: number; lastCallAt?: string; lastCallBy?: string; lastCallText?: string;
 };
 type Column = { key: string; label: string; total: number; cards: Card[] };
-type Board = { stages: Column[]; total: number; overdue: number; perStage: number };
+type Board = { stages: Column[]; total: number; overdue: number; calls?: number | null; perStage: number };
 type Note = { id: string; text: string; kind: string; createdAt: string; sellerId?: string; sellerName?: string };
 type Detail = {
   id: string; name: string; phone?: string; city?: string; province?: string; website?: string;
@@ -88,6 +90,9 @@ export default function Crm() {
   const [deviceId, setDeviceId] = useState('');
   const [source, setSource] = useState('');
   const [withIg, setWithIg] = useState(false);
+  // Filtro de llamadas: quién llamó y qué día (para medir el objetivo diario).
+  const [calledBy, setCalledBy] = useState('');
+  const [calledOn, setCalledOn] = useState('');
   const [quick, setQuick] = useState<'' | 'mine' | 'overdue' | 'today' | 'stalled' | 'contacted'>('');
   const [openLead, setOpenLead] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -105,6 +110,8 @@ export default function Crm() {
     stalledDays: quick === 'stalled' ? 7 : undefined,
     contactedToday: quick === 'contacted' || undefined,
     withInstagramPhone: withIg || undefined,
+    calledBy: calledBy || undefined,
+    calledOn: calledOn || undefined,
   };
 
   const board = useQuery({
@@ -165,6 +172,9 @@ export default function Crm() {
         <div className="flex items-center gap-3">
           <div className="text-sm text-slate-500">
             {board.data ? `${board.data.total} leads` : '…'}
+            {board.data?.calls != null && (
+              <span className="ml-2 text-brand-700 font-medium">{board.data.calls} llamadas</span>
+            )}
             {board.data && board.data.overdue > 0 && (
               <span className="ml-2 text-red-600 font-medium">{board.data.overdue} vencidos</span>
             )}
@@ -210,6 +220,23 @@ export default function Crm() {
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
+          {admin && (
+            <select className="input text-sm w-44" value={calledBy} onChange={(e) => setCalledBy(e.target.value)}
+              title="Sólo los leads que llamó esta persona">
+              <option value="">Llamado por: todos</option>
+              {(sellers.data ?? []).map((s) => (
+                <option key={s.id} value={s.id}>📞 {s.displayName}</option>
+              ))}
+            </select>
+          )}
+          <div className="flex items-center gap-1">
+            <input type="date" className="input text-sm w-40" value={calledOn} onChange={(e) => setCalledOn(e.target.value)}
+              title="Sólo los leads llamados ese día" />
+            <button type="button" className="text-xs text-slate-500 hover:text-slate-700 underline"
+              onClick={() => setCalledOn(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }))}>
+              llamados hoy
+            </button>
+          </div>
         </div>
         <div className="flex flex-wrap gap-1.5">
           <Chip active={quick === ''} onClick={() => setQuick('')}>Todos</Chip>
@@ -222,10 +249,10 @@ export default function Crm() {
           <span className="w-px bg-slate-200 mx-1" />
           {/* Se combina con los de arriba: los que tienen el número de su Instagram (los más valiosos). */}
           <Chip active={withIg} onClick={() => setWithIg((v) => !v)}>📸 Con número de IG</Chip>
-          {(q || productKey || sellerId || deviceId || source || quick || withIg) && (
+          {(q || productKey || sellerId || deviceId || source || quick || withIg || calledBy || calledOn) && (
             <button
               className="text-xs text-slate-500 hover:text-slate-700 underline ml-1"
-              onClick={() => { setQ(''); setProductKey(''); setSellerId(''); setDeviceId(''); setSource(''); setQuick(''); setWithIg(false); }}>
+              onClick={() => { setQ(''); setProductKey(''); setSellerId(''); setDeviceId(''); setSource(''); setQuick(''); setWithIg(false); setCalledBy(''); setCalledOn(''); }}>
               limpiar
             </button>
           )}
@@ -436,6 +463,14 @@ function CrmCard({ card, onOpen, onDragStart, onDragEnd }: {
         {card.productKey}{card.city ? ` · ${card.city}` : ''}
       </div>
       {card.stageKey === 'demo' && card.demoScheduledAt && <DemoFollowUps demoAt={card.demoScheduledAt} />}
+      {card.lastCallAt && (
+        <div className="text-[11px] text-sky-800 mt-1.5 bg-sky-50 rounded px-1.5 py-1 line-clamp-2"
+             title={card.lastCallText ?? undefined}>
+          📞 {card.lastCallBy ?? 'alguien'} · {fmtDateTime(card.lastCallAt)}
+          {card.lastCallText && <> · {card.lastCallText.replace(/^Llamada:\s*/, '')}</>}
+          {card.callCount > 1 && <span className="text-sky-600"> ({card.callCount} llamadas)</span>}
+        </div>
+      )}
       {card.lastNote && (
         <div className="text-[11px] text-slate-600 mt-1.5 line-clamp-2 bg-slate-50 rounded px-1.5 py-1">
           {card.lastNote}

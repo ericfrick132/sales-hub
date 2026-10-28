@@ -57,7 +57,9 @@ public class CrmController : ControllerBase
         int NoteCount, string? LastNote, int UnreadCount, int Score,
         DateTimeOffset CreatedAt, DateTimeOffset? DemoScheduledAt, string? OriginSellerName,
         // El teléfono principal salió del Instagram del negocio (no de Maps): se pinta distinto.
-        bool PhoneFromInstagram);
+        bool PhoneFromInstagram,
+        // Última llamada del modo llamadas: quién, cuándo y qué resultado.
+        int CallCount, DateTimeOffset? LastCallAt, string? LastCallBy, string? LastCallText);
 
     public record StageColumn(string Key, string Label, int Total, IReadOnlyList<CrmCard> Cards);
 
@@ -84,6 +86,29 @@ public class CrmController : ControllerBase
         public bool WithInstagramPhone { get; set; }
         /// <summary>Etiqueta exacta (ej. "bot-remarketing").</summary>
         public string? Tag { get; set; }
+        /// <summary>Sólo los que llamó este vendedor (nota de llamada suya).</summary>
+        public Guid? CalledBy { get; set; }
+        /// <summary>Sólo los llamados ese día (yyyy-MM-dd, hora AR). Combinado con <see cref="CalledBy"/>: los que llamó él ese día.</summary>
+        public string? CalledOn { get; set; }
+    }
+
+    /// <summary>
+    /// Las notas de llamada que cumplen los filtros de llamadas (quién y qué día); null si el
+    /// filtro no pide nada de llamadas. De acá sale el filtro de leads y el contador de llamadas.
+    /// </summary>
+    private IQueryable<LeadNote>? FilteredCalls(LeadFilter f)
+    {
+        if (f.CalledBy is null && string.IsNullOrWhiteSpace(f.CalledOn)) return null;
+        var calls = _db.LeadNotes.Where(n => n.Kind == LeadNoteKind.Call);
+        if (f.CalledBy is not null) calls = calls.Where(n => n.SellerId == f.CalledBy);
+        if (DateOnly.TryParseExact(f.CalledOn?.Trim(), "yyyy-MM-dd", out var day))
+        {
+            // Argentina no tiene horario de verano: el día arranca a las 00:00 UTC-3.
+            var start = new DateTimeOffset(day.Year, day.Month, day.Day, 0, 0, 0, TimeSpan.FromHours(-3));
+            var end = start.AddDays(1);
+            calls = calls.Where(n => n.CreatedAt >= start && n.CreatedAt < end);
+        }
+        return calls;
     }
 
     /// <summary>
@@ -143,6 +168,9 @@ public class CrmController : ControllerBase
                     || (l.City != null && l.City.ToLower().Contains(term))
                     || (l.WhatsappPhone != null && phoneTerms.Any(p => l.WhatsappPhone.Contains(p))));
         }
+
+        var calls = FilteredCalls(f);
+        if (calls is not null) leadQ = leadQ.Where(l => calls.Any(n => n.LeadId == l.Id));
 
         var now = DateTimeOffset.UtcNow;
         if (f.StalledDays is > 0)
@@ -216,7 +244,7 @@ public class CrmController : ControllerBase
 
         var leadQ = await FilteredLeadsAsync(filter, ct);
         if (leadQ is null)
-            return Ok(new { stages = Stages.Select(s => new StageColumn(s.Key, s.Label, 0, Array.Empty<CrmCard>())), total = 0, overdue = 0, perStage });
+            return Ok(new { stages = Stages.Select(s => new StageColumn(s.Key, s.Label, 0, Array.Empty<CrmCard>())), total = 0, overdue = 0, calls = (int?)null, perStage });
 
         var deviceBySeller = await DeviceBySellerAsync(ct);
         var now = DateTimeOffset.UtcNow;
@@ -229,6 +257,15 @@ public class CrmController : ControllerBase
             .ToDictionaryAsync(x => x.Status, x => x.Count, ct);
 
         var overdue = await leadQ.CountAsync(l => l.NextActionAt != null && l.NextActionAt < now, ct);
+
+        // Con filtro de llamadas, cuántas llamadas hubo (un lead puede tener varias): el número del objetivo.
+        var callNotes = FilteredCalls(filter);
+        int? calls = null;
+        if (callNotes is not null)
+        {
+            var leadIds = leadQ.Select(l => l.Id);
+            calls = await callNotes.CountAsync(n => leadIds.Contains(n.LeadId), ct);
+        }
 
         // Una query por etapa, ya ordenada y cortada en SQL: sólo bajan las tarjetas visibles.
         var columns = new List<StageColumn>();
@@ -243,6 +280,7 @@ public class CrmController : ControllerBase
             stages = columns,
             total = counts.Values.Sum(),
             overdue,
+            calls,
             perStage,
         });
     }
@@ -315,6 +353,13 @@ public class CrmController : ControllerBase
                 NoteCount = _db.LeadNotes.Count(n => n.LeadId == l.Id),
                 LastNote = _db.LeadNotes.Where(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Note)
                     .OrderByDescending(n => n.CreatedAt).Select(n => n.Text).FirstOrDefault(),
+                CallCount = _db.LeadNotes.Count(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Call),
+                LastCallAt = _db.LeadNotes.Where(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Call)
+                    .OrderByDescending(n => n.CreatedAt).Select(n => (DateTimeOffset?)n.CreatedAt).FirstOrDefault(),
+                LastCallBy = _db.LeadNotes.Where(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Call)
+                    .OrderByDescending(n => n.CreatedAt).Select(n => n.Seller != null ? n.Seller.DisplayName : null).FirstOrDefault(),
+                LastCallText = _db.LeadNotes.Where(n => n.LeadId == l.Id && n.Kind == LeadNoteKind.Call)
+                    .OrderByDescending(n => n.CreatedAt).Select(n => n.Text).FirstOrDefault(),
             })
             .ToListAsync(ct);
 
@@ -330,7 +375,7 @@ public class CrmController : ControllerBase
                 r.LastMessageAt ?? r.UpdatedAt,
                 r.NextActionAt, r.NextActionNote,
                 r.NoteCount, r.LastNote, r.Unread, r.Score, r.CreatedAt, r.DemoScheduledAt, r.OriginSellerName,
-                r.PhoneFromInstagram);
+                r.PhoneFromInstagram, r.CallCount, r.LastCallAt, r.LastCallBy, r.LastCallText);
         }).ToList();
         return (cards, hasMore);
     }
