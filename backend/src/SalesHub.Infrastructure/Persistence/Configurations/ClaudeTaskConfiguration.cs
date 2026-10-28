@@ -19,6 +19,10 @@ public class ClaudeTaskConfiguration : IEntityTypeConfiguration<ClaudeTask>
         b.Property(x => x.Result).HasColumnType("text");
         b.Property(x => x.CostUsd).HasPrecision(10, 4);
         b.Property(x => x.Error).HasMaxLength(1000);
+        b.Property(x => x.Code).HasMaxLength(8);
+        b.Property(x => x.AudioMessageId).HasMaxLength(128);
         b.HasIndex(x => new { x.Status, x.CreatedAt });
+        b.HasIndex(x => new { x.ReplyTo, x.Code });
+        b.HasIndex(x => x.AudioMessageId);
     }
 }

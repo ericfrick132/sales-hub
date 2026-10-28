@@ -9,9 +9,12 @@ using SalesHub.Infrastructure.Persistence;
 namespace SalesHub.Infrastructure.Services;
 
 /// <summary>
-/// Tareas para Claude Code por audio: una nota de voz grabada (no reenviada) en el SELF-CHAT de la línea
-/// del relay de transcripción se transcribe y se le muestra a Eric ("¿Lo mando?"); recién con su "sí" se
-/// encola en <see cref="ClaudeTaskService"/> y la Mac la corre. "no" la descarta; otro audio la reemplaza.
+/// Tareas para Claude Code por WhatsApp, solo en el SELF-CHAT de la línea del relay de transcripción:
+///  - Nota de voz grabada (no reenviada): se transcribe y se le muestra a Eric ("¿Lo mando?"); recién con su
+///    "sí" se encola en <see cref="ClaudeTaskService"/> y la Mac la corre. "no" la descarta; otro audio la reemplaza.
+///  - Citar un mensaje de una tarea (los del bot llevan #código) o su audio sigue ESE thread: un audio citando
+///    pide confirmación y retoma la sesión de esa tarea; un texto escrito citando va directo (no hay transcripción
+///    que verificar); "sí"/"no" citando una confirmación decide esa tarea puntual.
 /// Los audios reenviados al self-chat siguen yendo a transcripción (<see cref="AudioTranscriptionRelay"/>).
 ///
 /// Doble filtro, como el relay de transcripción: la línea tiene que ser la de <c>transcription_settings</c>
@@ -21,8 +24,10 @@ namespace SalesHub.Infrastructure.Services;
 public class ClaudeTaskRelay
 {
     private static readonly Regex NonDigit = new(@"\D", RegexOptions.Compiled);
-    // "seguí …" / "Claude, seguí …" retoma la sesión de la última tarea.
+    // "seguí …" / "Claude, seguí …" sin citar nada retoma la sesión de la última tarea.
     private static readonly Regex ResumeCue = new(@"^\s*(claude[\s,.:]*)?segu[ií]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // Código de la tarea en los mensajes del bot: "🤖 #a3f9c1 …".
+    private static readonly Regex TaskCode = new(@"^\s*🤖\s*#([0-9a-f]{6})\b", RegexOptions.Compiled);
 
     // Respuesta a "¿Lo mando?". Mensaje entero, para no comerse un texto que solo arranca con "ok".
     private static readonly Regex YesAnswer = new(@"^\s*(s[ií]+|dale|ok(a|ey)?|mand[aá](la|lo)?|va|listo|👍)[\s.!]*$",
@@ -45,14 +50,21 @@ public class ClaudeTaskRelay
         _db = db; _evo = evo; _whisper = whisper; _tasks = tasks; _log = log;
     }
 
+    private sealed record Parsed(bool Voice, bool Forwarded, string? QuotedId, string? QuotedCode);
+
     public async Task<bool> TryHandleAsync(ConversationService.IncomingMessage incoming, CancellationToken ct)
     {
         // Filtros baratos primero: la línea recibe todo el tráfico de leads.
         if (!incoming.FromMe || incoming.FromSync || !IsSelfChat(incoming)) return false;
-        var voice = IsOwnVoiceNote(incoming.RawJson);
-        // Texto: solo un sí/no a la confirmación. Nuestros avisos (🤖) también llegan como fromMe.
-        var answer = voice ? null : ParseAnswer(incoming.Text);
-        if (!voice && answer is null) return false;
+        var msg = Parse(incoming.RawJson);
+        if (msg is null || msg.Forwarded) return false;
+        var text = (incoming.Text ?? "").Trim();
+        // Nuestros avisos (🤖) también llegan como fromMe en el self-chat.
+        if (!msg.Voice && (text.Length == 0 || text.StartsWith(ClaudeTaskService.Prefix.Trim(), StringComparison.Ordinal))) return false;
+        var answer = msg.Voice ? null : ParseAnswer(text);
+        var quotes = msg.QuotedId is not null || msg.QuotedCode is not null;
+        // Texto suelto que no es sí/no ni cita nada: no es nuestro.
+        if (!msg.Voice && answer is null && !quotes) return false;
 
         if (!await _db.IsFlagOnAsync("claude_tasks", true, ct)) return false;
         var line = await _db.TranscriptionSettings.AsNoTracking().Select(s => s.InstanceName).FirstOrDefaultAsync(ct);
@@ -62,6 +74,10 @@ public class ClaudeTaskRelay
         var allowed = await _db.TranscriptionPhones.AsNoTracking().Select(p => p.Phone).ToListAsync(ct);
         if (owner.Length < 8 || !allowed.Any(p => Suffix(Digits(p)) == Suffix(owner))) return false;
 
+        var quoted = quotes ? await _tasks.FindQuotedAsync(owner, msg.QuotedCode, msg.QuotedId, ct) : null;
+        // Un texto que cita algo que no es una tarea (otra nota del self-chat) no es nuestro.
+        if (!msg.Voice && answer is null && quoted is null) return false;
+
         if (incoming.MessageId is not null)
         {
             var cutoff = DateTimeOffset.UtcNow.AddMinutes(-10);
@@ -69,15 +85,26 @@ public class ClaudeTaskRelay
             if (!Recent.TryAdd(incoming.MessageId, DateTimeOffset.UtcNow)) return true;
         }
 
-        if (answer is not null) return await _tasks.ConfirmAsync(owner, answer.Value, ct);
+        if (answer is not null)
+        {
+            if (await _tasks.ConfirmAsync(owner, answer.Value, quoted, ct)) return true;
+            if (quoted is null) return false; // "ok" suelto sin nada esperando: sigue la cadena
+            // "dale"/"no" citando una tarea ya terminada: se toma como instrucción para ese thread.
+        }
 
-        string? text = null;
+        if (!msg.Voice)
+        {
+            await _tasks.CreateAsync(incoming.InstanceName, owner, text, null, quoted, false, confirmed: true, ct);
+            return true;
+        }
+
+        string? transcript = null;
         if (_whisper.IsConfigured)
         {
             var audio = await _evo.GetMediaBase64Async(incoming.InstanceName, incoming.RawJson, ct);
-            if (audio is not null) text = await _whisper.TranscribeAsync(audio, "voice.ogg", ct);
+            if (audio is not null) transcript = await _whisper.TranscribeAsync(audio, "voice.ogg", ct);
         }
-        if (string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrWhiteSpace(transcript))
         {
             _log.LogWarning("ClaudeTask: no se pudo transcribir el audio (instance={I})", incoming.InstanceName);
             await _evo.SendTextAsync(incoming.InstanceName, owner,
@@ -85,15 +112,15 @@ public class ClaudeTaskRelay
             return true;
         }
 
-        var task = await _tasks.CreateAsync(incoming.InstanceName, owner, text.Trim(), ResumeCue.IsMatch(text), ct);
-        _log.LogInformation("ClaudeTask {Id} encolada (instance={I}, mac={Online})", task.Id, incoming.InstanceName, ClaudeTaskService.MacOnline);
+        var task = await _tasks.CreateAsync(incoming.InstanceName, owner, transcript.Trim(), incoming.MessageId, quoted,
+            resumeLast: quoted is null && ResumeCue.IsMatch(transcript), confirmed: false, ct);
+        _log.LogInformation("ClaudeTask {Id} esperando confirmación (instance={I}, thread={P})", task.Id, incoming.InstanceName, task.ParentTaskId);
         return true;
     }
 
     /// <summary>true = sí, false = no, null = otra cosa.</summary>
-    private static bool? ParseAnswer(string? text)
+    private static bool? ParseAnswer(string text)
     {
-        if (string.IsNullOrWhiteSpace(text)) return null;
         if (YesAnswer.IsMatch(text)) return true;
         if (NoAnswer.IsMatch(text)) return false;
         return null;
@@ -106,26 +133,49 @@ public class ClaudeTaskRelay
         return owner.Length >= 8 && chat.Length >= 8 && owner[^8..] == chat[^8..];
     }
 
-    /// <summary>Nota de voz/audio grabado acá: los reenviados (isForwarded / forwardingScore) no son tareas.</summary>
-    private static bool IsOwnVoiceNote(string? rawJson)
+    /// <summary>
+    /// Tipo de mensaje y cita (contextInfo del cuerpo: stanzaId = id del mensaje citado, quotedMessage = su
+    /// contenido, de donde sale el #código si citó un mensaje del bot). Reenviados (isForwarded /
+    /// forwardingScore) quedan marcados: no son tareas.
+    /// </summary>
+    private static Parsed? Parse(string? rawJson)
     {
-        if (string.IsNullOrWhiteSpace(rawJson)) return false;
+        if (string.IsNullOrWhiteSpace(rawJson)) return null;
         try
         {
             using var doc = JsonDocument.Parse(rawJson);
-            if (!doc.RootElement.TryGetProperty("message", out var m) || m.ValueKind != JsonValueKind.Object
-                || !m.TryGetProperty("audioMessage", out var audio) || audio.ValueKind != JsonValueKind.Object)
-                return false;
-            if (audio.TryGetProperty("contextInfo", out var ctx) && ctx.ValueKind == JsonValueKind.Object)
+            if (!doc.RootElement.TryGetProperty("message", out var m) || m.ValueKind != JsonValueKind.Object) return null;
+
+            var voice = m.TryGetProperty("audioMessage", out var audio) && audio.ValueKind == JsonValueKind.Object;
+            JsonElement? ctx = null;
+            foreach (var body in m.EnumerateObject())
+                if (body.Value.ValueKind == JsonValueKind.Object
+                    && body.Value.TryGetProperty("contextInfo", out var c) && c.ValueKind == JsonValueKind.Object)
+                { ctx = c; break; }
+            if (ctx is null && doc.RootElement.TryGetProperty("contextInfo", out var top) && top.ValueKind == JsonValueKind.Object)
+                ctx = top;
+
+            bool forwarded = false;
+            string? quotedId = null, quotedCode = null;
+            if (ctx is { } x)
             {
-                if (ctx.TryGetProperty("isForwarded", out var f) && f.ValueKind == JsonValueKind.True) return false;
-                if (ctx.TryGetProperty("forwardingScore", out var s) && s.ValueKind == JsonValueKind.Number && s.GetInt32() > 0) return false;
+                forwarded = (x.TryGetProperty("isForwarded", out var f) && f.ValueKind == JsonValueKind.True)
+                    || (x.TryGetProperty("forwardingScore", out var s) && s.ValueKind == JsonValueKind.Number && s.GetInt32() > 0);
+                if (x.TryGetProperty("stanzaId", out var sid) && sid.ValueKind == JsonValueKind.String) quotedId = sid.GetString();
+                if (x.TryGetProperty("quotedMessage", out var q) && q.ValueKind == JsonValueKind.Object)
+                {
+                    var qt = q.TryGetProperty("conversation", out var conv) && conv.ValueKind == JsonValueKind.String ? conv.GetString()
+                        : q.TryGetProperty("extendedTextMessage", out var ext) && ext.TryGetProperty("text", out var t)
+                          && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+                    var code = qt is null ? null : TaskCode.Match(qt);
+                    if (code is { Success: true }) quotedCode = code.Groups[1].Value;
+                }
             }
-            return true;
+            return new Parsed(voice, forwarded, quotedId, quotedCode);
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 

@@ -15,9 +15,16 @@ public class ClaudeTask
     /// <summary>Número (dígitos) al que se le manda el resultado: el dueño del self-chat.</summary>
     public string ReplyTo { get; set; } = string.Empty;
 
-    /// <summary>Lo que dijo en el audio (transcripción de Whisper).</summary>
+    /// <summary>Código corto (6 hex) que va en cada mensaje del bot: citar ese mensaje sigue este thread.</summary>
+    public string Code { get; set; } = string.Empty;
+    /// <summary>Id del mensaje de WhatsApp del audio (citarlo también sigue el thread).</summary>
+    public string? AudioMessageId { get; set; }
+
+    /// <summary>Lo que dijo en el audio (transcripción de Whisper) o lo que escribió citando una tarea.</summary>
     public string Prompt { get; set; } = string.Empty;
-    /// <summary>Si el audio arrancó con "seguí": sesión de Claude Code a retomar (la de la última tarea terminada).</summary>
+    /// <summary>Tarea cuyo thread sigue (la citada, o la última terminada si arrancó con "seguí").</summary>
+    public Guid? ParentTaskId { get; set; }
+    /// <summary>Sesión de Claude Code a retomar: la de la tarea padre, resuelta cuando la Mac la toma.</summary>
     public string? ResumeSessionId { get; set; }
 
     /// <summary>"confirm" (esperando el sí de Eric), "pending", "running", "done", "failed", "expired" o "cancelled".</summary>

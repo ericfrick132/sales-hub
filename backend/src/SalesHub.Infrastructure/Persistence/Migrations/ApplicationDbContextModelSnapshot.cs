@@ -731,9 +731,20 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AudioMessageId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("audio_message_id");
+
                     b.Property<DateTimeOffset?>("ClaimedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("claimed_at");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("code");
 
                     b.Property<decimal?>("CostUsd")
                         .HasPrecision(10, 4)
@@ -758,6 +769,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
                         .HasColumnName("instance_name");
+
+                    b.Property<Guid?>("ParentTaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_task_id");
 
                     b.Property<string>("Prompt")
                         .IsRequired()
@@ -792,6 +807,12 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_claude_tasks");
+
+                    b.HasIndex("AudioMessageId")
+                        .HasDatabaseName("ix_claude_tasks_audio_message_id");
+
+                    b.HasIndex("ReplyTo", "Code")
+                        .HasDatabaseName("ix_claude_tasks_reply_to_code");
 
                     b.HasIndex("Status", "CreatedAt")
                         .HasDatabaseName("ix_claude_tasks_status_created_at");

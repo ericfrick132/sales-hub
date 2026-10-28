@@ -9,7 +9,8 @@ namespace SalesHub.Infrastructure.Services;
 /// <summary>
 /// Cola de tareas para Claude Code en la Mac (ver <see cref="ClaudeTask"/>): la arma el relay del webhook,
 /// la toma el poller de la Mac (que de paso avisa que está prendida) y al cerrarla le manda el resultado
-/// a Eric por WhatsApp. Toda respuesta arranca con <see cref="Prefix"/>.
+/// a Eric por WhatsApp. Toda respuesta arranca con <see cref="Prefix"/> y el código de la tarea (#a3f9c1):
+/// citar cualquiera de esos mensajes (o el audio original) sigue el thread de esa tarea.
 /// </summary>
 public class ClaudeTaskService
 {
@@ -40,37 +41,65 @@ public class ClaudeTaskService
     public record NextTask(Guid Id, string Prompt, string? ResumeSessionId);
     public record ResultIn(bool Ok, string? Result, string? SessionId, decimal? CostUsd, string? Error);
 
-    public async Task<ClaudeTask> CreateAsync(string instance, string replyTo, string prompt, bool resume, CancellationToken ct)
+    /// <summary>Tarea citada: por el código (#a3f9c1) del mensaje citado o por el id del audio citado.</summary>
+    public Task<ClaudeTask?> FindQuotedAsync(string replyTo, string? code, string? quotedMessageId, CancellationToken ct)
     {
-        string? resumeId = null;
-        if (resume)
-            resumeId = await _db.ClaudeTasks.AsNoTracking()
-                .Where(t => t.Status == "done" && t.SessionId != null)
-                .OrderByDescending(t => t.FinishedAt).Select(t => t.SessionId).FirstOrDefaultAsync(ct);
+        if (code is null && quotedMessageId is null) return Task.FromResult<ClaudeTask?>(null);
+        return _db.ClaudeTasks
+            .Where(t => t.ReplyTo == replyTo && ((code != null && t.Code == code) || (quotedMessageId != null && t.AudioMessageId == quotedMessageId)))
+            .OrderByDescending(t => t.CreatedAt).FirstOrDefaultAsync(ct);
+    }
 
-        // Un audio nuevo reemplaza al que esperaba confirmación (era una corrección).
+    /// <summary>
+    /// Tarea nueva desde un audio (queda esperando el "sí") o desde un texto escrito citando una tarea
+    /// (<paramref name="confirmed"/>: va directo a la cola). <paramref name="parent"/> = thread a seguir;
+    /// <paramref name="resumeLast"/> = "seguí" sin citar → la última sesión terminada.
+    /// </summary>
+    public async Task<ClaudeTask> CreateAsync(string instance, string replyTo, string prompt, string? audioMessageId,
+        ClaudeTask? parent, bool resumeLast, bool confirmed, CancellationToken ct)
+    {
+        Guid? parentId = parent?.Id;
+        if (parent is null && resumeLast)
+            parentId = await _db.ClaudeTasks.AsNoTracking()
+                .Where(t => t.ReplyTo == replyTo && t.Status == "done" && t.SessionId != null)
+                .OrderByDescending(t => t.FinishedAt).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
+
+        // Un audio nuevo reemplaza al que esperaba confirmación (era una corrección); si cita una tarea que
+        // todavía esperaba el sí, hereda su thread.
         var waiting = await _db.ClaudeTasks.Where(t => t.ReplyTo == replyTo && t.Status == "confirm").ToListAsync(ct);
         foreach (var w in waiting) { w.Status = "cancelled"; w.FinishedAt = DateTimeOffset.UtcNow; w.Error = "reemplazada por otro audio"; }
+        if (parent is { Status: "confirm" }) parentId = parent.ParentTaskId;
 
-        var task = new ClaudeTask { InstanceName = instance, ReplyTo = replyTo, Prompt = prompt, ResumeSessionId = resumeId, Status = "confirm" };
+        var task = new ClaudeTask
+        {
+            InstanceName = instance, ReplyTo = replyTo, Prompt = prompt, AudioMessageId = audioMessageId,
+            ParentTaskId = parentId, Code = NewCode(), Status = confirmed ? "pending" : "confirm",
+        };
         _db.ClaudeTasks.Add(task);
         await _db.SaveChangesAsync(ct);
 
-        var how = resume ? (resumeId is null ? "\n(No hay sesión anterior para seguir: arranca una nueva.)" : "\n(Sigue la sesión anterior.)") : "";
-        await NotifyAsync(task, $"Le voy a pedir a Claude:\n«{prompt}»{how}\n\n¿Lo mando? Respondé sí o no, o mandá otro audio para corregirlo.", ct);
+        var thread = parentId is null
+            ? "Sesión nueva."
+            : $"Sigue el thread de #{await _db.ClaudeTasks.Where(t => t.Id == parentId).Select(t => t.Code).FirstOrDefaultAsync(ct)}.";
+        if (confirmed)
+            await NotifyAsync(task, $"Mandada: «{Cut(prompt, 300)}»\n{thread} {Where()}", ct);
+        else
+            await NotifyAsync(task, $"Le voy a pedir a Claude:\n«{prompt}»\n({thread})\n\n¿Lo mando? Respondé sí o no, o mandá otro audio para corregirlo.", ct);
         return task;
     }
 
     /// <summary>
-    /// Respuesta de texto a la confirmación. Devuelve false si no hay tarea esperando o el texto no es sí/no
-    /// (el mensaje sigue la cadena normal del webhook).
+    /// Respuesta sí/no a la confirmación: a la tarea citada, o si no cita nada a la última esperando.
+    /// Devuelve false si no hay tarea esperando (el mensaje sigue la cadena normal del webhook).
     /// </summary>
-    public async Task<bool> ConfirmAsync(string replyTo, bool yes, CancellationToken ct)
+    public async Task<bool> ConfirmAsync(string replyTo, bool yes, ClaudeTask? quoted, CancellationToken ct)
     {
         var since = DateTimeOffset.UtcNow - ConfirmTtl;
-        var task = await _db.ClaudeTasks
-            .Where(t => t.ReplyTo == replyTo && t.Status == "confirm" && t.CreatedAt >= since)
-            .OrderByDescending(t => t.CreatedAt).FirstOrDefaultAsync(ct);
+        var task = quoted is not null
+            ? await _db.ClaudeTasks.FirstOrDefaultAsync(t => t.Id == quoted.Id && t.Status == "confirm" && t.CreatedAt >= since, ct)
+            : await _db.ClaudeTasks
+                .Where(t => t.ReplyTo == replyTo && t.Status == "confirm" && t.CreatedAt >= since)
+                .OrderByDescending(t => t.CreatedAt).FirstOrDefaultAsync(ct);
         if (task is null) return false;
 
         if (!yes)
@@ -87,25 +116,39 @@ public class ClaudeTaskService
         task.Status = "pending";
         task.CreatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        var where = MacOnline
-            ? "Mandada, la Mac la toma ahora."
-            : $"💤 Mandada, pero la Mac está apagada: la corro cuando se prenda (si no, vence en {PendingTtl.TotalHours:0} h).";
-        await NotifyAsync(task, where, ct);
+        await NotifyAsync(task, "Mandada. " + Where(), ct);
         return true;
     }
 
-    /// <summary>Consulta del poller: marca la Mac como prendida y le da la tarea más vieja en cola.</summary>
+    private static string Where() => MacOnline
+        ? "La Mac la toma ahora."
+        : $"💤 La Mac está apagada: la corro cuando se prenda (si no, vence en {PendingTtl.TotalHours:0} h).";
+
+    /// <summary>
+    /// Consulta del poller: marca la Mac como prendida y le da la tarea más vieja en cola. Una tarea que sigue
+    /// un thread espera a que la tarea padre termine, y retoma su sesión de Claude Code.
+    /// </summary>
     public async Task<NextTask?> ClaimNextAsync(CancellationToken ct)
     {
         _lastPoll = DateTimeOffset.UtcNow;
         await SweepAsync(ct);
 
-        var task = await _db.ClaudeTasks.Where(t => t.Status == "pending").OrderBy(t => t.CreatedAt).FirstOrDefaultAsync(ct);
-        if (task is null) return null;
-        task.Status = "running";
-        task.ClaimedAt = DateTimeOffset.UtcNow;
-        await _db.SaveChangesAsync(ct);
-        return new NextTask(task.Id, task.Prompt, task.ResumeSessionId);
+        var queue = await _db.ClaudeTasks.Where(t => t.Status == "pending").OrderBy(t => t.CreatedAt).Take(20).ToListAsync(ct);
+        foreach (var task in queue)
+        {
+            if (task.ParentTaskId is { } pid && task.ResumeSessionId is null)
+            {
+                var parent = await _db.ClaudeTasks.AsNoTracking().Where(t => t.Id == pid)
+                    .Select(t => new { t.Status, t.SessionId }).FirstOrDefaultAsync(ct);
+                if (parent is { Status: "pending" or "running" }) continue; // el padre todavía no tiene sesión
+                task.ResumeSessionId = parent?.SessionId;
+            }
+            task.Status = "running";
+            task.ClaimedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return new NextTask(task.Id, task.Prompt, task.ResumeSessionId);
+        }
+        return null;
     }
 
     public async Task<bool> CompleteAsync(Guid id, ResultIn r, CancellationToken ct)
@@ -124,7 +167,7 @@ public class ClaudeTaskService
         var body = r.Ok
             ? $"Listo{cost}:\n\n{Cut(r.Result, MaxReply)}"
             : $"Falló la tarea «{Cut(task.Prompt, 120)}»{cost}:\n{Cut(r.Error ?? r.Result, 800)}";
-        await NotifyAsync(task, body, ct);
+        await NotifyAsync(task, body + "\n\n(Citá este mensaje para seguir este thread.)", ct);
         return true;
     }
 
@@ -160,9 +203,11 @@ public class ClaudeTaskService
 
     private async Task NotifyAsync(ClaudeTask task, string text, CancellationToken ct)
     {
-        var ok = await _evo.SendTextAsync(task.InstanceName, task.ReplyTo, Prefix + text, ct);
+        var ok = await _evo.SendTextAsync(task.InstanceName, task.ReplyTo, $"{Prefix}#{task.Code} {text}", ct);
         if (!ok) _log.LogWarning("ClaudeTask {Id}: no se pudo mandar el aviso por WhatsApp", task.Id);
     }
+
+    private static string NewCode() => Guid.NewGuid().ToString("N")[..6];
 
     private static string? Cut(string? s, int max) =>
         s is null ? null : s.Length <= max ? s : s[..max] + "…";
