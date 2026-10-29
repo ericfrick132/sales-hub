@@ -90,10 +90,14 @@ public class PipelineService
                 if (src.Source == LeadSource.GooglePlaces)
                 {
                     var since = DateTimeOffset.UtcNow.Date;
-                    if (_google.PlacesDailyCap > 0)
+                    // Los productos exclusivos no compiten por el tope global de corridas con las
+                    // apps (ni lo consumen): los limita solo su GooglePlacesDailyLeadCap.
+                    if (_google.PlacesDailyCap > 0 && !product.Exclusive)
                     {
+                        var exclusiveKeys = (await _db.ExclusiveProductKeysAsync(ct)).ToList();
                         var todayRuns = await _db.ScrapeLogs
-                            .CountAsync(l => l.Source == LeadSource.GooglePlaces && l.RunAt >= since, ct);
+                            .CountAsync(l => l.Source == LeadSource.GooglePlaces && l.RunAt >= since
+                                          && !exclusiveKeys.Contains(l.ProductKey), ct);
                         if (todayRuns >= _google.PlacesDailyCap)
                         {
                             _log.LogWarning("Google Places global runs/day cap hit ({Count}/{Cap}); skipping {Product}",
