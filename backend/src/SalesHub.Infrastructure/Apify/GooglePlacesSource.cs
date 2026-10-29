@@ -46,6 +46,9 @@ public class GooglePlacesSource : IApifySource
         var categories = request.Category is not null
             ? new[] { request.Category }
             : (request.Product.Categories.Count > 0 ? request.Product.Categories.ToArray() : new[] { "negocio" });
+        // Orden al azar por corrida: el tope de leads se llena con los primeros rubros, así que
+        // en orden fijo siempre ganaba el primero (ej. 15/15 odontólogos) y el resto nunca salía.
+        if (request.Category is null) Random.Shared.Shuffle(categories);
 
         var leads = new List<Lead>();
         var totalRaw = 0;
