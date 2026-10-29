@@ -306,6 +306,13 @@ public class SearchJobsController : ControllerBase
 
         var product = await _db.Products.FirstOrDefaultAsync(p => p.ProductKey == req.ProductKey, ct);
         if (product is null) return BadRequest(new { error = "Producto desconocido" });
+        if (!CurrentUser.IsAdmin(User))
+        {
+            // Solo productos que el vendedor trabaja (whitelist; catch-all = todo menos exclusivos).
+            var me = await _db.Sellers.AsNoTracking().FirstAsync(s => s.Id == sellerId, ct);
+            if (!me.Covers(product.ProductKey, await _db.ExclusiveProductKeysAsync(ct)))
+                return BadRequest(new { error = $"No trabajás {product.DisplayName}: elegí tu producto en el panel." });
+        }
 
         Locality? locality = null;
         if (!string.IsNullOrWhiteSpace(req.LocalityGid2))

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.10.0
+// @version      0.11.0
 // @description  Captura negocios desde Google Maps (y el teléfono de su Instagram) y los manda a SalesHub como leads.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
@@ -1143,7 +1143,19 @@
     try {
       const data = await apiCall('GET', '/api/products', null);
       products = (data || []).filter(p => p.active);
+      // Solo los productos que trabaja este vendedor (whitelist). Whitelist vacía (catch-all)
+      // = todos menos los exclusivos de otros. Admin ve todo.
+      try {
+        const me = await apiCall('GET', '/api/sellers/me', null);
+        const wl = me?.verticalsWhitelist || [];
+        if (me?.role !== 'Admin') {
+          products = wl.length > 0
+            ? products.filter(p => wl.includes(p.productKey))
+            : products.filter(p => !p.exclusive);
+        }
+      } catch (_) { /* sin /me seguimos con la lista completa: el backend igual valida */ }
       GM_setValue('saleshub.products', products);
+      if (cfg.productKey && !products.some(p => p.productKey === cfg.productKey)) cfg.productKey = '';
       if (!cfg.productKey && products.length > 0) {
         cfg.productKey = products[0].productKey;
         GM_setValue('saleshub.productKey', cfg.productKey);
