@@ -188,6 +188,8 @@ export interface Product {
   aiSalesPlaybook: string;
   autoPilot: boolean;
   autoReengage: boolean;
+  // Solo lo trabajan los vendedores que lo tienen en su whitelist (sin catch-all, pool ni remarketing).
+  exclusive?: boolean;
 }
 
 export interface MessageStep {

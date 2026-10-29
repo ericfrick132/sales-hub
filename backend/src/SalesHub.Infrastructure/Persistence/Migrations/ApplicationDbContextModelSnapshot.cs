@@ -3811,6 +3811,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("display_name");
 
+                    b.Property<bool>("Exclusive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("exclusive");
+
                     b.Property<int>("GooglePlacesDailyLeadCap")
                         .HasColumnType("integer")
                         .HasColumnName("google_places_daily_lead_cap");

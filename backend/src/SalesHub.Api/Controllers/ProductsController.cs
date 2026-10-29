@@ -208,7 +208,7 @@ public class ProductsController : ControllerBase
         return NoContent();
     }
 
-    public record AutomationRequest(bool AutoPilot, bool AutoReengage, bool? AppManagedTransport = null);
+    public record AutomationRequest(bool AutoPilot, bool AutoReengage, bool? AppManagedTransport = null, bool? Exclusive = null);
 
     /// <summary>
     /// Switch on/off del piloto automático y el re-enganche, sin tocar el resto de la
@@ -225,6 +225,8 @@ public class ProductsController : ControllerBase
         p.AutoReengage = req.AutoPilot && req.AutoReengage;
         // Transporte gestionado por la app (relay): si viene, lo seteamos; null = no tocar.
         if (req.AppManagedTransport is bool amt) p.AppManagedTransport = amt;
+        // Producto exclusivo (solo para quien lo tiene en la whitelist): null = no tocar.
+        if (req.Exclusive is bool ex) p.Exclusive = ex;
         p.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return ToDto(p);
@@ -519,5 +521,6 @@ public class ProductsController : ControllerBase
         p.SourceCadences.Select(c => new SourceCadenceDto(c.Source, StepsToDto(c.Steps))).ToList(),
         p.AiSalesPlaybook ?? string.Empty,
         p.AutoPilot,
-        p.AutoReengage);
+        p.AutoReengage,
+        p.Exclusive);
 }

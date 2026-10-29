@@ -77,6 +77,13 @@ public class Product
     // sales-hub manda como siempre (no rompe nada).
     public bool AppManagedTransport { get; set; } = false;
 
+    // Producto exclusivo: solo lo trabajan los vendedores que lo tienen en su whitelist.
+    // Los catch-all (whitelist vacía) no lo reciben, el rebalancer no lo rescata al pool,
+    // no aparece en el pool de otros y el remarketing "todos los productos" lo saltea.
+    // El scrape programado busca solo en las RegionsAssigned de sus dueños (si tienen).
+    // Caso: estudio contable de Carla, aislado del equipo de las apps.
+    public bool Exclusive { get; set; } = false;
+
     // Instrucciones de venta para el agente de IA que sugiere respuestas en
     // Conversaciones (tono, objeciones comunes, cuándo mandar precio/checkout).
     // Texto libre por vertical. Vacío = el agente usa solo las instrucciones base.

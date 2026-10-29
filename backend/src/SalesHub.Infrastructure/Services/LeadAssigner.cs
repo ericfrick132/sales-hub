@@ -61,10 +61,9 @@ public class LeadAssigner : ILeadAssigner
                      || (s.Role == SellerRole.Admin && s.VerticalsWhitelist != null && s.VerticalsWhitelist.Count > 0))
             .ToList();
 
+        var exclusive = await _db.ExclusiveProductKeysAsync(ct);
         candidates = candidates
-            .Where(s => s.VerticalsWhitelist == null
-                     || s.VerticalsWhitelist.Count == 0
-                     || s.VerticalsWhitelist.Contains(productKey))
+            .Where(s => s.Covers(productKey, exclusive))
             .Where(s => TakesLeadsFrom(s, leadCreatedAt))
             .ToList();
         if (candidates.Count == 0) return null;
@@ -146,9 +145,10 @@ public class LeadAssigner : ILeadAssigner
         var dedicated = sellers
             .Where(s => s.VerticalsWhitelist is { Count: > 0 } && s.VerticalsWhitelist.Contains(productKey))
             .ToList();
+        var exclusive = await _db.ExclusiveProductKeysAsync(ct);
         var owners = dedicated.Count > 0
             ? dedicated
-            : sellers.Where(s => s.VerticalsWhitelist is not { Count: > 0 }).ToList();
+            : sellers.Where(s => s.VerticalsWhitelist is not { Count: > 0 } && s.Covers(productKey, exclusive)).ToList();
         if (owners.Count == 0) return null;
 
         static bool IsReady(Seller s) =>

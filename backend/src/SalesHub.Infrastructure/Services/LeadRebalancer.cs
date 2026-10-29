@@ -78,14 +78,17 @@ public class LeadRebalancer
                      || (s.Role == SellerRole.Admin && s.VerticalsWhitelist is { Count: > 0 }))
             .ToList();
 
-        var rescued = await RescueFrozenAsync(capable, ct, force);
+        // Productos exclusivos: un catch-all conectado NO los cubre (ver ProductExclusivityExtensions).
+        var exclusive = await _db.ExclusiveProductKeysAsync(ct);
+
+        var rescued = await RescueFrozenAsync(capable, exclusive, ct, force);
 
         var orphansAssigned = 0;
         var queuedForReady = 0;
         var drained = 0;
         if (capable.Count > 0)
         {
-            orphansAssigned = await RetryOrphansAsync(capable, ct);
+            orphansAssigned = await RetryOrphansAsync(capable, exclusive, ct);
             queuedForReady = await QueueAssignedForReadyAsync(capable, ct);
             drained = await DrainToSpecialistsAsync(capable, ct);
         }
@@ -95,7 +98,7 @@ public class LeadRebalancer
         // dueño conecta, QueueAssignedForReady los encola. Sin esto, los leads de un producto
         // cuyo dueño está desconectado (turnospro) o sin whitelistear en nadie conectado
         // (playcrew) se acumulaban como New/sin asignar para siempre.
-        orphansAssigned += await AssignOrphansToOwnersAsync(capable, ct);
+        orphansAssigned += await AssignOrphansToOwnersAsync(capable, exclusive, ct);
 
         if (mismatch + rescued + orphansAssigned + queuedForReady + drained > 0)
             _log.LogInformation("Rebalance: {Mismatch} liberados por whitelist, {Rescued} rescatados al pool, {Orphans} huérfanos asignados, {Queued} encolados de dueños recién conectados, {Drained} drenados a líneas dedicadas",
@@ -210,7 +213,7 @@ public class LeadRebalancer
     /// Con <paramref name="force"/> ignora la ventana de gracia (rescata ya, sin esperar horas).
     /// Solo rescata leads cuyo producto HOY tiene vendedor conectado que lo cubra: sacárselos
     /// al dueño offline para que el fallback por dueño se los vuelva a dar sería puro churn.</summary>
-    private async Task<int> RescueFrozenAsync(IReadOnlyList<Seller> capable, CancellationToken ct, bool force = false)
+    private async Task<int> RescueFrozenAsync(IReadOnlyList<Seller> capable, IReadOnlySet<string> exclusive, CancellationToken ct, bool force = false)
     {
         var frozenHours = force ? 0 : _config.GetValue<int>("Rebalance:FrozenAfterHours", 24);
         var cutoff = DateTimeOffset.UtcNow.AddHours(-frozenHours);
@@ -237,7 +240,7 @@ public class LeadRebalancer
                      && (l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued)
                      && l.SentAt == null && l.FirstReplyAt == null
                      && l.ManualAssignedAt == null);
-        if (!hasCatchAll) q = q.Where(l => coverable.Contains(l.ProductKey));
+        q = FilterCoverable(q, hasCatchAll, coverable, exclusive);
 
         var leads = await q.ToListAsync(ct);
         if (leads.Count == 0) return 0;
@@ -255,7 +258,7 @@ public class LeadRebalancer
     }
 
     /// <summary>Re-corre el assigner sobre huérfanos cuyo producto tiene vendedor elegible hoy.</summary>
-    private async Task<int> RetryOrphansAsync(IReadOnlyList<Seller> capable, CancellationToken ct)
+    private async Task<int> RetryOrphansAsync(IReadOnlyList<Seller> capable, IReadOnlySet<string> exclusive, CancellationToken ct)
     {
         // Filtrar por productos cubribles ANTES de traer los leads: sin esto cada tick
         // levantaría y re-evaluaría huérfanos imposibles (ej. los que no tienen producto).
@@ -268,7 +271,7 @@ public class LeadRebalancer
 
         var q = _db.Leads.Include(l => l.Product)
             .Where(l => l.SellerId == null && l.Status == LeadStatus.New);
-        if (!hasCatchAll) q = q.Where(l => coverable.Contains(l.ProductKey));
+        q = FilterCoverable(q, hasCatchAll, coverable, exclusive);
 
         var orphans = await q.OrderBy(l => l.CreatedAt).Take(OrphanBatchPerTick).ToListAsync(ct);
         if (orphans.Count == 0) return 0;
@@ -294,20 +297,24 @@ public class LeadRebalancer
     /// "Reasignar todo"). Quedan Assigned sin encolar; QueueAssignedForReady los encola
     /// cuando el dueño conecta. Los productos coverables ya los maneja RetryOrphans.
     /// </summary>
-    private async Task<int> AssignOrphansToOwnersAsync(IReadOnlyList<Seller> capable, CancellationToken ct)
+    private async Task<int> AssignOrphansToOwnersAsync(IReadOnlyList<Seller> capable, IReadOnlySet<string> exclusive, CancellationToken ct)
     {
+        // Con un catch-all conectado todo producto NO exclusivo es coverable → RetryOrphans ya
+        // lo cubre; acá quedan solo los exclusivos sin dueño conectado.
         var hasCatchAll = capable.Any(s => s.VerticalsWhitelist is not { Count: > 0 });
-        if (hasCatchAll) return 0; // todo producto es coverable → RetryOrphans ya lo cubre
+        if (hasCatchAll && exclusive.Count == 0) return 0;
 
         var coverable = capable
             .Where(s => s.VerticalsWhitelist is { Count: > 0 })
             .SelectMany(s => s.VerticalsWhitelist!)
             .Distinct()
             .ToList();
+        var exclusiveKeys = exclusive.ToList();
 
         var orphans = await _db.Leads.Include(l => l.Product)
             .Where(l => l.SellerId == null && l.Status == LeadStatus.New
-                     && !coverable.Contains(l.ProductKey))
+                     && !coverable.Contains(l.ProductKey)
+                     && (!hasCatchAll || exclusiveKeys.Contains(l.ProductKey)))
             .OrderBy(l => l.CreatedAt)
             .Take(OrphanBatchPerTick)
             .ToListAsync(ct);
@@ -346,6 +353,15 @@ public class LeadRebalancer
             _log.LogInformation("Rebalance: {N} huérfanos asignados a su dueño offline (esperan conexión)", assigned);
         }
         return assigned;
+    }
+
+    /// <summary>Leads cuyo producto hoy tiene vendedor conectado que lo cubra: dedicado por
+    /// whitelist, o catch-all si el producto no es exclusivo.</summary>
+    private static IQueryable<Lead> FilterCoverable(IQueryable<Lead> q, bool hasCatchAll, List<string> coverable, IReadOnlySet<string> exclusive)
+    {
+        if (!hasCatchAll) return q.Where(l => coverable.Contains(l.ProductKey));
+        var exclusiveKeys = exclusive.ToList();
+        return q.Where(l => coverable.Contains(l.ProductKey) || !exclusiveKeys.Contains(l.ProductKey));
     }
 
     /// <summary>Whitelist más chica = línea más dedicada. Vacía = catch-all (la menos específica).</summary>

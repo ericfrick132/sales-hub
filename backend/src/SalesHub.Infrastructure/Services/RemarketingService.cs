@@ -208,7 +208,11 @@ public class RemarketingService
         return _db.Leads.AsNoTracking()
             .Where(l => l.WhatsappPhone != null && l.WhatsappPhone != ""
                      && !ExcludedStatuses.Contains(l.Status)
-                     && (products.Count == 0 || products.Contains(l.ProductKey))
+                     // "Todos los productos" = todos menos los exclusivos (Carla / estudio contable):
+                     // esos solo se remarketinean si se eligen a mano.
+                     && (products.Count == 0
+                         ? !_db.Products.Any(p => p.ProductKey == l.ProductKey && p.Exclusive)
+                         : products.Contains(l.ProductKey))
                      && !_db.Products.Any(p => p.ProductKey == l.ProductKey && p.AppManagedTransport)
                      && (l.NextActionAt == null || l.NextActionAt < now)
                      && !_db.RemarketingAttempts.Any(a => a.LeadId == l.Id)

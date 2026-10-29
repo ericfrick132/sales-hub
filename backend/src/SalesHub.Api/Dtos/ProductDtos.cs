@@ -34,7 +34,8 @@ public record ProductDto(
     List<SourceCadenceDto> SourceCadences,
     string AiSalesPlaybook,
     bool AutoPilot,
-    bool AutoReengage);
+    bool AutoReengage,
+    bool Exclusive);
 
 public record CreateOrUpdateProductRequest(
     string ProductKey,

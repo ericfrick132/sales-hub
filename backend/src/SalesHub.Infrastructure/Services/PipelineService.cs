@@ -242,6 +242,10 @@ public class PipelineService
             // gid2, cae al matching por string (provincia/ciudad). Sin owner → round-robin
             // entre los sin-región o global como último recurso.
             var sellerId = await _assigner.PickForLeadAsync(product.ProductKey, lead.LocalityGid2, lead.Province, lead.City, ct);
+            // Producto exclusivo: el dueño puede trabajar sin línea (lista para llamar/escribir a
+            // mano) → se lo damos directo en vez de dejarlo en el pool hasta el próximo rebalanceo.
+            if (sellerId is null && product.Exclusive)
+                sellerId = await _assigner.PickOwnerAsync(product.ProductKey, ct);
             if (sellerId is not null)
             {
                 lead.SellerId = sellerId;
@@ -398,7 +402,8 @@ public class PipelineService
             s.SendingEnabled && s.EvolutionInstance is { Status: InstanceStatus.Connected };
 
         // Dueños de un producto: dedicados (whitelist lo contiene) primero; si no hay, catch-all
-        // (whitelist vacía) como fallback.
+        // (whitelist vacía) como fallback — salvo productos exclusivos, que no tienen catch-all.
+        var exclusive = await _db.ExclusiveProductKeysAsync(ct);
         List<Seller> OwnersFor(string productKey)
         {
             var dedicated = sellers
@@ -406,7 +411,7 @@ public class PipelineService
                 .ToList();
             return dedicated.Count > 0
                 ? dedicated
-                : sellers.Where(s => s.VerticalsWhitelist is not { Count: > 0 }).ToList();
+                : sellers.Where(s => s.VerticalsWhitelist is not { Count: > 0 } && s.Covers(productKey, exclusive)).ToList();
         }
 
         // Balanceo por carga de las últimas 24h (mismo criterio que el assigner normal).
@@ -554,6 +559,19 @@ public class PipelineService
         // Pick oldest scraped city for this product in the country, biased by population.
         var cooldown = DateTimeOffset.UtcNow.AddDays(-30);
         var cities = await _db.Cities.Where(c => c.Country == product.Country).ToListAsync(ct);
+
+        // Producto exclusivo: solo las zonas de sus dueños (RegionsAssigned matchea ciudad o
+        // provincia, igual que el assigner). Sin regiones cargadas → todo el país como siempre.
+        if (product.Exclusive)
+        {
+            var regions = (await _db.Sellers.AsNoTracking().Where(s => s.IsActive).ToListAsync(ct))
+                .Where(s => s.VerticalsWhitelist is { Count: > 0 } && s.VerticalsWhitelist.Contains(product.ProductKey))
+                .SelectMany(s => s.RegionsAssigned ?? new List<string>())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (regions.Count > 0)
+                cities = cities.Where(c => regions.Contains(c.City) || regions.Contains(c.Province)).ToList();
+        }
+
         var recent = await _db.ScrapeLogs
             .Where(s => s.ProductKey == product.ProductKey && s.RunAt >= cooldown)
             .Select(s => s.City)

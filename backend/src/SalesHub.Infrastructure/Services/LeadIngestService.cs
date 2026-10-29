@@ -50,7 +50,7 @@ public class LeadIngestService : ILeadIngestService
         // Transporte gestionado por la app: el assigner sólo devuelve vendedores con instancia
         // CONECTADA en sales-hub. Para productos relay no hace falta (manda la app), así que
         // caemos a cualquier vendedor activo que maneje el producto, sólo para tracking/CRM.
-        if (sellerId is null && product.AppManagedTransport)
+        if (sellerId is null && product.AppManagedTransport && !product.Exclusive)
         {
             var actives = await _db.Sellers.Where(s => s.IsActive).ToListAsync(ct);
             var match = actives.FirstOrDefault(s =>

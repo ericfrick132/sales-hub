@@ -755,6 +755,22 @@ public class LeadsController : ControllerBase
             .Include(l => l.Product)
             .Where(l => l.SellerId == null && l.Status == LeadStatus.New);
         if (!string.IsNullOrWhiteSpace(productKey)) q = q.Where(l => l.ProductKey == productKey);
+        // Un vendedor solo ve el pool de lo que puede trabajar: su whitelist, o (catch-all)
+        // todo menos los productos exclusivos de otros.
+        if (!CurrentUser.IsAdmin(User))
+        {
+            var me = await _db.Sellers.AsNoTracking().FirstAsync(s => s.Id == CurrentUser.Id(User), ct);
+            if (me.VerticalsWhitelist is { Count: > 0 })
+            {
+                var mine = me.VerticalsWhitelist;
+                q = q.Where(l => mine.Contains(l.ProductKey));
+            }
+            else
+            {
+                var exclusive = (await _db.ExclusiveProductKeysAsync(ct)).ToList();
+                q = q.Where(l => !exclusive.Contains(l.ProductKey));
+            }
+        }
         q = q.OrderByDescending(l => l.CreatedAt).Take(Math.Min(limit, 500));
         return (await q.ToListAsync(ct)).Select(ToDto).ToList();
     }
@@ -768,6 +784,8 @@ public class LeadsController : ControllerBase
         if (lead.SellerId is not null && lead.SellerId != sellerId) return Conflict();
 
         var seller = await _db.Sellers.FirstAsync(s => s.Id == sellerId, ct);
+        if (!CurrentUser.IsAdmin(User) && !seller.Covers(lead.ProductKey, await _db.ExclusiveProductKeysAsync(ct)))
+            return Forbid();
         lead.SellerId = sellerId;
         lead.AssignedAt = DateTimeOffset.UtcNow;
         lead.Status = LeadStatus.Assigned;
