@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SalesHub.Core.Abstractions;
@@ -34,6 +35,10 @@ public class ClaudeTaskService
     // Última consulta del poller. En memoria: tras un reinicio de la API vuelve en la próxima consulta.
     private static DateTimeOffset _lastPoll = DateTimeOffset.MinValue;
     public static bool MacOnline => DateTimeOffset.UtcNow - _lastPoll < OnlineWindow;
+    // Sesiones con su Terminal abierta escuchando respuestas (el hook Stop consulta cada ~15 s): lo que siga
+    // esos threads va a esa misma ventana, no a una Terminal nueva.
+    private static readonly ConcurrentDictionary<string, DateTimeOffset> Listening = new();
+    private static readonly TimeSpan ListenWindow = TimeSpan.FromSeconds(60);
 
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
@@ -168,25 +173,33 @@ public class ClaudeTaskService
 
     /// <summary>
     /// Consulta del poller: marca la Mac como prendida y le da la tarea más vieja en cola. Una tarea que sigue
-    /// un thread espera a que la tarea padre termine, y retoma su sesión de Claude Code.
+    /// un thread espera a que la tarea padre termine, y retoma su sesión de Claude Code. Con
+    /// <paramref name="session"/> consulta la Terminal que tiene abierta esa sesión (hook Stop): solo recibe lo
+    /// que sigue esa sesión, y mientras escucha el poller no abre otra ventana para esos threads.
     /// </summary>
-    public async Task<NextTask?> ClaimNextAsync(CancellationToken ct)
+    public async Task<NextTask?> ClaimNextAsync(string? session, CancellationToken ct)
     {
-        _lastPoll = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.UtcNow;
+        _lastPoll = now;
+        if (session is not null) Listening[session] = now;
+        foreach (var kv in Listening) if (now - kv.Value > ListenWindow) Listening.TryRemove(kv.Key, out _);
         await SweepAsync(ct);
 
         var queue = await _db.ClaudeTasks.Where(t => t.Status == "pending").OrderBy(t => t.CreatedAt).Take(20).ToListAsync(ct);
         foreach (var task in queue)
         {
-            if (task.ParentTaskId is { } pid && task.ResumeSessionId is null)
+            var resume = task.ResumeSessionId;
+            if (task.ParentTaskId is { } pid && resume is null)
             {
                 var parent = await _db.ClaudeTasks.AsNoTracking().Where(t => t.Id == pid)
                     .Select(t => new { t.Status, t.SessionId }).FirstOrDefaultAsync(ct);
                 if (parent is { Status: "pending" or "running" }) continue; // el padre todavía no tiene sesión
-                task.ResumeSessionId = parent?.SessionId;
+                resume = parent?.SessionId;
             }
+            if (session is not null ? resume != session : resume is not null && Listening.ContainsKey(resume)) continue;
+            task.ResumeSessionId = resume;
             task.Status = "running";
-            task.ClaimedAt = DateTimeOffset.UtcNow;
+            task.ClaimedAt = now;
             await _db.SaveChangesAsync(ct);
             var images = await _db.ClaudeTaskAttachments.CountAsync(a => a.TaskId == task.Id, ct);
             return new NextTask(task.Id, task.Prompt, task.ResumeSessionId, images);

@@ -51,13 +51,16 @@ public class ClaudeTasksController : ControllerBase
     [HttpGet("key")]
     public IActionResult Key() => Ok(new { key = PollerKey(_jwt.SigningKey) });
 
-    /// <summary>Próxima tarea en cola (204 si no hay). Cada consulta marca la Mac como prendida.</summary>
+    /// <summary>
+    /// Próxima tarea en cola (204 si no hay). Cada consulta marca la Mac como prendida. Con <paramref name="session"/>
+    /// consulta una Terminal abierta: solo lo que sigue esa sesión.
+    /// </summary>
     [HttpGet("next")]
     [AllowAnonymous]
-    public async Task<IActionResult> Next(CancellationToken ct)
+    public async Task<IActionResult> Next([FromQuery] string? session, CancellationToken ct)
     {
         if (!KeyOk()) return Unauthorized();
-        var task = await _svc.ClaimNextAsync(ct);
+        var task = await _svc.ClaimNextAsync(string.IsNullOrWhiteSpace(session) ? null : session.Trim(), ct);
         return task is null ? NoContent() : Ok(task);
     }
 
