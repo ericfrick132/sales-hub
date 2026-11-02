@@ -144,4 +144,14 @@ public class Lead
     public DateTimeOffset? ConversationClosedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Último pedido de demo/llamada desde el formulario de una landing (precios o popup de salida).
+    /// Un lead que ya existía y vuelve a pedir queda con la fecha del pedido nuevo: es lo que ordena
+    /// la vista "Pedidos web" del CRM y desde cuándo corre la promesa de llamar en 10 minutos.
+    /// </summary>
+    public DateTimeOffset? WebRequestAt { get; set; }
+
+    /// <summary>El último pedido web tal como llegó (nombre, mail, negocio, plan, página), sin el honeypot.</summary>
+    public string? WebRequestJson { get; set; }
 }

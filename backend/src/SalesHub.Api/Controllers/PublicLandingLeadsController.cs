@@ -85,6 +85,8 @@ public class PublicLandingLeadsController : ControllerBase
                     lead.Notes = note;
                     if (!lead.Tags.Contains("pidio-demo-web")) lead.Tags.Add("pidio-demo-web");
                     lead.RawDataJson = JsonSerializer.Serialize(req with { Website = null });
+                    lead.WebRequestAt = DateTimeOffset.UtcNow;
+                    lead.WebRequestJson = lead.RawDataJson;
                     await _db.SaveChangesAsync(ct);
                 }
                 break;
@@ -98,6 +100,10 @@ public class PublicLandingLeadsController : ControllerBase
                 {
                     lead.Notes = string.IsNullOrWhiteSpace(lead.Notes) ? note : $"{lead.Notes}\n{note}";
                     if (!lead.Tags.Contains("pidio-demo-web")) lead.Tags.Add("pidio-demo-web");
+                    // Pedido nuevo: vuelve arriba en "Pedidos web" y queda "Sin llamar" desde ahora.
+                    lead.WebRequestAt = DateTimeOffset.UtcNow;
+                    lead.WebRequestJson = JsonSerializer.Serialize(req with { Website = null });
+                    lead.UpdatedAt = DateTimeOffset.UtcNow;
                     await _db.SaveChangesAsync(ct);
                 }
                 break;

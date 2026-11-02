@@ -78,5 +78,6 @@ public class LeadConfiguration : IEntityTypeConfiguration<Lead>
             .OnDelete(DeleteBehavior.SetNull);
 
         b.HasIndex(x => new { x.ProductKey, x.LocalityGid2 });
+        b.HasIndex(x => x.WebRequestAt);
     }
 }

@@ -2573,6 +2573,14 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<DateTimeOffset?>("WebRequestAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("web_request_at");
+
+                    b.Property<string>("WebRequestJson")
+                        .HasColumnType("text")
+                        .HasColumnName("web_request_json");
+
                     b.Property<string>("Website")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)")
@@ -2618,6 +2626,9 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_leads_status");
+
+                    b.HasIndex("WebRequestAt")
+                        .HasDatabaseName("ix_leads_web_request_at");
 
                     b.HasIndex("Latitude", "Longitude")
                         .HasDatabaseName("ix_leads_latitude_longitude");
