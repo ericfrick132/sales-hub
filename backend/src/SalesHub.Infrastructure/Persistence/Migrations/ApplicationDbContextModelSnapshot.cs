@@ -1601,6 +1601,79 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("followup_sequences", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.GoogleCalendarSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CalendarId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("calendar_id");
+
+                    b.Property<string>("ClientId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("client_id");
+
+                    b.Property<string>("ClientSecret")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("client_secret");
+
+                    b.Property<string>("Days")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("days");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("email");
+
+                    b.Property<int>("EndHour")
+                        .HasColumnType("integer")
+                        .HasColumnName("end_hour");
+
+                    b.Property<int>("MinNoticeMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("min_notice_minutes");
+
+                    b.Property<string>("PendingState")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("pending_state");
+
+                    b.Property<DateTimeOffset?>("PendingStateAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pending_state_at");
+
+                    b.Property<string>("RefreshToken")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("refresh_token");
+
+                    b.Property<int>("SlotMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("slot_minutes");
+
+                    b.Property<int>("StartHour")
+                        .HasColumnType("integer")
+                        .HasColumnName("start_hour");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_google_calendar_settings");
+
+                    b.ToTable("google_calendar_settings", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.IgDmSettings", b =>
                 {
                     b.Property<string>("ProductKey")

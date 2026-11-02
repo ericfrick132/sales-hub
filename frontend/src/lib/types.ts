@@ -446,7 +446,7 @@ export interface OnboardingAppConfig {
   presentAs?: string;
   /** Lo que dice el bot antes de que siga la persona. */
   handoffMessage?: string;
-  /** Evento de Calendly de la demo: el bot ofrece 2 horarios libres y reserva el que elija. */
+  /** Agenda de demos: "google" = ofrece hasta 2 horarios libres de hoy o mañana del Google Calendar y crea el evento con Meet. */
   demoEventTypeUri?: string;
   /** Antes de los horarios: qué le resuelve + si quiere verlo con sus datos (tras una reacción a su respuesta). */
   demoPitch?: string;

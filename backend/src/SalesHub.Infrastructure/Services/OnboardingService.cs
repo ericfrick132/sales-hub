@@ -34,7 +34,7 @@ public class OnboardingService
     /// </summary>
     public const int StepHumanHandoff = -9;
 
-    /// <summary>Le ofrecimos 2 horarios de demo (Calendly) y esperamos que elija uno.</summary>
+    /// <summary>Le ofrecimos hasta 2 horarios de demo (Google Calendar, hoy o mañana) y esperamos que elija uno.</summary>
     public const int StepAwaitSlot = -20;
 
     /// <summary>Eligió horario pero no tenemos su mail: esperamos el mail para reservar.</summary>
@@ -110,28 +110,37 @@ public class OnboardingService
     private readonly IntentClassifier _intents;
 
     public OnboardingService(ApplicationDbContext db, IOnboardingProvisionClient provision, IEmailSender email,
-        IAdminAlerter alerter, ILogger<OnboardingService> log, IntentClassifier intents, CalendlyClient calendly)
+        IAdminAlerter alerter, ILogger<OnboardingService> log, IntentClassifier intents, GoogleCalendarClient calendar)
     {
-        _db = db; _provision = provision; _email = email; _alerter = alerter; _log = log; _intents = intents; _calendly = calendly;
+        _db = db; _provision = provision; _email = email; _alerter = alerter; _log = log; _intents = intents; _calendar = calendar;
     }
 
-    private readonly CalendlyClient _calendly;
+    private readonly GoogleCalendarClient _calendar;
 
-    /// <summary>Simulador (/probar-bot): la reserva en Calendly se simula (no se crea nada).</summary>
+    /// <summary>
+    /// Valor de <see cref="OnboardingConfig.DemoEventTypeUri"/> que prende la agenda de demos en Google
+    /// Calendar para esa app (la columna viene de cuando era un evento de Calendly).
+    /// </summary>
+    public const string GoogleCalendarDemo = "google";
+
+    /// <summary>La app agenda demos en Google Calendar y la cuenta está conectada. Se calcula al entrar a ProcessAsync.</summary>
+    private bool _calendarOn;
+
+    /// <summary>Simulador (/probar-bot): la reserva en Google Calendar se simula (no se crea nada).</summary>
     public bool DryRunBooking { get; set; }
 
     /// <summary>Simulador (/probar-bot): el alta no crea la cuenta en la app ni manda el mail.</summary>
     public bool DryRunProvision { get; set; }
 
     /// <summary>
-    /// Fin de la pre-calificación con demo: ofrece 2 horarios libres reales de Calendly. Si no hay
-    /// Calendly o no hay horarios, null (el caller hace el pase normal con el cierre).
+    /// Dijo que sí a la demo: ofrece hasta 2 horarios libres reales del Google Calendar, solo de hoy o
+    /// mañana. Si no hay agenda o no hay horarios, null (el caller pasa a la persona).
     /// </summary>
     private async Task<string?> OfferSlotsAsync(LeadOnboarding ob, OnboardingConfig cfg, Guid leadId, CancellationToken ct)
     {
-        if (!DemoEnabled(cfg)) return null;
+        if (!_calendarOn) return null;
         var now = DateTimeOffset.UtcNow;
-        var free = await _calendly.GetAvailableTimesAsync(cfg.DemoEventTypeUri, now.AddMinutes(5), now.AddDays(6), ct);
+        var free = await _calendar.GetFreeSlotsAsync(now, ct);
         if (free is null || free.Count == 0) return null;
         var two = DemoScheduling.PickTwo(free, now);
         if (two.Count == 0) return null;
@@ -139,14 +148,25 @@ public class OnboardingService
         ob.ChosenSlot = null;
         ob.Step = StepAwaitSlot;
         var options = two.Count == 2
-            ? $"{DemoScheduling.Say(two[0], now)} o {DemoScheduling.Say(two[1], now)}"
+            ? DemoScheduling.Local(two[0]).Date == DemoScheduling.Local(two[1]).Date
+                ? $"{DemoScheduling.Say(two[0], now)} o a las {DemoScheduling.SayHour(two[1])}"
+                : $"{DemoScheduling.Say(two[0], now)} o {DemoScheduling.Say(two[1], now)}"
             : DemoScheduling.Say(two[0], now);
         return two.Count == 2
             ? Spin("{dale|genial}. tengo ", leadId, 91) + options + Spin(", {cual te queda mejor|te sirve alguno}?", leadId, 94)
             : Spin("{dale|genial}. tengo ", leadId, 91) + options + ", te sirve?";
     }
 
-    private bool DemoEnabled(OnboardingConfig cfg) => !string.IsNullOrWhiteSpace(cfg.DemoEventTypeUri) && _calendly.IsConfigured;
+    private async Task<bool> CalendarOnAsync(OnboardingConfig cfg, CancellationToken ct) =>
+        string.Equals(cfg.DemoEventTypeUri, GoogleCalendarDemo, StringComparison.OrdinalIgnoreCase)
+        && await _calendar.IsConnectedAsync(ct);
+
+    /// <summary>
+    /// Con agenda: después del pitch del anuncio, la pregunta de si quiere verlo en una llamada (los
+    /// horarios van recién si dice que sí). Sin agenda se usa DemoOffer / el link.
+    /// </summary>
+    private const string CalendarDemoOffer =
+        "{si queres te lo muestro andando con tus datos|te lo puedo mostrar andando con tus datos}, es una videollamada {corta|cortita}. te sirve?";
 
     private const string DefaultDemoPitch =
         "{si queres te lo muestro andando con tus datos, son 15 minutos por videollamada|te lo puedo mostrar andando con tus datos en una videollamada de 15 minutos}. te sirve?";
@@ -154,6 +174,7 @@ public class OnboardingService
     private static readonly Regex DemoYesRx = new(
         @"^(hola |ah |bueno |uh )?(si+|sisi|dale+|ok|oka|okey|bueno|perfecto|genial|de una|obvio|joya|claro|buenisimo|me sirve|me interesa|me encantaria|me gustaria|puede ser|por que no|mostrame|vamos|va)\b",
         RegexOptions.Compiled);
+    private static readonly Regex DemoWhenRx = new(@"^(si |dale |ok |bueno )?(y )?(cuando|que dia|que dias|a que hora|que horario|que horarios)\b", RegexOptions.Compiled);
     private static readonly Regex DemoNoRx = new(@"\bno\b|ahora no|mas adelante|despues|no puedo|no tengo tiempo|mandame info|por (aca|escrito)", RegexOptions.Compiled);
 
     /// <summary>
@@ -177,7 +198,7 @@ public class OnboardingService
     }
 
     /// <summary>
-    /// Reserva el turno elegido y arma la confirmación. Si Calendly falla (ej. alguien lo tomó en el
+    /// Reserva el turno elegido y arma la confirmación. Si Google Calendar falla (ej. alguien lo tomó en el
     /// medio), pasa a la persona para que lo coordine a mano.
     /// </summary>
     private async Task<OnboardingResult> BookChosenAsync(Lead lead, LeadOnboarding ob, OnboardingConfig cfg, string email, CancellationToken ct)
@@ -185,10 +206,13 @@ public class OnboardingService
         var slot = ob.ChosenSlot!.Value;
         var phone = string.IsNullOrWhiteSpace(lead.WhatsappPhone) ? null : "+" + new string(lead.WhatsappPhone.Where(char.IsDigit).ToArray());
         var name = MessageRenderer.FirstName(ob.ContactName) is { Length: > 0 } fn ? fn : (ob.GymName ?? lead.Name);
+        var app = DemoScheduling.AppName(cfg.ProductKey);
+        var title = $"Demo {app} - {ob.GymName ?? lead.Name}";
+        var description = $"Demo de {app} agendada por el bot de WhatsApp.\nNegocio: {ob.GymName ?? lead.Name}\n" +
+                          $"Contacto: {name}\nWhatsApp: {phone ?? "-"}\nMail: {email}";
         var res = DryRunBooking
-            ? new CalendlyClient.Booking(true, "simulado", null)
-            : await _calendly.BookAsync(cfg.DemoEventTypeUri!, slot, name, email, LeadEntryService.ArTz.Id, phone,
-                CalendlyClient.AppOption(cfg.ProductKey), ct);
+            ? new GoogleCalendarClient.Booking(true, "simulado", null)
+            : await _calendar.BookAsync(slot, title, description, email, ct);
         ob.Email ??= email;
         if (!res.Ok)
         {
@@ -196,10 +220,10 @@ public class OnboardingService
             ob.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
             return new OnboardingResult(null, OffScript: false, Provisioned: false,
-                Handoff: $"eligio {DemoScheduling.Say(slot, DateTimeOffset.UtcNow)} pero Calendly no dejo reservar ({res.Error}); coordinalo a mano");
+                Handoff: $"eligio {DemoScheduling.Say(slot, DateTimeOffset.UtcNow)} pero no se pudo agendar en Google Calendar ({res.Error}); coordinalo a mano");
         }
         ob.DemoBookedAt = slot;
-        ob.DemoEventUri = res.EventUri;
+        ob.DemoEventUri = res.EventId;
         ob.Step = StepHumanHandoff;
         ob.UpdatedAt = DateTimeOffset.UtcNow;
         lead.Status = LeadStatus.DemoScheduled;
@@ -208,7 +232,7 @@ public class OnboardingService
         var when = DemoScheduling.Say(slot, DateTimeOffset.UtcNow);
         return new OnboardingResult(
             Spin("{listo|buenisimo}, quedo agendado para " + when + ". te llega la invitacion al mail con el link de la llamada", lead.Id, 92),
-            OffScript: false, Provisioned: false, Handoff: $"demo agendada {when} (Calendly)");
+            OffScript: false, Provisioned: false, Handoff: $"demo agendada {when} (Google Calendar, invitacion a {email})");
     }
 
     /// <summary>
@@ -269,7 +293,7 @@ public class OnboardingService
 
     /// <summary>Pasos de la pre-calificación donde el lead se puede quedar callado y le hacemos seguimiento.</summary>
     public static bool IsFollowUpStage(int step) =>
-        step is >= 1 and <= 10 or StepAwaitDemoLink or StepAwaitStart or StepAwaitPricesOk or StepGreetedAsked;
+        step is >= 1 and <= 10 or StepAwaitDemoLink or StepAwaitDemoOk or StepAwaitSlot or StepAwaitStart or StepAwaitPricesOk or StepGreetedAsked;
 
     /// <summary>
     /// Seguimiento sin IA al lead que se quedó callado en la pre-calificación: un re-saludo "como si nada"
@@ -292,21 +316,23 @@ public class OnboardingService
         return PresentAs(Spin(cfg.FollowUpMessages[count], lead.Id, 200 + count), cfg);
     }
 
-    private static bool DemoStepEnabled(OnboardingConfig cfg) =>
-        !string.IsNullOrWhiteSpace(cfg.DemoLink) && !string.IsNullOrWhiteSpace(cfg.StartQuestion);
+    private bool DemoStepEnabled(OnboardingConfig cfg) =>
+        _calendarOn || (!string.IsNullOrWhiteSpace(cfg.DemoLink) && !string.IsNullOrWhiteSpace(cfg.StartQuestion));
 
     /// <summary>
     /// Lo que sigue al pitch. Sin <see cref="OnboardingConfig.DemoOffer"/> (lo normal): la demo va directo
     /// ("mira, aca lo podes ver andando" + link) y el cierre "para cuando…" — no le pedimos permiso, no hay
     /// "no" servido. Con DemoOffer: primero la pregunta y el link recién si dice que sí.
     /// </summary>
-    private static string DemoTail(OnboardingConfig cfg, Guid leadId) =>
-        string.IsNullOrWhiteSpace(cfg.DemoOffer)
+    private string DemoTail(OnboardingConfig cfg, Guid leadId) =>
+        _calendarOn ? Spin(CalendarDemoOffer, leadId, 99)
+        : string.IsNullOrWhiteSpace(cfg.DemoOffer)
             ? Join(Spin(cfg.DemoLink, leadId, 97), Spin(cfg.StartQuestion, leadId, 98))
             : Spin(cfg.DemoOffer, leadId, 99);
 
-    private static int AfterDemoStep(OnboardingConfig cfg) =>
-        string.IsNullOrWhiteSpace(cfg.DemoOffer) ? StepAwaitStart : StepAwaitDemoLink;
+    private int AfterDemoStep(OnboardingConfig cfg) =>
+        _calendarOn ? StepAwaitDemoOk
+        : string.IsNullOrWhiteSpace(cfg.DemoOffer) ? StepAwaitStart : StepAwaitDemoLink;
 
     /// <summary>El pitch del ángulo del anuncio; si no hay, el por defecto (ángulo vacío).</summary>
     private static AnglePitch? PitchFor(OnboardingConfig cfg, MetaAd? ad) =>
@@ -429,6 +455,7 @@ public class OnboardingService
 
     public async Task<OnboardingResult> ProcessAsync(Lead lead, string lastMessage, OnboardingConfig cfg, CancellationToken ct, string? recentBurst = null)
     {
+        _calendarOn = await CalendarOnAsync(cfg, ct);
         var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
         if (ob is null)
         {
@@ -509,7 +536,10 @@ public class OnboardingService
         if (ob.Step == StepAwaitDemoOk)
         {
             var t = IntentText.Normalize(msg);
-            var yes = DemoYesRx.IsMatch(t) && !DemoNoRx.IsMatch(t) && !msg.Contains('?') && IntentText.WordCount(t) <= 12;
+            // "si, cuando?" / "a que hora seria?" también es un sí: la respuesta son los horarios.
+            var askWhen = DemoWhenRx.IsMatch(t);
+            var yes = (DemoYesRx.IsMatch(t) || askWhen) && !DemoNoRx.IsMatch(t)
+                      && (!msg.Contains('?') || askWhen) && IntentText.WordCount(t) <= 12;
             var offer = yes ? await OfferSlotsAsync(ob, cfg, lead.Id, ct) : null;
             if (offer is not null)
             {
@@ -521,11 +551,11 @@ public class OnboardingService
             ob.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
             return new OnboardingResult(null, OffScript: false, Provisioned: false,
-                Handoff: yes ? "dijo que si a la demo pero Calendly no tiene horarios: coordinalo a mano"
+                Handoff: yes ? "dijo que si a la demo pero no hay horarios libres hoy ni mañana en el calendario: coordinalo a mano"
                              : "le propusimos verlo con sus datos y no dijo que si de una");
         }
 
-        // ── Agendado de demo (Calendly): esperando que elija horario o que pase el mail ──────────
+        // ── Agendado de demo (Google Calendar): esperando que elija horario o que pase el mail ──────────
         if (ob.Step is StepAwaitSlot or StepAwaitSlotEmail)
         {
             var burstText = string.IsNullOrWhiteSpace(recentBurst) ? msg : recentBurst!;
@@ -893,9 +923,9 @@ public class OnboardingService
                 }
                 if (handoffMode && k >= Math.Clamp(cfg.HandoffAfterQuestions, 1, n))
                 {
-                    // Pre-calificación completa. Con Calendly: reacciona a lo que contó, le dice qué le
+                    // Pre-calificación completa. Con agenda y sin pitch del anuncio: reacciona a lo que contó, le dice qué le
                     // resuelve y le pregunta si quiere verlo; los horarios van recién si dice que sí.
-                    if (DemoEnabled(cfg))
+                    if (_calendarOn && PitchFor(cfg, ad) is null)
                     {
                         var pitch = string.IsNullOrWhiteSpace(cfg.DemoPitch) ? DefaultDemoPitch : cfg.DemoPitch;
                         lead.Status = LeadStatus.Interested;
@@ -905,7 +935,7 @@ public class OnboardingService
                         return new OnboardingResult(PresentAs(ReactTo(msg, lead.Id) + "[NUEVO_MENSAJE]" + Spin(pitch, lead.Id, 96), cfg),
                             OffScript: false, Provisioned: false);
                     }
-                    // Sin Calendly: el bot cierra su parte (con el pitch del ángulo del anuncio, si hay)
+                    // Con pitch del anuncio (o sin agenda): el bot cierra su parte (con el pitch del ángulo del anuncio, si hay)
                     // y sigue la persona en la misma línea.
                     var anglePitch = PitchFor(cfg, ad);
                     reply = Spin(anglePitch?.Text ?? cfg.HandoffMessage ?? string.Empty, lead.Id, k);

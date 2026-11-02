@@ -24,7 +24,6 @@ public static class DependencyInjection
         services.Configure<JwtOptions>(config.GetSection("Jwt"));
         services.Configure<GroqOptions>(config.GetSection("Groq"));
         services.Configure<ClaudeOptions>(config.GetSection("Claude"));
-        services.Configure<CalendlyOptions>(config.GetSection("Calendly"));
         services.Configure<InstagramOptions>(config.GetSection("Instagram"));
         services.Configure<Instagram.InstagramMessagingOptions>(config.GetSection("InstagramMessaging"));
         // Varios servicios IG (InstagramClient, InstagramLeadScraper, InstagramAccountsController…)
@@ -56,7 +55,7 @@ public static class DependencyInjection
         services.AddHttpClient<GroqWhisperClient>();
         services.AddHttpClient<Instagram.InstagramMessengerClient>();   // DMs de las cuentas propias de IG (API oficial)
         services.AddHttpClient<ClaudeClient>();
-        services.AddHttpClient<CalendlyClient>();
+        services.AddHttpClient<GoogleCalendarClient>();   // agenda de demos del bot (freeBusy + evento con Meet)
         services.AddHttpClient<BufferClient>();
         services.AddScoped<ISocialPublisher>(sp => sp.GetRequiredService<BufferClient>());
         services.AddScoped<SocialContentGenerator>();

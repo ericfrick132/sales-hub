@@ -64,6 +64,7 @@ public class ApplicationDbContext : DbContext
 
     // Reporte diario por WhatsApp de leads que entraron a cada teléfono (fila única).
     public DbSet<LeadEntryReportSettings> LeadEntryReportSettings => Set<LeadEntryReportSettings>();
+    public DbSet<GoogleCalendarSettings> GoogleCalendarSettings => Set<GoogleCalendarSettings>();
 
     // Campaña de remarketing: config (fila única) + un registro por mensaje encolado.
     public DbSet<RemarketingSettings> RemarketingSettings => Set<RemarketingSettings>();

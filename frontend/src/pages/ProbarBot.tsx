@@ -12,8 +12,8 @@ type Line = { from: 'lead' | 'bot' | 'info'; text: string; meta?: string };
 
 /**
  * Simulador del bot: escribís como si fueras el lead y el bot contesta con la misma lógica que en
- * producción (guion de la app, diccionario, pase a la persona y horarios reales de Calendly).
- * No sale nada por WhatsApp, no se avisa a nadie y la reserva en Calendly se simula.
+ * producción (guion de la app, diccionario, pase a la persona y horarios reales del Google Calendar).
+ * No sale nada por WhatsApp, no se avisa a nadie y la reserva de la demo se simula.
  */
 export default function ProbarBot() {
   const configs = useQuery({
@@ -24,10 +24,6 @@ export default function ProbarBot() {
     queryKey: ['sellers-list'],
     queryFn: async () => (await api.get<{ id: string; displayName: string; isActive: boolean }[]>('/sellers')).data,
   });
-  const calendly = useQuery({
-    queryKey: ['calendly-event-types'],
-    queryFn: async () => (await api.get<{ configured: boolean; items: { uri: string; name: string; duration: number }[] }>('/calendly/event-types')).data,
-  });
 
   const [product, setProduct] = useState('gymhero');
   const [leadName, setLeadName] = useState('');
@@ -35,7 +31,7 @@ export default function ProbarBot() {
   const [handoffSeller, setHandoffSeller] = useState('');
   const [presentAs, setPresentAs] = useState('mateo');
   const [after, setAfter] = useState(2);
-  const [eventType, setEventType] = useState('');
+  const [agenda, setAgenda] = useState(true);
 
   const [leadId, setLeadId] = useState<string | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
@@ -48,9 +44,6 @@ export default function ProbarBot() {
     const mateo = sellers.data?.find((s) => s.displayName.toLowerCase().startsWith('mateo'));
     if (mateo && !handoffSeller) setHandoffSeller(mateo.id);
   }, [sellers.data, handoffSeller]);
-  useEffect(() => {
-    if (calendly.data?.items?.length && !eventType) setEventType(calendly.data.items[0].uri);
-  }, [calendly.data, eventType]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth' }); }, [lines]);
   // Por defecto hace TODAS las preguntas del guion de la app (la última suele ser la que saca el dolor).
   useEffect(() => {
@@ -60,7 +53,7 @@ export default function ProbarBot() {
 
   const overrides = () => ({
     handoff, handoffSellerId: handoff ? handoffSeller || null : null, afterQuestions: after,
-    presentAs, demoEventTypeUri: handoff ? eventType : '',
+    presentAs, demoEventTypeUri: handoff && agenda ? 'google' : '',
   });
 
   function addTurn(t: Turn) {
@@ -111,8 +104,8 @@ export default function ProbarBot() {
         <h1 className="text-xl md:text-2xl font-bold">Probar el bot</h1>
         <p className="text-sm text-slate-500 mt-1">
           Escribí como si fueras el lead. El bot contesta con la misma lógica que en producción (guion de la app, pase a la
-          persona y horarios reales de Calendly). <b>No sale nada por WhatsApp</b>, no se avisa a nadie y la reserva en
-          Calendly se simula. Los ajustes de abajo son solo para la prueba: no cambian la configuración guardada.
+          persona y horarios reales del Google Calendar). <b>No sale nada por WhatsApp</b>, no se avisa a nadie y la reserva
+          de la demo se simula. Los ajustes de abajo son solo para la prueba: no cambian la configuración guardada.
         </p>
       </div>
 
@@ -150,12 +143,9 @@ export default function ProbarBot() {
                   <input type="number" min={1} max={10} className="input w-full" value={after} onChange={(e) => setAfter(Number(e.target.value))} />
                 </label>
               </div>
-              <label className="block space-y-0.5">
-                <div className="text-slate-600">Demo en Calendly</div>
-                <select className="input w-full" value={eventType} onChange={(e) => setEventType(e.target.value)}>
-                  <option value="">sin Calendly</option>
-                  {(calendly.data?.items ?? []).map((ev) => <option key={ev.uri} value={ev.uri}>{ev.name} ({ev.duration} min)</option>)}
-                </select>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={agenda} onChange={(e) => setAgenda(e.target.checked)} />
+                <span className="text-slate-600">Agendar demo en Google Calendar (si está conectado)</span>
               </label>
             </>
           )}

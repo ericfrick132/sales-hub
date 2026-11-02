@@ -1065,6 +1065,7 @@ public class ConversationAgentService
             where l.SellerId != null && l.BotMutedAt == null && l.Seller!.BotPausedAt == null
                 && l.Product != null && keys.Contains(l.Product.ProductKey)
                 && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
+                    || o.Step == OnboardingService.StepAwaitDemoOk || o.Step == OnboardingService.StepAwaitSlot
                     || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
                     || o.Step == OnboardingService.StepGreetedAsked
                     || (o.Step == OnboardingService.StepAwaitFollowUpReply && o.FollowUpCount < 2))
@@ -1113,6 +1114,7 @@ public class ConversationAgentService
                 && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
                 && !(l.Product != null && prequalKeys.Contains(l.Product.ProductKey) && _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
                     && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
+                    || o.Step == OnboardingService.StepAwaitDemoOk || o.Step == OnboardingService.StepAwaitSlot
                         || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
                         || o.Step == OnboardingService.StepAwaitFollowUpReply || o.Step == OnboardingService.StepGreetedAsked)))
                 && l.FirstReplyAt != null
@@ -1145,6 +1147,7 @@ public class ConversationAgentService
                 && !_db.LeadPitchStates.Any(ps => ps.LeadId == l.Id && ps.CompletedAt == null && ps.GaveUpAt == null)
                 && !(l.Product != null && prequalKeys.Contains(l.Product.ProductKey) && _db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id
                     && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
+                    || o.Step == OnboardingService.StepAwaitDemoOk || o.Step == OnboardingService.StepAwaitSlot
                         || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
                         || o.Step == OnboardingService.StepAwaitFollowUpReply || o.Step == OnboardingService.StepGreetedAsked)))
                 && l.FirstReplyAt == null

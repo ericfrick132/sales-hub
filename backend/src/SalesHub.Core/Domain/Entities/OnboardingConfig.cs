@@ -135,8 +135,10 @@ public class OnboardingConfig
     public string HandoffMessage { get; set; } = string.Empty;
 
     /// <summary>
-    /// Evento de Calendly de la demo (URI de la API). Con esto, en vez del cierre, el bot ofrece 2
-    /// horarios libres reales, reserva el que elija el lead y recién ahí se lo pasa a la persona.
+    /// Agenda de demos: "google" = después del pitch le propone verlo en una videollamada y, si dice
+    /// que sí, le ofrece hasta 2 horarios libres de hoy o mañana del Google Calendar conectado, crea el
+    /// evento con Meet (invitación al mail) y recién ahí se lo pasa a la persona. Null = usa el link de demo.
+    /// (El nombre de la columna viene de cuando era un evento de Calendly.)
     /// </summary>
     public string? DemoEventTypeUri { get; set; }
 

@@ -142,18 +142,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(cfg);
-  const calendly = useQuery({
-    queryKey: ['calendly-event-types'],
-    queryFn: async () => (await api.get<{ configured: boolean; items: { uri: string; name: string; duration: number }[] }>('/calendly/event-types')).data,
-  });
-  const [preview, setPreview] = useState<string | null>(null);
-  async function previewSlots() {
-    if (!form.demoEventTypeUri) return;
-    try {
-      const r = (await api.get<{ free: number; offer: string[] }>('/calendly/preview', { params: { eventType: form.demoEventTypeUri } })).data;
-      setPreview(r.offer.length ? `ofreceria: ${r.offer.join(' o ')} (${r.free} libres en 6 dias)` : 'no hay horarios libres en los proximos 6 dias');
-    } catch { setPreview('no pude leer Calendly'); }
-  }
+  const gcal = useQuery({ queryKey: ['google-calendar-status'], queryFn: fetchGcalStatus });
   const sellers = useQuery({
     queryKey: ['sellers-list'],
     queryFn: async () => (await api.get<{ id: string; displayName: string; isActive: boolean }[]>('/sellers')).data,
@@ -234,22 +223,25 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
                 onChange={(e) => setForm((f) => ({ ...f, presentAs: e.target.value }))} />
             </label>
             <div className="space-y-0.5 sm:col-span-3">
-              <div className="text-slate-600">Agendar demo en Calendly (el bot ofrece 2 horarios libres, reserva el que elija y recién ahí pasa)</div>
-              <div className="flex flex-wrap gap-2 items-center">
-                <select className="input" value={form.demoEventTypeUri ?? ''}
-                  onChange={(e) => { setPreview(null); setForm((f) => ({ ...f, demoEventTypeUri: e.target.value })); }}>
-                  <option value="">sin Calendly (usa el mensaje de abajo)</option>
-                  {(calendly.data?.items ?? []).map((ev) => <option key={ev.uri} value={ev.uri}>{ev.name} ({ev.duration} min)</option>)}
-                </select>
-                {form.demoEventTypeUri && <button type="button" className="text-xs text-slate-500 hover:underline" onClick={previewSlots}>ver qué horarios ofrecería</button>}
-                {calendly.data && !calendly.data.configured && <span className="text-xs text-amber-700">Calendly sin token en el servidor</span>}
+              <div className="text-slate-600">
+                Demo: después del pitch le propone verlo en una videollamada y, si dice que sí, le ofrece hasta 2 horarios
+                libres de hoy o mañana del Google Calendar, le pide el mail y le manda la invitación con Meet. Recién ahí pasa.
               </div>
-              {preview && <div className="text-xs text-slate-600">{preview}</div>}
+              <div className="flex flex-wrap gap-2 items-center">
+                <select className="input" value={form.demoEventTypeUri === 'google' ? 'google' : ''}
+                  onChange={(e) => setForm((f) => ({ ...f, demoEventTypeUri: e.target.value }))}>
+                  <option value="">sin agenda (manda el link de abajo)</option>
+                  <option value="google">agendar en Google Calendar</option>
+                </select>
+                {form.demoEventTypeUri === 'google' && gcal.data && !gcal.data.connected && (
+                  <span className="text-xs text-amber-700">Google Calendar sin conectar (arriba de todo): mientras tanto manda el link</span>
+                )}
+              </div>
             </div>
-            {form.demoEventTypeUri && (
+            {form.demoEventTypeUri === 'google' && (
               <label className="space-y-0.5 sm:col-span-3">
                 <div className="text-slate-600">
-                  Antes de los horarios: el bot reacciona a su última respuesta ("uf, a mano es donde mas se escapan las cosas") y
+                  Si el anuncio no tiene pitch por ángulo: antes de los horarios el bot reacciona a su última respuesta ("uf, a mano es donde mas se escapan las cosas") y
                   después dice esto. Los horarios van recién si contesta que sí. Admite {'{a|b}'} y [NUEVO_MENSAJE].
                 </div>
                 <textarea className="input w-full h-20" value={form.demoPitch ?? ''}
@@ -450,6 +442,96 @@ function AppCard({ cfg }: { cfg: OnboardingAppConfig }) {
   );
 }
 
+type GcalStatus = {
+  hasClient: boolean; connected: boolean; email: string | null; redirectUri: string;
+  startHour: number; endHour: number; days: string; slotMinutes: number; minNoticeMinutes: number;
+};
+async function fetchGcalStatus() {
+  return (await api.get<GcalStatus>('/google-calendar/status')).data;
+}
+
+/** Google Calendar donde el bot agenda las demos (uno solo para todas las apps). */
+function GoogleCalendarPanel() {
+  const qc = useQueryClient();
+  const status = useQuery({ queryKey: ['google-calendar-status'], queryFn: fetchGcalStatus });
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [hours, setHours] = useState<{ startHour: number; endHour: number; slotMinutes: number; minNoticeMinutes: number } | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const s = status.data;
+  useEffect(() => {
+    if (s && !hours) setHours({ startHour: s.startHour, endHour: s.endHour, slotMinutes: s.slotMinutes, minNoticeMinutes: s.minNoticeMinutes });
+  }, [s, hours]);
+
+  async function saveSettings(body: Record<string, unknown>) {
+    try {
+      await api.put('/google-calendar/settings', body);
+      qc.invalidateQueries({ queryKey: ['google-calendar-status'] });
+      toast.success('Guardado');
+    } catch { toast.error('No se pudo guardar'); }
+  }
+  async function connect() {
+    try {
+      const { url } = (await api.post<{ url: string }>('/google-calendar/connect')).data;
+      window.open(url, '_blank');
+      toast('Aceptá en la pestaña de Google y después tocá "actualizar"');
+    } catch { toast.error('Falta el cliente OAuth'); }
+  }
+  async function previewSlots() {
+    try {
+      const r = (await api.get<{ free: number; offer: string[] }>('/google-calendar/preview')).data;
+      setPreview(r.offer.length ? `ofreceria: ${r.offer.join(' o ')} (${r.free} huecos libres hoy y mañana)` : 'no hay horarios libres hoy ni mañana: pasaria a la persona');
+    } catch { setPreview('no pude leer el Google Calendar'); }
+  }
+
+  if (!s) return null;
+  return (
+    <div className="card p-4 space-y-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <h2 className="font-semibold">Google Calendar de las demos</h2>
+        <span className={s.connected ? 'text-green-700 text-xs' : 'text-amber-700 text-xs'}>
+          {s.connected ? `conectado${s.email ? ` (${s.email})` : ''}` : 'sin conectar'}
+        </span>
+      </div>
+      {!s.hasClient && (
+        <div className="space-y-1">
+          <div className="text-xs text-slate-500">
+            Cliente OAuth de Google Cloud (tipo "Aplicación web", URI de redirección <code>{s.redirectUri}</code>).
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input className="input w-full" placeholder="Client ID" value={clientId} onChange={(e) => setClientId(e.target.value)} />
+            <input className="input w-full" placeholder="Client secret" type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} />
+          </div>
+          <button type="button" className="btn-secondary" disabled={!clientId || !clientSecret}
+            onClick={() => saveSettings({ clientId, clientSecret })}>Guardar cliente</button>
+        </div>
+      )}
+      {s.hasClient && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <button type="button" className="btn-primary" onClick={connect}>{s.connected ? 'Reconectar' : 'Conectar Google Calendar'}</button>
+          <button type="button" className="text-xs text-slate-500 hover:underline" onClick={() => status.refetch()}>actualizar</button>
+          {s.connected && <button type="button" className="text-xs text-slate-500 hover:underline" onClick={previewSlots}>ver qué horarios ofrecería ahora</button>}
+        </div>
+      )}
+      {preview && <div className="text-xs text-slate-600">{preview}</div>}
+      {hours && (
+        <div className="flex flex-wrap gap-2 items-end text-xs">
+          <label>de <input type="number" min={0} max={23} className="input w-16" value={hours.startHour}
+            onChange={(e) => setHours({ ...hours, startHour: Number(e.target.value) })} /></label>
+          <label>a <input type="number" min={1} max={24} className="input w-16" value={hours.endHour}
+            onChange={(e) => setHours({ ...hours, endHour: Number(e.target.value) })} /> h</label>
+          <label>demo de <input type="number" min={10} max={180} className="input w-16" value={hours.slotMinutes}
+            onChange={(e) => setHours({ ...hours, slotMinutes: Number(e.target.value) })} /> min</label>
+          <label>margen <input type="number" min={0} max={1440} className="input w-20" value={hours.minNoticeMinutes}
+            onChange={(e) => setHours({ ...hours, minNoticeMinutes: Number(e.target.value) })} /> min</label>
+          <span className="text-slate-500">lun a vie, solo hoy o mañana, hasta 2 horarios</span>
+          <button type="button" className="btn-secondary" onClick={() => saveSettings(hours)}>Guardar franja</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OnboardingApps() {
   const { data, isLoading } = useQuery({
     queryKey: ['onboarding-configs'],
@@ -467,6 +549,7 @@ export default function OnboardingApps() {
           para el link de acceso en el mensaje de éxito.
         </p>
       </div>
+      <GoogleCalendarPanel />
       {isLoading ? (
         <p className="text-sm text-slate-500">Cargando…</p>
       ) : (

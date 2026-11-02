@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 namespace SalesHub.Infrastructure.Services;
 
 /// <summary>
-/// Reglas del agendado de demo por WhatsApp (sin IA): qué 2 horarios ofrecer, cómo decirlos y cómo
+/// Reglas del agendado de demo por WhatsApp (sin IA, sobre Google Calendar): qué horarios ofrecer (hasta 2, hoy o mañana), cómo decirlos y cómo
 /// entender cuál eligió el lead. Si la respuesta no es clara, no se adivina: pasa a la persona.
 /// </summary>
 public static class DemoScheduling
@@ -13,22 +13,79 @@ public static class DemoScheduling
     private static readonly TimeZoneInfo Ar = LeadEntryService.ArTz;
     private static readonly string[] Days = { "domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado" };
 
+    /// <summary>Ventana en la que se ofrecen demos: desde ahora hasta el fin de mañana (hora AR).</summary>
+    public static (DateTimeOffset From, DateTimeOffset To) Window(DateTimeOffset now)
+    {
+        var dayAfter = Local(now).Date.AddDays(2);
+        return (now, AtAr(dayAfter, 0));
+    }
+
+    private static DateTimeOffset AtAr(DateTime localDate, int minutesOfDay)
+    {
+        var local = DateTime.SpecifyKind(localDate.Date.AddMinutes(minutesOfDay), DateTimeKind.Unspecified);
+        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, Ar), TimeSpan.Zero);
+    }
+
     /// <summary>
-    /// Elige 2 horarios: el primero libre con al menos 3 h de margen (preferentemente a la mañana,
-    /// cuando más contestan) y otro en un día distinto, para que tenga opción real.
+    /// Horarios posibles de hoy y mañana (días hábiles, franja y duración de la config) que no pisan
+    /// ningún ocupado del calendario y arrancan con el margen mínimo desde ahora.
+    /// </summary>
+    public static List<DateTimeOffset> FreeSlots(IReadOnlyList<(DateTimeOffset Start, DateTimeOffset End)> busy,
+        DateTimeOffset now, Core.Domain.Entities.GoogleCalendarSettings cfg)
+    {
+        var days = cfg.Days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(d => int.TryParse(d, out var x) ? x : -1).ToHashSet();
+        var len = Math.Max(cfg.SlotMinutes, 10);
+        var earliest = now.AddMinutes(cfg.MinNoticeMinutes);
+        var result = new List<DateTimeOffset>();
+        var today = Local(now).Date;
+        foreach (var day in new[] { today, today.AddDays(1) })
+        {
+            if (!days.Contains((int)day.DayOfWeek)) continue;
+            for (var m = cfg.StartHour * 60; m + len <= cfg.EndHour * 60; m += len)
+            {
+                var start = AtAr(day, m);
+                var end = start.AddMinutes(len);
+                if (start < earliest) continue;
+                if (busy.Any(b => b.Start < end && b.End > start)) continue;
+                result.Add(start);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Hasta 2 horarios, solo de hoy o mañana: el primero libre, y el otro mañana si el primero es hoy
+    /// (así el que no puede hoy tiene opción); si no, más tarde el mismo día, separados para que sea
+    /// una opción real (mañana / tarde).
     /// </summary>
     public static List<DateTimeOffset> PickTwo(IReadOnlyList<DateTimeOffset> free, DateTimeOffset now)
     {
-        var ok = free.Where(t => t >= now.AddHours(3)).OrderBy(t => t).ToList();
+        var ok = free.Where(t => t > now).OrderBy(t => t).ToList();
         if (ok.Count == 0) return new();
-        static bool Morning(DateTimeOffset t) { var h = Local(t).Hour; return h >= 9 && h < 13; }
-        var first = ok.FirstOrDefault(t => Morning(t) && Local(t).Date <= Local(ok[0]).Date.AddDays(1));
-        if (first == default) first = ok[0];
-        var second = ok.FirstOrDefault(t => Local(t).Date != Local(first).Date && Morning(t));
-        if (second == default) second = ok.FirstOrDefault(t => Local(t).Date != Local(first).Date);
-        if (second == default) second = ok.FirstOrDefault(t => t > first.AddHours(2));
+        var today = Local(now).Date;
+        ok = ok.Where(t => Local(t).Date <= today.AddDays(1)).ToList();
+        if (ok.Count == 0) return new();
+        var first = ok[0];
+        var firstDay = Local(first).Date;
+        var second = firstDay == today ? ok.FirstOrDefault(t => Local(t).Date > today) : default;
+        if (second == default) second = ok.FirstOrDefault(t => Local(t).Date == firstDay && t >= first.AddHours(3));
+        if (second == default) second = ok.FirstOrDefault(t => t >= first.AddHours(1));
+        if (second == default) second = ok.FirstOrDefault(t => t > first);
         return second == default ? new() { first } : new() { first, second };
     }
+
+    /// <summary>Nombre comercial de la app para el título del evento.</summary>
+    public static string AppName(string productKey) => productKey switch
+    {
+        "gymhero" => "GymHero",
+        "turnospro" => "TurnosPro",
+        "playcrew" => "PlayCrew",
+        "construction" => "ArchiCloud",
+        "bunker" => "Bunker",
+        "unistock" => "DashFlow",
+        _ => productKey,
+    };
 
     public static DateTimeOffset Local(DateTimeOffset t) => TimeZoneInfo.ConvertTime(t, Ar);
 
@@ -37,8 +94,14 @@ public static class DemoScheduling
     {
         var l = Local(t); var n = Local(now);
         var day = l.Date == n.Date ? "hoy" : l.Date == n.Date.AddDays(1) ? "mañana" : $"el {Days[(int)l.DayOfWeek]} {l.Day}";
-        var hour = l.Minute == 0 ? $"{l.Hour}" : $"{l.Hour}:{l.Minute:00}";
-        return $"{day} a las {hour}";
+        return $"{day} a las {SayHour(t)}";
+    }
+
+    /// <summary>"10" o "10:30" (hora AR).</summary>
+    public static string SayHour(DateTimeOffset t)
+    {
+        var l = Local(t);
+        return l.Minute == 0 ? $"{l.Hour}" : $"{l.Hour}:{l.Minute:00}";
     }
 
     private static string Plain(string? s)

@@ -13,7 +13,7 @@ namespace SalesHub.Api.Controllers;
 /// <summary>
 /// Simulador del bot (/probar-bot): una persona escribe como si fuera el lead y el bot contesta con la
 /// MISMA lógica que en producción (guion de la app, diccionario, pase a la persona, horarios reales de
-/// Calendly). No sale nada por WhatsApp, no se avisa a nadie y la reserva en Calendly se simula.
+/// Google Calendar). No sale nada por WhatsApp, no se avisa a nadie y la reserva de la demo se simula.
 /// El lead de prueba no tiene teléfono ni vendedor y queda con la etiqueta "sandbox": ningún worker lo
 /// toma (reparto, cadencias, remarketing, agente) y el CRM no lo muestra.
 /// </summary>
@@ -41,7 +41,7 @@ public class SandboxController : ControllerBase
 
     /// <summary>
     /// Ajustes para probar sin tocar la config guardada: pase a una persona, cómo se presenta, cuántas
-    /// preguntas y el evento de Calendly. Vacíos = los de la app.
+    /// preguntas y la agenda de demos ("google" o vacío). Vacíos = los de la app.
     /// </summary>
     public record Overrides(bool? Handoff, Guid? HandoffSellerId, int? AfterQuestions, string? PresentAs, string? DemoEventTypeUri,
         string? HandoffMessage, string? DemoPitch = null);

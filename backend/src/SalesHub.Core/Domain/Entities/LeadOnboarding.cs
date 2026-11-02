@@ -44,7 +44,7 @@ public class LeadOnboarding
     /// <summary>El turno que eligió, mientras se le pide el mail para reservarlo.</summary>
     public DateTimeOffset? ChosenSlot { get; set; }
 
-    /// <summary>Turno de demo reservado en Calendly.</summary>
+    /// <summary>Turno de demo reservado en Google Calendar (DemoEventUri = id del evento).</summary>
     public DateTimeOffset? DemoBookedAt { get; set; }
     public string? DemoEventUri { get; set; }
 
