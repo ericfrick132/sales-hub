@@ -3,6 +3,7 @@
  *  Places, manual) es cold outreach y cae al default / override por categoría. */
 export const SOURCE_ORIGINS: { key: string; label: string }[] = [
   { key: 'MetaLeadAd', label: 'Form de Meta (dejó sus datos)' },
+  { key: 'LandingForm', label: 'Form de la web (pidió demo)' },
   { key: 'WhatsAppAd', label: 'Anuncio CTWA (nos escribió)' },
   { key: 'ProductOnboarding', label: 'Onboarding abandonado' },
   { key: 'DemoSignup', label: 'Registro/demo en la app' },

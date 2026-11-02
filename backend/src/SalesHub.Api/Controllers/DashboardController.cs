@@ -147,7 +147,7 @@ public class DashboardController : ControllerBase
         var inbound = new[]
         {
             LeadSource.WhatsAppAd, LeadSource.DemoSignup, LeadSource.ProductOnboarding,
-            LeadSource.ProductReengage, LeadSource.ManualWhatsApp,
+            LeadSource.ProductReengage, LeadSource.ManualWhatsApp, LeadSource.LandingForm,
         };
         switch ((origin ?? "all").ToLowerInvariant())
         {

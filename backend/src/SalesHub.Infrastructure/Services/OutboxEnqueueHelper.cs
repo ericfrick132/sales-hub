@@ -236,6 +236,25 @@ public static class OutboxEnqueueHelper
     public const string SourceCadencePrefix = "origen:";
 
     /// <summary>
+    /// Cadencia por defecto de <see cref="LeadSource.LandingForm"/>: el vendedor confirma que
+    /// recibió el pedido de demo y propone horario; si no contesta, al día siguiente le deja el
+    /// Calendly. Ambos pasos se cancelan apenas el lead responde (lo toma el agente).
+    /// </summary>
+    public static List<MessageStep> LandingFormDefaultSteps(Product product)
+    {
+        var producto = string.IsNullOrWhiteSpace(product.DisplayName) ? product.ProductKey : product.DisplayName;
+        return new List<MessageStep>
+        {
+            new() { DelaySeconds = 0, Text =
+                $"{{saludo}} {{nombre}}! Soy {{seller}} de {producto}. Me llegó tu pedido de demo desde la web 🙌 " +
+                "¿Te viene bien que te la muestre {hoy}? Decime qué horario te queda cómodo y la agendamos." },
+            new() { DelaySeconds = 24 * 3600, Text =
+                "{nombre}, ¿pudiste ver mi mensaje? Si te resulta más cómodo, elegí día y hora acá y te llamo: " +
+                "https://calendly.com/efcloud/demo" },
+        };
+    }
+
+    /// <summary>
     /// Devuelve los steps efectivos a usar para este lead. Precedencia:
     /// 1) override por ORIGEN (lead.Source, ej. MetaLeadAd — el lead ya nos
     ///    dejó sus datos, el opener frío no aplica), 2) override por categoría
@@ -253,6 +272,12 @@ public static class OutboxEnqueueHelper
             if (bySource is not null && bySource.Steps is { Count: > 0 })
                 return (bySource.Steps, SourceCadencePrefix + bySource.Source);
         }
+
+        // Formulario de la landing sin cadencia propia configurada: primer mensaje cálido propio.
+        // Nunca cae al opener frío del producto ("vi tu negocio en Maps...") a alguien que acaba
+        // de pedir una demo. Se pisa cargando una cadencia "LandingForm" en el producto.
+        if (lead.Source == LeadSource.LandingForm)
+            return (LandingFormDefaultSteps(product), SourceCadencePrefix + nameof(LeadSource.LandingForm));
 
         var leadCat = (lead.SearchCategory ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(leadCat) && product.CategoryCadences is { Count: > 0 })

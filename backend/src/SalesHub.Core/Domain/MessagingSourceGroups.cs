@@ -19,6 +19,7 @@ public static class MessagingSourceGroups
     public const string Reengage = "reengage";
     public const string Inbound = "inbound";
     public const string InstagramDms = "ig-dms";
+    public const string WebForms = "web-form";
 
     public record GroupDef(string Key, string Label, string Hint);
 
@@ -39,6 +40,8 @@ public static class MessagingSourceGroups
             "Números que escribieron a una línea sin venir de un anuncio."),
         new(InstagramDms, "DMs de Instagram",
             "Escribieron por DM a @gymhero.fitness, @turnos.pro o @playcrewpadel."),
+        new(WebForms, "Formulario de la web",
+            "Pidieron una demo o cotización en la sección de precios de una landing propia."),
     };
 
     public static string For(LeadSource source) => source switch
@@ -49,6 +52,7 @@ public static class MessagingSourceGroups
         LeadSource.ProductReengage => Reengage,
         LeadSource.WhatsAppInbound => Inbound,
         LeadSource.InstagramDm => InstagramDms,
+        LeadSource.LandingForm => WebForms,
         _ => Cold,
     };
 

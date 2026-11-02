@@ -1,4 +1,7 @@
 using System.Text;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
+using SalesHub.Api.Controllers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -117,11 +120,33 @@ builder.Services.AddAuthorization(opts =>
 
 var origins = (builder.Configuration["Cors:Origins"] ?? "http://localhost:5173")
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-builder.Services.AddCors(c => c.AddDefaultPolicy(p => p
-    .WithOrigins(origins)
-    .AllowAnyHeader()
-    .AllowAnyMethod()
-    .AllowCredentials()));
+builder.Services.AddCors(c =>
+{
+    c.AddDefaultPolicy(p => p
+        .WithOrigins(origins)
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials());
+    // Formulario público de las landings (POST /api/public/landing-leads): solo sus dominios,
+    // sin credenciales.
+    var landingOrigins = builder.Configuration["Cors:LandingOrigins"]?
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        ?? LandingCors.DefaultOrigins;
+    c.AddPolicy(LandingCors.Policy, p => p
+        .WithOrigins(landingOrigins)
+        .WithHeaders("content-type")
+        .WithMethods("POST"));
+});
+
+// Rate limit del formulario público: 5 envíos cada 15 min por IP del visitante. Evita que
+// alguien use el form para que nuestras líneas de WhatsApp le escriban a números ajenos.
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy(LandingCors.RateLimitPolicy, ctx => RateLimitPartition.GetFixedWindowLimiter(
+        LandingCors.ClientIp(ctx),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(15), QueueLimit = 0 }));
+});
 
 var app = builder.Build();
 
@@ -177,6 +202,7 @@ app.UseStaticFiles(new StaticFileOptions
 });
 app.UseDeviceWebSockets();
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

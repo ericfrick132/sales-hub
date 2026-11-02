@@ -152,7 +152,7 @@ public class BridgeController : ControllerBase
                      && o.SellerId == sellerId
                      && o.StepIndex != null
                      && (sendsCold
-                         || o.Lead.Source == LeadSource.MetaLeadAd
+                         || (o.Lead.Source == LeadSource.MetaLeadAd || o.Lead.Source == LeadSource.LandingForm)
                          || o.Priority >= MessageOutbox.BridgeManualPriority));
 
         var leadsToday = await sentQuery
@@ -173,7 +173,7 @@ public class BridgeController : ControllerBase
                      && o.ScheduledAt <= now
                      && o.Channel == MessageChannel.WhatsApp
                      && o.SellerId == sellerId
-                     && (o.Lead.Source == LeadSource.MetaLeadAd
+                     && ((o.Lead.Source == LeadSource.MetaLeadAd || o.Lead.Source == LeadSource.LandingForm)
                          || o.Priority >= MessageOutbox.BridgeManualPriority
                          // Remarketing: ya viene con su tope diario por línea (/remarketing).
                          || o.CadenceCategory == MessageOutbox.RemarketingCategory
@@ -560,14 +560,14 @@ public class BridgeController : ControllerBase
             .CountAsync(o => o.Status == OutboxStatus.Scheduled
                           && o.Channel == MessageChannel.WhatsApp
                           && o.StepIndex != null
-                          && (o.Lead.Source == LeadSource.MetaLeadAd
+                          && ((o.Lead.Source == LeadSource.MetaLeadAd || o.Lead.Source == LeadSource.LandingForm)
                               || o.Priority >= MessageOutbox.BridgeManualPriority));
 
         var sentToday = await _db.Outbox
             .CountAsync(o => o.Status == OutboxStatus.Sent
                           && o.SentAt >= todayStart
                           && o.Channel == MessageChannel.WhatsApp
-                          && (o.Lead.Source == LeadSource.MetaLeadAd
+                          && ((o.Lead.Source == LeadSource.MetaLeadAd || o.Lead.Source == LeadSource.LandingForm)
                               || o.Priority >= MessageOutbox.BridgeManualPriority));
 
         return Ok(new BridgeStatsResponse

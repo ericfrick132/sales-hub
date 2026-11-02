@@ -46,5 +46,10 @@ public enum LeadSource
     // Escribió por DM a una cuenta propia de Instagram (@gymhero.fitness, @turnos.pro,
     // @playcrewpadel), recibido por el webhook oficial de Meta (Messenger Platform para IG).
     // Lo atiende el mismo bot que a los chats de anuncios; se contesta por la Graph API.
-    InstagramDm = 406
+    InstagramDm = 406,
+    // Completó el formulario "Pedí una demo / cotizá a medida" de la sección de precios de una
+    // landing propia (gymhero.fitness, turnos-pro.com, ...), vía POST /api/public/landing-leads.
+    // Caliente: pidió que lo contactemos. Si el producto no tiene cadencia "LandingForm" usa un
+    // primer mensaje propio (OutboxEnqueueHelper.LandingFormDefaultSteps), nunca el opener frío.
+    LandingForm = 407
 }
