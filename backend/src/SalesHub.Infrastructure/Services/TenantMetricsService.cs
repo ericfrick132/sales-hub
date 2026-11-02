@@ -100,6 +100,19 @@ public class TenantMetricsService
         foreach (var gone in existing.Values.Where(t => t.LastSeenAt < now && t.Status != "deleted"))
             gone.Status = "deleted";
 
+        // Cobros reales (opcional: solo las apps que mandan "periods"). Se reemplazan enteros:
+        // la app es la fuente y así un pago anulado allá desaparece acá.
+        if ((body.Tenants ?? []).Any(r => r.Periods != null))
+        {
+            await _db.AppPaidPeriods.Where(p => p.ProductKey == src.ProductKey).ExecuteDeleteAsync(ct);
+            foreach (var r in body.Tenants!.Where(r => !string.IsNullOrWhiteSpace(r.Id) && r.Periods != null))
+                foreach (var p in r.Periods!.Where(p => p.To > p.From && p.MonthlyAmount > 0))
+                    _db.AppPaidPeriods.Add(new AppPaidPeriod
+                    {
+                        ProductKey = src.ProductKey, ExternalId = r.Id!, From = p.From, To = p.To, MonthlyAmount = p.MonthlyAmount
+                    });
+        }
+
         var tenants = existing.Values.Where(t => t.Status != "deleted").ToList();
         var paid = tenants.Where(t => t.Status == "active").ToList();
         var date = TodayAr();
@@ -115,12 +128,15 @@ public class TenantMetricsService
         return tenants.Count;
     }
 
-    public static DateOnly TodayAr()
+    public static DateOnly TodayAr() => DateAr(DateTimeOffset.UtcNow);
+
+    /// <summary>Día calendario en Argentina de un instante.</summary>
+    public static DateOnly DateAr(DateTimeOffset at)
     {
         TimeZoneInfo tz;
         try { tz = TimeZoneInfo.FindSystemTimeZoneById("America/Argentina/Buenos_Aires"); }
         catch { tz = TimeZoneInfo.CreateCustomTimeZone("AR", TimeSpan.FromHours(-3), "AR", "AR"); }
-        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz).DateTime);
+        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(at, tz).DateTime);
     }
 
     private static string? Trunc(string? s, int max) => s is null ? null : s.Length <= max ? s : s[..max];
@@ -128,5 +144,7 @@ public class TenantMetricsService
     private record TenantMetricsResponse(List<TenantRow>? Tenants);
     private record TenantRow(
         string? Id, string? Name, string? Status, string? Plan, decimal MonthlyAmount, string? Currency,
-        DateTimeOffset? CreatedAt, DateTimeOffset? FirstPaidAt, DateTimeOffset? CancelledAt);
+        DateTimeOffset? CreatedAt, DateTimeOffset? FirstPaidAt, DateTimeOffset? CancelledAt, List<PeriodRow>? Periods);
+    /// <summary>Un cobro: qué período cubre y cuánto es por mes (en la moneda del tenant).</summary>
+    private record PeriodRow(DateTimeOffset From, DateTimeOffset To, decimal MonthlyAmount);
 }

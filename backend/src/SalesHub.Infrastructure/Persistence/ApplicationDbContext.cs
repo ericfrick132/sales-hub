@@ -119,6 +119,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<ConversationFeedback> ConversationFeedbacks => Set<ConversationFeedback>();
     public DbSet<AppTenant> AppTenants => Set<AppTenant>();
     public DbSet<AppMetricsDaily> AppMetricsDaily => Set<AppMetricsDaily>();
+    /// <summary>Cobros reales de cada app a sus tenants: MRR de antes de las fotos diarias.</summary>
+    public DbSet<AppPaidPeriod> AppPaidPeriods => Set<AppPaidPeriod>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

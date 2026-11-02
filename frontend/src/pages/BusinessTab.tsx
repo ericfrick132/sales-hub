@@ -2,7 +2,7 @@
 // Los datos los reporta cada app (GET {app}/api/hub/tenant-metrics) y sales-hub guarda
 // una foto diaria (TenantMetricsWorker) → acá se ve la tendencia.
 import { Fragment, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api } from '../lib/api';
 
@@ -42,10 +42,21 @@ interface Business {
   daily: { date: string; byProduct: Record<string, number> }[];
 }
 
+// Rango del gráfico de MRR (aparte del período de las tarjetas). 0 = desde el primer pago.
+const RANGES = [
+  { label: '30 días', days: 30 },
+  { label: '90 días', days: 90 },
+  { label: '6 meses', days: 182 },
+  { label: '1 año', days: 365 },
+  { label: '2 años', days: 730 },
+  { label: 'Todo', days: 0 },
+];
+
 const GRID = '#e7e6e2';
 const AXIS = '#77766f';
 const usd = (n: number) => `US$ ${Math.round(n).toLocaleString('es-AR')}`;
 const fmtDay = (iso: string) => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
+const fmtDayYear = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y.slice(2)}`; };
 const fmtSync = (iso: string | null) => iso
   ? new Date(iso).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
   : 'nunca';
@@ -57,16 +68,26 @@ const daysBetween = (a: string | null, b: string | null) => a && b ? Math.round(
 
 export default function BusinessTab({ colorOf, nameOf }: { colorOf: (k: string) => string; nameOf: (k: string) => string }) {
   const [open, setOpen] = useState<string | null>(null);
-  const { data, isLoading } = useQuery({
-    queryKey: ['dashboard-business', 90],
-    queryFn: async () => (await api.get<Business>('/dashboard/business', { params: { days: 90 } })).data,
+  const [range, setRange] = useState(90);
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['dashboard-business', 90, range],
+    queryFn: async () => (await api.get<Business>('/dashboard/business', { params: { days: 90, chartDays: range } })).data,
     refetchInterval: 300000,
+    placeholderData: keepPreviousData,
   });
   if (isLoading || !data) return <div className="text-sm text-slate-500">Cargando…</div>;
 
   const connected = data.apps.filter((a) => a.connected);
   const keys = connected.map((a) => a.productKey).sort();
-  const rows = data.daily.map((d) => ({ date: fmtDay(d.date), ...Object.fromEntries(keys.map((k) => [k, Math.round(d.byProduct[k] ?? 0)])) }));
+  const first = data.daily[0]?.date;
+  const last = data.daily[data.daily.length - 1]?.date;
+  const longRange = !!first && !!last && new Date(last).getTime() - new Date(first).getTime() > 300 * 86400000;
+  // Más de 180 días el backend manda un punto por semana.
+  const weekly = data.daily.length > 1 && new Date(data.daily[1].date).getTime() - new Date(data.daily[0].date).getTime() > 86400000;
+  const rows = data.daily.map((d) => ({
+    date: (longRange ? fmtDayYear : fmtDay)(d.date),
+    ...Object.fromEntries(keys.map((k) => [k, Math.round(d.byProduct[k] ?? 0)])),
+  }));
 
   return (
     <div className="space-y-4">
@@ -80,10 +101,27 @@ export default function BusinessTab({ colorOf, nameOf }: { colorOf: (k: string) 
       </div>
 
       <section className="card p-4 md:p-5">
-        <h3 className="font-semibold">MRR por app</h3>
-        <p className="text-xs text-slate-500 mb-3">foto diaria, en USD</p>
+        <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+          <div>
+            <h3 className="font-semibold">MRR por app</h3>
+            <p className="text-xs text-slate-500">
+              en USD{weekly ? ' · un punto por semana' : ''}
+              {isFetching && <span className="ml-2 text-slate-400">actualizando…</span>}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {RANGES.map((r) => (
+              <button key={r.days} type="button" onClick={() => setRange(r.days)}
+                className={`px-2.5 py-1 rounded-md text-xs border ${range === r.days
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {rows.length === 0 ? (
-          <p className="text-sm text-slate-400">Todavía no hay fotos diarias. Aparecen cuando las apps empiezan a reportar.</p>
+          <p className="text-sm text-slate-400">Todavía no hay datos. Aparecen cuando las apps empiezan a reportar.</p>
         ) : (
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">

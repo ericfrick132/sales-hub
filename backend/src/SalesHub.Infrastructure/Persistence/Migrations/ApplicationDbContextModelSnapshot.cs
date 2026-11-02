@@ -235,6 +235,47 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("app_metrics_daily", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.AppPaidPeriod", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("external_id");
+
+                    b.Property<DateTimeOffset>("From")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("from");
+
+                    b.Property<decimal>("MonthlyAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("monthly_amount");
+
+                    b.Property<string>("ProductKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<DateTimeOffset>("To")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("to");
+
+                    b.HasKey("Id")
+                        .HasName("pk_app_paid_periods");
+
+                    b.HasIndex("ProductKey", "ExternalId")
+                        .HasDatabaseName("ix_app_paid_periods_product_key_external_id");
+
+                    b.ToTable("app_paid_periods", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.AppTenant", b =>
                 {
                     b.Property<Guid>("Id")

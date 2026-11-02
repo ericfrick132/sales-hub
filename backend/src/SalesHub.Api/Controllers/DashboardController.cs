@@ -290,11 +290,13 @@ public class DashboardController : ControllerBase
     /// Negocio por app (tab "Negocio" del Dashboard): MRR en USD, pagos, trials, altas pagas,
     /// bajas, churn y trial→pago del período. Sale de app_tenants / app_metrics_daily, que
     /// llena TenantMetricsWorker con lo que reporta cada app.
+    /// <paramref name="chartDays"/> es el rango del gráfico de MRR, aparte del período de las
+    /// tarjetas: 0 = desde el primer pago registrado. Ver <see cref="MrrSeries"/>.
     /// </summary>
     [HttpGet("business")]
     public async Task<ActionResult<BusinessResult>> Business(
         [FromServices] SalesHub.Infrastructure.Services.TenantMetricsService metrics,
-        [FromQuery] int days = 90, CancellationToken ct = default)
+        [FromQuery] int days = 90, [FromQuery] int? chartDays = null, CancellationToken ct = default)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
         days = Math.Clamp(days, 7, 365);
@@ -332,17 +334,89 @@ public class DashboardController : ControllerBase
                 trialsStarted.Count > 0 ? Math.Round(100.0 * trialsStarted.Count(t => t.FirstPaidAt != null) / trialsStarted.Count, 1) : null));
         }
 
-        var firstDay = SalesHub.Infrastructure.Services.TenantMetricsService.TodayAr().AddDays(-(days - 1));
-        var daily = (await _db.AppMetricsDaily.AsNoTracking().Where(d => d.Date >= firstDay).ToListAsync(ct))
-            .GroupBy(d => d.Date).OrderBy(g => g.Key)
-            .Select(g => new BusinessDay(g.Key.ToString("yyyy-MM-dd"), g.ToDictionary(d => d.ProductKey, d => d.MrrUsd)))
-            .ToList();
+        var daily = await MrrSeries(metrics, tenants, chartDays ?? days, ct);
 
         var connectedApps = apps.Where(a => a.Connected).ToList();
         return new BusinessResult(days, metrics.UsdArs,
             new BusinessTotals(connectedApps.Sum(a => a.MrrUsd), connectedApps.Sum(a => a.Active), connectedApps.Sum(a => a.Trial), connectedApps.Sum(a => a.Free),
                 connectedApps.Sum(a => a.NewPaid), connectedApps.Sum(a => a.Cancelled)),
             apps, daily);
+    }
+
+    // Un cobro mensual se da por cubierto unos días más: los débitos y las transferencias no
+    // caen exactamente el mismo día cada mes, y sin esto el MRR "parpadea" entre cobros.
+    private const int PaidPeriodToleranceDays = 7;
+
+    /// <summary>
+    /// Serie de MRR por app para el gráfico. Desde la primera foto diaria de cada app
+    /// (app_metrics_daily, existe desde el 09/10/2026) es la foto; si falta un día se repite
+    /// la anterior. Antes de eso sale de los cobros reales (app_paid_periods): cada tenant suma
+    /// el cobro que cubría ese día (el más reciente si hay más de uno). Los tenants sin cobros
+    /// reportados (apps que no mandan "periods", o pagos in-app) suman su cuota entre su primer
+    /// pago y su baja. Más de 180 días van de a una semana.
+    /// </summary>
+    private async Task<List<BusinessDay>> MrrSeries(
+        SalesHub.Infrastructure.Services.TenantMetricsService metrics, List<AppTenant> tenants, int chartDays, CancellationToken ct)
+    {
+        static DateOnly Ar(DateTimeOffset at) => SalesHub.Infrastructure.Services.TenantMetricsService.DateAr(at);
+        var today = SalesHub.Infrastructure.Services.TenantMetricsService.TodayAr();
+
+        var periods = (await _db.AppPaidPeriods.AsNoTracking().ToListAsync(ct))
+            .GroupBy(p => (p.ProductKey, p.ExternalId))
+            .ToDictionary(g => g.Key, g => g
+                .Select(p => (From: Ar(p.From), To: Ar(p.To).AddDays(PaidPeriodToleranceDays), p.MonthlyAmount))
+                .OrderByDescending(p => p.From).ThenBy(p => p.MonthlyAmount)
+                .ToList());
+        var paid = tenants.Where(t => t.FirstPaidAt != null)
+            .Select(t => new
+            {
+                t.ProductKey,
+                t.Currency,
+                From = Ar(t.FirstPaidAt!.Value),
+                To = t.CancelledAt is { } c ? Ar(c) : (DateOnly?)null,
+                t.MonthlyAmount,
+                Periods = periods.GetValueOrDefault((t.ProductKey, t.ExternalId))
+            })
+            .ToList();
+
+        var from = chartDays > 0
+            ? today.AddDays(-(Math.Clamp(chartDays, 7, 3650) - 1))
+            : paid.Count > 0 ? paid.Min(p => p.Periods?.Count > 0 ? p.Periods.Min(x => x.From) : p.From) : today.AddDays(-89);
+        if (from > today) from = today;
+
+        var snaps = (await _db.AppMetricsDaily.AsNoTracking().ToListAsync(ct))
+            .GroupBy(d => d.ProductKey)
+            .ToDictionary(g => g.Key, g => g.OrderBy(d => d.Date).ToList());
+        var keys = snaps.Keys.Concat(paid.Select(p => p.ProductKey)).Distinct().ToList();
+
+        var step = today.DayNumber - from.DayNumber + 1 > 180 ? 7 : 1;
+        var dates = new List<DateOnly>();
+        for (var d = today; d >= from; d = d.AddDays(-step)) dates.Add(d);
+        dates.Reverse();
+
+        var days = new List<BusinessDay>(dates.Count);
+        foreach (var d in dates)
+        {
+            var byProduct = new Dictionary<string, decimal>();
+            foreach (var key in keys)
+            {
+                var snap = snaps.GetValueOrDefault(key)?.LastOrDefault(s => s.Date <= d);
+                if (snap != null) { byProduct[key] = snap.MrrUsd; continue; }
+                decimal mrr = 0;
+                foreach (var t in paid.Where(p => p.ProductKey == key))
+                {
+                    decimal amount;
+                    if (t.Periods is { Count: > 0 })
+                        amount = t.Periods.FirstOrDefault(p => p.From <= d && d < p.To).MonthlyAmount;
+                    else
+                        amount = t.From <= d && (t.To == null || t.To > d) ? t.MonthlyAmount : 0;
+                    mrr += metrics.ToUsd(amount, t.Currency);
+                }
+                if (mrr > 0) byProduct[key] = Math.Round(mrr, 2);
+            }
+            days.Add(new BusinessDay(d.ToString("yyyy-MM-dd"), byProduct));
+        }
+        return days;
     }
 
     public record BusinessTenant(string ExternalId, string? Name, string Status, string? Plan, decimal MonthlyAmount, string Currency,

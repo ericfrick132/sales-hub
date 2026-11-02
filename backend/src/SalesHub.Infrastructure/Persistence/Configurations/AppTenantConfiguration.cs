@@ -21,6 +21,19 @@ public class AppTenantConfiguration : IEntityTypeConfiguration<AppTenant>
     }
 }
 
+public class AppPaidPeriodConfiguration : IEntityTypeConfiguration<AppPaidPeriod>
+{
+    public void Configure(EntityTypeBuilder<AppPaidPeriod> b)
+    {
+        b.ToTable("app_paid_periods");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.ProductKey).HasMaxLength(64).IsRequired();
+        b.Property(x => x.ExternalId).HasMaxLength(64).IsRequired();
+        b.Property(x => x.MonthlyAmount).HasPrecision(14, 2);
+        b.HasIndex(x => new { x.ProductKey, x.ExternalId });
+    }
+}
+
 public class AppMetricsDailyConfiguration : IEntityTypeConfiguration<AppMetricsDaily>
 {
     public void Configure(EntityTypeBuilder<AppMetricsDaily> b)
