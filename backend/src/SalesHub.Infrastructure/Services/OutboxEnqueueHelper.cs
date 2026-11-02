@@ -246,8 +246,8 @@ public static class OutboxEnqueueHelper
         return new List<MessageStep>
         {
             new() { DelaySeconds = 0, Text =
-                $"{{saludo}} {{nombre}}! Soy {{seller}} de {producto}. Me llegó tu pedido de demo desde la web 🙌 " +
-                "¿Te viene bien que te la muestre {hoy}? Decime qué horario te queda cómodo y la agendamos." },
+                $"{{saludo}} {{nombre}}! Soy {{seller}} de {producto}. Me llegó tu pedido desde la web 🙌 " +
+                "Te llamo en unos minutos a este número. Si preferís que coordinemos por acá, decime qué horario te queda cómodo." },
             new() { DelaySeconds = 24 * 3600, Text =
                 "{nombre}, ¿pudiste ver mi mensaje? Si te resulta más cómodo, elegí día y hora acá y te llamo: " +
                 "https://calendly.com/efcloud/demo" },

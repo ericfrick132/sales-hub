@@ -31,12 +31,13 @@ public class PublicLandingLeadsController : ControllerBase
     private readonly ILeadIngestService _ingest;
     private readonly IPhoneNormalizer _phones;
     private readonly ApplicationDbContext _db;
+    private readonly IAdminAlerter _alerter;
     private readonly ILogger<PublicLandingLeadsController> _log;
 
     public PublicLandingLeadsController(ILeadIngestService ingest, IPhoneNormalizer phones,
-        ApplicationDbContext db, ILogger<PublicLandingLeadsController> log)
+        ApplicationDbContext db, IAdminAlerter alerter, ILogger<PublicLandingLeadsController> log)
     {
-        _ingest = ingest; _phones = phones; _db = db; _log = log;
+        _ingest = ingest; _phones = phones; _db = db; _alerter = alerter; _log = log;
     }
 
     public record LandingLeadRequest(
@@ -106,6 +107,23 @@ public class PublicLandingLeadsController : ControllerBase
                 return StatusCode(500, new { error = "No pudimos registrar el pedido. Escribinos por WhatsApp." });
             case LeadIngestOutcome.NoPhone:
                 return BadRequest(new { error = "Revisá el número de WhatsApp (con código de área)." });
+        }
+
+        // La web promete "te llamamos dentro de los próximos 10 minutos": aviso inmediato al número
+        // maestro con todo lo necesario para llamar (best-effort, nunca tira).
+        if (result.Outcome is LeadIngestOutcome.Created or LeadIngestOutcome.Duplicate)
+        {
+            var seller = await _db.Leads.Where(l => l.ProductKey == productKey && l.WhatsappPhone == phone)
+                .Select(l => l.Seller != null ? l.Seller.DisplayName : null).FirstOrDefaultAsync(ct);
+            var origen = (req.Page ?? string.Empty).Contains("#salida") ? "popup de salida" : "sección de precios";
+            var alert = new StringBuilder($"📞 LLAMAR YA — {productKey}: {name} · +{phone}");
+            if (!string.IsNullOrWhiteSpace(email)) alert.Append($" · {email}");
+            alert.Append($"\nPidió que lo llamen desde la web ({origen}{(string.IsNullOrWhiteSpace(req.Page) ? "" : ", " + Clip(req.Page, 80))}).");
+            if (Clip(req.Business, 80) is { } neg) alert.Append($"\nNegocio: {neg}.");
+            if (Clip(req.Plan, 40) is { } pl) alert.Append($" Plan: {pl}.");
+            alert.Append(result.Outcome == LeadIngestOutcome.Duplicate ? "\nYa estaba en el CRM." : "\nNuevo en el CRM.");
+            if (!string.IsNullOrWhiteSpace(seller)) alert.Append($" Vendedor: {seller}.");
+            await _alerter.AlertAsync(alert.ToString(), ct);
         }
 
         _log.LogInformation("Landing lead {Product} → {Outcome} (plan={Plan}, page={Page})",
