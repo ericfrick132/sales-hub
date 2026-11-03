@@ -308,12 +308,54 @@ public class OnboardingService
         var count = ob.Step == StepAwaitFollowUpReply ? ob.FollowUpCount : 0;
         if (count >= cfg.FollowUpMessages.Count) return null;
         if (ob.Step != StepAwaitFollowUpReply) ob.FollowUpStep = ob.Step;
+        var stage = ob.FollowUpStep ?? ob.Step;
+        var text = await FollowUpTextForStageAsync(lead, cfg, ob, stage, Spin(cfg.FollowUpMessages[count], lead.Id, 200 + count), ct);
+        if (string.IsNullOrWhiteSpace(text)) return null;
         ob.Step = StepAwaitFollowUpReply;
         ob.FollowUpCount = count + 1;
         ob.LastFollowUpAt = DateTimeOffset.UtcNow;
         ob.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return PresentAs(Spin(cfg.FollowUpMessages[count], lead.Id, 200 + count), cfg);
+        return PresentAs(text, cfg);
+    }
+
+    private static readonly Regex PriceMentionRx = new(@"precio", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex UrlRx = new(@"https?://\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// El seguimiento tiene que ser coherente con dónde quedó la charla: "pudiste ver los precios?" solo si el
+    /// bot de verdad los mandó (llegó a StepAwaitStart por el paso de precios). Si quedó a mitad de las preguntas,
+    /// la burbuja de precios se cambia por la pregunta pendiente (re-saludo + misma pregunta, como una persona);
+    /// si vio la demo, "pudiste verlo andando?"; en otro paso, solo el re-saludo. A mitad de las preguntas SIEMPRE
+    /// se re-pregunta la pendiente, así su respuesta retoma el guion (ver el handler de StepAwaitFollowUpReply).
+    /// </summary>
+    private async Task<string> FollowUpTextForStageAsync(Lead lead, OnboardingConfig cfg, LeadOnboarding ob, int stage, string configured, CancellationToken ct)
+    {
+        // StepAwaitStart se alcanza también por la demo (sin precios): se mira si el link de precios salió en el chat.
+        var pricesSent = false;
+        if (stage == StepAwaitStart && !string.IsNullOrWhiteSpace(cfg.PricesMessage))
+        {
+            var url = UrlRx.Match(cfg.PricesMessage) is { Success: true } um ? um.Value : null;
+            pricesSent = url is not null && await _db.ConversationMessages.AnyAsync(m => m.LeadId == lead.Id
+                && m.Direction == MessageDirection.Outbound && m.Text.Contains(url), ct);
+        }
+        var bubbles = configured.Split(NL, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        var questionStage = stage is >= 1 and <= 10 or StepGreetedAsked;
+        if (!questionStage && (pricesSent || !bubbles.Any(b => PriceMentionRx.IsMatch(b)))) return configured;
+
+        string? pending = null;
+        if (questionStage)
+        {
+            var questions = await QuestionsForAsync(lead, cfg, ob, ct);
+            var i = stage == StepGreetedAsked ? 0 : stage - 1;
+            if (i >= 0 && i < questions.Count) pending = Spin(questions[i], lead.Id, i + 1);
+        }
+        else if (stage == StepAwaitStart && !string.IsNullOrWhiteSpace(cfg.DemoLink))
+            pending = "pudiste verlo andando?";
+
+        var kept = bubbles.Where(b => !PriceMentionRx.IsMatch(b)).ToList();
+        if (pending is not null && !PriceMentionRx.IsMatch(pending)) kept.Add(pending);
+        return string.Join(NL, kept);
     }
 
     private bool DemoStepEnabled(OnboardingConfig cfg) =>
@@ -490,6 +532,13 @@ public class OnboardingService
                 : new OnboardingResult(Join(prices, start), OffScript: false, Provisioned: false);
         }
         // ── Contestó el re-saludo de seguimiento ("si, contame", "cual es la promo?"): la persona sigue ──
+        // Si el seguimiento re-preguntó la pregunta pendiente del guion, su respuesta sigue el guion
+        // (las dudas/precio las resuelve el flujo normal, que pasa a la persona).
+        if (ob.Step == StepAwaitFollowUpReply && ob.FollowUpStep is { } fu && (fu is >= 1 and <= 10 or StepGreetedAsked))
+        {
+            ob.Step = fu;
+            ob.UpdatedAt = DateTimeOffset.UtcNow;
+        }
         if (ob.Step == StepAwaitFollowUpReply)
         {
             ob.Step = StepHumanHandoff;
