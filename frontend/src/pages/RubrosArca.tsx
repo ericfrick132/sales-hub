@@ -13,7 +13,7 @@ interface Summary { rulesVersion: string; total: number; classified: number; row
 const APP_NAMES: Record<string, string> = {
   gymhero: 'GymHero', turnospro: 'TurnosPro', playcrew: 'PlayCrew', construction: 'ArchiCloud', unistock: 'DashFlow', bunker: 'Bunker',
 };
-const appName = (key: string) => APP_NAMES[key] ?? key;
+const appName = (key: string) => APP_NAMES[key] ?? (key || 'Sin app');
 
 async function download(path: string, params: Record<string, string>, fallbackName: string) {
   const resp = await api.get(path, { params, responseType: 'blob' });

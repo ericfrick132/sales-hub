@@ -46,20 +46,34 @@ public static class ArcaNomencladorImporter
             cDiv = Col("division"), cDivDesc = Col("division_descripcion"), cSec = Col("seccion"), cSecDesc = Col("seccion_descripcion");
 
         var existing = await db.ArcaActivities.ToDictionaryAsync(a => a.Code, ct);
-        int created = 0, updated = 0;
+        int created = 0, updated = 0, invalid = 0;
         foreach (var r in rows.Skip(1))
         {
             if (r.Count <= cSecDesc || string.IsNullOrWhiteSpace(r[cCode])) continue;
             var code = r[cCode].Trim().PadLeft(6, '0');
+
+            // Una fila con formato raro (ej. el "999999 Otros sectores" que agrega el CEP) no puede
+            // voltear el SaveChanges entero: se saltea y se avisa.
+            var group = r[cGroup].Trim().PadLeft(3, '0');
+            var division = r[cDiv].Trim().PadLeft(2, '0');
+            var section = r[cSec].Trim();
+            if (code.Length != 6 || !code.All(char.IsDigit) || group.Length != 3 || division.Length != 2
+                || section.Length is < 1 or > 2 || string.IsNullOrWhiteSpace(r[cDesc]))
+            {
+                invalid++;
+                log.LogWarning("ArcaSeed: fila inválida salteada (código {Code}, grupo {Group}, división {Division})", code, group, division);
+                continue;
+            }
+
             var incoming = new ArcaActivity
             {
                 Code = code,
                 Description = r[cDesc].Trim(),
-                GroupCode = r[cGroup].Trim().PadLeft(3, '0'),
+                GroupCode = group,
                 GroupDescription = r[cGroupDesc].Trim(),
-                DivisionCode = r[cDiv].Trim().PadLeft(2, '0'),
+                DivisionCode = division,
                 DivisionDescription = r[cDivDesc].Trim(),
-                Section = r[cSec].Trim(),
+                Section = section,
                 SectionDescription = r[cSecDesc].Trim(),
             };
 
@@ -87,8 +101,8 @@ public static class ArcaNomencladorImporter
 
         await db.SaveChangesAsync(ct);
         var total = existing.Count + created;
-        log.LogInformation("ArcaSeed: nomenclador CLAE con {Total} actividades (nuevas {Created}, actualizadas {Updated})",
-            total, created, updated);
+        log.LogInformation("ArcaSeed: nomenclador CLAE con {Total} actividades (nuevas {Created}, actualizadas {Updated}, inválidas {Invalid})",
+            total, created, updated, invalid);
         return total;
     }
 
