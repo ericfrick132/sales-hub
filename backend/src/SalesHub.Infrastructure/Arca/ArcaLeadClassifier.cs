@@ -15,7 +15,8 @@ namespace SalesHub.Infrastructure.Arca;
 ///   3. el nombre del negocio,
 ///   4. el texto de la búsqueda (<c>SearchQuery</c>),
 ///   5. el rubro por defecto del producto, solo en los productos de un único rubro.
-/// Si nada matchea queda sin código con regla "sin-match". Los elegidos a mano ("manual") no se tocan.
+/// Si nada matchea queda sin código con regla "sin-match". Los elegidos a mano ("manual") y los que
+/// se capturaron buscando un rubro ARCA desde el userscript ("captura:&lt;código&gt;") no se tocan.
 ///
 /// Las reglas van de lo más específico a lo más general (barbería antes que bar, gimnasia artística
 /// antes que gimnasio). Cada palabra clave matchea al comienzo de una palabra ("gimnas" ⇒ gimnasio,
@@ -27,6 +28,8 @@ public static class ArcaLeadClassifier
     public const string RulesVersion = "2026-11-02";
     public const string ManualRule = "manual";
     public const string NoMatchRule = "sin-match";
+    /// <summary>Rubro elegido al capturar en Maps desde el panel del userscript ("captura:931050"): no se reclasifica.</summary>
+    public const string CaptureRulePrefix = "captura:";
 
     private sealed record Rule(string Code, string[] Keywords);
 
@@ -149,7 +152,8 @@ public static class ArcaLeadClassifier
         {
             var batch = await db.Leads.AsNoTracking()
                 .Where(l => (l.ArcaRulesVersion == null || l.ArcaRulesVersion != RulesVersion)
-                            && (l.ArcaActivityRule == null || l.ArcaActivityRule != ManualRule))
+                            && (l.ArcaActivityRule == null
+                                || (l.ArcaActivityRule != ManualRule && !l.ArcaActivityRule.StartsWith(CaptureRulePrefix))))
                 .OrderBy(l => l.Id)
                 .Select(l => new { l.Id, l.ProductKey, l.SearchCategory, l.Types, l.Name, l.SearchQuery })
                 .Take(batchSize)

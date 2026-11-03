@@ -10,16 +10,19 @@ namespace SalesHub.Api.Controllers;
 
 /// <summary>
 /// Nomenclador de actividades de ARCA (CLAE F.883) y rubro de cada lead.
-///   GET  api/arca/activities?q=gimnasio      nomenclador (json), con búsqueda por código o texto
-///   GET  api/arca/activities.csv             nomenclador completo para Excel
+///   GET  api/arca/activities?q=gimnasio      nomenclador (json), con búsqueda por código o texto  [cualquier usuario]
+///   GET  api/arca/activities/{code}/search   términos para buscar ese rubro en Maps + app sugerida [cualquier usuario]
+///   GET  api/arca/activities.csv             nomenclador completo para Excel                     [cualquier usuario]
 ///   GET  api/arca/summary?product=gymhero    leads por producto y rubro
 ///   GET  api/arca/leads.csv?product=…&amp;code=… listado de leads con su rubro ARCA (para Excel)
 ///   PUT  api/arca/leads/{id}                 { code } elige el rubro a mano (null lo devuelve al automático)
 ///   POST api/arca/reclassify                 reclasifica ya todo lo no manual
+/// El resto es solo Admin. El buscador y los términos los usa el userscript de captura de Maps
+/// con la sesión del vendedor, por eso esos no piden Admin.
 /// </summary>
 [ApiController]
 [Route("api/arca")]
-[Authorize(Roles = "Admin")]
+[Authorize]
 public class ArcaController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
@@ -28,7 +31,7 @@ public class ArcaController : ControllerBase
     public ArcaController(ApplicationDbContext db, ILogger<ArcaController> log) { _db = db; _log = log; }
 
     [HttpGet("activities")]
-    public async Task<IActionResult> Activities([FromQuery] string? q, CancellationToken ct)
+    public async Task<IActionResult> Activities([FromQuery] string? q, [FromQuery] int? limit, CancellationToken ct)
     {
         var query = _db.ArcaActivities.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(q))
@@ -39,7 +42,24 @@ public class ArcaController : ControllerBase
                 : query.Where(a => EF.Functions.ILike(a.Description, $"%{term}%")
                                    || EF.Functions.ILike(a.GroupDescription, $"%{term}%"));
         }
-        return Ok(await query.OrderBy(a => a.Code).ToListAsync(ct));
+        return Ok(await query.OrderBy(a => a.Code).Take(limit is > 0 and <= 1000 ? limit.Value : 1000).ToListAsync(ct));
+    }
+
+    /// <summary>Qué escribir en Google Maps para encontrar negocios de este rubro y a qué app le sirven.</summary>
+    [HttpGet("activities/{code}/search")]
+    public async Task<IActionResult> SearchTerms(string code, CancellationToken ct)
+    {
+        code = code.Trim().PadLeft(6, '0');
+        var a = await _db.ArcaActivities.AsNoTracking().FirstOrDefaultAsync(x => x.Code == code, ct);
+        if (a is null) return NotFound(new { error = $"El código {code} no está en el nomenclador de ARCA" });
+        return Ok(new
+        {
+            a.Code,
+            a.Description,
+            a.GroupDescription,
+            terms = ArcaSearchTerms.For(a.Code, a.Description),
+            suggestedProduct = ArcaSearchTerms.SuggestedProduct(a.Code),
+        });
     }
 
     [HttpGet("activities.csv")]
@@ -55,6 +75,7 @@ public class ArcaController : ControllerBase
     }
 
     [HttpGet("summary")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Summary([FromQuery] string? product, CancellationToken ct)
     {
         var leads = _db.Leads.AsNoTracking();
@@ -84,6 +105,7 @@ public class ArcaController : ControllerBase
     }
 
     [HttpGet("leads.csv")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> LeadsCsv([FromQuery] string? product, [FromQuery] string? code, CancellationToken ct)
     {
         var leads = _db.Leads.AsNoTracking();
@@ -122,6 +144,7 @@ public class ArcaController : ControllerBase
     public record SetActivityRequest(string? Code);
 
     [HttpPut("leads/{id:guid}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> SetLeadActivity(Guid id, [FromBody] SetActivityRequest req, CancellationToken ct)
     {
         var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == id, ct);
@@ -149,6 +172,7 @@ public class ArcaController : ControllerBase
     }
 
     [HttpPost("reclassify")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Reclassify(CancellationToken ct)
     {
         var count = await ArcaLeadClassifier.ClassifyPendingAsync(_db, _log, ct: ct);

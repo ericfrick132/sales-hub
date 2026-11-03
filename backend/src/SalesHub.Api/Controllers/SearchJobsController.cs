@@ -1,3 +1,4 @@
+using SalesHub.Infrastructure.Arca;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -63,7 +64,10 @@ public class SearchJobsController : ControllerBase
         string? LocalityGid2,
         string? Category,
         string? Query,
-        CapturedItem[] Items);
+        CapturedItem[] Items,
+        // Rubro ARCA (CLAE F.883) elegido en el panel del userscript: va tal cual a cada lead
+        // (regla "captura:<código>", el clasificador automático no lo pisa).
+        string? ArcaCode = null);
 
     public record CapturedSummary(
         Guid Id,
@@ -349,6 +353,14 @@ public class SearchJobsController : ControllerBase
             }
         }
 
+        string? arcaCode = null;
+        if (!string.IsNullOrWhiteSpace(req.ArcaCode))
+        {
+            arcaCode = req.ArcaCode.Trim().PadLeft(6, '0');
+            if (!await _db.ArcaActivities.AnyAsync(a => a.Code == arcaCode, ct))
+                return BadRequest(new { error = $"El rubro ARCA {arcaCode} no está en el nomenclador" });
+        }
+
         var seller = await _db.Sellers.Include(s => s.EvolutionInstance).FirstAsync(s => s.Id == sellerId, ct);
 
         var query = req.Query?.Trim();
@@ -412,6 +424,9 @@ public class SearchJobsController : ControllerBase
                 LocalityGid2 = locality?.Gid2,
                 SearchQuery = query,
                 SearchCategory = item.Type ?? req.Category,
+                ArcaActivityCode = arcaCode,
+                ArcaActivityRule = arcaCode is null ? null : $"{ArcaLeadClassifier.CaptureRulePrefix}{arcaCode}",
+                ArcaRulesVersion = arcaCode is null ? null : ArcaLeadClassifier.RulesVersion,
                 SellerId = seller.Id,
                 AssignedAt = now,
                 Status = LeadStatus.Assigned,

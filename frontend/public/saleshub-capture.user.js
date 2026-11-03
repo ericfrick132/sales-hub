@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SalesHub Maps Capture
 // @namespace    saleshub
-// @version      0.11.0
-// @description  Captura negocios desde Google Maps (y el teléfono de su Instagram) y los manda a SalesHub como leads.
+// @version      0.12.0
+// @description  Captura negocios desde Google Maps (y el teléfono de su Instagram) y los manda a SalesHub como leads. Busca por rubro del nomenclador de ARCA.
 // @match        https://www.google.com/maps/*
 // @match        https://maps.google.com/*
 // @match        https://www.instagram.com/*
@@ -383,6 +383,13 @@
     productKey: GM_getValue('saleshub.productKey', ''),
     localityGid2: GM_getValue('saleshub.localityGid2', ''),
     category: GM_getValue('saleshub.category', ''),
+    // Rubro ARCA (CLAE F.883) con el que se abrió la búsqueda actual: viaja a cada lead al subir.
+    // Va atado a la búsqueda igual que la categoría (si cambiás la búsqueda a mano, se limpia).
+    arcaCode: GM_getValue('saleshub.arcaCode', ''),
+    // Rubro elegido en el buscador del panel ({code, description, terms, suggestedProduct}) y la zona
+    // tipeada: quedan elegidos entre búsquedas para recorrer los términos uno por uno.
+    arcaPick: GM_getValue('saleshub.arcaPick', null),
+    arcaZone: GM_getValue('saleshub.arcaZone', ''),
     // Preset de velocidad (ver SPEED_PROFILES). Default "humano" para no
     // levantar sospecha en sesiones nuevas. El vendedor puede cambiarlo
     // desde el panel.
@@ -428,6 +435,7 @@
       if (k === 'productKey' && v) ctx.productKey = v;
       if (k === 'gid2' && v) ctx.localityGid2 = v;
       if (k === 'cat' && v) ctx.category = v;
+      if (k === 'arca' && v) ctx.arcaCode = v;
     }
     return ctx;
   }
@@ -446,6 +454,9 @@
     if (bootCtx.productKey) { cfg.productKey = bootCtx.productKey; GM_setValue('saleshub.productKey', cfg.productKey); }
     if (bootCtx.localityGid2) { cfg.localityGid2 = bootCtx.localityGid2; GM_setValue('saleshub.localityGid2', cfg.localityGid2); }
     if (bootCtx.category) { cfg.category = bootCtx.category; GM_setValue('saleshub.category', cfg.category); }
+    // Una búsqueda abierta desde SalesHub sin rubro ARCA no hereda el rubro de la anterior.
+    cfg.arcaCode = bootCtx.arcaCode || '';
+    GM_setValue('saleshub.arcaCode', cfg.arcaCode);
   } else {
     // Sin hash: si la búsqueda actual no coincide con la del último contexto,
     // limpiamos gid2/cat para evitar atribuir leads a una zona vieja.
@@ -453,8 +464,10 @@
     if (stored && getCurrentQueryRaw() && stored.query && getCurrentQueryRaw() !== stored.query) {
       cfg.localityGid2 = '';
       cfg.category = '';
+      cfg.arcaCode = '';
       GM_setValue('saleshub.localityGid2', '');
       GM_setValue('saleshub.category', '');
+      GM_setValue('saleshub.arcaCode', '');
       GM_setValue('saleshub.searchCtx', null);
     }
   }
@@ -843,6 +856,13 @@
     #sh-panel .alert.err { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
     #sh-panel .mini { padding:8px 12px; cursor:pointer; display:flex; align-items:center; gap:8px; user-select:none; }
     #sh-panel .mini b { font-size:13px; }
+    #sh-panel .arca { display:flex; flex-direction:column; gap:6px; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; }
+    #sh-panel .arca-results { display:flex; flex-direction:column; gap:2px; max-height:200px; overflow-y:auto; }
+    #sh-panel .arca-results:empty { display:none; }
+    #sh-panel button.arca-opt { text-align:left; font:inherit; font-size:11px; padding:5px 6px; border:0; border-radius:4px; background:#f8fafc; cursor:pointer; color:#0f172a; }
+    #sh-panel button.arca-opt:hover { background:#e0e7ff; }
+    #sh-panel .arca .meta { color:#64748b; font-size:11px; }
+    #sh-panel button.chip { padding:3px 8px; font-size:11px; border-radius:999px; }
     #sh-toast { position:fixed; bottom:96px; right:16px; z-index:100000; max-width:300px;
       background:#0f172a; color:#fff; padding:10px 14px; border-radius:8px; font:12px sans-serif; box-shadow:0 4px 12px rgba(0,0,0,.2); }
     #sh-toast.err { background:#991b1b; }
@@ -916,12 +936,13 @@
               ? `<span style="color:#b91c1c;">no se cargaron productos</span> <button class="ghost" id="sh-reload-products">reintentar</button>`
               : `<select id="sh-product">${productOptions}</select>`}
           </div>
+          ${renderArca()}
           ${getCurrentQuery() !== '(captura ad-hoc)'
             ? `<div class="row"><span class="pill">🔍 ${escapeHtml(getCurrentQuery())}</span></div>`
             : ''}
           ${(cfg.localityGid2 || cfg.category) ? `
             <div class="row" style="font-size:11px; color:#15803d; background:#ecfdf5; padding:4px 8px; border-radius:6px; border:1px solid #bbf7d0;">
-              🎯 ${cfg.category ? `<b>${escapeHtml(cfg.category)}</b>` : '(sin categoría)'} · zona <code style="font-size:10px;">${escapeHtml(cfg.localityGid2 || '—')}</code>
+              🎯 ${cfg.category ? `<b>${escapeHtml(cfg.category)}</b>` : '(sin categoría)'} · zona <code style="font-size:10px;">${escapeHtml(cfg.localityGid2 || '—')}</code>${cfg.arcaCode ? ` · ARCA <code style="font-size:10px;">${escapeHtml(cfg.arcaCode)}</code>` : ''}
               <button class="ghost" id="sh-clear-ctx" style="margin-left:auto; color:#7f1d1d;" title="Limpiar zona/categoría — útil si vas a hacer una búsqueda manual distinta">×</button>
             </div>
           ` : `
@@ -1092,17 +1113,138 @@
       };
     });
 
+    bindArca($);
+
     if ($('#sh-cfg')) $('#sh-cfg').onclick = openAdvancedConfig;
     if ($('#sh-speed')) $('#sh-speed').onclick = openSpeedPicker;
     if ($('#sh-clear-ctx')) $('#sh-clear-ctx').onclick = () => {
       cfg.localityGid2 = '';
       cfg.category = '';
+      cfg.arcaCode = '';
       GM_setValue('saleshub.localityGid2', '');
       GM_setValue('saleshub.category', '');
+      GM_setValue('saleshub.arcaCode', '');
       GM_setValue('saleshub.searchCtx', null);
       toast('Contexto limpiado — la próxima subida no va a estar atribuída a una zona.');
       render();
     };
+  }
+
+
+  // ============================================================
+  // Rubro ARCA (nomenclador CLAE F.883)
+  // ============================================================
+  // El vendedor busca un rubro del nomenclador ("gimnasio", "peluq", "931050"), lo elige y el panel
+  // muestra los términos para buscarlo en Maps (GET /api/arca/activities/{code}/search). Cada término
+  // abre la búsqueda "<término> en <zona>" con el código en el hash (#saleshub:…|arca=931050), así los
+  // leads que se suban de esa búsqueda llegan con ese rubro ARCA.
+  let arcaSearchTimer = null;
+  let arcaSearchSeq = 0;
+
+  function renderArca() {
+    const pick = cfg.arcaPick;
+    if (!pick) {
+      return `
+        <div class="arca">
+          <div class="row"><label style="color:#64748b;">Rubro ARCA:</label>
+            <input id="sh-arca-q" placeholder="gimnasio, peluquería, 931050…" autocomplete="off" />
+          </div>
+          <div id="sh-arca-results" class="arca-results"></div>
+        </div>`;
+    }
+    const terms = (pick.terms || []).map(t =>
+      `<button class="btn chip" data-term="${escapeHtml(t)}" title="Buscar en Maps">🔍 ${escapeHtml(t)}</button>`).join('');
+    return `
+      <div class="arca">
+        <div class="row">
+          <label style="color:#64748b;">Rubro ARCA:</label>
+          <span class="pill" title="${escapeHtml(pick.description)}" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            <b>${escapeHtml(pick.code)}</b> ${escapeHtml(shortArca(pick.description))}
+          </span>
+          <button class="ghost" id="sh-arca-clear" title="Elegir otro rubro">×</button>
+        </div>
+        <div class="row">
+          <input id="sh-arca-zone" placeholder="Zona: barrio, ciudad o provincia (vacío = lo que ves en el mapa)" value="${escapeHtml(cfg.arcaZone || '')}" />
+        </div>
+        <div class="row">${terms || '<span style="color:#94a3b8;">Sin términos para este rubro</span>'}</div>
+      </div>`;
+  }
+
+  function shortArca(desc) {
+    const s = (desc || '').split('(')[0].trim();
+    return s.length > 60 ? s.slice(0, 57) + '…' : s;
+  }
+
+  function bindArca($) {
+    const q = $('#sh-arca-q');
+    if (q) {
+      q.oninput = () => {
+        clearTimeout(arcaSearchTimer);
+        const term = q.value.trim();
+        if (term.length < 2) { const box = $('#sh-arca-results'); if (box) box.innerHTML = ''; return; }
+        arcaSearchTimer = setTimeout(() => searchArca(term), 300);
+      };
+    }
+    if ($('#sh-arca-clear')) $('#sh-arca-clear').onclick = () => {
+      cfg.arcaPick = null;
+      GM_setValue('saleshub.arcaPick', null);
+      render();
+      setTimeout(() => panel.querySelector('#sh-arca-q')?.focus(), 0);
+    };
+    const zone = $('#sh-arca-zone');
+    if (zone) zone.oninput = () => { cfg.arcaZone = zone.value; GM_setValue('saleshub.arcaZone', cfg.arcaZone); };
+    panel.querySelectorAll('button.chip[data-term]').forEach(b => {
+      b.onclick = () => openArcaSearch(b.getAttribute('data-term'));
+    });
+  }
+
+  async function searchArca(term) {
+    const seq = ++arcaSearchSeq;
+    const box = panel.querySelector('#sh-arca-results');
+    if (!box) return;
+    box.innerHTML = '<div class="meta">Buscando…</div>';
+    try {
+      const list = await apiCall('GET', `/api/arca/activities?q=${encodeURIComponent(term)}&limit=8`, null);
+      if (seq !== arcaSearchSeq) return; // llegó una búsqueda más nueva
+      const rows = Array.isArray(list) ? list : [];
+      box.innerHTML = rows.length === 0
+        ? '<div class="meta">Ningún rubro con ese texto o código.</div>'
+        : rows.map(a => `<button class="arca-opt" data-code="${escapeHtml(a.code)}" title="${escapeHtml(a.description)}">
+              <b>${escapeHtml(a.code)}</b> ${escapeHtml(shortArca(a.description))}</button>`).join('');
+      box.querySelectorAll('button.arca-opt').forEach(b => { b.onclick = () => pickArca(b.getAttribute('data-code')); });
+    } catch (err) {
+      if (seq === arcaSearchSeq) box.innerHTML = `<div class="meta" style="color:#b91c1c;">Error: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async function pickArca(code) {
+    try {
+      const info = await apiCall('GET', `/api/arca/activities/${encodeURIComponent(code)}/search`, null);
+      cfg.arcaPick = { code: info.code, description: info.description, terms: info.terms || [], suggestedProduct: info.suggestedProduct || null };
+      GM_setValue('saleshub.arcaPick', cfg.arcaPick);
+      // Si el rubro le sirve a una app que este vendedor trabaja, la deja elegida.
+      const sp = cfg.arcaPick.suggestedProduct;
+      if (sp && sp !== cfg.productKey && (products || []).some(p => p.productKey === sp)) {
+        cfg.productKey = sp;
+        GM_setValue('saleshub.productKey', sp);
+        toast(`Producto: ${(products.find(p => p.productKey === sp) || {}).displayName || sp}`, 'ok');
+      }
+      render();
+    } catch (err) {
+      toast(`No pude cargar el rubro: ${err.message}`, 'err');
+    }
+  }
+
+  function openArcaSearch(term) {
+    const pick = cfg.arcaPick;
+    if (!pick || !term) return;
+    if (!cfg.productKey) return toast('Elegí un producto antes de buscar', 'err');
+    const zone = (cfg.arcaZone || '').trim();
+    const query = zone ? `${term} en ${zone}` : term;
+    // Con zona tipeada no sabemos su gid2: la búsqueda no se atribuye a una zona asignada.
+    const parts = [`productKey=${cfg.productKey}`, `cat=${term}`, `arca=${pick.code}`];
+    if (!zone && cfg.localityGid2) parts.push(`gid2=${cfg.localityGid2}`);
+    location.href = `https://www.google.com/maps/search/${encodeURIComponent(query).replace(/%20/g, '+')}#saleshub:${encodeURIComponent(parts.join('|'))}`;
   }
 
   // ============================================================
@@ -1177,7 +1319,8 @@
         localityGid2: cfg.localityGid2 || null,
         category: cfg.category || null,
         query: getCurrentQuery(),
-        items: buffer
+        items: buffer,
+        arcaCode: cfg.arcaCode || null
       });
       lastResult = {
         created: data?.leadsCreated ?? 0,
