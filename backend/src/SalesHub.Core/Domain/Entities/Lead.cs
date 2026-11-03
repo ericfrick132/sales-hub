@@ -53,6 +53,23 @@ public class Lead
     public string? SearchCategory { get; set; }
     public string? RawDataJson { get; set; }
 
+    /// <summary>
+    /// Rubro del negocio según el nomenclador de ARCA (código CLAE F.883 de 6 dígitos, ver
+    /// <see cref="ArcaActivity"/>). Lo pone <c>ArcaLeadClassifier</c> a partir de la categoría de
+    /// búsqueda, los tipos de Google, el nombre o el producto; null = no se pudo deducir.
+    /// </summary>
+    public string? ArcaActivityCode { get; set; }
+
+    /// <summary>
+    /// Qué regla le puso el rubro, para poder auditarlo: "categoria:gimnasio", "tipo:gym",
+    /// "nombre:pilates", "busqueda:...", "producto:gymhero", "sin-match" o "manual"
+    /// (elegido a mano: el clasificador no lo vuelve a tocar).
+    /// </summary>
+    public string? ArcaActivityRule { get; set; }
+
+    /// <summary>Versión de las reglas con que se clasificó; al cambiar las reglas se reclasifica solo.</summary>
+    public string? ArcaRulesVersion { get; set; }
+
     public string? LocalityGid2 { get; set; }
     public Locality? Locality { get; set; }
 

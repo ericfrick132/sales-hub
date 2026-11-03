@@ -30,6 +30,10 @@ public class LeadConfiguration : IEntityTypeConfiguration<Lead>
         b.Property(x => x.ExternalId).HasMaxLength(128);
         b.Property(x => x.SearchQuery).HasMaxLength(256);
         b.Property(x => x.RawDataJson).HasColumnType("jsonb");
+        b.Property(x => x.ArcaActivityCode).HasMaxLength(6);
+        b.Property(x => x.ArcaActivityRule).HasMaxLength(128);
+        b.Property(x => x.ArcaRulesVersion).HasMaxLength(32);
+        b.HasIndex(x => x.ArcaActivityCode).HasFilter("arca_activity_code IS NOT NULL");
         b.Property(x => x.RenderedMessage).HasColumnType("text");
         b.Property(x => x.WhatsappLink).HasColumnType("text");
         b.Property(x => x.Notes).HasColumnType("text");

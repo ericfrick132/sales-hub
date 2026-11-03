@@ -348,6 +348,67 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("app_tenants", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.ArcaActivity", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<string>("DivisionCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("division_code");
+
+                    b.Property<string>("DivisionDescription")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("division_description");
+
+                    b.Property<string>("GroupCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("group_code");
+
+                    b.Property<string>("GroupDescription")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("group_description");
+
+                    b.Property<string>("Section")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("section");
+
+                    b.Property<string>("SectionDescription")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("section_description");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Code")
+                        .HasName("pk_arca_activities");
+
+                    b.HasIndex("GroupCode")
+                        .HasDatabaseName("ix_arca_activities_group_code");
+
+                    b.ToTable("arca_activities", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.AudienceLead", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2343,6 +2404,21 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ai_suggested_reply_at");
 
+                    b.Property<string>("ArcaActivityCode")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)")
+                        .HasColumnName("arca_activity_code");
+
+                    b.Property<string>("ArcaActivityRule")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("arca_activity_rule");
+
+                    b.Property<string>("ArcaRulesVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("arca_rules_version");
+
                     b.Property<DateTimeOffset?>("AssignedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("assigned_at");
@@ -2610,6 +2686,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("AdId")
                         .HasDatabaseName("ix_leads_ad_id")
                         .HasFilter("ad_id IS NOT NULL");
+
+                    b.HasIndex("ArcaActivityCode")
+                        .HasDatabaseName("ix_leads_arca_activity_code")
+                        .HasFilter("arca_activity_code IS NOT NULL");
 
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("ix_leads_created_at");

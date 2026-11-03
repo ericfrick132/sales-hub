@@ -37,6 +37,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<SeoSite> SeoSites => Set<SeoSite>();
     public DbSet<SeoKeyword> SeoKeywords => Set<SeoKeyword>();
     public DbSet<SeoArticle> SeoArticles => Set<SeoArticle>();
+    public DbSet<ArcaActivity> ArcaActivities => Set<ArcaActivity>();
 
     // Módulo Posteos
     public DbSet<PostingProfile> PostingProfiles => Set<PostingProfile>();

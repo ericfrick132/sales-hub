@@ -11,6 +11,7 @@ import Pipeline from './Pipeline';
 import LeadsImport from './LeadsImport';
 import Competencia from './Competencia';
 import PedidosWeb from './PedidosWeb';
+import RubrosArca from './RubrosArca';
 import Remarketing from './Remarketing';
 import VideoCampaigns from './VideoCampaigns';
 import Devices from './Devices';
@@ -59,6 +60,8 @@ export function CrmHub() {
         { key: 'pipeline', label: 'Pipeline', element: <Crm /> },
         { key: 'lista', label: admin ? 'Lista' : 'Mis leads', element: <MyLeads /> },
         { key: 'mapa', label: 'Mapa', element: <MapPage />, hidden: !admin },
+        // Rubro de cada lead según el nomenclador de ARCA (CLAE F.883) + descarga del listado (Eric 02/11/2026).
+        { key: 'rubros', label: 'Rubros ARCA', element: <RubrosArca />, hidden: !admin },
         {
           key: 'captar', label: 'Captar leads', element: (
             <TabbedPage param="sub" tabs={[

@@ -53,6 +53,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<SocialContentWorker>();              // posteos automáticos → Buffer (gated por Workers:PosteosAutoStart)
     builder.Services.AddHostedService<LeadImportWorker>();                 // re-engagement: import de leads de TurnosPro/GymHero
     builder.Services.AddHostedService<LeadStateGuardWorker>();             // pull-guard: corta el follow-up de leads que ya convirtieron en su producto
+    builder.Services.AddHostedService<ArcaClassifierWorker>();             // rubro ARCA (CLAE F.883) de cada lead, desde categoría/tipos/nombre/producto
     builder.Services.AddHostedService<EvolutionChatSyncWorker>();          // TODOS los chats de cada línea vinculada → Conversaciones (backfill + baches de webhook; flag 'chat-sync')
     builder.Services.AddHostedService<SlaAlertWorker>();                   // avisa al maestro cuando un chat pasa el SLA sin respuesta (flag 'sla-alerts')
     builder.Services.AddHostedService<LeadEntryReportWorker>();            // reporte diario por WhatsApp: leads que entraron a cada teléfono (config en /entradas)
@@ -184,6 +185,24 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_SEO_SEED_IMPORT") ?? "true") =
     catch (Exception ex)
     {
         seedLog.LogError(ex, "SeoSeed: falló el import de artículos; la API arranca igual");
+    }
+}
+
+// Nomenclador de actividades de ARCA (CLAE F.883) desde SalesHub.Api/ArcaSeed/clae_f883.csv → arca_activities.
+// Idempotente; un error acá NUNCA frena el arranque. El rubro de cada lead lo pone ArcaClassifierWorker.
+{
+    using var arcaScope = app.Services.CreateScope();
+    var arcaLog = arcaScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("SalesHub.ArcaSeed");
+    try
+    {
+        var arcaCsv = Path.Combine(AppContext.BaseDirectory, "ArcaSeed", "clae_f883.csv");
+        if (!File.Exists(arcaCsv)) arcaCsv = Path.Combine(app.Environment.ContentRootPath, "ArcaSeed", "clae_f883.csv");
+        var arcaDb = arcaScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await SalesHub.Infrastructure.Arca.ArcaNomencladorImporter.ImportAsync(arcaDb, arcaCsv, arcaLog);
+    }
+    catch (Exception ex)
+    {
+        arcaLog.LogError(ex, "ArcaSeed: falló la carga del nomenclador; la API arranca igual");
     }
 }
 

@@ -29,6 +29,10 @@
     <None Remove="SeoSeed\**\*" />
     <Content Remove="SeoSeed\**\*" />
     <Content Include="SeoSeed\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Nomenclador de actividades de ARCA (CLAE F.883); lo carga ArcaNomencladorImporter al arrancar. -->
+    <None Remove="ArcaSeed\**\*" />
+    <Content Remove="ArcaSeed\**\*" />
+    <Content Include="ArcaSeed\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
