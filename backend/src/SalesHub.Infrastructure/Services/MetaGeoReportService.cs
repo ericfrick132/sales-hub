@@ -44,7 +44,7 @@ public record GeoMetrics(
     long Clicks, long UniqueClicks, long LinkClicks, double? Ctr, decimal? Cpc, decimal? Cpm,
     long VideoViews3s, double? HookRate,
     long Conversations, decimal? CostPerConversation, long FirstReplies, long Depth2, long Depth3,
-    int Leads, int LeadsQualified, int LeadsClosed, decimal? CostPerLead);
+    double Leads, double LeadsQualified, double LeadsClosed, decimal? CostPerLead, double LeadsShared);
 
 /// <summary>
 /// Arma el mapa de anuncios por provincia sobre <see cref="MetaGeoDaily"/> + los leads de sales-hub
@@ -112,9 +112,14 @@ public class MetaGeoReportService
 
     // ── resumen ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Lead de un anuncio ya ubicado (país/provincia por el código de área) y con su anuncio resuelto.</summary>
+    /// <summary>
+    /// Lead de un anuncio ya ubicado (país/provincia por el código de área) y con su anuncio resuelto.
+    /// W = qué parte del lead le toca a este anuncio (1 salvo los repartidos, ver <see cref="SplitSharedAsync"/>);
+    /// Shared = se repartió entre varios anuncios con el mismo mensaje pre-armado (es estimado).
+    /// </summary>
     private sealed record GeoLead(string AdId, string? ProductKey, string? CampaignId, string? CampaignName, string? AdsetId,
-        string? AdsetName, string AdName, string Format, string Country, string? Province, DateOnly Date, LeadStatus Status);
+        string? AdsetName, string AdName, string Format, string Country, string? Province, DateOnly Date, LeadStatus Status,
+        double W = 1, bool Shared = false);
 
     private sealed record Loaded(DateOnly From, DateOnly To, int Days, List<MetaGeoDaily> Rows, List<GeoLead> Leads, HashSet<string> RegionKeys);
 
@@ -145,11 +150,10 @@ public class MetaGeoReportService
         var toUtc = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(-3));
         var leadsQ = _db.Leads.AsNoTracking().Where(l => l.AdId != null && l.CreatedAt >= fromUtc && l.CreatedAt < toUtc);
         if (q.Products.Count > 0) leadsQ = leadsQ.Where(l => q.Products.Contains(l.ProductKey));
-        if (q.AdIds.Count > 0) leadsQ = leadsQ.Where(l => q.AdIds.Contains(l.AdId!));
         var rawLeads = await leadsQ
             .Select(l => new { l.AdId, l.ProductKey, l.WhatsappPhone, l.RawPhone, l.Province, l.CreatedAt, l.Status })
             .ToListAsync(ct);
-        var leads = rawLeads.Select(l =>
+        var mapped = rawLeads.Select(l =>
         {
             adInfo.TryGetValue(l.AdId!, out var info);
             var (country, province) = ArAreaCodes.Resolve(l.WhatsappPhone ?? l.RawPhone);
@@ -158,7 +162,16 @@ public class MetaGeoReportService
             return new GeoLead(l.AdId!, l.ProductKey, info?.CampaignId, info?.CampaignName, info?.AdsetId, info?.AdsetName, name,
                 AdFormat.Infer(name), country ?? "AR", province,
                 DateOnly.FromDateTime(l.CreatedAt.ToOffset(TimeSpan.FromHours(-3)).DateTime), l.Status);
-        })
+        }).ToList();
+        GeoLead Rebind(GeoLead l, string adId, double w, bool shared)
+        {
+            adInfo.TryGetValue(adId, out var info);
+            var name = info?.Name ?? metaAdNames.GetValueOrDefault(adId) ?? string.Empty;
+            return l with { AdId = adId, CampaignId = info?.CampaignId, CampaignName = info?.CampaignName, AdsetId = info?.AdsetId,
+                            AdsetName = info?.AdsetName, AdName = name, Format = AdFormat.Infer(name), W = w, Shared = shared };
+        }
+        var leads = (await SplitSharedAsync(mapped, from, to, Rebind, ct))
+        .Where(l => q.AdIds.Count == 0 || q.AdIds.Contains(l.AdId))
         .Where(l => q.CampaignIds.Count == 0 || (l.CampaignId != null && q.CampaignIds.Contains(l.CampaignId)))
         .Where(l => q.Formats.Count == 0 || q.Formats.Contains(l.Format))
         .Where(l => q.Countries.Count == 0 || q.Countries.Contains(l.Country))
@@ -166,6 +179,64 @@ public class MetaGeoReportService
 
         var regionKeys = q.Regions.Select(ArRegions.Key).Where(k => k.Length > 0).ToHashSet();
         return new Loaded(from, to, days, rows, leads, regionKeys);
+    }
+
+    /// <summary>
+    /// El chat de WhatsApp no trae el ad_id, así que el lead se reconoce por el mensaje pre-armado. Cuando varios
+    /// anuncios del mismo número dejan el mismo mensaje, <see cref="MetaAdsSyncService.MatchAsync"/> le da el lead
+    /// al más nuevo, y en la tabla un anuncio recién subido aparecía con todos los leads y 0 chats (Eric, 04/11/2026).
+    /// Acá cada lead de esos grupos se reparte entre los anuncios del grupo según los chats que Meta contó a cada uno
+    /// ese día en el país del celular. Si ese día nadie tuvo chats, se miran los 3 días anteriores. Sin chats se usan
+    /// las impresiones, y sin ninguna entrega queda como estaba. Repartido entre más de un anuncio = Shared (estimado).
+    /// </summary>
+    private async Task<List<GeoLead>> SplitSharedAsync(List<GeoLead> leads, DateOnly from, DateOnly to,
+        Func<GeoLead, string, double, bool, GeoLead> rebind, CancellationToken ct)
+    {
+        var withPrefill = await _db.MetaAds.AsNoTracking().Where(a => a.PrefillText != null && a.PrefillText != "")
+            .Select(a => new { a.AdId, a.PrefillText, a.DestinationPhone }).ToListAsync(ct);
+        var groupOf = new Dictionary<string, List<string>>();
+        foreach (var g in withPrefill.GroupBy(a => (a.DestinationPhone ?? string.Empty, IntentText.Normalize(a.PrefillText)))
+                     .Where(g => g.Key.Item2.Length >= 12 && g.Count() > 1))
+        {
+            var ids = g.Select(a => a.AdId).Distinct().ToList();
+            if (ids.Count > 1) foreach (var id in ids) groupOf[id] = ids;
+        }
+        if (!leads.Any(l => groupOf.ContainsKey(l.AdId))) return leads;
+
+        var grouped = groupOf.Keys.ToList();
+        var daily = await _db.MetaGeoDaily.AsNoTracking()
+            .Where(x => grouped.Contains(x.AdId) && x.Date >= from.AddDays(-3) && x.Date <= to)
+            .GroupBy(x => new { x.AdId, x.Date, x.Country })
+            .Select(g => new { g.Key.AdId, g.Key.Date, g.Key.Country, Conv = g.Sum(x => x.MessagingConnections), Impr = g.Sum(x => x.Impressions) })
+            .ToListAsync(ct);
+        var byAdDay = daily.GroupBy(x => (x.AdId, x.Date)).ToDictionary(g => g.Key, g => g.ToList());
+
+        Dictionary<string, double>? Weights(List<string> group, DateOnly date, string country)
+        {
+            for (var back = 0; back <= 3; back++)
+            {
+                var d = date.AddDays(-back);
+                var day = group.ToDictionary(id => id, id => byAdDay.GetValueOrDefault((id, d)) ?? new());
+                foreach (var pick in new Func<long, long, long>[] { (c, _) => c, (_, i) => i })
+                {
+                    var inCountry = day.ToDictionary(kv => kv.Key, kv => (double)kv.Value.Where(x => x.Country == country).Sum(x => pick(x.Conv, x.Impr)));
+                    if (inCountry.Values.Sum() > 0) return inCountry;
+                    var any = day.ToDictionary(kv => kv.Key, kv => (double)kv.Value.Sum(x => pick(x.Conv, x.Impr)));
+                    if (any.Values.Sum() > 0) return any;
+                }
+            }
+            return null;
+        }
+
+        var result = new List<GeoLead>(leads.Count);
+        foreach (var l in leads)
+        {
+            if (!groupOf.TryGetValue(l.AdId, out var group) || Weights(group, l.Date, l.Country) is not { } w) { result.Add(l); continue; }
+            var total = w.Values.Sum();
+            var parts = w.Where(kv => kv.Value > 0).ToList();
+            foreach (var (id, v) in parts) result.Add(rebind(l, id, v / total, parts.Count > 1));
+        }
+        return result;
     }
 
     public async Task<object> SummaryAsync(MetaGeoQuery q, CancellationToken ct)
@@ -180,7 +251,7 @@ public class MetaGeoReportService
         var regionRows = rows.GroupBy(x => (x.Region, x.Country)).ToDictionary(g => g.Key, g => g.ToList());
         foreach (var r in ArRegions.All) regionRows.TryAdd((r, "AR"), new List<MetaGeoDaily>());
         var leadsByProvince = leads.Where(l => l.Country == "AR" && l.Province != null).GroupBy(l => l.Province!)
-            .ToDictionary(g => g.Key, g => g.Select(l => l.Status).ToList());
+            .ToDictionary(g => g.Key, g => g.ToList());
         var regions = regionRows.Select(kv =>
         {
             var (region, country) = kv.Key;
@@ -199,13 +270,13 @@ public class MetaGeoReportService
         var fl = leads.Where(l => regionKeys.Count == 0 || (l.Province != null && regionKeys.Contains(ArRegions.Key(l.Province)))).ToList();
 
         var totalAcc = Acc.Of(fr);
-        totalAcc.AddLeads(fl.Select(l => l.Status));
+        totalAcc.AddLeads(fl);
         long? totalReach = live is null ? null
             : regionKeys.Count == 0 ? live.Total
             : live.ByRegion.Where(kv => regionKeys.Contains(ArRegions.Key(kv.Key))).Sum(kv => kv.Value);
         var totals = totalAcc.ToMetrics(totalReach, exact: live is not null && regionKeys.Count == 0);
 
-        var leadsByDay = fl.GroupBy(l => l.Date).ToDictionary(g => g.Key, g => g.Count());
+        var leadsByDay = fl.GroupBy(l => l.Date).ToDictionary(g => g.Key, g => g.Sum(l => l.W));
         var rowsByDay = fr.GroupBy(x => x.Date).ToDictionary(g => g.Key, g => g.ToList());
         var daily = Enumerable.Range(0, days).Select(i => from.AddDays(i)).Select(d =>
         {
@@ -217,11 +288,11 @@ public class MetaGeoReportService
                 impressions = dr.Sum(x => x.Impressions),
                 clicks = dr.Sum(x => x.Clicks),
                 conversations = dr.Sum(x => x.MessagingConnections),
-                leads = leadsByDay.GetValueOrDefault(d),
+                leads = Math.Round(leadsByDay.GetValueOrDefault(d), 2),
             };
         }).ToList();
 
-        var leadsByAd = fl.GroupBy(l => l.AdId).ToDictionary(g => g.Key, g => g.Select(l => l.Status).ToList());
+        var leadsByAd = fl.GroupBy(l => l.AdId).ToDictionary(g => g.Key, g => g.ToList());
         var rowsByAd = fr.GroupBy(x => x.AdId).ToDictionary(g => g.Key, g => g.OrderBy(x => x.Date).ToList());
         var adIds = rowsByAd.Keys.Concat(leadsByAd.Keys).Distinct();
         var ads = adIds.Select(id =>
@@ -247,7 +318,7 @@ public class MetaGeoReportService
         {
             var ids = g.Select(a => a.adId).ToHashSet();
             var acc = Acc.Of(fr.Where(x => ids.Contains(x.AdId)));
-            acc.AddLeads(fl.Where(l => ids.Contains(l.AdId)).Select(l => l.Status));
+            acc.AddLeads(fl.Where(l => ids.Contains(l.AdId)));
             return new { format = g.Key, label = AdFormat.Labels.GetValueOrDefault(g.Key, g.Key), ads = ids.Count, m = acc.ToMetrics(null) };
         }).OrderByDescending(f => f.m.Spend).ToList();
 
@@ -258,9 +329,9 @@ public class MetaGeoReportService
             lastSyncAt = await _db.MetaGeoDaily.AsNoTracking().MaxAsync(x => (DateTimeOffset?)x.SyncedAt, ct),
             totals,
             spendPerDay = days > 0 ? Math.Round(totals.Spend / days, 2) : 0,
-            leadsByStatus = fl.GroupBy(l => l.Status.ToString()).ToDictionary(g => g.Key, g => g.Count()),
-            leadsUnknownRegion = fl.Count(l => l.Country == "AR" && l.Province == null),
-            leadsOutsideAr = fl.GroupBy(l => l.Country).Where(g => g.Key != "AR").Select(g => new { country = g.Key, leads = g.Count() }),
+            leadsByStatus = fl.GroupBy(l => l.Status.ToString()).ToDictionary(g => g.Key, g => Math.Round(g.Sum(l => l.W), 2)),
+            leadsUnknownRegion = Math.Round(fl.Where(l => l.Country == "AR" && l.Province == null).Sum(l => l.W), 2),
+            leadsOutsideAr = fl.GroupBy(l => l.Country).Where(g => g.Key != "AR").Select(g => new { country = g.Key, leads = Math.Round(g.Sum(l => l.W), 2) }),
             daily,
             regions,
             ads,
@@ -331,15 +402,15 @@ public class MetaGeoReportService
         var fr = rows.Where(x => regionKeys.Count == 0 || regionKeys.Contains(ArRegions.Key(x.Region))).ToList();
         var fl = leads.Where(l => regionKeys.Count == 0 || (l.Province != null && regionKeys.Contains(ArRegions.Key(l.Province)))).ToList();
 
-        var cells = new Dictionary<string, (List<(string Id, string Label, string Sort)> Keys, List<MetaGeoDaily> Rows, List<LeadStatus> Leads)>();
-        (List<(string Id, string Label, string Sort)> Keys, List<MetaGeoDaily> Rows, List<LeadStatus> Leads) Cell(List<(string Id, string Label, string Sort)> keys)
+        var cells = new Dictionary<string, (List<(string Id, string Label, string Sort)> Keys, List<MetaGeoDaily> Rows, List<GeoLead> Leads)>();
+        (List<(string Id, string Label, string Sort)> Keys, List<MetaGeoDaily> Rows, List<GeoLead> Leads) Cell(List<(string Id, string Label, string Sort)> keys)
         {
             var id = string.Join("\u001f", keys.Select(k => k.Id));
-            if (!cells.TryGetValue(id, out var c)) cells[id] = c = (keys, new List<MetaGeoDaily>(), new List<LeadStatus>());
+            if (!cells.TryGetValue(id, out var c)) cells[id] = c = (keys, new List<MetaGeoDaily>(), new List<GeoLead>());
             return c;
         }
         foreach (var x in fr) Cell(dims.Select(d => RowKey(d, x)).ToList()).Rows.Add(x);
-        foreach (var l in fl) Cell(dims.Select(d => LeadKey(d, l)).ToList()).Leads.Add(l.Status);
+        foreach (var l in fl) Cell(dims.Select(d => LeadKey(d, l)).ToList()).Leads.Add(l);
 
         var result = cells.Values.Select(c =>
         {
@@ -398,7 +469,7 @@ public class MetaGeoReportService
     private sealed class Acc
     {
         decimal _spend; long _impr, _reach, _clicks, _uclicks, _link, _video, _conv, _first, _d2, _d3;
-        int _leads, _qualified, _closed;
+        double _leads, _qualified, _closed, _shared;
 
         public static Acc Of(IEnumerable<MetaGeoDaily> rows)
         {
@@ -412,13 +483,14 @@ public class MetaGeoReportService
             return a;
         }
 
-        public void AddLeads(IEnumerable<LeadStatus> statuses)
+        public void AddLeads(IEnumerable<GeoLead> leads)
         {
-            foreach (var s in statuses)
+            foreach (var l in leads)
             {
-                _leads++;
-                if (Qualified.Contains(s)) _qualified++;
-                if (s == LeadStatus.Closed) _closed++;
+                _leads += l.W;
+                if (Qualified.Contains(l.Status)) _qualified += l.W;
+                if (l.Status == LeadStatus.Closed) _closed += l.W;
+                if (l.Shared) _shared += l.W;
             }
         }
 
@@ -438,8 +510,8 @@ public class MetaGeoReportService
                 Conversations: _conv,
                 CostPerConversation: _conv > 0 ? Math.Round(_spend / _conv, 4) : null,
                 FirstReplies: _first, Depth2: _d2, Depth3: _d3,
-                Leads: _leads, LeadsQualified: _qualified, LeadsClosed: _closed,
-                CostPerLead: _leads > 0 ? Math.Round(_spend / _leads, 4) : null);
+                Leads: Math.Round(_leads, 2), LeadsQualified: Math.Round(_qualified, 2), LeadsClosed: Math.Round(_closed, 2),
+                CostPerLead: _leads > 0.005 ? Math.Round(_spend / (decimal)_leads, 4) : null, LeadsShared: Math.Round(_shared, 2));
         }
     }
 }

@@ -14,6 +14,7 @@ type M = {
   spend: number; impressions: number; clicks: number; ctr: number | null; hookRate: number | null; videoViews3s: number;
   conversations: number; costPerConversation: number | null;
   leads: number; leadsQualified: number; leadsClosed: number; costPerLead: number | null;
+  leadsShared: number; // parte de los leads repartida entre anuncios con el mismo mensaje pre-armado (estimada)
 };
 type Filters = { configured: boolean; lastSyncAt: string | null; today: string; products: { key: string; displayName: string }[]; countries: string[] };
 type TableData = { from: string; to: string; days: number; rows: { keys: { id: string; label: string }[]; m: M }[] };
@@ -28,6 +29,9 @@ type Row = { adId: string; name: string; ad: MetaAd | undefined; m: M };
 const usdFmt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const usd = (n: number | null | undefined) => (n == null ? '—' : usdFmt.format(n));
 const num = (n: number | null | undefined) => (n == null ? '—' : Math.round(n).toLocaleString('es-AR'));
+// Leads: pueden venir repartidos entre anuncios con el mismo mensaje (fracción) → un decimal si no es entero.
+const leadNum = (n: number | null | undefined) =>
+  (n == null ? '—' : Number.isInteger(Math.round(n * 10) / 10) ? Math.round(n).toLocaleString('es-AR') : n.toLocaleString('es-AR', { maximumFractionDigits: 1 }));
 const pct = (n: number | null | undefined) => (n == null ? '—' : `${n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`);
 const todayAr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
 const addDays = (iso: string, n: number) => {
@@ -91,11 +95,15 @@ const COLS: { key: ColKey; label: string; hint: string; fmt: (n: number | null) 
   { key: 'ctr', label: 'CTR', hint: 'De cada 100 que lo vieron, cuántos tocaron.', fmt: pct, rank: 'high' },
   { key: 'conversations', label: 'Chats', hint: 'Conversaciones de WhatsApp que Meta le atribuye.', fmt: num },
   { key: 'costPerConversation', label: '$ / chat', hint: 'Gasto dividido chats.', fmt: usd, rank: 'low' },
-  { key: 'leads', label: 'Leads', hint: 'Leads que entraron a sales-hub desde este anuncio.', fmt: num },
+  { key: 'leads', label: 'Leads', hint: 'Leads que entraron a sales-hub desde este anuncio.', fmt: leadNum },
   { key: 'costPerLead', label: '$ / lead', hint: 'Gasto dividido leads de sales-hub.', fmt: usd, rank: 'low' },
-  { key: 'leadsQualified', label: 'Interesados', hint: 'Leads interesados, con demo o cerrados.', fmt: num },
-  { key: 'leadsClosed', label: 'Cerrados', hint: 'Leads que cerraron.', fmt: num },
+  { key: 'leadsQualified', label: 'Interesados', hint: 'Leads interesados, con demo o cerrados.', fmt: leadNum },
+  { key: 'leadsClosed', label: 'Cerrados', hint: 'Leads que cerraron.', fmt: leadNum },
 ];
+const LEAD_COLS = new Set<ColKey>(['leads', 'costPerLead', 'leadsQualified', 'leadsClosed']);
+const sharedNote = (m: M) => (m.leadsShared > 0
+  ? ` · ≈ estimado: ${leadNum(m.leadsShared)} de estos leads llegaron con un mensaje pre-armado que comparten varios anuncios (WhatsApp no dice de qué anuncio vienen) y se repartieron según los chats que Meta contó a cada uno ese día`
+  : '');
 
 const P = { days: 'dias', app: 'app', country: 'pais', all: 'todos', sort: 'orden' };
 
@@ -183,6 +191,7 @@ export default function RendimientoAnuncios() {
       video: a.video + r.m.videoViews3s, conversations: a.conversations + r.m.conversations, leads: a.leads + r.m.leads,
       qualified: a.qualified + r.m.leadsQualified, closed: a.closed + r.m.leadsClosed,
     }), { spend: 0, impressions: 0, clicks: 0, video: 0, conversations: 0, leads: 0, qualified: 0, closed: 0 });
+    // Repartidos: la suma vuelve a ser casi entera; se redondea para no mostrar 53,9 leads en el total.
     return {
       ...t,
       hookRate: t.impressions ? (100 * t.video) / t.impressions : null,
@@ -243,8 +252,8 @@ export default function RendimientoAnuncios() {
         <Kpi label="Enganche" value={pct(totals.hookRate)} />
         <Kpi label="CTR" value={pct(totals.ctr)} />
         <Kpi label="Chats" value={num(totals.conversations)} sub={`${usd(totals.costPerConversation)} c/u`} />
-        <Kpi label="Leads" value={num(totals.leads)} sub={`${usd(totals.costPerLead)} c/u`} />
-        <Kpi label="Cerrados" value={num(totals.closed)} sub={`${num(totals.qualified)} interesados`} />
+        <Kpi label="Leads" value={leadNum(Math.round(totals.leads))} sub={`${usd(totals.costPerLead)} c/u`} />
+        <Kpi label="Cerrados" value={leadNum(Math.round(totals.closed))} sub={`${leadNum(Math.round(totals.qualified))} interesados`} />
       </div>
 
       {table.isError && <div className="text-sm text-red-700">No se pudo cargar el rendimiento.</div>}
@@ -287,21 +296,23 @@ export default function RendimientoAnuncios() {
                     {COLS.map((c) => {
                       const v = r.m[c.key];
                       const few = r.m.impressions < MIN_IMPRESSIONS ? ` · pocos datos (menos de ${num(MIN_IMPRESSIONS)} impresiones)` : '';
+                      const est = LEAD_COLS.has(c.key) && r.m.leadsShared > 0;
+                      const estNote = est ? sharedNote(r.m) : '';
                       if (BENCH[c.key]) {
                         const lvl = cellLevel(c.key, r.m);
                         const noResults = v == null && lvl ? ` · gastó ${usd(r.m.spend)} sin ${c.key === 'costPerLead' ? 'leads' : 'chats'}` : '';
                         return (
-                          <td key={c.key} title={lvl ? `${lvl.label} — ${BENCH[c.key]?.ref}${noResults}${few}` : `Sin datos todavía${few}`}
+                          <td key={c.key} title={lvl ? `${lvl.label} — ${BENCH[c.key]?.ref}${noResults}${few}${estNote}` : `Sin datos todavía${few}${estNote}`}
                             className={clsx('py-2 px-2 text-right tabular-nums whitespace-nowrap', lvl?.cls ?? 'bg-slate-100 text-slate-400', few && 'italic')}>
-                            {v == null && lvl ? `> ${usd(r.m.spend)}` : c.fmt(v)}
+                            {v == null && lvl ? `> ${usd(r.m.spend)}` : `${est ? '≈ ' : ''}${c.fmt(v)}`}
                           </td>
                         );
                       }
                       const tone = volumeTone(c.key, v);
                       return (
-                        <td key={c.key} title={`${c.hint}${few}`}
+                        <td key={c.key} title={`${c.hint}${few}${estNote}`}
                           className={clsx('py-2 px-2 text-right tabular-nums whitespace-nowrap', tone)}>
-                          {c.fmt(v)}
+                          {est && v ? '≈ ' : ''}{c.fmt(v)}
                         </td>
                       );
                     })}
@@ -316,6 +327,7 @@ export default function RendimientoAnuncios() {
         {LEVELS.map((l) => <span key={l.label} className={clsx('px-2 py-0.5 rounded', l.cls)}>{l.label}</span>)}
         <span className="text-slate-400">
           Referencias: enganche media 25-30 % · CTR media 1-1,5 % · $ / chat media USD 1-1,5 · $ / lead media USD 2-3. En cursiva: pocos datos.
+          ≈ = leads de un mensaje que comparten varios anuncios, repartidos según los chats de Meta.
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
