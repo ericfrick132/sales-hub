@@ -283,6 +283,7 @@ public class OnboardingService
     private async Task<List<string>> QuestionsForAsync(Lead lead, OnboardingConfig cfg, LeadOnboarding ob, CancellationToken ct)
     {
         var ad = lead.AdId is null ? null : await _db.MetaAds.AsNoTracking().FirstOrDefaultAsync(a => a.AdId == lead.AdId, ct);
+        if (ScriptFor(cfg, ad) is { } script) return script.Questions.ToList();
         var questions = cfg.Questions.ToList();
         if (questions.Count == 0) return questions;
         if (ad?.BusinessRef is { } negocio && !string.IsNullOrWhiteSpace(cfg.KnownBusinessQuestion))
@@ -377,6 +378,15 @@ public class OnboardingService
         : string.IsNullOrWhiteSpace(cfg.DemoOffer) ? StepAwaitStart : StepAwaitDemoLink;
 
     /// <summary>El pitch del ángulo del anuncio; si no hay, el por defecto (ángulo vacío).</summary>
+    /// <summary>El anuncio tiene guion propio (preguntas distintas a las de la config): ver <see cref="AnglePitch.Questions"/>.</summary>
+    private static AnglePitch? ScriptFor(OnboardingConfig cfg, MetaAd? ad) =>
+        PitchFor(cfg, ad) is { Questions.Count: > 0 } p && (!string.IsNullOrWhiteSpace(p.Angle) || cfg.Questions.Count == 0) ? p : null;
+
+    /// <summary>Preguntó el precio y el anuncio tiene respuesta cargada (<see cref="AnglePitch.PriceReply"/>): se la decimos antes del pase.</summary>
+    private static string? PriceReplyFor(OnboardingConfig cfg, MetaAd? ad, string text, Guid leadId) =>
+        PitchFor(cfg, ad) is { PriceReply: { Length: > 0 } pr } && PriceAskRx.IsMatch(IntentText.Normalize(text))
+            ? Spin(pr, leadId, 94) : null;
+
     private static AnglePitch? PitchFor(OnboardingConfig cfg, MetaAd? ad) =>
         cfg.AnglePitches.FirstOrDefault(p => !string.IsNullOrWhiteSpace(ad?.Angle)
             && string.Equals(p.Angle, ad!.Angle, StringComparison.OrdinalIgnoreCase))
@@ -699,7 +709,14 @@ public class OnboardingService
 
         // El anuncio ya dijo el rubro ("Tengo una barberia y quiero…"): no se lo volvemos a preguntar.
         var ad = lead.AdId is null ? null : await _db.MetaAds.AsNoTracking().FirstOrDefaultAsync(a => a.AdId == lead.AdId, ct);
-        if (persona is null && !reengage && questions.Count > 0 && ad?.BusinessRef is { } negocio
+        // Anuncio con guion propio (ej. EFCloud sistemas a medida vs web): sus preguntas y su saludo.
+        var adScript = persona is null && !reengage ? ScriptFor(cfg, ad) : null;
+        if (adScript is not null)
+        {
+            questions = adScript.Questions;
+            if (!string.IsNullOrWhiteSpace(adScript.Intro)) intro = adScript.Intro;
+        }
+        if (adScript is null && persona is null && !reengage && questions.Count > 0 && ad?.BusinessRef is { } negocio
             && !string.IsNullOrWhiteSpace(cfg.KnownBusinessQuestion))
         {
             questions = questions.ToList();
@@ -754,7 +771,7 @@ public class OnboardingService
                 ob.Step = StepHumanHandoff;
                 ob.UpdatedAt = DateTimeOffset.UtcNow;
                 await _db.SaveChangesAsync(ct);
-                return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                return new OnboardingResult(PresentAs(PriceReplyFor(cfg, ad, greetBurst, lead.Id), cfg), OffScript: false, Provisioned: false,
                     Handoff: KeywordRx.IsMatch(greetBurst.ToLowerInvariant()) ? "pidio precio o info"
                         : gConfident && HandoffNowTypes.Contains(gKey) ? $"señal: {gKey}"
                         : "pregunto algo en el saludo");
@@ -876,7 +893,7 @@ public class OnboardingService
                 ob.Step = StepHumanHandoff;
                 ob.UpdatedAt = DateTimeOffset.UtcNow;
                 await _db.SaveChangesAsync(ct);
-                return new OnboardingResult(null, OffScript: false, Provisioned: false,
+                return new OnboardingResult(PresentAs(PriceReplyFor(cfg, ad, burst, lead.Id), cfg), OffScript: false, Provisioned: false,
                     Handoff: isDoubt ? "preguntó o se salió del guion" : $"señal: {key}");
             }
         }

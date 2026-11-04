@@ -125,15 +125,29 @@ public class OnboardingConfigController : ControllerBase
         if (dto.DemoOffer is not null) c.DemoOffer = dto.DemoOffer.Trim();
         if (dto.DemoLink is not null) c.DemoLink = dto.DemoLink.Trim();
         if (dto.AnglePitches is not null)
+        {
+            // La pantalla todavía no edita el guion propio del anuncio (preguntas/saludo/precio): si no
+            // viene, se conserva el que ya tenía ese ángulo para que guardar desde la UI no lo borre.
+            var prev = c.AnglePitches.GroupBy(p => p.Angle).ToDictionary(g => g.Key, g => g.First());
             c.AnglePitches = dto.AnglePitches
                 .Where(p => !string.IsNullOrWhiteSpace(p.Text))
-                .Select(p => new AnglePitch
+                .Select(p =>
                 {
-                    Angle = (p.Angle ?? "").Trim().ToLowerInvariant(),
-                    Text = p.Text.Trim(),
-                    MediaAssetIds = (p.MediaAssetIds ?? new()).Where(g => g != Guid.Empty).ToList(),
+                    var angle = (p.Angle ?? "").Trim().ToLowerInvariant();
+                    prev.TryGetValue(angle, out var old);
+                    var questions = (p.Questions ?? new()).Where(q => !string.IsNullOrWhiteSpace(q)).Select(q => q.Trim()).ToList();
+                    return new AnglePitch
+                    {
+                        Angle = angle,
+                        Text = p.Text.Trim(),
+                        MediaAssetIds = (p.MediaAssetIds ?? new()).Where(g => g != Guid.Empty).ToList(),
+                        Questions = questions.Count > 0 ? questions : old?.Questions ?? new(),
+                        Intro = !string.IsNullOrWhiteSpace(p.Intro) ? p.Intro.Trim() : old?.Intro ?? "",
+                        PriceReply = !string.IsNullOrWhiteSpace(p.PriceReply) ? p.PriceReply.Trim() : old?.PriceReply ?? "",
+                    };
                 })
                 .ToList();
+        }
         if (dto.DemoEventTypeUri is not null)
             c.DemoEventTypeUri = string.IsNullOrWhiteSpace(dto.DemoEventTypeUri) ? null : dto.DemoEventTypeUri.Trim();
         c.UpdatedAt = DateTimeOffset.UtcNow;
