@@ -942,7 +942,9 @@ public class OnboardingService
                 // Con eso el saludo queda cerrado en "buenisimo" y la charla se trababa 4 min hasta la
                 // 1ª pregunta: va todo junto y recién ahí se espera (pedido de Eric 2026-10-21).
                 ob.Step = StepGreeted;
-                if (ad?.PrefillText is { } prefill && !string.IsNullOrWhiteSpace(cfg.KnownBusinessGreeting)
+                // Si el producto no tiene frase de reconocimiento (greeting vacío) igual va saludo +
+                // 1ª pregunta juntos: el greeting es opcional, no la condición para no trabar la charla.
+                if (ad?.PrefillText is { } prefill
                     && MetaAdsSyncService.HasPhraseFromPrefill(prefill) is { } tiene)
                 {
                     reply = Join(Join(intro, cfg.KnownBusinessGreeting.Replace("{tiene}", tiene)), questions[0]);
