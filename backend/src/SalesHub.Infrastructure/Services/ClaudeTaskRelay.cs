@@ -12,14 +12,15 @@ namespace SalesHub.Infrastructure.Services;
 /// <summary>
 /// Tareas para Claude Code por WhatsApp, solo en el SELF-CHAT de la línea privada de Eric
 /// (<see cref="ClaudeTaskService.LineName"/>, su WhatsApp personal):
-///  - Nota de voz grabada (no reenviada): se transcribe y se le muestra a Eric ("¿Lo mando?"); recién con su
-///    "sí" se encola en <see cref="ClaudeTaskService"/> y la Mac la corre. "no" la descarta; otro audio la reemplaza.
+///  - Nota de voz grabada (no reenviada): se transcribe, se le devuelve el texto solo (para copiarlo) y después un
+///    menú: 1 = mandársela a Claude (se encola en <see cref="ClaudeTaskService"/> y la Mac la corre), 2 = nada (era
+///    solo para transcribir). Otro audio la reemplaza. Con el flag "claude_tasks" apagado, solo transcribe.
 ///  - Citar un mensaje de una tarea (los del bot llevan #código) o su audio sigue ESE thread: un audio citando
 ///    pide confirmación y retoma la sesión de esa tarea; un texto escrito citando va directo (no hay transcripción
 ///    que verificar); "sí"/"no" citando una confirmación decide esa tarea puntual.
 ///  - Imagen: se adjunta a la tarea que espera el "sí"; con caption y sin tarea esperando, el caption es el
 ///    pedido (pide confirmación). Una imagen suelta sin caption sigue la cadena (inspiración / PDF).
-/// Los audios reenviados al self-chat siguen yendo a transcripción (<see cref="AudioTranscriptionRelay"/>).
+///  - Audio reenviado (la voz de otro): solo transcripción, sin menú; nunca es una tarea.
 ///
 /// Doble filtro: la línea tiene que ser la privada y el dueño tiene que estar en la allowlist de transcripción.
 /// Crítico: esto termina ejecutando código en la Mac de Eric. Kill-switch: flag "claude_tasks".
@@ -32,11 +33,16 @@ public class ClaudeTaskRelay
     // Código de la tarea en los mensajes del bot: "🤖 #a3f9c1 …".
     private static readonly Regex TaskCode = new(@"^\s*🤖\s*#([0-9a-f]{6})\b", RegexOptions.Compiled);
 
-    // Respuesta a "¿Lo mando?". Mensaje entero, para no comerse un texto que solo arranca con "ok".
-    private static readonly Regex YesAnswer = new(@"^\s*(s[ií]+|dale|ok(a|ey)?|mand[aá](la|lo)?|va|listo|👍)[\s.!]*$",
+    // Respuesta al menú (1 = a Claude, 2 = nada) o al viejo "¿Lo mando?". Mensaje entero, para no comerse un
+    // texto que solo arranca con "ok".
+    private static readonly Regex YesAnswer = new(@"^\s*(1(\uFE0F?\u20E3)?|s[ií]+|dale|ok(a|ey)?|mand[aá](la|lo)?|va|listo|👍)[\s.!]*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex NoAnswer = new(@"^\s*(no+|nop|cancel[aá](la|lo)?|cancelar|👎)[\s.!]*$",
+    private static readonly Regex NoAnswer = new(@"^\s*(2(\uFE0F?\u20E3)?|no+|nop|nada|cancel[aá](la|lo)?|cancelar|👎)[\s.!]*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Transcripciones que mandamos al self-chat: van sin prefijo (para copiarlas limpias) y vuelven como eco
+    // fromMe; sin esto un audio que dice "sí" o "1" respondería el menú solo.
+    private static readonly ConcurrentDictionary<string, DateTimeOffset> SentTranscripts = new();
 
     // Dedup de webhooks reentregados (como en AudioTranscriptionRelay).
     private static readonly ConcurrentDictionary<string, DateTimeOffset> Recent = new();
@@ -61,21 +67,26 @@ public class ClaudeTaskRelay
         if (!string.Equals(incoming.InstanceName, ClaudeTaskService.LineName, StringComparison.Ordinal)) return false;
         if (!incoming.FromMe || incoming.FromSync || !IsSelfChat(incoming)) return false;
         var msg = Parse(incoming.RawJson);
-        // Audio reenviado = transcripción; una captura reenviada sí sirve como imagen de la tarea.
-        if (msg is null || (msg.Forwarded && !msg.Image)) return false;
+        // Audio reenviado = solo transcripción (abajo); una captura reenviada sí sirve como imagen de la tarea.
+        if (msg is null || (msg.Forwarded && !msg.Image && !msg.Voice)) return false;
         var text = (incoming.Text ?? "").Trim();
         var isText = !msg.Voice && !msg.Image;
         // Nuestros avisos (🤖) también llegan como fromMe en el self-chat.
         if (isText && (text.Length == 0 || text.StartsWith(ClaudeTaskService.Prefix.Trim(), StringComparison.Ordinal))) return false;
+        // Eco de una transcripción nuestra.
+        if (isText && IsTranscriptEcho(text)) return true;
         var answer = isText ? ParseAnswer(text) : null;
         var quotes = msg.QuotedId is not null || msg.QuotedCode is not null;
         // Texto suelto que no es sí/no ni cita nada: no es nuestro.
         if (isText && answer is null && !quotes) return false;
 
-        if (!await _db.IsFlagOnAsync("claude_tasks", true, ct)) return false;
         var owner = Digits(incoming.SenderJid);
         var allowed = await _db.TranscriptionPhones.AsNoTracking().Select(p => p.Phone).ToListAsync(ct);
         if (owner.Length < 8 || !allowed.Any(p => Suffix(Digits(p)) == Suffix(owner))) return false;
+        // Kill-switch de Claude: apagado, los audios igual se transcriben; lo demás no es nuestro.
+        var claudeOn = await _db.IsFlagOnAsync("claude_tasks", true, ct);
+        if (!claudeOn && !msg.Voice) return false;
+        if (msg.Voice && msg.Forwarded) quotes = false; // un reenviado nunca sigue un thread
 
         var quoted = quotes ? await _tasks.FindQuotedAsync(owner, msg.QuotedCode, msg.QuotedId, ct) : null;
         // Un texto que cita algo que no es una tarea (otra nota del self-chat) no es nuestro.
@@ -135,14 +146,29 @@ public class ClaudeTaskRelay
         {
             _log.LogWarning("ClaudeTask: no se pudo transcribir el audio (instance={I})", incoming.InstanceName);
             await _evo.SendTextAsync(incoming.InstanceName, owner,
-                ClaudeTaskService.Prefix + "No pude transcribir el audio, no armé ninguna tarea. Probá de nuevo.", ct);
+                ClaudeTaskService.Prefix + "No pude transcribir el audio. Probá de nuevo.", ct);
             return true;
         }
+        transcript = transcript.Trim();
 
-        var task = await _tasks.CreateAsync(incoming.InstanceName, owner, transcript.Trim(), incoming.MessageId, quoted,
-            resumeLast: quoted is null && ResumeCue.IsMatch(transcript), confirmed: false, ct);
+        // Primero el texto solo, para copiarlo tal cual.
+        SentTranscripts[transcript] = DateTimeOffset.UtcNow;
+        if (!await _evo.SendTextAsync(incoming.InstanceName, owner, transcript, ct))
+            _log.LogWarning("ClaudeTask: no se pudo mandar la transcripción (instance={I})", incoming.InstanceName);
+        if (msg.Forwarded || !claudeOn) return true;
+
+        // Después el menú (1 = a Claude, 2 = nada).
+        var task = await _tasks.CreateAsync(incoming.InstanceName, owner, transcript, incoming.MessageId, quoted,
+            resumeLast: quoted is null && ResumeCue.IsMatch(transcript), confirmed: false, ct, transcriptSent: true);
         _log.LogInformation("ClaudeTask {Id} esperando confirmación (instance={I}, thread={P})", task.Id, incoming.InstanceName, task.ParentTaskId);
         return true;
+    }
+
+    private static bool IsTranscriptEcho(string text)
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddMinutes(-5);
+        foreach (var kv in SentTranscripts) if (kv.Value < cutoff) SentTranscripts.TryRemove(kv.Key, out _);
+        return SentTranscripts.TryRemove(text, out _);
     }
 
     /// <summary>true = sí, false = no, null = otra cosa.</summary>

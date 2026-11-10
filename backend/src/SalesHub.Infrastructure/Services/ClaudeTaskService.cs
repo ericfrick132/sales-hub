@@ -65,9 +65,10 @@ public class ClaudeTaskService
     /// Tarea nueva desde un audio (queda esperando el "sí") o desde un texto escrito citando una tarea
     /// (<paramref name="confirmed"/>: va directo a la cola). <paramref name="parent"/> = thread a seguir;
     /// <paramref name="resumeLast"/> = "seguí" sin citar → la última sesión terminada.
+    /// <paramref name="transcriptSent"/> = el relay ya le mandó la transcripción sola: el menú no la repite.
     /// </summary>
     public async Task<ClaudeTask> CreateAsync(string instance, string replyTo, string prompt, string? audioMessageId,
-        ClaudeTask? parent, bool resumeLast, bool confirmed, CancellationToken ct)
+        ClaudeTask? parent, bool resumeLast, bool confirmed, CancellationToken ct, bool transcriptSent = false)
     {
         Guid? parentId = parent?.Id;
         if (parent is null && resumeLast)
@@ -95,7 +96,9 @@ public class ClaudeTaskService
         if (confirmed)
             await NotifyAsync(task, $"Mandada: «{Cut(prompt, 300)}»\n{thread} {Where()}", ct);
         else
-            await NotifyAsync(task, $"Le voy a pedir a Claude:\n«{prompt}»\n({thread})\n\n¿Lo mando? Respondé sí o no, o mandá otro audio para corregirlo. Si mandás imágenes antes del sí, se las paso.", ct);
+            await NotifyAsync(task, (transcriptSent ? "" : $"«{prompt}»\n")
+                + $"¿Qué hago con esto?\n1️⃣ Mandárselo a Claude ({thread.TrimEnd('.').ToLowerInvariant()})\n2️⃣ Nada, era para transcribir\n\n"
+                + "Otro audio lo reemplaza. Si mandás imágenes antes del 1, se las paso.", ct);
         return task;
     }
 
@@ -119,7 +122,7 @@ public class ClaudeTaskService
             task.FinishedAt = DateTimeOffset.UtcNow;
             task.Error = "cancelada por Eric";
             await _db.SaveChangesAsync(ct);
-            await NotifyAsync(task, "Listo, no la mando.", ct);
+            await NotifyAsync(task, "Listo, no se lo mando a Claude.", ct);
             return true;
         }
 
@@ -157,7 +160,7 @@ public class ClaudeTaskService
         // Extiende la ventana de confirmación: está armando el pedido.
         task.CreatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        await NotifyAsync(task, $"📎 Imagen {count + 1} adjuntada. ¿Lo mando? sí o no.", ct);
+        await NotifyAsync(task, $"📎 Imagen {count + 1} adjuntada. ¿Se lo mando a Claude? 1 sí, 2 no.", ct);
     }
 
     /// <summary>Imagen para el poller: solo de una tarea que la Mac ya tomó.</summary>
