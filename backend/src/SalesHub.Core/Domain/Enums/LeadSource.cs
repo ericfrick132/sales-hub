@@ -23,6 +23,10 @@ public enum LeadSource
     // "Competencia" del CRM mostró interés o agendó demo. Igual que Remarketing se labura a mano:
     // sin cadencia, sin bot y sin DM automático de Instagram. NO pasa por el envío de Remarketing.
     Competencia = 105,
+    // Seguidor de una cuenta propia de Instagram al que el celular le mandó el DM de seguidores
+    // (IgOutreachCoordinator). Nace ya contactado (Sent) y sin teléfono: no lleva cadencia de
+    // WhatsApp ni el DM en frío. Si contesta, la charla sigue por el webhook oficial de IG.
+    InstagramFollower = 106,
     BrowserCapture = 200,
     InstagramScraper = 300,
     // Tenant/demo nuevo registrado en el propio producto (TurnosPro/GymHero) que entra

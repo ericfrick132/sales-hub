@@ -210,6 +210,9 @@ public static class DependencyInjection
         services.AddScoped<InstagramInboxPoller>();
         services.AddScoped<InstagramStructureAnalyzer>();
         services.AddSingleton<SelectorFailureTracker>();
+        // Outreach por Instagram desde un celular del bridge: el coordinador decide y manda los pasos.
+        services.AddScoped<IgOutreachCoordinator>();
+        services.AddSingleton<IgDeviceActivity>();
         services.Configure<InstagramLlmOptions>(config.GetSection("InstagramLlm"));
 
         return services;

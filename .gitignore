@@ -30,3 +30,4 @@ scripts/localities/localities-import.json
 /iproxy-*.yml
 /tiktok-*.yml
 docs/conversaciones/
+.aider*

@@ -70,6 +70,9 @@ public class ApplicationDbContext : DbContext
     // Campaña de remarketing: config (fila única) + un registro por mensaje encolado.
     public DbSet<RemarketingSettings> RemarketingSettings => Set<RemarketingSettings>();
     public DbSet<IgDmSettings> IgDmSettings => Set<IgDmSettings>();
+    // Instagram desde el celular: seguidores leídos por el device y bitácora de lo que se le pidió.
+    public DbSet<IgFollower> IgFollowers => Set<IgFollower>();
+    public DbSet<IgDeviceTask> IgDeviceTasks => Set<IgDeviceTask>();
     public DbSet<RemarketingAttempt> RemarketingAttempts => Set<RemarketingAttempt>();
     public DbSet<VideoCampaign> VideoCampaigns => Set<VideoCampaign>();
     public DbSet<VideoCampaignRecipient> VideoCampaignRecipients => Set<VideoCampaignRecipient>();

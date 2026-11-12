@@ -1776,6 +1776,89 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("google_calendar_settings", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.IgDeviceTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("Collected")
+                        .HasColumnType("integer")
+                        .HasColumnName("collected");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("device_id");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("error");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<Guid?>("FollowerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("follower_id");
+
+                    b.Property<string>("Handle")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("handle");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid?>("LeadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lead_id");
+
+                    b.Property<string>("ProductKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<string>("Screen")
+                        .HasColumnType("text")
+                        .HasColumnName("screen");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("text")
+                        .HasColumnName("text");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ig_device_tasks");
+
+                    b.HasIndex("DeviceId", "Status")
+                        .HasDatabaseName("ix_ig_device_tasks_device_id_status");
+
+                    b.HasIndex("ProductKey", "CreatedAt")
+                        .HasDatabaseName("ix_ig_device_tasks_product_key_created_at");
+
+                    b.ToTable("ig_device_tasks", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.IgDmSettings", b =>
                 {
                     b.Property<string>("ProductKey")
@@ -1788,13 +1871,65 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("account_username");
 
+                    b.Property<DateOnly?>("AccountVerifiedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("account_verified_on");
+
+                    b.Property<string>("ColdRamp")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("cold_ramp");
+
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("integer")
+                        .HasColumnName("consecutive_failures");
+
                     b.Property<int>("DailyCap")
                         .HasColumnType("integer")
                         .HasColumnName("daily_cap");
 
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("device_id");
+
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean")
                         .HasColumnName("enabled");
+
+                    b.Property<string>("FollowerExclude")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("follower_exclude");
+
+                    b.Property<string>("FollowerRamp")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("follower_ramp");
+
+                    b.Property<DateTimeOffset?>("FollowerScanAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("follower_scan_at");
+
+                    b.Property<bool>("FollowerScanRequested")
+                        .HasColumnType("boolean")
+                        .HasColumnName("follower_scan_requested");
+
+                    b.Property<int>("FollowerScanSwipes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(12)
+                        .HasColumnName("follower_scan_swipes");
+
+                    b.Property<string>("FollowerTemplate")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("")
+                        .HasColumnName("follower_template");
+
+                    b.Property<bool>("FollowersEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("followers_enabled");
 
                     b.Property<int>("FromHour")
                         .HasColumnType("integer")
@@ -1820,10 +1955,26 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("paused_until");
 
+                    b.Property<DateOnly?>("RampStartedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("ramp_started_on");
+
+                    b.Property<string>("Sender")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("extension")
+                        .HasColumnName("sender");
+
                     b.Property<string>("Template")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("template");
+
+                    b.Property<DateTimeOffset?>("ThrottledUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("throttled_until");
 
                     b.Property<int>("ToHour")
                         .HasColumnType("integer")
@@ -1836,7 +1987,76 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.HasKey("ProductKey")
                         .HasName("pk_ig_dm_settings");
 
+                    b.HasIndex("DeviceId")
+                        .HasDatabaseName("ix_ig_dm_settings_device_id");
+
                     b.ToTable("ig_dm_settings", (string)null);
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.IgFollower", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("claimed_at");
+
+                    b.Property<DateTimeOffset?>("DmSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("dm_sent_at");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("error");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_seen_at");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<Guid?>("LeadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lead_id");
+
+                    b.Property<string>("ProductKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<int>("Rank")
+                        .HasColumnType("integer")
+                        .HasColumnName("rank");
+
+                    b.Property<string>("SkippedReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("skipped_reason");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("username");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ig_followers");
+
+                    b.HasIndex("ProductKey", "DmSentAt")
+                        .HasDatabaseName("ix_ig_followers_product_key_dm_sent_at");
+
+                    b.HasIndex("ProductKey", "Username")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ig_followers_product_key_username");
+
+                    b.ToTable("ig_followers", (string)null);
                 });
 
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.InstagramAccount", b =>
