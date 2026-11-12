@@ -93,6 +93,8 @@ public class ConversationAgentService
         var replied = await GenerateSuggestionsAsync(ct);
         try { replied += await ContinueSilentGreetingsAsync(ct); }
         catch (Exception ex) { _log.LogError(ex, "Seguimiento del saludo sin respuesta falló"); }
+        try { replied += await QuickNudgeStalledAsync(ct); }
+        catch (Exception ex) { _log.LogError(ex, "Ping de 20 min falló"); }
         try { replied += await FollowUpStalledStagesAsync(ct); }
         catch (Exception ex) { _log.LogError(ex, "Seguimiento por etapa falló"); }
         var reengaged = await GenerateReengagementsAsync(ct);
@@ -1036,6 +1038,59 @@ public class ConversationAgentService
             if (r.MediaAssetIds is { Count: > 0 }) await TrySendOnboardingMediaAsync(lead, r.MediaAssetIds, r.MediaCaptions, ct);
             await _db.SaveChangesAsync(ct);
             _log.LogInformation("Pre-calificacion: lead {Lead} no contesto el saludo, el bot siguio con la 1a pregunta", lead.Id);
+            done++;
+        }
+        return done;
+    }
+
+    /// <summary>
+    /// Pre-calificación: el lead no contestó nuestro último mensaje en ~20 min (Onboarding:QuickNudgeMinutes)
+    /// → ping corto de la config (QuickNudge, o QuickNudgeAfterDemo en el cierre). Solo charlas activas (nuestro
+    /// último mensaje de hace menos de 2 h, así un deploy no le escribe a los chats viejos), de 9 a 22 h de
+    /// Argentina, uno cada 24 h por lead. El seguimiento de las 3 h cuenta desde este ping.
+    /// </summary>
+    private async Task<int> QuickNudgeStalledAsync(CancellationToken ct)
+    {
+        if (!await _db.IsFlagOnAsync("onboarding", false, ct)) return 0;
+        var now = DateTimeOffset.UtcNow;
+        var arHour = TimeZoneInfo.ConvertTime(now, LeadEntryService.ArTz).Hour;
+        if (arHour < 9 || arHour >= 22) return 0;
+        var configs = await _db.OnboardingConfigs.AsNoTracking()
+            .Where(c => c.Enabled && c.HandoffSellerId != null && (c.QuickNudge != "" || c.QuickNudgeAfterDemo != ""))
+            .ToDictionaryAsync(c => c.ProductKey, ct);
+        if (configs.Count == 0) return 0;
+        var keys = configs.Keys.ToList();
+        var silentSince = now.AddMinutes(-_config.GetValue("Onboarding:QuickNudgeMinutes", 20));
+        var tooOld = now.AddHours(-2);
+        var dayAgo = now.AddHours(-24);
+        var ids = await (
+            from l in _db.Leads
+            join o in _db.Set<LeadOnboarding>() on l.Id equals o.LeadId
+            where l.SellerId != null && l.BotMutedAt == null && l.Seller!.BotPausedAt == null
+                && l.Product != null && keys.Contains(l.Product.ProductKey)
+                && ((o.Step >= 1 && o.Step <= 10) || o.Step == OnboardingService.StepAwaitDemoLink
+                    || o.Step == OnboardingService.StepAwaitDemoOk || o.Step == OnboardingService.StepAwaitSlot
+                    || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
+                    || o.Step == OnboardingService.StepGreetedAsked)
+                && (o.QuickNudgeAt == null || o.QuickNudgeAt < dayAgo)
+            let last = _db.ConversationMessages.Where(m => m.LeadId == l.Id).OrderByDescending(m => m.Timestamp).FirstOrDefault()
+            where last != null && last.Direction == MessageDirection.Outbound
+                && last.Timestamp < silentSince && last.Timestamp > tooOld
+            select l.Id
+        ).Take(BatchSize).ToListAsync(ct);
+
+        var done = 0;
+        foreach (var id in ids)
+        {
+            var lead = await _db.Leads.Include(l => l.Product)
+                .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
+                .FirstOrDefaultAsync(l => l.Id == id, ct);
+            if (lead?.Product is null || !configs.TryGetValue(lead.Product.ProductKey, out var cfg)) continue;
+            var text = await _onboarding.QuickNudgeAsync(lead, cfg, ct);
+            if (text is null) continue;
+            await OnboardingSendAsync(lead, text, ct);
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("Pre-calificacion: ping de 20 min a lead {Lead}", lead.Id);
             done++;
         }
         return done;

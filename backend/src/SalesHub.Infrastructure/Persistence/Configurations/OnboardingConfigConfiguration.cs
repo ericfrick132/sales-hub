@@ -23,6 +23,8 @@ public class OnboardingConfigConfiguration : IEntityTypeConfiguration<Onboarding
         // si la tabla tiene filas (nos pasó con reengage_media_asset_ids, 2026-07-20).
         b.Property(x => x.ReengageMediaCaptions).HasDefaultValueSql("'{}'");
         b.Property(x => x.FollowUpMessages).HasDefaultValueSql("'{}'");
+        b.Property(x => x.QuickNudge).HasDefaultValue(string.Empty);
+        b.Property(x => x.QuickNudgeAfterDemo).HasDefaultValue(string.Empty);
         b.Property(x => x.KnownBusinessQuestion).HasDefaultValue(string.Empty);
         b.Property(x => x.KnownBusinessGreeting).HasDefaultValue(string.Empty);
         b.Property(x => x.PricesMessage).HasDefaultValue(string.Empty);

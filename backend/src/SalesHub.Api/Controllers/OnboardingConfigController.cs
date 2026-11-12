@@ -36,7 +36,9 @@ public class OnboardingConfigController : ControllerBase
         // Saludo con lo que dijo el anuncio y paso de precios (ver OnboardingConfig). null = no tocar.
         string? KnownBusinessGreeting = null, string? PricesMessage = null, List<Guid>? PricesMediaAssetIds = null,
         string? StartQuestion = null, string? DemoOffer = null, string? DemoLink = null,
-        List<string>? FollowUpMessages = null);
+        List<string>? FollowUpMessages = null,
+        // Ping de ~20 min (ver OnboardingConfig.QuickNudge). null = no tocar.
+        string? QuickNudge = null, string? QuickNudgeAfterDemo = null);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -64,7 +66,8 @@ public class OnboardingConfigController : ControllerBase
                 c?.PresentAs ?? "", c?.HandoffMessage ?? "", c?.DemoEventTypeUri ?? "", c?.DemoPitch ?? "",
                 c?.KnownBusinessQuestion ?? "", c?.AnglePitches ?? new(),
                 c?.KnownBusinessGreeting ?? "", c?.PricesMessage ?? "", c?.PricesMediaAssetIds ?? new(), c?.StartQuestion ?? "",
-                c?.DemoOffer ?? "", c?.DemoLink ?? "", c?.FollowUpMessages ?? new());
+                c?.DemoOffer ?? "", c?.DemoLink ?? "", c?.FollowUpMessages ?? new(),
+                c?.QuickNudge ?? "", c?.QuickNudgeAfterDemo ?? "");
         });
         return Ok(result);
     }
@@ -120,6 +123,8 @@ public class OnboardingConfigController : ControllerBase
         if (dto.PricesMessage is not null) c.PricesMessage = dto.PricesMessage.Trim();
         if (dto.PricesMediaAssetIds is not null) c.PricesMediaAssetIds = dto.PricesMediaAssetIds.Where(g => g != Guid.Empty).ToList();
         if (dto.StartQuestion is not null) c.StartQuestion = dto.StartQuestion.Trim();
+        if (dto.QuickNudge is not null) c.QuickNudge = dto.QuickNudge.Trim();
+        if (dto.QuickNudgeAfterDemo is not null) c.QuickNudgeAfterDemo = dto.QuickNudgeAfterDemo.Trim();
         if (dto.FollowUpMessages is not null)
             c.FollowUpMessages = dto.FollowUpMessages.Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim()).ToList();
         if (dto.DemoOffer is not null) c.DemoOffer = dto.DemoOffer.Trim();

@@ -56,6 +56,9 @@ public class LeadOnboarding
     public int FollowUpCount { get; set; }
     public DateTimeOffset? LastFollowUpAt { get; set; }
 
+    /// <summary>Último ping de ~20 min (<see cref="OnboardingConfig.QuickNudge"/>): uno cada 24 h como máximo.</summary>
+    public DateTimeOffset? QuickNudgeAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

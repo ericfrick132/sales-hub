@@ -23,6 +23,7 @@ public class BotLearningService
         "Intro", "PersonaQuestion", "EmailPrompt", "ReengageIntro", "SuccessMessage", "ClosingMessage",
         "PostSignupCheckin", "TrialDiscountNudge", "FirstStepsMessage", "HandoffMessage", "DemoPitch",
         "KnownBusinessQuestion", "KnownBusinessGreeting", "PricesMessage", "StartQuestion", "DemoOffer",
+        "QuickNudge", "QuickNudgeAfterDemo",
     };
     private static readonly string[] ConfigLists = { "Questions", "ReengageQuestions", "FollowUpMessages" };
 

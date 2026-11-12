@@ -320,6 +320,27 @@ public class OnboardingService
         return PresentAs(text, cfg);
     }
 
+    /// <summary>
+    /// Ping de ~20 min al lead que no contestó (<see cref="OnboardingConfig.QuickNudge"/>). No toca el paso:
+    /// si contesta, sigue el guion donde estaba. En el cierre (ya vio demo y precios) usa
+    /// <see cref="OnboardingConfig.QuickNudgeAfterDemo"/>, que puede ofrecer la llamada porque ahí cualquier
+    /// respuesta pasa a la persona. null = no corresponde (otro paso, ya se mandó en las últimas 24 h, texto vacío).
+    /// </summary>
+    public async Task<string?> QuickNudgeAsync(Lead lead, OnboardingConfig cfg, CancellationToken ct)
+    {
+        var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == lead.Id, ct);
+        if (ob is null || !IsFollowUpStage(ob.Step)) return null;
+        var now = DateTimeOffset.UtcNow;
+        if (ob.QuickNudgeAt is { } last && now - last < TimeSpan.FromHours(24)) return null;
+        var configured = ob.Step == StepAwaitStart && !string.IsNullOrWhiteSpace(cfg.QuickNudgeAfterDemo)
+            ? cfg.QuickNudgeAfterDemo : cfg.QuickNudge;
+        if (string.IsNullOrWhiteSpace(configured)) return null;
+        ob.QuickNudgeAt = now;
+        ob.UpdatedAt = now;
+        await _db.SaveChangesAsync(ct);
+        return PresentAs(Spin(configured, lead.Id, 300), cfg);
+    }
+
     private static readonly Regex PriceMentionRx = new(@"precio", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex UrlRx = new(@"https?://\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 

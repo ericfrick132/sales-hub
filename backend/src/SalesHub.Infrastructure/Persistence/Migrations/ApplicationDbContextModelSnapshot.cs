@@ -2931,6 +2931,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("provisioned_at");
 
+                    b.Property<DateTimeOffset?>("QuickNudgeAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("quick_nudge_at");
+
                     b.Property<int>("Step")
                         .HasColumnType("integer")
                         .HasColumnName("step");
@@ -3702,6 +3706,20 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text[]")
                         .HasColumnName("questions");
+
+                    b.Property<string>("QuickNudge")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("")
+                        .HasColumnName("quick_nudge");
+
+                    b.Property<string>("QuickNudgeAfterDemo")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("")
+                        .HasColumnName("quick_nudge_after_demo");
 
                     b.Property<string>("ReengageIntro")
                         .IsRequired()

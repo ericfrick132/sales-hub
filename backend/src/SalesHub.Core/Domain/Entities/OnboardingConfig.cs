@@ -108,6 +108,20 @@ public class OnboardingConfig
     public List<string> FollowUpMessages { get; set; } = new();
 
     /// <summary>
+    /// Ping corto si el lead no contesta en ~20 min (Onboarding:QuickNudgeMinutes) a mitad de la
+    /// pre-calificación, ej. "cuando puedas comentame!". NO cambia el paso: lo que conteste sigue el guion,
+    /// así que no tiene que hacer una pregunta nueva. Uno cada 24 h por lead. Variantes {a|b}. Vacío = no se manda.
+    /// </summary>
+    public string QuickNudge { get; set; } = string.Empty;
+
+    /// <summary>
+    /// El mismo ping cuando el lead ya recibió la demo y los precios (paso del cierre), donde cualquier
+    /// respuesta pasa a la persona: acá sí puede ofrecer la llamada ("…queres armar una llamada?").
+    /// Vacío = usa <see cref="QuickNudge"/>.
+    /// </summary>
+    public string QuickNudgeAfterDemo { get; set; } = string.Empty;
+
+    /// <summary>
     /// "Primeros pasos" de la app (bullet list corta). El SuccessMessage cierra con "avisame
     /// cuando estas adentro y te paso los primeros pasos" — cuando el lead responde CUALQUIER
     /// cosa despues del alta, el bot manda esto UNA vez (marca LeadOnboarding.FirstStepsSentAt).
