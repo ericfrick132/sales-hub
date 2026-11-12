@@ -239,10 +239,12 @@ public class ConversationsController : ControllerBase
         var messages = await _db.ConversationMessages.AsNoTracking()
             .Where(m => m.LeadId == leadId)
             .OrderBy(m => m.Timestamp)
-            // CanForward: audio con su archivo recuperable (ver ConversationService.IsForwardableAudio).
+            // CanForward: audio que llegó con su RawJson (el archivo se puede volver a bajar). Se mira el
+            // texto ("[audio]", "🎤 transcripción" o "[audio — no se pudo transcribir]") y no el RawJson:
+            // es jsonb y buscar texto adentro rompe la query (500 al abrir cualquier chat, 12/11).
+            // El endpoint de reenvío vuelve a chequear el RawJson del mensaje antes de mandar.
             .Select(m => new ConversationMessageDto(m.Id, m.Direction, m.Text, m.Timestamp, m.Status, m.IsRead,
-                m.RawJson != null && (m.RawJson.Contains("\"audioMessage\"")
-                    || (m.EvolutionInstance != null && m.EvolutionInstance.StartsWith("ig:") && m.RawJson.Contains("\"audio\"")))))
+                m.RawJson != null && (m.Text.StartsWith("[audio") || m.Text.StartsWith("🎤"))))
             .ToListAsync(ct);
 
         // Bandeja compartida: abrir el chat lo marca leído para todos, mire quien mire.
