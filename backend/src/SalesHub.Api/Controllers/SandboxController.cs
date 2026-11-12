@@ -44,7 +44,7 @@ public class SandboxController : ControllerBase
     /// preguntas y la agenda de demos ("google" o vacío). Vacíos = los de la app.
     /// </summary>
     public record Overrides(bool? Handoff, Guid? HandoffSellerId, int? AfterQuestions, string? PresentAs, string? DemoEventTypeUri,
-        string? HandoffMessage, string? DemoPitch = null);
+        string? HandoffMessage, string? DemoPitch = null, bool? Closer = null);
 
     /// <param name="FirstMessage">
     /// Lo que escribe el lead para arrancar, como en la vida real (ej. el pre-armado de un anuncio: "Hola!
@@ -94,6 +94,7 @@ public class SandboxController : ControllerBase
         await _db.SaveChangesAsync(ct);
 
         // Primer mensaje del bot: el saludo (+ la 1ª pregunta si no pre-califica), como cuando entra alguien por el anuncio.
+        _onboarding.ForceCloser = req.Overrides?.Closer == true;
         var ob = await _onboarding.ProcessAsync(lead, first, cfg, ct, first);
         var turn = await ToTurnAsync(lead, product, cfg, ob, null, null, ct);
         return Ok(new { leadId = lead.Id, ad = ad is null ? null : new { ad.AdId, ad.Name, ad.Rubro, ad.Angle, ad.BusinessRef }, turn });
@@ -126,6 +127,7 @@ public class SandboxController : ControllerBase
         if (onb?.Step == OnboardingService.StepHumanHandoff)
             return Ok(new BotTurn(new(), key, confident, "el bot ya se lo pasó a la persona: esto lo contesta ella", null, null, true));
 
+        _onboarding.ForceCloser = req.Overrides?.Closer == true;
         var ob = await _onboarding.ProcessAsync(lead, text, cfg, ct, text);
         return Ok(await ToTurnAsync(lead, lead.Product!, cfg, ob, key, confident, ct));
     }
@@ -200,6 +202,7 @@ public class SandboxController : ControllerBase
             decision = ob.Provisioned ? "creó la cuenta (alta)" : "sigue el guion";
         }
 
+        if (ob.Notify is not null) decision += $" · aviso a la persona (el bot sigue): {ob.Notify}";
         var now = DateTimeOffset.UtcNow;
         foreach (var p in parts)
         {

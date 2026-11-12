@@ -34,11 +34,12 @@ public class PersonHandoffService
     /// <param name="reason">Por qué se pasa ahora ("respondió 2 preguntas", "contestó al remarketing").</param>
     /// <param name="latestInbound">El mensaje que disparó el pase, si todavía no está guardado.</param>
     /// <param name="context">Algo más para el resumen (ej. qué le habíamos escrito en el remarketing).</param>
+    /// <param name="mute">false = solo avisa (guion closer): el bot sigue en la charla y con los seguimientos.</param>
     public async Task HandoffAsync(Lead lead, Guid? personId, string reason, string? latestInbound, string? context,
-        CancellationToken ct)
+        CancellationToken ct, bool mute = true)
     {
         var now = DateTimeOffset.UtcNow;
-        lead.BotMutedAt ??= now;
+        if (mute) lead.BotMutedAt ??= now;
         if (!lead.Tags.Contains(Tag, StringComparer.OrdinalIgnoreCase))
             lead.Tags = lead.Tags.Append(Tag).ToList();   // lista nueva: el change tracker no ve los Add in-place
         if (lead.Status is LeadStatus.New or LeadStatus.Assigned or LeadStatus.Queued or LeadStatus.Sent or LeadStatus.Replied)

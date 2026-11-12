@@ -3155,6 +3155,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("quick_nudge_at");
 
+                    b.Property<string>("ScriptState")
+                        .HasColumnType("text")
+                        .HasColumnName("script_state");
+
                     b.Property<int>("Step")
                         .HasColumnType("integer")
                         .HasColumnName("step");

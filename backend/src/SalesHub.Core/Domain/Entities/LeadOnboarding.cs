@@ -23,6 +23,9 @@ public class LeadOnboarding
 
     public int GymRetries { get; set; }
 
+    /// <summary>Estado del guion closer de GymHero (JSON: cómo cobra, alumnos, sedes, llamada). null = guion viejo.</summary>
+    public string? ScriptState { get; set; }
+
     public DateTimeOffset? ProvisionedAt { get; set; }
 
     /// <summary>Cuándo se OFRECIÓ el paso a paso ("queres que te diga como empezar?"). Null = todavía no.</summary>

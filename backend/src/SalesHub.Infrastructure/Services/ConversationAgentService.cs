@@ -97,6 +97,8 @@ public class ConversationAgentService
         catch (Exception ex) { _log.LogError(ex, "Ping de 20 min falló"); }
         try { replied += await FollowUpStalledStagesAsync(ct); }
         catch (Exception ex) { _log.LogError(ex, "Seguimiento por etapa falló"); }
+        try { replied += await CloserFollowUpsAsync(ct); }
+        catch (Exception ex) { _log.LogError(ex, "Seguimiento del guion closer falló"); }
         var reengaged = await GenerateReengagementsAsync(ct);
         var postSignup = await GeneratePostSignupNudgesAsync(ct);
         return transcribed + pitched + replied + reengaged + postSignup;
@@ -428,6 +430,9 @@ public class ConversationAgentService
             if (runOnboarding)
             {
                 var ob = await _onboarding.ProcessAsync(lead, last, onbCfg!, ct, recentBurst);
+                // Guion closer: aviso a Mateo SIN silenciar el bot (sigue la charla y los seguimientos).
+                if (ob.Notify is not null)
+                    await _handoff.HandoffAsync(lead, onbCfg!.HandoffSellerId, ob.Notify, last, null, ct, mute: false);
                 if (ob.Handoff is not null)
                 {
                     // Pre-calificación: el bot cierra su parte y sigue la persona en la misma línea.
@@ -1147,6 +1152,53 @@ public class ConversationAgentService
         return done;
     }
 
+    /// <summary>
+    /// Guion closer de GymHero: seguimientos del lead que se calló (20 min, 3 h, mañana 10 h, 3, 5 y 8 días),
+    /// recordatorio de la llamada agendada y aviso de la fecha de apertura. A diferencia del guion viejo,
+    /// corre aunque Mateo haya tomado el chat (decisión de Eric, 12/11/2026).
+    /// </summary>
+    private async Task<int> CloserFollowUpsAsync(CancellationToken ct)
+    {
+        if (!await _db.IsFlagOnAsync("onboarding", false, ct)) return 0;
+        if (!await _db.IsFlagOnAsync(OnboardingService.CloserFlag, false, ct)) return 0;
+        var cfg = await _db.OnboardingConfigs.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Enabled && c.ProductKey == OnboardingService.CloserProduct, ct);
+        if (cfg is null) return 0;
+        var since = DateTimeOffset.UtcNow.AddDays(-12);
+        var rows = await (
+            from o in _db.Set<LeadOnboarding>()
+            join l in _db.Leads on o.LeadId equals l.Id
+            where o.Step <= OnboardingService.CloserStepMax && o.Step != OnboardingService.CloserFin
+                && o.Step != OnboardingService.CloserCuenta && o.UpdatedAt > since
+                && l.SellerId != null && l.Seller!.BotPausedAt == null && l.Status != LeadStatus.Lost
+                && !l.Tags.Contains("sandbox")
+            let lastIn = _db.ConversationMessages.Where(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound)
+                .Max(m => (DateTimeOffset?)m.Timestamp)
+            let lastOut = _db.ConversationMessages.Where(m => m.LeadId == l.Id && m.Direction == MessageDirection.Outbound)
+                .Max(m => (DateTimeOffset?)m.Timestamp)
+            where lastOut != null
+            select new { LeadId = l.Id, LastIn = lastIn, LastOut = lastOut }
+        ).Take(BatchSize).ToListAsync(ct);
+
+        var done = 0;
+        foreach (var r in rows)
+        {
+            var lead = await _db.Leads.Include(l => l.Product)
+                .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
+                .FirstOrDefaultAsync(l => l.Id == r.LeadId, ct);
+            var ob = await _db.Set<LeadOnboarding>().FirstOrDefaultAsync(o => o.LeadId == r.LeadId, ct);
+            if (lead?.Product is null || ob is null || r.LastOut is null) continue;
+            var res = await _onboarding.CloserFollowUpAsync(lead, ob, cfg, r.LastIn ?? r.LastOut.Value, r.LastOut.Value, ct);
+            if (res is not { } x) continue;
+            if (!string.IsNullOrWhiteSpace(x.Text)) await OnboardingSendAsync(lead, x.Text!, ct);
+            if (!string.IsNullOrWhiteSpace(x.Notify)) await _handoff.HandoffAsync(lead, cfg.HandoffSellerId, x.Notify!, null, null, ct, mute: false);
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("Closer: seguimiento a lead {Lead} (paso {Step}, n {N})", lead.Id, ob.Step, ob.FollowUpCount);
+            done++;
+        }
+        return done;
+    }
+
     private async Task<int> GenerateReengagementsAsync(CancellationToken ct)
     {
         if (!_suggestions.IsConfigured) return 0;
@@ -1172,6 +1224,8 @@ public class ConversationAgentService
                     || o.Step == OnboardingService.StepAwaitDemoOk || o.Step == OnboardingService.StepAwaitSlot
                         || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
                         || o.Step == OnboardingService.StepAwaitFollowUpReply || o.Step == OnboardingService.StepGreetedAsked)))
+                // Guion closer: sus seguimientos los manda el guion, nunca la IA.
+                && !_db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id && o.Step <= OnboardingService.CloserStepMax)
                 && l.FirstReplyAt != null
                 && (l.Status == LeadStatus.Replied || l.Status == LeadStatus.Interested)
                 && l.AiSuggestedReply == null
@@ -1205,6 +1259,8 @@ public class ConversationAgentService
                     || o.Step == OnboardingService.StepAwaitDemoOk || o.Step == OnboardingService.StepAwaitSlot
                         || o.Step == OnboardingService.StepAwaitStart || o.Step == OnboardingService.StepAwaitPricesOk
                         || o.Step == OnboardingService.StepAwaitFollowUpReply || o.Step == OnboardingService.StepGreetedAsked)))
+                // Guion closer: sus seguimientos los manda el guion, nunca la IA.
+                && !_db.Set<LeadOnboarding>().Any(o => o.LeadId == l.Id && o.Step <= OnboardingService.CloserStepMax)
                 && l.FirstReplyAt == null
                 && l.Status == LeadStatus.Sent
                 // Solo leads CALIENTES (anuncios/forms/app-fed, source >= 400): a los scrapeados

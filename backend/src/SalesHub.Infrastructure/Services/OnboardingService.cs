@@ -16,7 +16,8 @@ namespace SalesHub.Infrastructure.Services;
 /// Handoff (modo pre-calificación): el motivo del pase a la persona; el caller manda Reply (si hay),
 /// silencia el bot en la charla y le avisa a la persona con el resumen.</summary>
 public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, string? PendingQuestion = null, bool WithPitchAudio = false,
-    List<Guid>? MediaAssetIds = null, string? PostMediaText = null, List<string>? MediaCaptions = null, string? Handoff = null);
+    List<Guid>? MediaAssetIds = null, string? PostMediaText = null, List<string>? MediaCaptions = null, string? Handoff = null,
+    string? Notify = null);
 
 /// <summary>
 /// Motor de onboarding de ads GENÉRICO y multi-app. Lee la <see cref="OnboardingConfig"/> de cada
@@ -25,7 +26,7 @@ public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, 
 /// Off-script (precio/info/etc.) → la IA contesta corto sin avanzar. El separador [NUEVO_MENSAJE]
 /// lo splittea el sender.
 /// </summary>
-public class OnboardingService
+public partial class OnboardingService
 {
     /// <summary>
     /// Step centinela: un humano llevó la conversación y la devolvió con "+". El guion NO debe
@@ -538,6 +539,10 @@ public class OnboardingService
 
         var msg = (lastMessage ?? string.Empty).Trim();
         var lower = msg.ToLowerInvariant();
+
+        // Guion closer de GymHero (flag closer-gymhero): leads nuevos y los que ya están en él.
+        if (await UsesCloserAsync(lead, cfg, ob, ct))
+            return await ProcessCloserAsync(lead, ob, msg, string.IsNullOrWhiteSpace(recentBurst) ? msg : recentBurst!, cfg, ct);
 
         // ── Precios: dijo que sí → precios + "para cuando…"; otra cosa (no, una pregunta) → la persona ──
         if (ob.Step == StepAwaitPricesOk)
