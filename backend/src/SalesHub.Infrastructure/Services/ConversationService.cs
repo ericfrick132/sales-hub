@@ -859,48 +859,76 @@ public class ConversationService
         return msg;
     }
 
-    public record ForwardResult(Guid LeadId, bool Ok, string? Error);
+    public record ForwardResult(Guid LeadId, bool Ok, string? Error, int Sent = 0);
+
+    /// <summary>Texto que se puede reenviar tal cual: no es un placeholder de media ("[imagen]", "[audio]"…) ni una transcripción.</summary>
+    public static bool IsForwardableText(string? text) =>
+        !string.IsNullOrWhiteSpace(text) && !text.StartsWith('[') && !text.StartsWith("🎤");
 
     /// <summary>
-    /// La flechita del chat: reenvía un audio que está en un hilo a otros chats. Se baja una vez
-    /// (de Evolution, o del CDN de Instagram si vino por DM) y sale como nota de voz a cada uno,
-    /// por la línea donde vive cada conversación. Solo audios que llegaron con su RawJson: los que
-    /// mandó el sistema (pitch, reenvíos) no guardan el archivo.
+    /// Reenviar del chat (la flechita, uno o varios mensajes seleccionados) a otros chats. Los
+    /// mensajes salen en el orden en que aparecen en el hilo: los audios como nota de voz (se bajan
+    /// una sola vez, de Evolution o del CDN de Instagram) y los textos tal cual. Cada chat recibe
+    /// todo por la línea donde vive su conversación. Los audios que mandó el sistema (pitch,
+    /// reenvíos) no guardan el archivo y no se pueden reenviar.
     /// </summary>
-    public async Task<(string? Error, List<ForwardResult> Results)> ForwardAudioAsync(Guid sellerId, Guid sourceLeadId,
-        Guid messageId, IReadOnlyList<Guid> toLeadIds, CancellationToken ct)
+    public async Task<(string? Error, List<ForwardResult> Results)> ForwardMessagesAsync(Guid sellerId, Guid sourceLeadId,
+        IReadOnlyList<Guid> messageIds, IReadOnlyList<Guid> toLeadIds, CancellationToken ct)
     {
-        var src = await _db.ConversationMessages.AsNoTracking()
-            .FirstOrDefaultAsync(m => m.Id == messageId && m.LeadId == sourceLeadId, ct);
-        if (src is null) return ("No encontre el mensaje", new());
-        if (!IsForwardableAudio(src.RawJson, src.EvolutionInstance) || string.IsNullOrWhiteSpace(src.EvolutionInstance))
-            return ("Ese mensaje no es un audio que se pueda reenviar", new());
+        var ids = messageIds.Distinct().ToList();
+        var srcs = await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.LeadId == sourceLeadId && ids.Contains(m.Id))
+            .OrderBy(m => m.Timestamp)
+            .ToListAsync(ct);
+        if (srcs.Count == 0) return ("No encontre los mensajes", new());
 
-        var isIg = InstagramMessengerClient.AccountFromLine(src.EvolutionInstance) is not null;
-        var audio = isIg
-            ? await _ig.DownloadAudioAsync(src.RawJson!, ct)
-            : await _evo.GetMediaBase64Async(src.EvolutionInstance, src.RawJson!, ct);
-        if (audio is null || audio.Length == 0) return ("No pude bajar el audio original (puede que ya no este en WhatsApp)", new());
-        var (mime, fileName) = isIg ? ("audio/mp4", "audio.mp4") : ("audio/ogg", "audio.ogg");
+        // Qué sale por cada mensaje: bytes de audio o texto. Lo que no se puede reenviar corta antes de mandar nada.
+        var items = new List<(byte[]? Audio, string Mime, string File, string? Text)>();
+        foreach (var src in srcs)
+        {
+            if (IsForwardableAudio(src.RawJson, src.EvolutionInstance) && !string.IsNullOrWhiteSpace(src.EvolutionInstance))
+            {
+                var isIg = InstagramMessengerClient.AccountFromLine(src.EvolutionInstance) is not null;
+                var audio = isIg
+                    ? await _ig.DownloadAudioAsync(src.RawJson!, ct)
+                    : await _evo.GetMediaBase64Async(src.EvolutionInstance, src.RawJson!, ct);
+                if (audio is null || audio.Length == 0)
+                    return ($"No pude bajar el audio del {src.Timestamp.ToOffset(TimeSpan.FromHours(-3)):dd/MM HH:mm} (puede que ya no este en WhatsApp)", new());
+                items.Add(isIg ? (audio, "audio/mp4", "audio.mp4", null) : (audio, "audio/ogg", "audio.ogg", null));
+            }
+            else if (IsForwardableText(src.Text))
+                items.Add((null, "", "", src.Text));
+            else
+                return ($"El mensaje \"{(src.Text.Length > 30 ? src.Text[..30] + "…" : src.Text)}\" no se puede reenviar", new());
+        }
 
         var results = new List<ForwardResult>();
         foreach (var to in toLeadIds.Distinct())
         {
-            try
+            var sent = 0;
+            string? error = null;
+            foreach (var it in items)
             {
-                var msg = await SendAudioReplyAsync(sellerId, to, audio, mime, fileName, null, ct);
-                results.Add(msg is null
-                    ? new ForwardResult(to, false, "El chat no tiene WhatsApp")
-                    : new ForwardResult(to, msg.Status != MessageDeliveryStatus.Failed,
-                        msg.Status == MessageDeliveryStatus.Failed ? "WhatsApp no acepto el audio" : null));
+                try
+                {
+                    var msg = it.Audio is not null
+                        ? await SendAudioReplyAsync(sellerId, to, it.Audio, it.Mime, it.File, null, ct)
+                        : await SendReplyAsync(sellerId, to, it.Text!, ct);
+                    if (msg is null) { error = "El chat no tiene WhatsApp"; break; }
+                    if (msg.Status == MessageDeliveryStatus.Failed) { error = "WhatsApp no acepto el mensaje"; break; }
+                    sent++;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    error = ex.Message;
+                    break;
+                }
             }
-            catch (InvalidOperationException ex)
-            {
-                results.Add(new ForwardResult(to, false, ex.Message));
-            }
+            results.Add(new ForwardResult(to, error is null, error is null ? null
+                : sent > 0 ? $"{error} (salieron {sent} de {items.Count})" : error, sent));
         }
-        _log.LogInformation("Chat: audio {Msg} reenviado a {Ok}/{Total} chats", messageId,
-            results.Count(r => r.Ok), results.Count);
+        _log.LogInformation("Chat: {N} mensajes del lead {Lead} reenviados; {Ok}/{Total} chats completos",
+            items.Count, sourceLeadId, results.Count(r => r.Ok), results.Count);
         return (null, results);
     }
 

@@ -268,8 +268,28 @@ export default function Conversations() {
   const audioPreview = useMemo(() => (attachment && isAudioFile(attachment) ? URL.createObjectURL(attachment) : null), [attachment]);
   useEffect(() => () => { if (audioPreview) URL.revokeObjectURL(audioPreview); }, [audioPreview]);
   const [dragOver, setDragOver] = useState(false);
-  const [forwarding, setForwarding] = useState<Message | null>(null);
-  useEffect(() => { setForwarding(null); }, [selected]);
+  // Reenviar como WhatsApp: la flechita (o "Seleccionar") abre el modo selección; se marcan
+  // varios mensajes y la barra de abajo abre el modal "Reenviar a…".
+  const [selecting, setSelecting] = useState(false);
+  const [pickedIds, setPickedIds] = useState<string[]>([]);
+  const [forwarding, setForwarding] = useState<Message[] | null>(null);
+  const exitSelect = () => { setSelecting(false); setPickedIds([]); };
+  useEffect(() => { setForwarding(null); exitSelect(); }, [selected]);
+  useEffect(() => {
+    if (!selecting) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !forwarding) exitSelect(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selecting, forwarding]);
+  const togglePick = (m: Message) => {
+    if (!isForwardable(m)) return;
+    setPickedIds((p) => {
+      if (p.includes(m.id)) return p.filter((x) => x !== m.id);
+      if (p.length >= MAX_FORWARD_MSGS) { toast.error(`Hasta ${MAX_FORWARD_MSGS} mensajes por vez`); return p; }
+      return [...p, m.id];
+    });
+  };
+  const startSelect = (m?: Message) => { setSelecting(true); setPickedIds(m && isForwardable(m) ? [m.id] : []); };
 
   const sending = sendMut.isPending || mediaMut.isPending;
 
@@ -280,10 +300,11 @@ export default function Conversations() {
       {forwarding && selected && (
         <ForwardModal
           fromLeadId={selected}
-          message={forwarding}
+          messages={forwarding}
           onClose={() => setForwarding(null)}
           onSent={() => {
             setForwarding(null);
+            exitSelect();
             qc.invalidateQueries({ queryKey: ['conversations'] });
           }}
         />
@@ -549,6 +570,12 @@ export default function Conversations() {
                 className="text-xs md:text-[11px] px-2 py-1.5 md:py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0">
                 {thread.data.closedAt ? '↺' : '✕'}<span className="hidden sm:inline"> {thread.data.closedAt ? 'Reabrir' : 'Cerrar'}</span>
               </button>
+              <button type="button" onClick={() => (selecting ? exitSelect() : startSelect())}
+                title="Seleccionar mensajes para reenviar"
+                className={clsx('text-xs md:text-[11px] px-2 py-1.5 md:py-1 rounded border shrink-0',
+                  selecting ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50')}>
+                ↪<span className="hidden sm:inline"> {selecting ? 'Cancelar' : 'Seleccionar'}</span>
+              </button>
               <button type="button" onClick={() => setInfoSheet(true)} aria-label="Info del lead"
                 className="lg:hidden text-xs px-2 py-1.5 md:py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0">
                 ⓘ<span className="hidden sm:inline"> Info</span>
@@ -567,10 +594,25 @@ export default function Conversations() {
                   </div>
                 </div>
               )}
-              {thread.data.messages.map((m) => (
+              {thread.data.messages.map((m) => {
+                const fwd = isForwardable(m);
+                const on = pickedIds.includes(m.id);
+                const arrow = !selecting && fwd && (
+                  <ForwardArrow desktopOnly={!m.canForward} onClick={() => startSelect(m)} />
+                );
+                return (
                 <div key={m.id}
-                  className={clsx('group flex items-center gap-1.5', m.direction === 'Outbound' ? 'justify-end' : 'justify-start')}>
-                  {m.canForward && m.direction === 'Outbound' && <ForwardArrow onClick={() => setForwarding(m)} />}
+                  onClick={selecting ? () => togglePick(m) : undefined}
+                  className={clsx('group flex items-center gap-1.5',
+                    m.direction === 'Outbound' ? 'justify-end' : 'justify-start',
+                    selecting && (fwd ? 'cursor-pointer -mx-2 px-2 py-0.5 rounded-md' : 'opacity-50'),
+                    selecting && on && 'bg-brand-100/70')}>
+                  {selecting && (
+                    <span className={clsx('w-5 h-5 rounded-full border-2 grid place-items-center shrink-0 text-[11px] text-white',
+                      m.direction === 'Outbound' && 'mr-auto',
+                      !fwd ? 'invisible' : on ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 bg-white')}>{on ? '✓' : ''}</span>
+                  )}
+                  {m.direction === 'Outbound' && arrow}
                   <div className={clsx(
                     'max-w-[85%] md:max-w-md rounded-lg px-3 py-2 text-[15px] md:text-sm whitespace-pre-wrap [overflow-wrap:anywhere]',
                     m.direction === 'Outbound' ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200'
@@ -581,15 +623,36 @@ export default function Conversations() {
                       {m.direction === 'Outbound' && ` · ${m.status}`}
                     </div>
                   </div>
-                  {m.canForward && m.direction === 'Inbound' && <ForwardArrow onClick={() => setForwarding(m)} />}
+                  {m.direction === 'Inbound' && arrow}
                 </div>
-              ))}
+                );
+              })}
             </div>
             {(() => {
               const replies = parseQuickReplies(
                 productsQ.data?.find((p) => p.productKey === thread.data?.productKey)?.replyTemplates ?? []
               );
               const suggestion = thread.data?.aiSuggestedReply;
+              if (selecting) {
+                const msgs = thread.data!.messages.filter((m) => pickedIds.includes(m.id));
+                return (
+                  <div className="p-2 md:p-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:pb-3 border-t border-slate-100 flex items-center gap-3">
+                    <button type="button" onClick={exitSelect} aria-label="Cancelar selección"
+                      className="w-10 h-10 grid place-items-center rounded-full text-slate-500 hover:bg-slate-100 shrink-0">✕</button>
+                    <div className="flex-1 text-sm text-slate-700">
+                      {msgs.length === 0 ? 'Tocá los mensajes que querés reenviar'
+                        : msgs.length === 1 ? '1 seleccionado' : `${msgs.length} seleccionados`}
+                    </div>
+                    <button type="button" disabled={msgs.length === 0} onClick={() => setForwarding(msgs)}
+                      title="Reenviar" aria-label="Reenviar"
+                      className="w-11 h-11 shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white grid place-items-center shadow disabled:opacity-40">
+                      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+                        <path d="M14 5.5v3.6C7.6 9.9 4.5 14.5 3.5 19.5c2.4-3.4 5.8-5 10.5-5v3.9l7-6.45-7-6.45z" />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              }
               return (
                 <>
                   {suggestion && hideSuggestionFor !== selected && (
@@ -872,11 +935,31 @@ function LeadInfoPanel({ thread, onTagClick, onChanged }: { thread: Thread; onTa
 
 /// Mini-form para promover una respuesta aprobada a FAQ canónica del producto.
 /// POST /support/faqs/promote — después se administra desde /soporte (tab FAQs).
+const MAX_FORWARD_MSGS = 20;
+
+/** Se puede reenviar: audio con su archivo (canForward) o texto que no es un placeholder de media ni una transcripción. */
+function isForwardable(m: Message): boolean {
+  return !!m.canForward || (!!m.text?.trim() && !m.text.startsWith('[') && !m.text.startsWith('🎤'));
+}
+
+/** "2 audios y 1 mensaje" (o el texto/la transcripción si es uno solo). */
+function forwardSummary(msgs: Message[]): string {
+  if (msgs.length === 1) {
+    const m = msgs[0];
+    return m.canForward ? `🎤 ${m.text.replace(/^🎤\s*/, '').replace(/^\[audio\]$/, 'Nota de voz')}` : m.text;
+  }
+  const a = msgs.filter((m) => m.canForward).length;
+  const t = msgs.length - a;
+  const parts = [a ? `${a} audio${a > 1 ? 's' : ''}` : '', t ? `${t} mensaje${t > 1 ? 's' : ''}` : ''].filter(Boolean);
+  return `${parts.join(' y ')} · salen en el orden del chat`;
+}
+
 /** La flechita de reenviar de WhatsApp, al costado del globo. En escritorio aparece al pasar el mouse. */
-function ForwardArrow({ onClick }: { onClick: () => void }) {
+function ForwardArrow({ onClick, desktopOnly }: { onClick: () => void; desktopOnly?: boolean }) {
   return (
-    <button type="button" onClick={onClick} title="Reenviar" aria-label="Reenviar"
-      className="shrink-0 w-8 h-8 grid place-items-center rounded-full bg-white/90 border border-slate-200 text-slate-500 shadow-sm hover:text-slate-800 hover:bg-white md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-opacity">
+    <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} title="Reenviar" aria-label="Reenviar"
+      className={clsx('shrink-0 w-8 h-8 place-items-center rounded-full bg-white/90 border border-slate-200 text-slate-500 shadow-sm hover:text-slate-800 hover:bg-white md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-opacity',
+        desktopOnly ? 'hidden md:grid' : 'grid')}>
       <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden="true">
         <path d="M14 5.5v3.6C7.6 9.9 4.5 14.5 3.5 19.5c2.4-3.4 5.8-5 10.5-5v3.9l7-6.45-7-6.45z" />
       </svg>
@@ -884,15 +967,15 @@ function ForwardArrow({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** Modal "Reenviar a…": buscar chats, elegir hasta 5 y mandar el audio como nota de voz. */
+/** Modal "Reenviar a…": buscar chats, elegir hasta 5 y mandar los mensajes (audios como nota de voz). */
 function ForwardModal({
   fromLeadId,
-  message,
+  messages,
   onClose,
   onSent
 }: {
   fromLeadId: string;
-  message: Message;
+  messages: Message[];
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -934,9 +1017,11 @@ function ForwardModal({
     setSending(true);
     try {
       const r = (await api.post<{ sent: number; results: { leadId: string; ok: boolean; error?: string | null }[] }>(
-        `/conversations/${fromLeadId}/messages/${message.id}/forward`, { leadIds: picked.map((p) => p.leadId) })).data;
+        `/conversations/${fromLeadId}/forward`,
+        { messageIds: messages.map((m) => m.id), leadIds: picked.map((p) => p.leadId) },
+        { timeout: 0 })).data;
       const failed = r.results.filter((x) => !x.ok);
-      if (r.sent > 0) toast.success(r.sent === 1 ? 'Audio reenviado' : `Audio reenviado a ${r.sent} chats`);
+      if (r.sent > 0) toast.success(`Reenviado${r.sent > 1 ? ` a ${r.sent} chats` : ''}`);
       failed.forEach((f) => {
         const name = picked.find((p) => p.leadId === f.leadId)?.leadName ?? 'un chat';
         toast.error(`${name}: ${f.error ?? 'no se pudo reenviar'}`);
@@ -959,9 +1044,7 @@ function ForwardModal({
           <h3 className="font-semibold flex-1">Reenviar a…</h3>
         </div>
         <div className="px-4 pt-3 pb-2 space-y-2">
-          <div className="text-xs text-slate-500 truncate">
-            🎤 {message.text.replace(/^🎤\s*/, '').replace(/^\[audio\]$/, 'Nota de voz')}
-          </div>
+          <div className="text-xs text-slate-500 truncate">{forwardSummary(messages)}</div>
           <input className="input text-base md:text-sm w-full" type="search" autoFocus
             placeholder="Buscar chat por nombre o numero…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>

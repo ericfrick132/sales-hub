@@ -311,15 +311,24 @@ public class ConversationsController : ControllerBase
 
     /// <summary>Manda una imagen o un video al lead (multipart: "file" + "caption" opcional).</summary>
     public record ForwardRequest(List<Guid> LeadIds);
+    public record ForwardManyRequest(List<Guid> MessageIds, List<Guid> LeadIds);
 
-    /// <summary>La flechita de reenviar: manda un audio del hilo a otros chats (hasta 5, como WhatsApp).</summary>
+    /// <summary>La flechita de reenviar con un solo mensaje (lo usaba la primera versión del front).</summary>
     [HttpPost("{leadId:guid}/messages/{messageId:guid}/forward")]
-    public async Task<IActionResult> Forward(Guid leadId, Guid messageId, [FromBody] ForwardRequest req, CancellationToken ct)
+    public Task<IActionResult> Forward(Guid leadId, Guid messageId, [FromBody] ForwardRequest req, CancellationToken ct) =>
+        ForwardMany(leadId, new ForwardManyRequest(new() { messageId }, req.LeadIds), ct);
+
+    /// <summary>Reenviar varios mensajes seleccionados (audios y textos) a hasta 5 chats, como WhatsApp.</summary>
+    [HttpPost("{leadId:guid}/forward")]
+    public async Task<IActionResult> ForwardMany(Guid leadId, [FromBody] ForwardManyRequest req, CancellationToken ct)
     {
         var ids = (req.LeadIds ?? new()).Distinct().ToList();
+        var msgs = (req.MessageIds ?? new()).Distinct().ToList();
+        if (msgs.Count == 0) return BadRequest(new { error = "Elegi que mensajes reenviar" });
+        if (msgs.Count > 20) return BadRequest(new { error = "Hasta 20 mensajes por vez" });
         if (ids.Count == 0) return BadRequest(new { error = "Elegi a que chat reenviarlo" });
         if (ids.Count > 5) return BadRequest(new { error = "Hasta 5 chats por vez" });
-        var (error, results) = await _conv.ForwardAudioAsync(CurrentUser.Id(User), leadId, messageId, ids, ct);
+        var (error, results) = await _conv.ForwardMessagesAsync(CurrentUser.Id(User), leadId, msgs, ids, ct);
         if (error is not null) return BadRequest(new { error });
         return Ok(new { sent = results.Count(r => r.Ok), results });
     }
