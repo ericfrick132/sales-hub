@@ -9,6 +9,9 @@ namespace SalesHub.Workers;
 /// en Instagram, la web ni Google (FinderStatus "google") se busca solo en Google Places, de 9 a 22 (Argentina),
 /// con tope diario de búsquedas (Audience:PlacesDailyMax, 100 ≈ USD 3 por día, Eric 22/10). Antes lo cruza
 /// gratis contra la tabla leads. El botón "Buscar N" de Públicos sigue andando aparte, sin este tope.
+/// Los listados de Audience:PlacesDirectDatasets (separados por coma; por defecto "gymhero-wellhub") van directo
+/// a Google sin esperar a la extensión, primero y dentro del mismo tope: son los que ya llegan con el teléfono
+/// de la ficha del competidor y solo les falta el de unos pocos (Eric 12/11).
 /// </summary>
 public class AudiencePlacesWorker : BackgroundService
 {
@@ -50,8 +53,21 @@ public class AudiencePlacesWorker : BackgroundService
         if (left <= 0) return;
         // De a 25 por vuelta: reparte las búsquedas en el día y no frena otras cosas.
         var n = Math.Min(left, 25);
-        var (pending, fromLeads, fromGoogle, searched) = await scope.ServiceProvider.GetRequiredService<AudienceLeadService>()
-            .PlacesAsync(null, n, ct: ct, take: n);
+        var svc = scope.ServiceProvider.GetRequiredService<AudienceLeadService>();
+        int pending = 0, fromLeads = 0, fromGoogle = 0, searched = 0;
+        var direct = (_config["Audience:PlacesDirectDatasets"] ?? "gymhero-wellhub")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var dataset in direct)
+        {
+            if (searched >= n) break;
+            var d = await svc.PlacesAsync(dataset, n - searched, onlyFinderDone: false, ct: ct, take: n - searched);
+            pending += d.Pending; fromLeads += d.FromLeads; fromGoogle += d.FromGoogle; searched += d.Searched;
+        }
+        if (searched < n)
+        {
+            var r = await svc.PlacesAsync(null, n - searched, ct: ct, take: n - searched);
+            pending += r.Pending; fromLeads += r.FromLeads; fromGoogle += r.FromGoogle; searched += r.Searched;
+        }
         if (pending > 0)
             _log.LogInformation("Places automático: {Leads} desde leads, {Google} desde Google ({Searched} búsquedas, {Used}/{Max} hoy)",
                 fromLeads, fromGoogle, searched, used + searched, dailyMax);
