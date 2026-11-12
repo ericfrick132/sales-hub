@@ -58,6 +58,8 @@ type Message = {
   timestamp: string;
   status: string;
   isRead: boolean;
+  /** Audio con el archivo recuperable: muestra la flechita de reenviar. */
+  canForward?: boolean;
 };
 
 type Thread = {
@@ -105,6 +107,12 @@ const SOURCE_LABEL: Record<string, string> = {
   ProductReengage: 'Re-enganche', ProductOnboarding: 'Onboarding app', GooglePlaces: 'Google Maps', ApifyGoogleMaps: 'Google Maps',
   InstagramScraper: 'Instagram', ManualWhatsApp: 'Manual', Remarketing: 'Remarketing', InstagramDm: 'DM de Instagram'
 };
+
+const AUDIO_EXT = /\.(opus|ogg|oga|mp3|m4a|aac|wav|amr|weba)$/i;
+/** Audio por mime o por extensión (los .opus exportados de WhatsApp a veces llegan sin mime). */
+function isAudioFile(f: File): boolean {
+  return f.type.startsWith('audio/') || (!f.type.startsWith('video/') && !f.type.startsWith('image/') && AUDIO_EXT.test(f.name));
+}
 
 /** Cuánto queda de la ventana de 24 h. */
 function windowInfo(lastInboundAt?: string | null): { label: string; dot: string; cls: string } {
@@ -248,12 +256,20 @@ export default function Conversations() {
 
   const pickFile = (f: File | undefined) => {
     if (!f) return;
-    if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) { toast.error('Solo imagenes o videos'); return; }
+    if (!f.type.startsWith('image/') && !f.type.startsWith('video/') && !isAudioFile(f)) { toast.error('Solo imagenes, videos o audios'); return; }
     if (f.size > 16 * 1024 * 1024) { toast.error('WhatsApp acepta hasta 16 MB'); return; }
     setAttachment(f);
   };
 
   useEffect(() => { setAttachment(null); }, [selected]);
+
+  // Preview del audio adjunto (para escucharlo antes de reenviarlo).
+  const attachmentIsAudio = !!attachment && isAudioFile(attachment);
+  const audioPreview = useMemo(() => (attachment && isAudioFile(attachment) ? URL.createObjectURL(attachment) : null), [attachment]);
+  useEffect(() => () => { if (audioPreview) URL.revokeObjectURL(audioPreview); }, [audioPreview]);
+  const [dragOver, setDragOver] = useState(false);
+  const [forwarding, setForwarding] = useState<Message | null>(null);
+  useEffect(() => { setForwarding(null); }, [selected]);
 
   const sending = sendMut.isPending || mediaMut.isPending;
 
@@ -261,6 +277,17 @@ export default function Conversations() {
 
   return (
     <div className="flex flex-col md:grid md:grid-cols-12 gap-4 h-[calc(100dvh-6.5rem)] md:h-[calc(100vh-8rem)]">
+      {forwarding && selected && (
+        <ForwardModal
+          fromLeadId={selected}
+          message={forwarding}
+          onClose={() => setForwarding(null)}
+          onSent={() => {
+            setForwarding(null);
+            qc.invalidateQueries({ queryKey: ['conversations'] });
+          }}
+        />
+      )}
       {showNew && (
         <NewConversationModal
           initialPhone={/\d{6,}/.test(searchDebounced.replace(/\D/g, '')) ? searchDebounced : ''}
@@ -450,8 +477,17 @@ export default function Conversations() {
       </div>
 
       <div
+        onDragOver={(e) => { if (selected && thread.data && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false); }}
+        onDrop={(e) => {
+          if (!selected || !thread.data) return;
+          e.preventDefault();
+          setDragOver(false);
+          pickFile(e.dataTransfer.files?.[0]);
+        }}
         className={clsx(
           'md:col-span-8 card flex flex-col overflow-hidden min-h-0',
+          dragOver && 'ring-2 ring-brand-400',
           selected && showInfo ? 'lg:col-span-6' : '',
           selected
             ? 'fixed inset-x-0 top-0 h-[100dvh] z-40 rounded-none border-0 pt-[env(safe-area-inset-top)] md:static md:h-auto md:z-auto md:rounded-lg md:border md:pt-0'
@@ -533,7 +569,8 @@ export default function Conversations() {
               )}
               {thread.data.messages.map((m) => (
                 <div key={m.id}
-                  className={clsx('flex', m.direction === 'Outbound' ? 'justify-end' : 'justify-start')}>
+                  className={clsx('group flex items-center gap-1.5', m.direction === 'Outbound' ? 'justify-end' : 'justify-start')}>
+                  {m.canForward && m.direction === 'Outbound' && <ForwardArrow onClick={() => setForwarding(m)} />}
                   <div className={clsx(
                     'max-w-[85%] md:max-w-md rounded-lg px-3 py-2 text-[15px] md:text-sm whitespace-pre-wrap [overflow-wrap:anywhere]',
                     m.direction === 'Outbound' ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200'
@@ -544,6 +581,7 @@ export default function Conversations() {
                       {m.direction === 'Outbound' && ` · ${m.status}`}
                     </div>
                   </div>
+                  {m.canForward && m.direction === 'Inbound' && <ForwardArrow onClick={() => setForwarding(m)} />}
                 </div>
               ))}
             </div>
@@ -599,14 +637,17 @@ export default function Conversations() {
                   )}
                   <QuickReplyBar replies={replies} onPick={(t) => setReply(t)} />
                   {attachment && (
-                    <div className="px-3 pt-2 flex items-center gap-2 text-xs text-slate-600">
+                    <div className="px-3 pt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
                       <span className="rounded bg-slate-100 px-2 py-1 truncate max-w-[70%]">
-                        {attachment.type.startsWith('video/') ? 'Video' : 'Imagen'}: {attachment.name} ({(attachment.size / 1024 / 1024).toFixed(1)} MB)
+                        {attachmentIsAudio ? 'Audio' : attachment.type.startsWith('video/') ? 'Video' : 'Imagen'}: {attachment.name} ({(attachment.size / 1024 / 1024).toFixed(1)} MB)
                       </span>
                       <button type="button" className="text-slate-400 hover:text-slate-700" onClick={() => setAttachment(null)} disabled={sending}>
                         quitar
                       </button>
-                      <span className="text-slate-400">el texto va como descripcion</span>
+                      <span className="text-slate-400">
+                        {attachmentIsAudio ? 'sale como nota de voz; el texto va en un mensaje aparte' : 'el texto va como descripcion'}
+                      </span>
+                      {audioPreview && <audio controls src={audioPreview} className="h-8 w-full max-w-xs" />}
                     </div>
                   )}
                   <form
@@ -620,14 +661,14 @@ export default function Conversations() {
                     <input
                       ref={fileRef}
                       type="file"
-                      accept="image/*,video/*"
+                      accept="image/*,video/*,audio/*,.opus,.ogg,.m4a,.amr"
                       className="hidden"
                       onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }}
                     />
                     <button
                       type="button"
                       className="btn-secondary px-3 h-10 shrink-0"
-                      title="Adjuntar imagen o video"
+                      title="Adjuntar imagen, video o audio"
                       onClick={() => fileRef.current?.click()}
                       disabled={sending}>
                       📎
@@ -640,7 +681,7 @@ export default function Conversations() {
                         const f = Array.from(e.clipboardData.files)[0];
                         if (f) { e.preventDefault(); pickFile(f); }
                       }}
-                      placeholder={attachment ? 'Descripcion (opcional)…' : replies.some(r => r.trigger)
+                      placeholder={attachment ? (attachmentIsAudio ? 'Mensaje aparte (opcional)…' : 'Descripcion (opcional)…') : replies.some(r => r.trigger)
                         ? `Escribí tu respuesta… (probá /${replies.find(r => r.trigger)!.trigger})`
                         : 'Escribí tu respuesta…'}
                       value={reply}
@@ -831,6 +872,139 @@ function LeadInfoPanel({ thread, onTagClick, onChanged }: { thread: Thread; onTa
 
 /// Mini-form para promover una respuesta aprobada a FAQ canónica del producto.
 /// POST /support/faqs/promote — después se administra desde /soporte (tab FAQs).
+/** La flechita de reenviar de WhatsApp, al costado del globo. En escritorio aparece al pasar el mouse. */
+function ForwardArrow({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} title="Reenviar" aria-label="Reenviar"
+      className="shrink-0 w-8 h-8 grid place-items-center rounded-full bg-white/90 border border-slate-200 text-slate-500 shadow-sm hover:text-slate-800 hover:bg-white md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-opacity">
+      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden="true">
+        <path d="M14 5.5v3.6C7.6 9.9 4.5 14.5 3.5 19.5c2.4-3.4 5.8-5 10.5-5v3.9l7-6.45-7-6.45z" />
+      </svg>
+    </button>
+  );
+}
+
+/** Modal "Reenviar a…": buscar chats, elegir hasta 5 y mandar el audio como nota de voz. */
+function ForwardModal({
+  fromLeadId,
+  message,
+  onClose,
+  onSent
+}: {
+  fromLeadId: string;
+  message: Message;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [q, setQ] = useState('');
+  const [qDebounced, setQDebounced] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setQDebounced(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+  const [picked, setPicked] = useState<ListItem[]>([]);
+  const [sending, setSending] = useState(false);
+  const MAX = 5;
+
+  const chats = useQuery({
+    queryKey: ['forward-targets', qDebounced],
+    queryFn: async () => (await api.get<ListItem[]>('/conversations', {
+      params: qDebounced
+        ? { q: qDebounced, includeClosed: true }
+        : { from: new Date(Date.now() - 30 * 86400_000).toISOString() }
+    })).data
+  });
+  const options = (chats.data ?? []).filter((c) => c.leadId !== fromLeadId && c.whatsappPhone);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !sending) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, sending]);
+
+  const toggle = (c: ListItem) => {
+    setPicked((p) => {
+      if (p.some((x) => x.leadId === c.leadId)) return p.filter((x) => x.leadId !== c.leadId);
+      if (p.length >= MAX) { toast.error(`Hasta ${MAX} chats por vez`); return p; }
+      return [...p, c];
+    });
+  };
+
+  async function send() {
+    setSending(true);
+    try {
+      const r = (await api.post<{ sent: number; results: { leadId: string; ok: boolean; error?: string | null }[] }>(
+        `/conversations/${fromLeadId}/messages/${message.id}/forward`, { leadIds: picked.map((p) => p.leadId) })).data;
+      const failed = r.results.filter((x) => !x.ok);
+      if (r.sent > 0) toast.success(r.sent === 1 ? 'Audio reenviado' : `Audio reenviado a ${r.sent} chats`);
+      failed.forEach((f) => {
+        const name = picked.find((p) => p.leadId === f.leadId)?.leadName ?? 'un chat';
+        toast.error(`${name}: ${f.error ?? 'no se pudo reenviar'}`);
+      });
+      if (r.sent > 0) onSent();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? 'No se pudo reenviar');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4"
+      onClick={(e) => { if (e.target === e.currentTarget && !sending) onClose(); }}>
+      <div className="card w-full sm:max-w-md flex flex-col max-h-[85dvh] rounded-b-none sm:rounded-lg overflow-hidden pb-[env(safe-area-inset-bottom)] sm:pb-0">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3">
+          <button type="button" onClick={onClose} disabled={sending} aria-label="Cerrar"
+            className="w-8 h-8 grid place-items-center rounded-full text-slate-500 hover:bg-slate-100">✕</button>
+          <h3 className="font-semibold flex-1">Reenviar a…</h3>
+        </div>
+        <div className="px-4 pt-3 pb-2 space-y-2">
+          <div className="text-xs text-slate-500 truncate">
+            🎤 {message.text.replace(/^🎤\s*/, '').replace(/^\[audio\]$/, 'Nota de voz')}
+          </div>
+          <input className="input text-base md:text-sm w-full" type="search" autoFocus
+            placeholder="Buscar chat por nombre o numero…" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <div className="flex-1 overflow-y-auto min-h-[200px]">
+          {chats.isLoading && <div className="p-4 text-sm text-slate-500">Cargando…</div>}
+          {!chats.isLoading && options.length === 0 && (
+            <div className="p-4 text-sm text-slate-500">{qDebounced ? `No hay chats con "${qDebounced}".` : 'No hay chats recientes.'}</div>
+          )}
+          {options.map((c) => {
+            const on = picked.some((p) => p.leadId === c.leadId);
+            return (
+              <button key={c.leadId} type="button" onClick={() => toggle(c)}
+                className={clsx('w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-slate-50', on && 'bg-brand-50')}>
+                <span className={clsx('w-5 h-5 rounded-full border-2 grid place-items-center shrink-0 text-[11px] text-white',
+                  on ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300')}>{on ? '✓' : ''}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium truncate">{c.leadName}</span>
+                  <span className="block text-xs text-slate-400 truncate">
+                    {formatPhone(c.whatsappPhone)} · {c.productKey}{c.deviceName ? ` · ${c.deviceName}` : ''}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {picked.length > 0 && (
+          <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex items-center gap-3">
+            <div className="flex-1 min-w-0 text-sm text-slate-600 truncate">{picked.map((p) => p.leadName).join(', ')}</div>
+            <button type="button" onClick={send} disabled={sending} title="Enviar" aria-label="Enviar"
+              className="w-11 h-11 shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white grid place-items-center shadow disabled:opacity-60">
+              {sending ? '…' : (
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+                  <path d="M3.4 20.4 21 12 3.4 3.6l-.01 6.53L15 12 3.39 13.87z" />
+                </svg>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NewConversationModal({
   initialPhone,
   products,

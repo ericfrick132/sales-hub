@@ -832,6 +832,83 @@ public class ConversationService
                 string.IsNullOrWhiteSpace(caption) ? null : caption.Trim(), ct), ct);
     }
 
+    /// <summary>
+    /// Reenvío de un audio desde el chat: sale como nota de voz (PTT, convertida a OGG/Opus).
+    /// Se guarda como "[audio]", que es el mismo texto que trae el eco del webhook, así no se
+    /// duplica ni mutea el bot. Si ffmpeg no puede convertirlo, va como archivo de audio.
+    /// Las notas de voz no llevan descripción: si vino texto, sale como mensaje aparte.
+    /// </summary>
+    public async Task<ConversationMessage?> SendAudioReplyAsync(Guid sellerId, Guid leadId, byte[] content, string mimeType,
+        string fileName, string? caption, CancellationToken ct)
+    {
+        var msg = await SendOutboundAsync(leadId, "[audio]", async (instance, phone) =>
+        {
+            try
+            {
+                var prep = await _evo.PrepareVoiceNoteAsync(content, ct);
+                if (await _evo.SendPreparedVoiceNoteAsync(instance, phone, prep.OggBytes, ct)) return true;
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Chat: no se pudo mandar {File} como nota de voz; va como archivo", fileName);
+            }
+            return await _evo.SendMediaAsync(instance, phone, content, mimeType, fileName, null, ct);
+        }, ct);
+        if (msg is not null && msg.Status != MessageDeliveryStatus.Failed && !string.IsNullOrWhiteSpace(caption))
+            await SendReplyAsync(sellerId, leadId, caption.Trim(), ct, msg.EvolutionInstance);
+        return msg;
+    }
+
+    public record ForwardResult(Guid LeadId, bool Ok, string? Error);
+
+    /// <summary>
+    /// La flechita del chat: reenvía un audio que está en un hilo a otros chats. Se baja una vez
+    /// (de Evolution, o del CDN de Instagram si vino por DM) y sale como nota de voz a cada uno,
+    /// por la línea donde vive cada conversación. Solo audios que llegaron con su RawJson: los que
+    /// mandó el sistema (pitch, reenvíos) no guardan el archivo.
+    /// </summary>
+    public async Task<(string? Error, List<ForwardResult> Results)> ForwardAudioAsync(Guid sellerId, Guid sourceLeadId,
+        Guid messageId, IReadOnlyList<Guid> toLeadIds, CancellationToken ct)
+    {
+        var src = await _db.ConversationMessages.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == messageId && m.LeadId == sourceLeadId, ct);
+        if (src is null) return ("No encontre el mensaje", new());
+        if (!IsForwardableAudio(src.RawJson, src.EvolutionInstance) || string.IsNullOrWhiteSpace(src.EvolutionInstance))
+            return ("Ese mensaje no es un audio que se pueda reenviar", new());
+
+        var isIg = InstagramMessengerClient.AccountFromLine(src.EvolutionInstance) is not null;
+        var audio = isIg
+            ? await _ig.DownloadAudioAsync(src.RawJson!, ct)
+            : await _evo.GetMediaBase64Async(src.EvolutionInstance, src.RawJson!, ct);
+        if (audio is null || audio.Length == 0) return ("No pude bajar el audio original (puede que ya no este en WhatsApp)", new());
+        var (mime, fileName) = isIg ? ("audio/mp4", "audio.mp4") : ("audio/ogg", "audio.ogg");
+
+        var results = new List<ForwardResult>();
+        foreach (var to in toLeadIds.Distinct())
+        {
+            try
+            {
+                var msg = await SendAudioReplyAsync(sellerId, to, audio, mime, fileName, null, ct);
+                results.Add(msg is null
+                    ? new ForwardResult(to, false, "El chat no tiene WhatsApp")
+                    : new ForwardResult(to, msg.Status != MessageDeliveryStatus.Failed,
+                        msg.Status == MessageDeliveryStatus.Failed ? "WhatsApp no acepto el audio" : null));
+            }
+            catch (InvalidOperationException ex)
+            {
+                results.Add(new ForwardResult(to, false, ex.Message));
+            }
+        }
+        _log.LogInformation("Chat: audio {Msg} reenviado a {Ok}/{Total} chats", messageId,
+            results.Count(r => r.Ok), results.Count);
+        return (null, results);
+    }
+
+    /// <summary>Audio con el archivo recuperable: nota de voz de WhatsApp (audioMessage) o adjunto de audio de un DM de IG.</summary>
+    public static bool IsForwardableAudio(string? rawJson, string? instance) =>
+        rawJson is not null && (rawJson.Contains("\"audioMessage\"")
+            || (InstagramMessengerClient.AccountFromLine(instance) is not null && rawJson.Contains("\"audio\"")));
+
     private async Task<ConversationMessage?> SendOutboundAsync(Guid leadId, string text,
         Func<string, string, Task<bool>> send, CancellationToken ct, string? viaInstance = null)
     {
@@ -870,14 +947,16 @@ public class ConversationService
             sendInstanceName = instance.InstanceName;
         }
 
-        var ok = await send(sendInstanceName, lead.WhatsappPhone);
+        // Persistir ANTES de mandar: el eco fromMe del webhook se matchea contra esto. Si se
+        // guardara después, un eco rápido (o un envío lento, como una nota de voz que pasa por
+        // ffmpeg) entraría como mensaje manual del celu: duplicado y bot muteado.
         var entry = new ConversationMessage
         {
             Id = Guid.NewGuid(),
             LeadId = lead.Id,
             SellerId = seller.Id,
             Direction = MessageDirection.Outbound,
-            Status = ok ? MessageDeliveryStatus.Sent : MessageDeliveryStatus.Failed,
+            Status = MessageDeliveryStatus.Sent,
             Text = text,
             EvolutionInstance = sendInstanceName,
             Timestamp = DateTimeOffset.UtcNow,
@@ -889,6 +968,19 @@ public class ConversationService
         lead.AiSuggestedReply = null;
         lead.AiSuggestedReplyAt = null;
         await _db.SaveChangesAsync(ct);
+
+        bool ok;
+        try { ok = await send(sendInstanceName, lead.WhatsappPhone); }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Envío desde el chat a lead {Lead} falló", lead.Id);
+            ok = false;
+        }
+        if (!ok)
+        {
+            entry.Status = MessageDeliveryStatus.Failed;
+            await _db.SaveChangesAsync(ct);
+        }
         return entry;
     }
 

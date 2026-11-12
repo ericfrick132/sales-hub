@@ -64,7 +64,7 @@ public class ConversationsController : ControllerBase
 
     public record ConversationMessageDto(
         Guid Id, MessageDirection Direction, string Text, DateTimeOffset Timestamp,
-        MessageDeliveryStatus Status, bool IsRead);
+        MessageDeliveryStatus Status, bool IsRead, bool CanForward = false);
 
     public record ConversationThreadDto(
         Guid LeadId, string LeadName, string? WhatsappPhone, string? RenderedInitialMessage,
@@ -239,7 +239,10 @@ public class ConversationsController : ControllerBase
         var messages = await _db.ConversationMessages.AsNoTracking()
             .Where(m => m.LeadId == leadId)
             .OrderBy(m => m.Timestamp)
-            .Select(m => new ConversationMessageDto(m.Id, m.Direction, m.Text, m.Timestamp, m.Status, m.IsRead))
+            // CanForward: audio con su archivo recuperable (ver ConversationService.IsForwardableAudio).
+            .Select(m => new ConversationMessageDto(m.Id, m.Direction, m.Text, m.Timestamp, m.Status, m.IsRead,
+                m.RawJson != null && (m.RawJson.Contains("\"audioMessage\"")
+                    || (m.EvolutionInstance != null && m.EvolutionInstance.StartsWith("ig:") && m.RawJson.Contains("\"audio\"")))))
             .ToListAsync(ct);
 
         // Bandeja compartida: abrir el chat lo marca leído para todos, mire quien mire.
@@ -305,6 +308,23 @@ public class ConversationsController : ControllerBase
     }
 
     /// <summary>Manda una imagen o un video al lead (multipart: "file" + "caption" opcional).</summary>
+    public record ForwardRequest(List<Guid> LeadIds);
+
+    /// <summary>La flechita de reenviar: manda un audio del hilo a otros chats (hasta 5, como WhatsApp).</summary>
+    [HttpPost("{leadId:guid}/messages/{messageId:guid}/forward")]
+    public async Task<IActionResult> Forward(Guid leadId, Guid messageId, [FromBody] ForwardRequest req, CancellationToken ct)
+    {
+        var ids = (req.LeadIds ?? new()).Distinct().ToList();
+        if (ids.Count == 0) return BadRequest(new { error = "Elegi a que chat reenviarlo" });
+        if (ids.Count > 5) return BadRequest(new { error = "Hasta 5 chats por vez" });
+        var (error, results) = await _conv.ForwardAudioAsync(CurrentUser.Id(User), leadId, messageId, ids, ct);
+        if (error is not null) return BadRequest(new { error });
+        return Ok(new { sent = results.Count(r => r.Ok), results });
+    }
+
+    private static readonly HashSet<string> AudioExtensions =
+        new() { ".opus", ".ogg", ".oga", ".mp3", ".m4a", ".aac", ".wav", ".amr", ".weba", ".webm" };
+
     [HttpPost("{leadId:guid}/reply-media")]
     [RequestSizeLimit(17_000_000)]
     public async Task<IActionResult> ReplyMedia(Guid leadId, IFormFile file, [FromForm] string? caption, CancellationToken ct)
@@ -313,15 +333,22 @@ public class ConversationsController : ControllerBase
         var mime = file.ContentType ?? "";
         var isImage = mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
         var isVideo = mime.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
-        if (!isImage && !isVideo) return BadRequest(new { error = "Solo imagenes o videos" });
-        // Tope de WhatsApp para video/imagen: 16 MB.
+        // Audios reenviados: los .opus/.ogg que se exportan de WhatsApp a veces llegan sin mime
+        // (o como octet-stream), así que también se reconocen por la extensión.
+        var isAudio = mime.StartsWith("audio/", StringComparison.OrdinalIgnoreCase)
+            || AudioExtensions.Contains(Path.GetExtension(file.FileName ?? "").ToLowerInvariant());
+        if (!isImage && !isVideo && !isAudio) return BadRequest(new { error = "Solo imagenes, videos o audios" });
+        // Tope de WhatsApp para video/imagen/audio: 16 MB.
         if (file.Length > 16 * 1024 * 1024) return BadRequest(new { error = "El archivo pasa los 16 MB que acepta WhatsApp" });
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms, ct);
         try
         {
-            var msg = await _conv.SendMediaReplyAsync(CurrentUser.Id(User), leadId, ms.ToArray(), mime, file.FileName, caption, ct);
+            var msg = isAudio && !isImage && !isVideo
+                ? await _conv.SendAudioReplyAsync(CurrentUser.Id(User), leadId, ms.ToArray(),
+                    mime.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ? mime : "audio/ogg", file.FileName ?? "audio.ogg", caption, ct)
+                : await _conv.SendMediaReplyAsync(CurrentUser.Id(User), leadId, ms.ToArray(), mime, file.FileName, caption, ct);
             if (msg is null) return NotFound();
             if (msg.Status == MessageDeliveryStatus.Failed) return StatusCode(502, new { error = "WhatsApp no acepto el archivo" });
             return Ok(new ConversationMessageDto(msg.Id, msg.Direction, msg.Text, msg.Timestamp, msg.Status, msg.IsRead));
