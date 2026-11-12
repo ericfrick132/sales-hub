@@ -336,7 +336,25 @@ public partial class OnboardingService
         {
             parts.Add(s.Alumnos is > 30 or null ? TCaroGrande : TCaroChico);
             if (!s.CasoUsado) { parts.Add(TCaso); s.CasoUsado = true; }
+            if (ob.Step == CloserSistema)
+            {
+                parts.Add(Migracion(s)); parts.Add(TAlumnos); ob.Step = CloserAlumnos;
+            }
+            else if (Pending(ob.Step, s) is { Length: > 0 } pend) parts.Add(pend);
             await _db.SaveChangesAsync(ct); return Done();
+        }
+        // Pidió ver el sistema: la demo, y sigue donde estaba.
+        if (DemoPideRx.IsMatch(n) && ob.Step is not (CloserLlamada or CloserHora or CloserDatos))
+        {
+            parts.Add("te paso la demo para que veas como funciona realmente: " + DemoAdminUrl);
+            if (Pending(ob.Step, s) is { Length: > 0 } pend2) parts.Add(pend2);
+            await _db.SaveChangesAsync(ct); return Done();
+        }
+        // Pasó el mail ya en el paso de la llamada: se le arma la cuenta.
+        if (ob.Step is CloserLlamada or CloserHora && EmailRx.IsMatch(burst))
+        {
+            ob.Step = CloserDatos;
+            return await CloserProvisionAsync(lead, ob, s, burst, cfg, parts, ct, Done);
         }
         if (HuellaRx.IsMatch(n)) { parts.Add(THuella); parts.Add(Pending(ob.Step, s)); await _db.SaveChangesAsync(ct); return Done(); }
         if (SocioRx.IsMatch(n))
@@ -365,10 +383,10 @@ public partial class OnboardingService
                 var cobro = ParseCobro(n);
                 if (cobro is null)
                 {
+                    if (Regex.IsMatch(n, @"\by vos\b|\by tu\b|como estas|como andas|como va|^bien\b|todo bien") && IntentText.WordCount(IntentText.Normalize(msg)) <= 6)
+                    { parts.Add("todo bien!"); parts.Add(TCobroRe); break; } // "bien y vos?": se le contesta y se repite la pregunta
                     if (ComoFuncionaRx.IsMatch(n) || msg.Contains('?'))
                         return Done(pending: TCobroRe, offScript: true);
-                    if (Regex.IsMatch(n, @"\by vos\b|\by tu\b|como estas|como andas|como va|^bien\b|todo bien"))
-                    { parts.Add("todo bien!"); parts.Add(TCobroRe); break; } // "bien y vos?": se le contesta y se repite la pregunta
                     if (LooksLikePrefill(msg) || IntentText.WordCount(IntentText.Normalize(msg)) <= 3)
                     { lead.AiSuggestedReplyAt = now; await _db.SaveChangesAsync(ct); return Done(); } // "hola", el anuncio otra vez: espera la respuesta
                     return Done(pending: TCobroRe, offScript: true);
@@ -411,10 +429,16 @@ public partial class OnboardingService
             {
                 // La IA responde lo que cuente; después va la migración y la pregunta de alumnos.
                 s.Sistema ??= SistemaNombreRx.Match(n) is { Success: true } sm2 ? sm2.Value : null;
-                var desde = string.IsNullOrWhiteSpace(s.Sistema) ? "desde el que usas" : $"desde {s.Sistema}";
+                if (ParseAlumnos(n) is { } a2)
+                {
+                    s.Alumnos = a2; s.Tipo = ParseTipo(n) ?? s.Tipo;
+                    parts.Add(Migracion(s));
+                    await AfterAlumnosAsync(parts, ob, s, cfg, ct);
+                    break;
+                }
                 ob.Step = CloserAlumnos;
                 await _db.SaveChangesAsync(ct);
-                return Done(pending: $"y los alumnos te los pasamos nosotros {desde}, sin costo{NLc}{TAlumnos}", offScript: true);
+                return Done(pending: $"{Migracion(s)}{NLc}{TAlumnos}", offScript: true);
             }
             case CloserAbre:
             {
@@ -501,9 +525,22 @@ public partial class OnboardingService
             parts.Add(TAlumnos); ob.Step = CloserAlumnos; return;
         }
         if (s.Tipo is not null && !tipoYaDicho) AddTipo(parts, s.Tipo);
+        var mateoOn = await MateoAvailableAsync(cfg, ct);
+        if (s.PlanesMostrados)
+        {
+            // Ya vio los planes (preguntó el precio de entrada): no se los repetimos, solo lo que le toca y la llamada.
+            var chico = s.Alumnos is <= 30;
+            parts.Add(chico ? "con esa cantidad te entra el plan gratis, o el starter si queres sin comision" : TPrueba);
+            parts.Add(mateoOn ? (chico ? TLlamadaChico : TLlamadaGrande) : TLlamadaManana);
+            ob.Step = CloserLlamada; return;
+        }
         if (s.Sedes is null) { parts.Add(TSedes); ob.Step = CloserSedes; return; }
-        AddPlanes(parts, s, await MateoAvailableAsync(cfg, ct)); ob.Step = CloserLlamada;
+        AddPlanes(parts, s, mateoOn); ob.Step = CloserLlamada;
     }
+
+    private static string Migracion(CloserState s) =>
+        $"y los alumnos te los pasamos nosotros {(string.IsNullOrWhiteSpace(s.Sistema) ? "desde el que usas" : "desde " + s.Sistema)}, sin costo";
+    private static readonly Regex DemoPideRx = R(@"(pasa|manda|envia)(me)? (el |la )?(link|demo|video)|quiero ver(lo)? (la demo|como funciona|andando)|tenes (una |algun )?(demo|video)");
 
     private static void AddTipo(List<string> parts, string tipo)
     {
