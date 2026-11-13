@@ -403,7 +403,8 @@ public class ConversationService
             m.LeadId == lead.Id
             && m.Direction == MessageDirection.Outbound
             && m.Timestamp >= since && m.Timestamp <= until
-            && m.Text == incoming.Text, ct);
+            // Imagen/video con descripción mandados desde el chat se guardan "[imagen] texto"; el eco trae solo el texto.
+            && (m.Text == incoming.Text || m.Text == "[imagen] " + incoming.Text || m.Text == "[video] " + incoming.Text), ct);
         if (isOwnEcho) return false;
 
         // Dedup por message id (reentregas del webhook).
@@ -825,8 +826,11 @@ public class ConversationService
     public Task<ConversationMessage?> SendMediaReplyAsync(Guid sellerId, Guid leadId, byte[] content, string mimeType,
         string fileName, string? caption, CancellationToken ct)
     {
-        var kind = mimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? "[video]" : "[imagen]";
-        var text = string.IsNullOrWhiteSpace(caption) ? kind : $"{kind} {caption.Trim()}";
+        var isImage = mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+        var isVideo = mimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
+        // Documento: mismo texto que trae el eco del webhook ("[documento: nombre]"), así no se duplica.
+        var kind = isVideo ? "[video]" : isImage ? "[imagen]" : $"[documento: {fileName}]";
+        var text = string.IsNullOrWhiteSpace(caption) || (!isImage && !isVideo) ? kind : $"{kind} {caption.Trim()}";
         return SendOutboundAsync(leadId, text,
             (instance, phone) => _evo.SendMediaAsync(instance, phone, content, mimeType, fileName,
                 string.IsNullOrWhiteSpace(caption) ? null : caption.Trim(), ct), ct);
@@ -883,10 +887,20 @@ public class ConversationService
         if (srcs.Count == 0) return ("No encontre los mensajes", new());
 
         // Qué sale por cada mensaje: bytes de audio o texto. Lo que no se puede reenviar corta antes de mandar nada.
-        var items = new List<(byte[]? Audio, string Mime, string File, string? Text)>();
+        var items = new List<(byte[]? Audio, string Mime, string File, string? Text, byte[]? Media)>();
         foreach (var src in srcs)
         {
-            if (IsForwardableAudio(src.RawJson, src.EvolutionInstance) && !string.IsNullOrWhiteSpace(src.EvolutionInstance))
+            var wa = src.RawJson is not null && !string.IsNullOrWhiteSpace(src.EvolutionInstance)
+                && InstagramMessengerClient.AccountFromLine(src.EvolutionInstance) is null;
+            var media = wa ? ReadMedia(src.RawJson!) : null;
+            if (media is not null)
+            {
+                var bytes = await _evo.GetMediaBase64Async(src.EvolutionInstance!, src.RawJson!, ct);
+                if (bytes is null || bytes.Length == 0)
+                    return ($"No pude bajar el archivo del {src.Timestamp.ToOffset(TimeSpan.FromHours(-3)):dd/MM HH:mm} (puede que ya no este en WhatsApp)", new());
+                items.Add((null, media.Value.Mime, media.Value.File, media.Value.Caption, bytes));
+            }
+            else if (IsForwardableAudio(src.RawJson, src.EvolutionInstance) && !string.IsNullOrWhiteSpace(src.EvolutionInstance))
             {
                 var isIg = InstagramMessengerClient.AccountFromLine(src.EvolutionInstance) is not null;
                 var audio = isIg
@@ -894,10 +908,10 @@ public class ConversationService
                     : await _evo.GetMediaBase64Async(src.EvolutionInstance, src.RawJson!, ct);
                 if (audio is null || audio.Length == 0)
                     return ($"No pude bajar el audio del {src.Timestamp.ToOffset(TimeSpan.FromHours(-3)):dd/MM HH:mm} (puede que ya no este en WhatsApp)", new());
-                items.Add(isIg ? (audio, "audio/mp4", "audio.mp4", null) : (audio, "audio/ogg", "audio.ogg", null));
+                items.Add(isIg ? (audio, "audio/mp4", "audio.mp4", null, null) : (audio, "audio/ogg", "audio.ogg", null, null));
             }
             else if (IsForwardableText(src.Text))
-                items.Add((null, "", "", src.Text));
+                items.Add((null, "", "", src.Text, null));
             else
                 return ($"El mensaje \"{(src.Text.Length > 30 ? src.Text[..30] + "…" : src.Text)}\" no se puede reenviar", new());
         }
@@ -911,7 +925,9 @@ public class ConversationService
             {
                 try
                 {
-                    var msg = it.Audio is not null
+                    var msg = it.Media is not null
+                        ? await SendMediaReplyAsync(sellerId, to, it.Media, it.Mime, it.File, it.Text, ct)
+                        : it.Audio is not null
                         ? await SendAudioReplyAsync(sellerId, to, it.Audio, it.Mime, it.File, null, ct)
                         : await SendReplyAsync(sellerId, to, it.Text!, ct);
                     if (msg is null) { error = "El chat no tiene WhatsApp"; break; }
@@ -930,6 +946,31 @@ public class ConversationService
         _log.LogInformation("Chat: {N} mensajes del lead {Lead} reenviados; {Ok}/{Total} chats completos",
             items.Count, sourceLeadId, results.Count(r => r.Ok), results.Count);
         return (null, results);
+    }
+
+    /// <summary>Imagen, video o documento de un mensaje de WhatsApp (RawJson de Evolution): mime, nombre y descripción.</summary>
+    private static (string Mime, string File, string? Caption)? ReadMedia(string rawJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            if (!doc.RootElement.TryGetProperty("message", out var body) || body.ValueKind != JsonValueKind.Object) return null;
+            foreach (var (prop, defMime, defFile) in new[]
+            {
+                ("imageMessage", "image/jpeg", "imagen.jpg"),
+                ("videoMessage", "video/mp4", "video.mp4"),
+                ("documentMessage", "application/octet-stream", "documento")
+            })
+            {
+                if (!body.TryGetProperty(prop, out var m) || m.ValueKind != JsonValueKind.Object) continue;
+                string? Str(string k) => m.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(v.GetString()) ? v.GetString() : null;
+                var mime = (Str("mimetype") ?? defMime).Split(';')[0].Trim();
+                return (mime, Str("fileName") ?? defFile, Str("caption"));
+            }
+        }
+        catch (JsonException) { }
+        return null;
     }
 
     /// <summary>Audio con el archivo recuperable: nota de voz de WhatsApp (audioMessage) o adjunto de audio de un DM de IG.</summary>

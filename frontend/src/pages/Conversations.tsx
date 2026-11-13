@@ -58,8 +58,10 @@ type Message = {
   timestamp: string;
   status: string;
   isRead: boolean;
-  /** Audio con el archivo recuperable: muestra la flechita de reenviar. */
+  /** Audio, imagen, video o documento con el archivo recuperable: muestra la flechita de reenviar. */
   canForward?: boolean;
+  /** "image" | "video" | "document" si trae ese archivo; null en audios y textos. */
+  mediaKind?: 'image' | 'video' | 'document' | null;
 };
 
 type Thread = {
@@ -290,6 +292,19 @@ export default function Conversations() {
     });
   };
   const startSelect = (m?: Message) => { setSelecting(true); setPickedIds(m && isForwardable(m) ? [m.id] : []); };
+  // Celu: mantener apretado un mensaje entra al modo selección (como WhatsApp).
+  const pressTimer = useRef<number | null>(null);
+  const cancelPress = () => { if (pressTimer.current) { window.clearTimeout(pressTimer.current); pressTimer.current = null; } };
+  const longPress = (m: Message) => ({
+    onTouchStart: () => {
+      if (selecting || !isForwardable(m)) return;
+      cancelPress();
+      pressTimer.current = window.setTimeout(() => { pressTimer.current = null; startSelect(m); navigator.vibrate?.(15); }, 450);
+    },
+    onTouchEnd: cancelPress,
+    onTouchMove: cancelPress,
+    onContextMenu: (e: React.MouseEvent) => { if (window.matchMedia('(pointer: coarse)').matches) e.preventDefault(); }
+  });
 
   const sending = sendMut.isPending || mediaMut.isPending;
 
@@ -602,6 +617,7 @@ export default function Conversations() {
                 );
                 return (
                 <div key={m.id}
+                  {...longPress(m)}
                   onClick={selecting ? () => togglePick(m) : undefined}
                   className={clsx('group flex items-center gap-1.5',
                     m.direction === 'Outbound' ? 'justify-end' : 'justify-start',
@@ -617,7 +633,7 @@ export default function Conversations() {
                     'max-w-[85%] md:max-w-md rounded-lg px-3 py-2 text-[15px] md:text-sm whitespace-pre-wrap [overflow-wrap:anywhere]',
                     m.direction === 'Outbound' ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200'
                   )}>
-                    <div>{m.text}</div>
+                    <div>{m.mediaKind && !m.text.startsWith('[') ? `${MEDIA_ICON[m.mediaKind]} ` : ''}{m.text}</div>
                     <div className={clsx('text-xs mt-1', m.direction === 'Outbound' ? 'text-brand-100' : 'text-slate-400')}>
                       {new Date(m.timestamp).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                       {m.direction === 'Outbound' && ` · ${m.status}`}
@@ -936,6 +952,7 @@ function LeadInfoPanel({ thread, onTagClick, onChanged }: { thread: Thread; onTa
 /// Mini-form para promover una respuesta aprobada a FAQ canónica del producto.
 /// POST /support/faqs/promote — después se administra desde /soporte (tab FAQs).
 const MAX_FORWARD_MSGS = 20;
+const MEDIA_ICON = { image: '📷', video: '🎥', document: '📄' } as const;
 
 /** Se puede reenviar: audio con su archivo (canForward) o texto que no es un placeholder de media ni una transcripción. */
 function isForwardable(m: Message): boolean {
@@ -946,12 +963,16 @@ function isForwardable(m: Message): boolean {
 function forwardSummary(msgs: Message[]): string {
   if (msgs.length === 1) {
     const m = msgs[0];
+    if (m.mediaKind) return `${MEDIA_ICON[m.mediaKind]} ${m.text}`;
     return m.canForward ? `🎤 ${m.text.replace(/^🎤\s*/, '').replace(/^\[audio\]$/, 'Nota de voz')}` : m.text;
   }
-  const a = msgs.filter((m) => m.canForward).length;
-  const t = msgs.length - a;
-  const parts = [a ? `${a} audio${a > 1 ? 's' : ''}` : '', t ? `${t} mensaje${t > 1 ? 's' : ''}` : ''].filter(Boolean);
-  return `${parts.join(' y ')} · salen en el orden del chat`;
+  const a = msgs.filter((m) => m.canForward && !m.mediaKind).length;
+  const f = msgs.filter((m) => m.mediaKind).length;
+  const t = msgs.length - a - f;
+  const parts = [a ? `${a} audio${a > 1 ? 's' : ''}` : '', f ? `${f} archivo${f > 1 ? 's' : ''}` : '',
+    t ? `${t} mensaje${t > 1 ? 's' : ''}` : ''].filter(Boolean);
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}` : parts[0];
+  return `${list} · salen en el orden del chat`;
 }
 
 /** La flechita de reenviar de WhatsApp, al costado del globo. En escritorio aparece al pasar el mouse. */

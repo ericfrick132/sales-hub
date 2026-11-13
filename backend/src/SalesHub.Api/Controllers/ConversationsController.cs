@@ -64,7 +64,9 @@ public class ConversationsController : ControllerBase
 
     public record ConversationMessageDto(
         Guid Id, MessageDirection Direction, string Text, DateTimeOffset Timestamp,
-        MessageDeliveryStatus Status, bool IsRead, bool CanForward = false);
+        MessageDeliveryStatus Status, bool IsRead, bool CanForward = false,
+        /// <summary>"image" | "video" | "document" si el mensaje trae ese archivo (se puede reenviar); null si no.</summary>
+        string? MediaKind = null);
 
     public record ConversationThreadDto(
         Guid LeadId, string LeadName, string? WhatsappPhone, string? RenderedInitialMessage,
@@ -244,8 +246,34 @@ public class ConversationsController : ControllerBase
             // es jsonb y buscar texto adentro rompe la query (500 al abrir cualquier chat, 12/11).
             // El endpoint de reenvío vuelve a chequear el RawJson del mensaje antes de mandar.
             .Select(m => new ConversationMessageDto(m.Id, m.Direction, m.Text, m.Timestamp, m.Status, m.IsRead,
-                m.RawJson != null && (m.Text.StartsWith("[audio") || m.Text.StartsWith("🎤"))))
+                m.RawJson != null && (m.Text.StartsWith("[audio") || m.Text.StartsWith("🎤")), null))
             .ToListAsync(ct);
+
+        // Imágenes, videos y documentos de WhatsApp que se pueden reenviar: jsonb @> (operador nativo,
+        // no búsqueda de texto). Va en una query aparte y protegida: si algo falla, el chat abre igual
+        // y esos mensajes quedan sin flechita.
+        try
+        {
+            var media = await _db.ConversationMessages.AsNoTracking()
+                .Where(m => m.LeadId == leadId && m.RawJson != null)
+                .Select(m => new
+                {
+                    m.Id,
+                    Img = EF.Functions.JsonContains(m.RawJson!, """{"message":{"imageMessage":{}}}"""),
+                    Vid = EF.Functions.JsonContains(m.RawJson!, """{"message":{"videoMessage":{}}}"""),
+                    Doc = EF.Functions.JsonContains(m.RawJson!, """{"message":{"documentMessage":{}}}""")
+                })
+                .Where(x => x.Img || x.Vid || x.Doc)
+                .ToListAsync(ct);
+            var kinds = media.ToDictionary(x => x.Id, x => x.Img ? "image" : x.Vid ? "video" : "document");
+            if (kinds.Count > 0)
+                messages = messages.Select(m => kinds.TryGetValue(m.Id, out var k) ? m with { CanForward = true, MediaKind = k } : m).ToList();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            HttpContext.RequestServices.GetService<ILogger<ConversationsController>>()
+                ?.LogWarning(ex, "Thread {Lead}: no pude marcar las imagenes/videos reenviables", leadId);
+        }
 
         // Bandeja compartida: abrir el chat lo marca leído para todos, mire quien mire.
         await _conv.MarkReadAsync(sellerId, leadId, ct);
