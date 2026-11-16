@@ -1102,12 +1102,14 @@ function ChatMedia({ leadId, m, selecting }: { leadId: string; m: Message; selec
             <button type="button" onClick={() => setZoom(false)} aria-label="Cerrar"
               className="w-9 h-9 rounded-full bg-white/15 text-white hover:bg-white/25 grid place-items-center">✕</button>
           </div>
-          <div className="flex-1 min-h-0 grid place-items-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {/* Topes en unidades de pantalla: un % de un contenedor flexible no achica una captura de 1600 px. */}
+          <div className="flex-1 min-h-0 flex items-center justify-center px-3">
             <img src={file.url} alt="" onClick={(e) => e.stopPropagation()}
-              className="max-w-full max-h-full object-contain rounded" />
+              className={clsx('max-w-[calc(100vw-1.5rem)] object-contain rounded',
+                m.text && !m.text.startsWith('[') ? 'max-h-[calc(100dvh-9rem)]' : 'max-h-[calc(100dvh-5.5rem)]')} />
           </div>
           {m.text && !m.text.startsWith('[') && (
-            <div className="px-4 pb-4 text-center text-sm text-white/90 whitespace-pre-wrap">{m.text}</div>
+            <div className="px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-sm text-white/90 whitespace-pre-wrap line-clamp-3">{m.text}</div>
           )}
         </div>,
         document.body
