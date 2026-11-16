@@ -66,7 +66,9 @@ public class ConversationsController : ControllerBase
         Guid Id, MessageDirection Direction, string Text, DateTimeOffset Timestamp,
         MessageDeliveryStatus Status, bool IsRead, bool CanForward = false,
         /// <summary>"image" | "video" | "document" si el mensaje trae ese archivo (se puede reenviar); null si no.</summary>
-        string? MediaKind = null);
+        string? MediaKind = null,
+        /// <summary>Tamaño original de la imagen/video (para reservar el lugar en el chat antes de bajarlo).</summary>
+        int? MediaWidth = null, int? MediaHeight = null);
 
     public record ConversationThreadDto(
         Guid LeadId, string LeadName, string? WhatsappPhone, string? RenderedInitialMessage,
@@ -246,28 +248,18 @@ public class ConversationsController : ControllerBase
             // es jsonb y buscar texto adentro rompe la query (500 al abrir cualquier chat, 12/11).
             // El endpoint de reenvío vuelve a chequear el RawJson del mensaje antes de mandar.
             .Select(m => new ConversationMessageDto(m.Id, m.Direction, m.Text, m.Timestamp, m.Status, m.IsRead,
-                m.RawJson != null && (m.Text.StartsWith("[audio") || m.Text.StartsWith("🎤")), null))
+                m.RawJson != null && (m.Text.StartsWith("[audio") || m.Text.StartsWith("🎤")), null, null, null))
             .ToListAsync(ct);
 
-        // Imágenes, videos y documentos de WhatsApp que se pueden reenviar: jsonb @> (operador nativo,
-        // no búsqueda de texto). Va en una query aparte y protegida: si algo falla, el chat abre igual
-        // y esos mensajes quedan sin flechita.
+        // Imágenes, videos y documentos de WhatsApp (se ven en el chat y se pueden reenviar). Va en
+        // una query aparte y protegida: si algo falla, el chat abre igual y esos mensajes quedan como texto.
         try
         {
-            var media = await _db.ConversationMessages.AsNoTracking()
-                .Where(m => m.LeadId == leadId && m.RawJson != null)
-                .Select(m => new
-                {
-                    m.Id,
-                    Img = EF.Functions.JsonContains(m.RawJson!, """{"message":{"imageMessage":{}}}"""),
-                    Vid = EF.Functions.JsonContains(m.RawJson!, """{"message":{"videoMessage":{}}}"""),
-                    Doc = EF.Functions.JsonContains(m.RawJson!, """{"message":{"documentMessage":{}}}""")
-                })
-                .Where(x => x.Img || x.Vid || x.Doc)
-                .ToListAsync(ct);
-            var kinds = media.ToDictionary(x => x.Id, x => x.Img ? "image" : x.Vid ? "video" : "document");
+            var kinds = await _conv.GetMediaInfoAsync(leadId, ct);
             if (kinds.Count > 0)
-                messages = messages.Select(m => kinds.TryGetValue(m.Id, out var k) ? m with { CanForward = true, MediaKind = k } : m).ToList();
+                messages = messages.Select(m => kinds.TryGetValue(m.Id, out var k)
+                    ? m with { CanForward = true, MediaKind = k.Kind, MediaWidth = k.Width, MediaHeight = k.Height }
+                    : m).ToList();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -299,6 +291,26 @@ public class ConversationsController : ControllerBase
             lead.CreatedAt, messages.Count > 0 ? messages[0].Timestamp : null, messages.Count,
             messages.Count > 0 ? messages[^1].Timestamp : null,
             pitchInfo, feedback, lead.City, lead.Score);
+    }
+
+    /// <summary>
+    /// El archivo de una imagen o video del chat, para verlo adentro de la conversación (el front lo
+    /// pide con el token y lo muestra como blob). Solo devuelve imagen/video; lo demás sale como
+    /// descarga genérica para que el navegador nunca lo interprete.
+    /// </summary>
+    [HttpGet("{leadId:guid}/messages/{messageId:guid}/media")]
+    public async Task<IActionResult> Media(Guid leadId, Guid messageId, CancellationToken ct)
+    {
+        var media = await _conv.GetMessageMediaAsync(leadId, messageId, ct);
+        if (media is null) return NotFound(new { error = "El archivo ya no esta en WhatsApp" });
+        var (bytes, mime, thumbnail) = media.Value;
+        var safe = mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            || mime.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? mime : "application/octet-stream";
+        // El archivo de un mensaje no cambia: que el navegador lo guarde. La miniatura de respaldo no,
+        // así cuando Evolution vuelve a poder bajarlo se ve el original.
+        Response.Headers.CacheControl = thumbnail ? "no-store" : "private, max-age=604800, immutable";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(bytes, safe);
     }
 
     /// <summary>Takeover humano desde la UI: bot ON/OFF para esta conversación

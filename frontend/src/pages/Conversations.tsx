@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -62,6 +63,9 @@ type Message = {
   canForward?: boolean;
   /** "image" | "video" | "document" si trae ese archivo; null en audios y textos. */
   mediaKind?: 'image' | 'video' | 'document' | null;
+  /** Tamaño original de la imagen/video: reserva el lugar en el globo antes de bajarlo. */
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
 };
 
 type Thread = {
@@ -600,7 +604,7 @@ export default function Conversations() {
                 {showInfo ? 'Ocultar info' : 'Info del lead'}
               </button>
             </div>
-            <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain p-3 md:p-4 space-y-2 bg-slate-50">
+            <div ref={scrollRef} data-chat-scroll className="flex-1 overflow-y-auto overscroll-contain p-3 md:p-4 space-y-2 bg-slate-50">
               {thread.data.renderedInitialMessage && thread.data.messages.length === 0 && (
                 <div className="text-center text-xs text-slate-400 mb-4">
                   Mensaje inicial sugerido (aún no enviado):
@@ -612,6 +616,9 @@ export default function Conversations() {
               {thread.data.messages.map((m) => {
                 const fwd = isForwardable(m);
                 const on = pickedIds.includes(m.id);
+                const visual = m.mediaKind === 'image' || m.mediaKind === 'video';
+                // "[imagen]" / "[video]" es el placeholder sin descripción: con la foto a la vista sobra.
+                const showText = !visual || !m.text.startsWith('[');
                 const arrow = !selecting && fwd && (
                   <ForwardArrow desktopOnly={!m.canForward} onClick={() => startSelect(m)} />
                 );
@@ -630,11 +637,17 @@ export default function Conversations() {
                   )}
                   {m.direction === 'Outbound' && arrow}
                   <div className={clsx(
-                    'max-w-[85%] md:max-w-md rounded-lg px-3 py-2 text-[15px] md:text-sm whitespace-pre-wrap [overflow-wrap:anywhere]',
+                    'max-w-[85%] md:max-w-md rounded-lg text-[15px] md:text-sm whitespace-pre-wrap [overflow-wrap:anywhere]',
+                    visual ? 'p-1' : 'px-3 py-2',
                     m.direction === 'Outbound' ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200'
                   )}>
-                    <div>{m.mediaKind && !m.text.startsWith('[') ? `${MEDIA_ICON[m.mediaKind]} ` : ''}{m.text}</div>
-                    <div className={clsx('text-xs mt-1', m.direction === 'Outbound' ? 'text-brand-100' : 'text-slate-400')}>
+                    {visual && <ChatMedia leadId={thread.data.leadId} m={m} selecting={selecting} />}
+                    {showText && (
+                      <div className={clsx(visual && 'px-2 pt-1.5')}>
+                        {m.mediaKind === 'document' && !m.text.startsWith('[') ? `${MEDIA_ICON.document} ` : ''}{m.text}
+                      </div>
+                    )}
+                    <div className={clsx('text-xs mt-1', visual && 'px-2 pb-1', m.direction === 'Outbound' ? 'text-brand-100' : 'text-slate-400')}>
                       {new Date(m.timestamp).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                       {m.direction === 'Outbound' && ` · ${m.status}`}
                     </div>
@@ -985,6 +998,121 @@ function ForwardArrow({ onClick, desktopOnly }: { onClick: () => void; desktopOn
         <path d="M14 5.5v3.6C7.6 9.9 4.5 14.5 3.5 19.5c2.4-3.4 5.8-5 10.5-5v3.9l7-6.45-7-6.45z" />
       </svg>
     </button>
+  );
+}
+
+/**
+ * Imagen o video que vino en el chat. El archivo se pide con el token (no sirve un <img src> directo)
+ * y recién cuando el globo está por entrar en pantalla, para no bajar todas las fotos del chat de una.
+ * El lugar se reserva con el tamaño original: así el scroll al último mensaje no salta al cargar.
+ */
+function ChatMedia({ leadId, m, selecting }: { leadId: string; m: Message; selecting: boolean }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
+  const [file, setFile] = useState<{ url: string; type: string } | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [preview, setPreview] = useState(false);
+  const [zoom, setZoom] = useState(false);
+
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el || near) return;
+    const io = new IntersectionObserver((es) => {
+      if (es.some((e) => e.isIntersecting)) { setNear(true); io.disconnect(); }
+    }, { root: el.closest('[data-chat-scroll]'), rootMargin: '800px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near]);
+
+  useEffect(() => {
+    if (!near) return;
+    let alive = true;
+    let url: string | null = null;
+    setFailed(false);
+    api.get<Blob>(`/conversations/${leadId}/messages/${m.id}/media`, { responseType: 'blob' })
+      .then((r) => {
+        if (!alive) return;
+        url = URL.createObjectURL(r.data);
+        setFile({ url, type: r.data.type });
+      })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
+  }, [near, leadId, m.id, attempt]);
+
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setZoom(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [zoom]);
+
+  const isVideo = m.mediaKind === 'video';
+  const w = m.mediaWidth ?? 0;
+  const h = m.mediaHeight ?? 0;
+  const known = w > 0 && h > 0;
+  const ratio = known ? w / h : isVideo ? 9 / 16 : 1;
+  // Hasta 280 de ancho y 340 de alto: una captura de celu queda angosta y alta, una foto apaisada ancha.
+  const width = Math.round(Math.max(140, Math.min(280, 340 * ratio)));
+  // Si WhatsApp ya borró el original el backend manda la miniatura (también para los videos: es un jpg).
+  const asImage = !!file && file.type.startsWith('image/');
+  const label = isVideo ? 'video' : 'imagen';
+
+  return (
+    <>
+      <div ref={boxRef} style={{ width, aspectRatio: `${ratio}` }}
+        className={clsx('relative max-w-full overflow-hidden rounded-md bg-black/10', selecting && 'pointer-events-none')}>
+        {file && asImage && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); setZoom(true); }}
+            className="block w-full h-full cursor-zoom-in" aria-label={`Ver ${label} completa`}>
+            <img src={file.url} alt="" draggable={false}
+              onLoad={(e) => { if (known && e.currentTarget.naturalWidth < w / 3) setPreview(true); }}
+              className={clsx('w-full h-full', known ? 'object-cover' : 'object-contain')} />
+          </button>
+        )}
+        {file && !asImage && (
+          <video src={file.url} controls playsInline preload="metadata"
+            onClick={(e) => e.stopPropagation()} className="w-full h-full object-contain bg-black" />
+        )}
+        {!file && !failed && (
+          <div className="absolute inset-0 grid place-items-center text-2xl animate-pulse">{MEDIA_ICON[isVideo ? 'video' : 'image']}</div>
+        )}
+        {failed && (
+          <div className="absolute inset-0 grid place-items-center p-3 text-center text-xs">
+            <div>
+              <div className="text-2xl mb-1">{MEDIA_ICON[isVideo ? 'video' : 'image']}</div>
+              <div className="opacity-80">No se pudo cargar {isVideo ? 'el video' : 'la imagen'}</div>
+              <button type="button" onClick={(e) => { e.stopPropagation(); setAttempt((a) => a + 1); }}
+                className="mt-1.5 underline opacity-90 hover:opacity-100">Reintentar</button>
+            </div>
+          </div>
+        )}
+        {(preview || (file && asImage && isVideo)) && (
+          <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[11px] px-2 py-1 leading-tight">
+            Vista previa: el {label} original ya no está en WhatsApp
+          </div>
+        )}
+      </div>
+      {zoom && file && createPortal(
+        <div className="fixed inset-0 z-[100] bg-black/90 flex flex-col" onClick={() => setZoom(false)}>
+          <div className="flex justify-end gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+            <a href={file.url} download={`${label}-${m.id.slice(0, 8)}.${file.type.split('/')[1]?.split(';')[0] || 'jpg'}`}
+              onClick={(e) => e.stopPropagation()}
+              className="text-sm px-3 py-1.5 rounded-full bg-white/15 text-white hover:bg-white/25">Descargar</a>
+            <button type="button" onClick={() => setZoom(false)} aria-label="Cerrar"
+              className="w-9 h-9 rounded-full bg-white/15 text-white hover:bg-white/25 grid place-items-center">✕</button>
+          </div>
+          <div className="flex-1 min-h-0 grid place-items-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <img src={file.url} alt="" onClick={(e) => e.stopPropagation()}
+              className="max-w-full max-h-full object-contain rounded" />
+          </div>
+          {m.text && !m.text.startsWith('[') && (
+            <div className="px-4 pb-4 text-center text-sm text-white/90 whitespace-pre-wrap">{m.text}</div>
+          )}
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 

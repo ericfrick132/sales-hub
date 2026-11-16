@@ -1,7 +1,10 @@
+using System.Data;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
+using NpgsqlTypes;
 using SalesHub.Core.Abstractions;
 using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
@@ -970,6 +973,97 @@ public class ConversationService
             }
         }
         catch (JsonException) { }
+        return null;
+    }
+
+    public record MediaInfo(string Kind, int? Width, int? Height);
+
+    /// <summary>
+    /// Imágenes, videos y documentos de WhatsApp de un chat (los que guardaron el RawJson de Evolution),
+    /// con el tamaño original para que el chat reserve el lugar antes de bajar el archivo. Va por SQL
+    /// directo: así no se traen los RawJson enteros (con la miniatura adentro pesan 10-40 KB cada uno).
+    /// </summary>
+    public async Task<Dictionary<Guid, MediaInfo>> GetMediaInfoAsync(Guid leadId, CancellationToken ct)
+    {
+        const string sql = """
+            select x.id, x.kind,
+                   case when jsonb_typeof(x.b->'width') = 'number' then least((x.b->>'width')::numeric, 100000)::int end,
+                   case when jsonb_typeof(x.b->'height') = 'number' then least((x.b->>'height')::numeric, 100000)::int end
+            from (
+                select id,
+                       case when raw_json->'message'->'imageMessage' is not null then 'image'
+                            when raw_json->'message'->'videoMessage' is not null then 'video'
+                            else 'document' end as kind,
+                       coalesce(raw_json->'message'->'imageMessage', raw_json->'message'->'videoMessage',
+                                raw_json->'message'->'documentMessage') as b
+                from conversation_messages
+                where lead_id = @lead and raw_json is not null
+            ) x
+            where jsonb_typeof(x.b) = 'object'
+            """;
+        var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
+        var opened = conn.State != ConnectionState.Open;
+        if (opened) await conn.OpenAsync(ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new NpgsqlParameter("lead", NpgsqlDbType.Uuid) { Value = leadId });
+            var res = new Dictionary<Guid, MediaInfo>();
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                res[r.GetGuid(0)] = new MediaInfo(r.GetString(1),
+                    r.IsDBNull(2) ? null : r.GetInt32(2), r.IsDBNull(3) ? null : r.GetInt32(3));
+            return res;
+        }
+        finally
+        {
+            if (opened) await conn.CloseAsync();
+        }
+    }
+
+    /// <summary>
+    /// El archivo de una imagen o video del chat, para verlo en la conversación. Se baja de WhatsApp
+    /// vía Evolution (igual que al reenviar). Si ya no está (WhatsApp borra los archivos viejos), cae a
+    /// la miniatura que vino adentro del mensaje: baja resolución, pero se ve qué era (Thumbnail=true).
+    /// </summary>
+    public async Task<(byte[] Bytes, string Mime, bool Thumbnail)?> GetMessageMediaAsync(Guid leadId, Guid messageId, CancellationToken ct)
+    {
+        var src = await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.Id == messageId && m.LeadId == leadId)
+            .Select(m => new { m.RawJson, m.EvolutionInstance })
+            .FirstOrDefaultAsync(ct);
+        if (src?.RawJson is null || string.IsNullOrWhiteSpace(src.EvolutionInstance)
+            || InstagramMessengerClient.AccountFromLine(src.EvolutionInstance) is not null) return null;
+        var media = ReadMedia(src.RawJson);
+        if (media is null) return null;
+
+        var bytes = await _evo.GetMediaBase64Async(src.EvolutionInstance, src.RawJson, ct);
+        if (bytes is { Length: > 0 }) return (bytes, media.Value.Mime, false);
+
+        var thumb = ReadThumbnail(src.RawJson);
+        if (thumb is { Length: > 0 }) return (thumb, "image/jpeg", true);
+        _log.LogInformation("Chat: no pude bajar el archivo del mensaje {Msg} (lead {Lead})", messageId, leadId);
+        return null;
+    }
+
+    /// <summary>La miniatura JPEG que WhatsApp manda adentro del imageMessage/videoMessage (base64 o {"0":255,"1":216,...}).</summary>
+    private static byte[]? ReadThumbnail(string rawJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            if (!doc.RootElement.TryGetProperty("message", out var body) || body.ValueKind != JsonValueKind.Object) return null;
+            foreach (var prop in new[] { "imageMessage", "videoMessage" })
+            {
+                if (!body.TryGetProperty(prop, out var m) || m.ValueKind != JsonValueKind.Object
+                    || !m.TryGetProperty("jpegThumbnail", out var t)) continue;
+                if (t.ValueKind == JsonValueKind.String) return Convert.FromBase64String(t.GetString()!);
+                if (t.ValueKind == JsonValueKind.Object)
+                    return t.EnumerateObject().OrderBy(p => int.Parse(p.Name)).Select(p => p.Value.GetByte()).ToArray();
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException) { }
         return null;
     }
 
