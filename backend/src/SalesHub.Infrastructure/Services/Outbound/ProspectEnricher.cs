@@ -166,7 +166,7 @@ public partial class ProspectEnricher
     private static partial Regex LoosePhoneRx();
 
     private static readonly string[] LinkHubs =
-        { "linktr.ee", "linktree", "beacons.ai", "taplink", "bio.link", "linkin.bio", "lnk.bio", "campsite.bio", "canva.site", "my.canva", "wa.link", "bit.ly", "msha.ke", "carrd.co", "solo.to" };
+        { "linktr.ee", "linktree", "beacons.ai", "taplink", "bio.link", "linkin.bio", "lnk.bio", "campsite.bio", "canva.site", "my.canva", "wa.link", "bit.ly", "msha.ke", "carrd.co", "solo.to", "agora.red" };
 
     /// <summary>
     /// Aplica el perfil de Instagram: si el link de la bio (o lo que hay detrás de un Linktree/Canva/wa.link)

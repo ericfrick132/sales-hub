@@ -212,7 +212,7 @@ public static class ProspectScorer
         if (u.Contains("instagram.com")) return "instagram";
         if (u.Contains("facebook.com") || u.Contains("fb.com")) return "facebook";
         if (BookingPlatformIn(u) is not null) return "reservas";
-        string[] bio = { "linktr.ee", "linktree", "beacons.ai", "taplink", "bio.link", "wa.link", "wa.me", "api.whatsapp", "linkin.bio", "lnk.bio", "campsite.bio" };
+        string[] bio = { "linktr.ee", "linktree", "beacons.ai", "taplink", "bio.link", "wa.link", "wa.me", "api.whatsapp", "linkin.bio", "lnk.bio", "campsite.bio", "agora.red", "canva.site" };
         if (bio.Any(u.Contains)) return "link-en-bio";
         return "propia";
     }
@@ -230,7 +230,8 @@ public static class ProspectScorer
         ("doctoralia", "Doctoralia"), ("topdoctors", "TopDoctors"), ("vagaro.com", "Vagaro"),
         ("treatwell", "Treatwell"), ("koibox", "Koibox"), ("bewe.", "Bewe"), ("appointy", "Appointy"),
         ("turnonet", "Turnonet"), ("sacarturno", "SacarTurno"), ("miturno", "MiTurno"), ("turnosweb", "TurnosWeb"),
-        ("squareup.com/appointments", "Square"), ("mindbody", "Mindbody"),
+        ("squareup.com/appointments", "Square"), ("mindbody", "Mindbody"), ("wonoma.com", "Wonoma"),
+        ("turnau.app", "Turnau"), ("tuturno", "TuTurno"), ("agendaonline", "AgendaOnline"),
     };
 
     public static string? BookingPlatformIn(string? text)
