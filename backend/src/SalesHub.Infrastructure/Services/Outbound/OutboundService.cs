@@ -93,7 +93,10 @@ public class OutboundService
 
     public IQueryable<Lead> CandidatesFor(EvolutionInstance line)
     {
-        var q = Eligible(line.ProductKey!).Where(l => l.ProspectScore >= line.OutboundMinScore);
+        // Solo los ANALIZADOS A FONDO (Eric 19/11: "los outbounds que tienen que salir son los que haya analizado el
+        // bridge"): su web leída por el worker Y su Instagram leído por el lector de la Mac. Sin Instagram leído no sale.
+        var q = Eligible(line.ProductKey!).Where(l => l.ProspectScore >= line.OutboundMinScore
+            && l.ProspectEnrichedAt != null && l.InstagramCheckedAt != null);
         // "vi que toman los turnos por whatsapp" tiene que ser verdad: solo los verificados (web o Instagram).
         if (line.OutboundRequireWhatsapp)
             q = q.Where(l => l.PhoneOrigin == "whatsapp-publicado" || l.PhoneOrigin == "whatsapp-instagram");

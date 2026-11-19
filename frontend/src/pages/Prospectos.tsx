@@ -53,7 +53,7 @@ type Row = {
 type Ranking = {
   rows: Row[];
   counts: {
-    eligible: number; eligibleOver50: number; reserved: number; pendingEnrich: number; verified: number; igPending: number; igChecked: number;
+    eligible: number; eligibleOver50: number; reserved: number; pendingEnrich: number; verified: number; igPending: number; igChecked: number; ready: number;
     byRubro: { rubro: string | null; count: number; over50: number }[];
   };
 };
@@ -190,7 +190,8 @@ export function RankingProspectos() {
 
       {c && (
         <div className="text-sm text-slate-600">
-          <b>{c.eligible}</b> contactables · <b>{c.verified}</b> con WhatsApp verificado (a esos les escribe la línea) ·{' '}
+          <b className="text-emerald-700">{c.ready}</b> listos para la línea (analizados por el lector: web + Instagram, y WhatsApp verificado) ·{' '}
+          {c.eligible} contactables · {c.verified} con WhatsApp verificado ·{' '}
           {c.eligibleOver50} con 50 o más · {c.reserved} traídos para el outbound
           <div className="mt-1 text-xs text-slate-500">
             Instagram: <b>{c.igChecked}</b> leídos · <b className="text-amber-700">{c.igPending}</b> sin leer. Los sin leer tienen
@@ -228,7 +229,10 @@ export function RankingProspectos() {
                     <Link to={`/leads/${r.leadId}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>{r.name}</Link>
                     <div className="text-xs text-slate-500">
                       {r.detail?.zona ?? r.city ?? ''}{r.blocked && <span className="text-rose-600"> · {r.blocked}</span>}
+                      {r.eligible && r.instagramCheckedAt && r.phoneOrigin?.startsWith('whatsapp-') &&
+                        <span className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">listo para la línea</span>}
                       {r.instagram && !r.instagramCheckedAt && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">Instagram sin leer · puntaje provisorio</span>}
+                      {!r.instagram && !r.instagramCheckedAt && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">sin Instagram: no sale por la línea</span>}
                     </div>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{rubroLabel(r.rubro)}</td>
@@ -444,7 +448,8 @@ export function LineaOutbound() {
         <p className="text-sm text-slate-500 mt-1">
           Escaneás el QR y la línea le escribe sola a los mejores del ranking, de a uno: lunes a viernes de 10 a 19 y
           sábados de 10 a 13, unos 30 minutos entre uno y otro. Tiene un <b>tope por día</b>: con 10 abre 10 charlas
-          nuevas por día, todos los días. Antes de cada envío verifica que el número tenga WhatsApp. Cuando contestan,
+          nuevas por día, todos los días. <b>Solo le escribe a los analizados a fondo</b>: web leída, Instagram leído por el
+          lector de la Mac y WhatsApp verificado. Antes de cada envío verifica que el número tenga WhatsApp. Cuando contestan,
           el bot no se mete: le llega el pase a la persona de la app (con copia al maestro) y sigue ella. Al que no
           contesta no se le insiste.
         </p>
