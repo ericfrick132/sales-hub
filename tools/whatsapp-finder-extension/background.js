@@ -58,6 +58,11 @@ const DEFAULTS = {
 
 const API = 'https://api.sales.efcloud.tech/api/audience';
 const IDLE_MIN = 3;     // sin batch abierto en sales-hub: vuelve a preguntar cada 3 min
+// DMs en frío por Instagram (línea outbound): sales-hub decide a quién, cuándo y con qué texto (tope por día,
+// horario, pausa entre DMs, bloqueo). La extensión solo escribe desde la cuenta logueada si sales-hub tiene DMs
+// prendidos para esa cuenta (ej. @turnos.pro); para cualquier otra cuenta no hace nada.
+const DM_API = 'https://api.sales.efcloud.tech/api/ig-dm';
+const DM_ALARM = 'next-dm';
 
 async function getState() {
   return { ...DEFAULTS, ...(await chrome.storage.local.get(Object.keys(DEFAULTS))) };
@@ -611,7 +616,8 @@ async function heartbeat() {
         lastError: s.lastError || null, queue: s.queue.length, unsynced: s.unsynced.length,
         igToday: igCount(s), followsToday: followCount(s), current: s.queue[0]?.name || null,
         googleToday: s.googleToday?.day === todayKey() ? s.googleToday.n : 0,
-        googleBlockedUntil: s.googleBlockedUntil > now ? new Date(s.googleBlockedUntil).toISOString() : null
+        googleBlockedUntil: s.googleBlockedUntil > now ? new Date(s.googleBlockedUntil).toISOString() : null,
+        dmStatus: s.dmStatus || null, dmToday: s.dmToday?.day === todayKey() ? s.dmToday.n : 0
       })
     });
   } catch { /* sin red */ }
@@ -767,6 +773,8 @@ async function runOne() {
   }
 
   const item = s.queue[0];
+  // La pestaña de Instagram es una sola: si está mandando un DM, la lectura espera.
+  if (!(await igLock('lookup'))) return schedule(45_000);
   let r;
   let error = '';
   try {
@@ -775,6 +783,8 @@ async function runOne() {
   } catch (e) {
     error = String(e?.message || e);
     r = { status: 'error', steps: [{ step: 'extension', result: 'error', detail: error.slice(0, 150), at: new Date().toISOString() }] };
+  } finally {
+    await igUnlock('lookup');
   }
 
   const fresh = await getState();
@@ -838,6 +848,7 @@ async function runOne() {
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === ALARM) runOne();
   if (a.name === 'heartbeat') heartbeat();
+  if (a.name === DM_ALARM) dmTick();
 });
 chrome.alarms.create('heartbeat', { periodInMinutes: 2 });
 
@@ -872,6 +883,7 @@ async function ensureRunning() {
   if (!s.apiKey || s.pausedByUser) return;
   if (!s.running) await setState({ running: true });
   if (!(await chrome.alarms.get(ALARM))) await schedule(10_000);
+  if (!(await chrome.alarms.get(DM_ALARM))) await dmSchedule(60_000);
 }
 
 chrome.runtime.onStartup.addListener(ensureRunning);
@@ -882,3 +894,148 @@ chrome.runtime.onInstalled.addListener(async (d) => {
   await ensureRunning();
 });
 chrome.storage.onChanged.addListener((c) => { if (c.apiKey?.newValue) ensureRunning(); });
+
+
+// ---- DMs en frío por Instagram (portado del userscript "SalesHub Maps Capture") ----
+
+// Candado de la pestaña de Instagram: la lectura y el DM no la usan a la vez. Vence a los 5 min por si
+// el service worker se murió con el candado tomado.
+async function igLock(owner) {
+  const s = await getState();
+  if (s.igBusy && s.igBusy.owner !== owner && Date.now() - s.igBusy.at < 5 * 60_000) return false;
+  await setState({ igBusy: { owner, at: Date.now() } });
+  return true;
+}
+async function igUnlock(owner) {
+  const s = await getState();
+  if (s.igBusy?.owner === owner) await setState({ igBusy: null });
+}
+
+async function dmSchedule(ms) {
+  await chrome.alarms.create(DM_ALARM, { when: Date.now() + Math.max(30_000, ms) });
+}
+
+async function dmTick() {
+  const s = await getState();
+  if (!s.apiKey || s.pausedByUser || !s.running) return dmSchedule(15 * 60_000);
+  if (!s.igAccount) await checkAccount();
+  const me = (await getState()).igAccount;
+  if (!me) return dmSchedule(10 * 60_000);
+  let next;
+  try {
+    const r = await fetch(`${DM_API}/next?account=${encodeURIComponent(me)}`, { headers: { 'X-Audience-Key': s.apiKey } });
+    if (!r.ok) { await setState({ dmStatus: `sales-hub respondió ${r.status}` }); return dmSchedule(15 * 60_000); }
+    next = await r.json();
+  } catch { return dmSchedule(10 * 60_000); }
+  if (!next?.leadId) {
+    await setState({ dmStatus: next?.reason || 'nada para mandar' });
+    return dmSchedule(Math.min(next?.waitSeconds || 600, 3600) * 1000);
+  }
+  // El lead queda reservado 15 min en sales-hub: si la pestaña está ocupada, se reintenta en un rato.
+  if (!(await igLock('dm'))) return dmSchedule(60_000);
+  let res;
+  try { res = await sendDm(next); }
+  catch (e) { res = { ok: false, error: String(e?.message || e).slice(0, 200) }; }
+  finally { await igUnlock('dm'); }
+  try {
+    await fetch(`${DM_API}/${next.leadId}/result`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Audience-Key': s.apiKey },
+      body: JSON.stringify({ ok: !!res.ok, blocked: !!res.blocked, error: res.error || null, text: next.text })
+    });
+  } catch { /* sin red: el lead vuelve a la cola cuando vence la reserva */ }
+  const f = await getState();
+  const n = f.dmToday?.day === todayKey() ? f.dmToday.n : 0;
+  await setState({
+    dmStatus: res.ok ? `DM a @${next.handle}` : `DM a @${next.handle} falló: ${res.error}`,
+    dmToday: { day: todayKey(), n: n + (res.ok ? 1 : 0) }
+  });
+  heartbeat();
+  return dmSchedule(res.blocked ? 6 * 3_600_000 : 60_000);
+}
+
+async function sendDm(job) {
+  const tabs = await workTabs();
+  const st = await igReady(tabs.ig);
+  if (st === 'login') return { ok: false, error: 'Instagram pide login' };
+  if (st === 'blocked') return { ok: false, blocked: true, error: 'Instagram muestra un aviso de bloqueo' };
+  const handle = String(job.handle || '').toLowerCase();
+  await navigateTab(tabs.ig, `https://www.instagram.com/${handle}/`).catch(() => {});
+  const p = await until(tabs.ig, dmProfileState, [handle], (r) => r && r !== 'loading', 20_000, 600);
+  if (p === 'not_found') return { ok: false, error: 'el perfil no existe' };
+  if (p === 'blocked') return { ok: false, blocked: true, error: 'Instagram muestra un aviso de bloqueo' };
+  if (p !== 'ok') return { ok: false, error: 'el perfil no cargó' };
+  await sleep(rand(1500, 3500));
+  let opened = await run(tabs.ig, dmOpenChat);
+  if (opened === 'menu') {
+    await sleep(rand(800, 1500));
+    opened = await run(tabs.ig, dmOpenChatFromMenu);
+  }
+  if (opened !== 'clicked') return { ok: false, error: 'el perfil no permite mandar mensajes' };
+  const box = await until(tabs.ig, dmBoxState, [], (r) => r === 'ready' || r === 'blocked', 20_000, 700);
+  if (box === 'blocked') return { ok: false, blocked: true, error: 'Instagram muestra un aviso de bloqueo' };
+  if (box !== 'ready') return { ok: false, error: 'no se abrió el chat' };
+  await sleep(rand(1000, 2500));
+  const typed = await run(tabs.ig, dmType, [job.text]);
+  if (!typed) return { ok: false, error: 'no se pudo escribir el mensaje' };
+  await sleep(rand(800, 2000));
+  await run(tabs.ig, dmSend);
+  const sent = await until(tabs.ig, dmSentState, [String(job.text).slice(0, 40)], (r) => r === 'ok' || r === 'blocked', 15_000, 700);
+  if (sent === 'blocked') return { ok: false, blocked: true, error: 'Instagram muestra un aviso de bloqueo' };
+  // Sin confirmación no se reintenta: mejor perder uno que mandarle dos veces al mismo.
+  if (sent !== 'ok') return { ok: false, error: 'no se pudo confirmar el envío' };
+  return { ok: true };
+}
+
+// Funciones de página (se inyectan en la pestaña de Instagram; tienen que ser autocontenidas).
+function dmProfileState(handle) {
+  const body = document.body?.innerText || '';
+  if (/int[eé]ntalo de nuevo m[aá]s tarde|intent[aá] de nuevo m[aá]s tarde|try again later|restringimos|we restrict|acci[oó]n bloqueada|action blocked/i.test(body)) return 'blocked';
+  if (!location.pathname.toLowerCase().startsWith(`/${handle}/`)) return 'loading';
+  if (/(esta página no está disponible|esta pagina no esta disponible|isn't available)/i.test(body)) return 'not_found';
+  const header = document.querySelector('main header') || document.querySelector('header section');
+  return header && header.innerText.toLowerCase().includes(handle) ? 'ok' : 'loading';
+}
+function dmOpenChat() {
+  const find = (rx) => [...document.querySelectorAll('div[role="button"], button, a[role="link"]')]
+    .find((b) => rx.test((b.innerText || b.getAttribute('aria-label') || '').trim()));
+  const btn = find(/^(enviar mensaje|mensaje|message|send message)$/i);
+  if (btn) { btn.click(); return 'clicked'; }
+  // Algunos perfiles lo esconden en el menú "...".
+  const more = document.querySelector('header svg[aria-label="Opciones"], header svg[aria-label="Options"]')?.closest('div[role="button"], button');
+  if (more) { more.click(); return 'menu'; }
+  return 'none';
+}
+function dmOpenChatFromMenu() {
+  const b = [...document.querySelectorAll('div[role="button"], button')].find((x) => /^(enviar mensaje|send message)$/i.test((x.innerText || '').trim()));
+  if (b) { b.click(); return 'clicked'; }
+  return 'none';
+}
+function dmBoxState() {
+  const body = document.body?.innerText || '';
+  if (/int[eé]ntalo de nuevo m[aá]s tarde|intent[aá] de nuevo m[aá]s tarde|try again later|restringimos|we restrict|acci[oó]n bloqueada|action blocked|limitamos la frecuencia|we limit how often/i.test(body)) return 'blocked';
+  const notNow = [...document.querySelectorAll('div[role="button"], button')].find((b) => /^(ahora no|not now)$/i.test((b.innerText || '').trim()));
+  if (notNow) notNow.click();
+  return document.querySelector('div[role="textbox"][contenteditable="true"]') ? 'ready' : 'waiting';
+}
+function dmType(text) {
+  const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
+  if (!input) return false;
+  input.focus();
+  document.execCommand('insertText', false, String(text).replace(/\s*\n\s*/g, ' '));
+  return !!(input.innerText || '').trim();
+}
+function dmSend() {
+  const b = [...document.querySelectorAll('div[role="button"], button')].find((x) => /^(enviar|send)$/i.test((x.innerText || x.getAttribute('aria-label') || '').trim()));
+  if (b) { b.click(); return 'button'; }
+  const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
+  if (input) { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true })); return 'enter'; }
+  return 'none';
+}
+function dmSentState(probe) {
+  const body = document.body?.innerText || '';
+  if (/int[eé]ntalo de nuevo m[aá]s tarde|intent[aá] de nuevo m[aá]s tarde|try again later|restringimos|we restrict|acci[oó]n bloqueada|action blocked|limitamos la frecuencia|we limit how often/i.test(body)) return 'blocked';
+  const box = document.querySelector('div[role="textbox"][contenteditable="true"]');
+  const cleared = !(box?.innerText || '').trim();
+  return cleared && body.includes(probe) ? 'ok' : 'waiting';
+}

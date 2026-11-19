@@ -23,10 +23,25 @@ public class IgDmController : ControllerBase
     private readonly IgOutreachCoordinator _coordinator;
     private readonly IgDeviceActivity _activity;
     private readonly ILogger<IgDmController> _log;
+    private readonly SalesHub.Infrastructure.Options.JwtOptions _jwt;
 
-    public IgDmController(ApplicationDbContext db, IgOutreachCoordinator coordinator, IgDeviceActivity activity, ILogger<IgDmController> log)
+    public IgDmController(ApplicationDbContext db, IgOutreachCoordinator coordinator, IgDeviceActivity activity, ILogger<IgDmController> log,
+        Microsoft.Extensions.Options.IOptions<SalesHub.Infrastructure.Options.JwtOptions> jwt)
     {
-        _db = db; _coordinator = coordinator; _activity = activity; _log = log;
+        _db = db; _coordinator = coordinator; _activity = activity; _log = log; _jwt = jwt.Value;
+    }
+
+    /// <summary>
+    /// "next" y "result" los usa también la extensión de Chrome de la Mac (el lector), que no tiene sesión de
+    /// SalesHub: se autentica con la misma clave fija de Públicos (X-Audience-Key). La sesión vence a los 7 días
+    /// y los DMs se cortaban hasta que alguien volviera a entrar.
+    /// </summary>
+    private bool CallerOk()
+    {
+        if (User.Identity?.IsAuthenticated == true) return true;
+        var expected = System.Text.Encoding.UTF8.GetBytes(SalesHub.Infrastructure.Services.AudienceLeadService.IngestKey(_jwt.SigningKey));
+        var given = System.Text.Encoding.UTF8.GetBytes(Request.Headers[AudienceController.KeyHeader].ToString());
+        return given.Length == expected.Length && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(given, expected);
     }
 
     private static string Norm(string? u) => IgOutreachPlan.Norm(u);
@@ -194,8 +209,10 @@ public class IgDmController : ControllerBase
     /// (si la extensión se cae, vuelve a la cola).
     /// </summary>
     [HttpGet("next")]
+    [AllowAnonymous]
     public async Task<ActionResult<NextDm>> Next([FromQuery] string account, CancellationToken ct)
     {
+        if (!CallerOk()) return Unauthorized();
         var acct = Norm(account);
         if (acct.Length == 0) return BadRequest(new { error = "Falta la cuenta" });
         var now = DateTimeOffset.UtcNow;
@@ -276,8 +293,10 @@ public class IgDmController : ControllerBase
     public record ResultRequest(bool Ok, string? Text, string? Error, bool Blocked = false);
 
     [HttpPost("{leadId:guid}/result")]
+    [AllowAnonymous]
     public async Task<IActionResult> Result(Guid leadId, [FromBody] ResultRequest r, CancellationToken ct)
     {
+        if (!CallerOk()) return Unauthorized();
         var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
         if (lead is null) return NotFound();
         var s = await _db.IgDmSettings.FirstOrDefaultAsync(x => x.ProductKey == lead.ProductKey, ct);

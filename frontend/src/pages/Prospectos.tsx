@@ -29,7 +29,8 @@ type Line = {
 
 type Reader = {
   account: string; at: string;
-  state: { version?: string; state?: string; queue?: number; igToday?: number; lastError?: string | null; restUntil?: string | null; blockedUntil?: string | null };
+  state: { version?: string; state?: string; queue?: number; igToday?: number; lastError?: string | null; restUntil?: string | null; blockedUntil?: string | null;
+    dmStatus?: string | null; dmToday?: number };
 };
 
 type IgDm = {
@@ -114,7 +115,8 @@ function ReaderStatus({ readers }: { readers: Reader[] }) {
             <span className={`inline-block h-2 w-2 rounded-full ${on ? 'bg-emerald-500' : 'bg-slate-400'}`} />
             <b>@{r.account}</b>
             {on
-              ? <span>prendido · {r.state.state ?? '—'}{r.state.igToday != null && <> · {r.state.igToday} perfiles hoy</>} · último latido {ar(r.at)}</span>
+              ? <span>prendido · {r.state.state ?? '—'}{r.state.igToday != null && <> · {r.state.igToday} perfiles hoy</>}
+                  {!!r.state.dmToday && <> · {r.state.dmToday} DMs hoy</>}{r.state.dmStatus && <> · DMs: {r.state.dmStatus}</>} · último latido {ar(r.at)}</span>
               : <span>apagado desde {ar(r.at)} (compu apagada o Chrome cerrado; retoma solo al prenderse)</span>}
             {old && <span className="rounded bg-amber-100 px-1.5 text-amber-800">versión vieja: actualizala o sacala</span>}
             {r.state.lastError && <span className="text-rose-700">{r.state.lastError}</span>}
@@ -485,8 +487,8 @@ export function LineaOutbound() {
               el WhatsApp, el DM sale 20 h después) {d.lastSentAt && <>· último {ar(d.lastSentAt)}</>}
             </div>
             <div className="text-[11px] text-slate-400">
-              Los manda el userscript "SalesHub Maps Capture" en un Chrome logueado con @{d.account}. Si contestan, le llega el pase a la
-              persona de la app. Texto y horario: Apps → Automatizaciones → DMs por Instagram.
+              Los manda la extensión de Chrome (el lector) en el perfil de Chrome logueado con @{d.account}: arranca sola con la Mac.
+              Si contestan, le llega el pase a la persona de la app. Texto y horario: Apps → Automatizaciones → DMs por Instagram.
             </div>
           </section>
         );
