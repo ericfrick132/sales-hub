@@ -174,7 +174,10 @@ public class AudienceController : ControllerBase
     {
         if (!KeyOk()) return Unauthorized();
         var account = state.TryGetProperty("account", out var a) && a.ValueKind == JsonValueKind.String ? a.GetString()! : "(sin cuenta)";
-        Heartbeats[account] = (state.Clone(), DateTimeOffset.UtcNow);
+        // Por cuenta Y versión: dos copias de la extensión con la misma cuenta de IG (otra compu, otro perfil de
+        // Chrome) se pisaban y el estado saltaba de una a otra. Así se ven las dos.
+        var version = state.TryGetProperty("version", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "?";
+        Heartbeats[$"{account} (v{version})"] = (state.Clone(), DateTimeOffset.UtcNow);
         return Ok();
     }
 

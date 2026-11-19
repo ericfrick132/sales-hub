@@ -89,15 +89,32 @@ function ScoreBadge({ score }: { score: number | null }) {
  * abre al iniciar sesión), le manda un latido a sales-hub cada 2 minutos y pide de a un perfil: los leads del
  * outbound con Instagram sin leer van primero. Sin latido en 6 minutos = Mac apagada o Chrome cerrado.
  */
+const vnum = (v?: string) => (v ?? '0').split('.').map((x) => x.padStart(4, '0')).join('.');
+
 function ReaderStatus({ readers }: { readers: Reader[] }) {
-  const r = readers[0];
-  const online = r && Date.now() - new Date(r.at).getTime() < 6 * 60_000;
+  const isOn = (r: Reader) => Date.now() - new Date(r.at).getTime() < 6 * 60_000;
+  // La copia con la versión más nueva es la de la Mac (la extensión se actualiza sola desde el repo).
+  const newest = readers.reduce((m, r) => (vnum(r.state.version) > m ? vnum(r.state.version) : m), '');
+  const anyOn = readers.some(isOn);
   return (
-    <div className={`rounded-lg border px-3 py-2 text-xs ${online ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-      <b>Lector de Instagram (tu Mac):</b>{' '}
-      {!r ? 'nunca se conectó. Abrí Chrome en el perfil efcloud.tech.'
-        : online ? <>prendido · @{r.account} · {r.state.state ?? '—'}{r.state.igToday != null && <> · {r.state.igToday} perfiles hoy</>}{r.state.lastError && <span className="text-rose-700"> · {r.state.lastError}</span>}</>
-        : <>apagado desde {ar(r.at)} (Mac apagada o Chrome cerrado). Retoma solo cuando se prenda.</>}
+    <div className={`rounded-lg border px-3 py-2 text-xs space-y-1 ${anyOn ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+      <div><b>Lector de Instagram</b> (extensión de Chrome; un latido cada 2 minutos mientras la compu está prendida)</div>
+      {readers.length === 0 && <div>Nunca se conectó. Abrí Chrome en el perfil efcloud.tech.</div>}
+      {readers.map((r) => {
+        const on = isOn(r);
+        const old = vnum(r.state.version) < newest;
+        return (
+          <div key={r.account} className="flex flex-wrap items-center gap-x-2">
+            <span className={`inline-block h-2 w-2 rounded-full ${on ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+            <b>@{r.account}</b>
+            {on
+              ? <span>prendido · {r.state.state ?? '—'}{r.state.igToday != null && <> · {r.state.igToday} perfiles hoy</>} · último latido {ar(r.at)}</span>
+              : <span>apagado desde {ar(r.at)} (compu apagada o Chrome cerrado; retoma solo al prenderse)</span>}
+            {old && <span className="rounded bg-amber-100 px-1.5 text-amber-800">versión vieja: actualizala o sacala</span>}
+            {r.state.lastError && <span className="text-rose-700">{r.state.lastError}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -432,6 +449,8 @@ export function LineaOutbound() {
           contesta no se le insiste.
         </p>
       </div>
+
+      <ReaderStatus readers={info.data.readers ?? []} />
 
       {info.data.lines.map((l) => <LineCard key={l.id} line={l} info={info.data!} onQr={() => setQrFor(l)} />)}
 
