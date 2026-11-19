@@ -73,7 +73,42 @@ public class Lead
     public string? LocalityGid2 { get; set; }
     public Locality? Locality { get; set; }
 
+    /// <summary>
+    /// Score de la CONVERSACIÓN (lo pone el agente al analizar la charla, 0-100) y la prioridad en
+    /// la cola de re-enganche. No mide qué tan bueno es el negocio: eso es <see cref="ProspectScore"/>.
+    /// </summary>
     public int Score { get; set; }
+
+    /// <summary>
+    /// Puntaje de PROSPECTO (0-100): qué tan buen cliente es o puede llegar a ser el negocio, antes de
+    /// hablarle — zona, reseñas de Google Maps, web/Instagram, de dónde salió el número, rubro y si ya
+    /// usa un sistema de la competencia. Lo calcula <c>ProspectScorer</c>; con pocos envíos (línea
+    /// outbound con tope de por vida) se le escribe solo a los de arriba. null = todavía no se calculó.
+    /// </summary>
+    public int? ProspectScore { get; set; }
+
+    /// <summary>El desglose del puntaje (JSON: criterio, puntos, máximo y por qué), para mostrarlo y auditarlo.</summary>
+    public string? ProspectScoreDetail { get; set; }
+    public DateTimeOffset? ProspectScoredAt { get; set; }
+
+    /// <summary>Rubro detectado para el puntaje y el mensaje (clave de ProspectScorer.Rubros: "unas", "psicologia"...).</summary>
+    public string? ProspectRubro { get; set; }
+
+    /// <summary>Cuándo se "nutrió" el lead para el puntaje (se leyó su web, se cruzó con la competencia).</summary>
+    public DateTimeOffset? ProspectEnrichedAt { get; set; }
+
+    /// <summary>
+    /// Sistema de turnos/reservas de la competencia que ya usa (AgendaPro, Fresha, Booksy...), detectado en
+    /// su web o en los listados de la competencia. null = no se le encontró ninguno.
+    /// </summary>
+    public string? BookingPlatform { get; set; }
+
+    /// <summary>
+    /// De dónde salió el número: "whatsapp-publicado" (lo publica como WhatsApp: link wa.me en su web o
+    /// su Instagram), "maps-celular", "maps-fijo", "web", "instagram". Es lo que dice si "vi que toman los
+    /// turnos por WhatsApp" es verdad.
+    /// </summary>
+    public string? PhoneOrigin { get; set; }
 
     public Guid? SellerId { get; set; }
     public Seller? Seller { get; set; }

@@ -74,6 +74,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<IgFollower> IgFollowers => Set<IgFollower>();
     public DbSet<IgDeviceTask> IgDeviceTasks => Set<IgDeviceTask>();
     public DbSet<RemarketingAttempt> RemarketingAttempts => Set<RemarketingAttempt>();
+    // Línea outbound: cada contacto nuevo que abrió (contador del tope de por vida).
+    public DbSet<OutboundContact> OutboundContacts => Set<OutboundContact>();
     public DbSet<VideoCampaign> VideoCampaigns => Set<VideoCampaign>();
     public DbSet<VideoCampaignRecipient> VideoCampaignRecipients => Set<VideoCampaignRecipient>();
 

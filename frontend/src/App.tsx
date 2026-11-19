@@ -10,7 +10,7 @@ import DashboardHub from './pages/DashboardHub';
 import SellerDetail from './pages/SellerDetail';
 import Conversations from './pages/Conversations';
 import Manual from './pages/Manual';
-import { AppsHub, CrmHub, DevicesHub, MarketingHub, TeamHub } from './pages/Hubs';
+import { AppsHub, CrmHub, DevicesHub, LeadsHub, MarketingHub, TeamHub } from './pages/Hubs';
 
 function SellerZonesRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -44,7 +44,8 @@ export default function App() {
         <Route path="/connect" element={admin ? <GoTab to="/devices" view="mi-linea" /> : <Connect />} />
 
         {/* Rutas viejas → tab del CRM (conservan ?source=, ?product=, …) */}
-        <Route path="/leads" element={<GoTab to="/crm" view="lista" />} />
+        {/* Admin: menú Leads (ranking, búsqueda, línea outbound). Vendedor: la ruta vieja → su lista del CRM. */}
+        <Route path="/leads" element={admin ? <LeadsHub /> : <GoTab to="/crm" view="lista" />} />
         <Route path="/pool" element={<Navigate to="/crm?view=lista&tab=pool" replace />} />
         <Route path="/leads/search" element={<GoTab to="/crm" view="captar" sub="maps" />} />
         <Route path="/leads/import" element={<GoTab to="/crm" view="captar" sub="importar" />} />

@@ -46,6 +46,7 @@ import MapaAnuncios from './MapaAnuncios';
 import PublicosCompetencia from './PublicosCompetencia';
 import RendimientoAnuncios from './RendimientoAnuncios';
 import Promos from './Promos';
+import { BuscarProspectos, LineaOutbound, RankingProspectos } from './Prospectos';
 
 /** CRM de cold calling: pipeline, lista, mapa, captación y remarketing. */
 export function CrmHub() {
@@ -73,6 +74,22 @@ export function CrmHub() {
         },
         { key: 'remarketing', label: 'Remarketing', element: <Remarketing />, hidden: !admin },
         { key: 'video', label: 'Campaña con video', element: <VideoCampaigns />, hidden: !admin },
+      ]}
+    />
+  );
+}
+
+/**
+ * Leads (Eric 19/11/2026): armar la lista y contactar a los mejores. Ranking de prospectos con puntaje,
+ * búsqueda en Places por rubro × zona y la línea outbound (tope de contactos de por vida).
+ */
+export function LeadsHub() {
+  return (
+    <TabbedPage
+      tabs={[
+        { key: 'ranking', label: 'Ranking', element: <RankingProspectos /> },
+        { key: 'buscar', label: 'Buscar', element: <BuscarProspectos /> },
+        { key: 'outbound', label: 'Línea outbound', element: <LineaOutbound /> },
       ]}
     />
   );

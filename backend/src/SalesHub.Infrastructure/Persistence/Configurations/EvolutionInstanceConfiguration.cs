@@ -30,6 +30,14 @@ public class EvolutionInstanceConfiguration : IEntityTypeConfiguration<Evolution
         b.Property(x => x.ProspectSkipWords)
             .HasColumnType("text[]")
             .HasDefaultValueSql("'{}'::text[]");
+        // Línea outbound (tope de contactos de por vida). Defaults para que entren en una tabla con filas.
+        b.Property(x => x.OutboundCap).HasDefaultValue(0);
+        b.Property(x => x.OutboundMinScore).HasDefaultValue(50);
+        b.Property(x => x.OutboundRubros)
+            .HasColumnType("text[]")
+            .HasDefaultValueSql("'{}'::text[]");
+        b.Property(x => x.OutboundSenderName).HasMaxLength(40);
+        b.Property(x => x.OutboundTemplate).HasColumnType("text");
         b.Property(x => x.ConnectedPhoneNumber).HasMaxLength(32);
         b.Property(x => x.Status).HasConversion<int>();
         b.Property(x => x.LastQrCodeBase64).HasColumnType("text");

@@ -753,7 +753,9 @@ public class LeadsController : ControllerBase
     {
         var q = _db.Leads.AsNoTracking()
             .Include(l => l.Product)
-            .Where(l => l.SellerId == null && l.Status == LeadStatus.New);
+            .Where(l => l.SellerId == null && l.Status == LeadStatus.New
+                     // Los traídos para la línea outbound no se toman del pool (los usa la línea).
+                     && !l.Tags.Contains(SalesHub.Infrastructure.Services.Outbound.OutboundService.ReservedTag));
         if (!string.IsNullOrWhiteSpace(productKey)) q = q.Where(l => l.ProductKey == productKey);
         // Un vendedor solo ve el pool de lo que puede trabajar: su whitelist, o (catch-all)
         // todo menos los productos exclusivos de otros.

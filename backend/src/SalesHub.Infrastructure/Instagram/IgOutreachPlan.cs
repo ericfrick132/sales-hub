@@ -138,7 +138,9 @@ public static partial class IgOutreachPlan
             && l.IgDmSentAt == null && l.IgDmError == null
             && l.InstagramScopedId == null && l.FirstReplyAt == null && NotContacted.Contains(l.Status)
             // Los de Competencia se llaman; nunca les sale un DM solo.
-            && l.Source != LeadSource.Competencia && l.Source != LeadSource.InstagramFollower);
+            && l.Source != LeadSource.Competencia && l.Source != LeadSource.InstagramFollower
+            // Los traídos para la línea outbound los contacta esa línea (pocos y elegidos): sin DM en frío.
+            && !l.Tags.Contains(Services.Outbound.OutboundService.ReservedTag));
 
     public static IQueryable<Lead> ColdQueue(IQueryable<Lead> leads, string productKey) =>
         ColdQueue(leads).Where(l => l.ProductKey == productKey);

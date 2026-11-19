@@ -34,6 +34,7 @@ export default function Layout() {
         { to: '/admin', label: 'Dashboard' },
         { to: '/conversations', label: 'Chats', badge: unread.data },
         { to: '/crm', label: 'CRM' },
+        { to: '/leads', label: 'Leads' },
         { to: '/devices', label: 'Dispositivos' },
         { to: '/apps', label: 'Apps' },
         { to: '/team', label: 'Equipo' },

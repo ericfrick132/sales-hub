@@ -320,7 +320,8 @@ public class PipelineService
     {
         var orphans = await _db.Leads
             .Include(l => l.Product)
-            .Where(l => l.SellerId == null && l.Status == LeadStatus.New)
+            .Where(l => l.SellerId == null && l.Status == LeadStatus.New
+                     && !l.Tags.Contains(Outbound.OutboundService.ReservedTag))
             .OrderBy(l => l.CreatedAt)
             .ToListAsync(ct);
 
@@ -436,7 +437,9 @@ public class PipelineService
             .Where(l => l.SentAt == null && l.FirstReplyAt == null
                      && (l.Status == LeadStatus.New || l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Queued)
                      // Los asignados a mano no se reparten por reglas.
-                     && l.ManualAssignedAt == null)
+                     && l.ManualAssignedAt == null
+                     // Ni los traídos para la línea outbound.
+                     && !l.Tags.Contains(Outbound.OutboundService.ReservedTag))
             .ToListAsync(ct);
 
         // Fase 1: decidir (sin tocar la DB todavía).

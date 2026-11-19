@@ -88,6 +88,29 @@ public class EvolutionInstance
     /// </summary>
     public List<string> ProspectSkipWords { get; set; } = new();
 
+    /// <summary>
+    /// Línea OUTBOUND: apenas se escanea el QR le escribe sola a los mejores leads del CRM (por
+    /// <see cref="Lead.ProspectScore"/>), hasta este tope de CONTACTOS EN TOTAL Y PARA SIEMPRE (no por
+    /// día). 0 = no es outbound. El contador es la tabla outbound_contacts: desvincular o volver a
+    /// escanear no lo resetea; para mandar más se agrega otro teléfono.
+    /// </summary>
+    public int OutboundCap { get; set; }
+
+    /// <summary>Puntaje mínimo de prospecto para que la línea outbound le escriba a un lead.</summary>
+    public int OutboundMinScore { get; set; } = 50;
+
+    /// <summary>Rubros a los que les escribe (claves de ProspectScorer.Rubros: "unas", "pestanas"...). Vacío = todos.</summary>
+    public List<string> OutboundRubros { get; set; } = new();
+
+    /// <summary>Nombre de pila con el que se presenta el mensaje ("soy mateo de TurnosPro"). Sin nombre no manda.</summary>
+    public string? OutboundSenderName { get; set; }
+
+    /// <summary>Mensaje de apertura. null = el de siempre (OutboundService.DefaultTemplate).</summary>
+    public string? OutboundTemplate { get; set; }
+
+    /// <summary>Outbound en pausa (no manda nada nuevo hasta que se reanude).</summary>
+    public DateTimeOffset? OutboundPausedAt { get; set; }
+
     public InstanceStatus Status { get; set; } = InstanceStatus.Disconnected;
     public DateTimeOffset? LastStatusCheckAt { get; set; }
     public DateTimeOffset? ConnectedAt { get; set; }

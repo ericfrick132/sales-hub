@@ -151,6 +151,10 @@ public static class DependencyInjection
         services.AddScoped<RemarketingService>();
         services.AddScoped<VideoCampaignService>();
         services.AddScoped<PersonHandoffService>();
+        // Línea outbound: puntaje de prospecto, búsqueda por rubro × zona y envío con tope de por vida.
+        services.AddHttpClient<Services.Outbound.ProspectEnricher>();
+        services.AddScoped<Services.Outbound.ProspectService>();
+        services.AddScoped<Services.Outbound.OutboundService>();
         services.AddSingleton<ChatHistoryImporter>();          // chats de Evolution → ingest (sync periódico + historial de un teléfono nuevo)            // leads que entraron a cada teléfono (gráfico + reporte diario)
         services.AddScoped<MetaAdsSyncService>();         // anuncios de Meta → meta_ads (rubro/ángulo por anuncio para el guion)
         services.AddMemoryCache();                        // alcance exacto en vivo del mapa de anuncios (cache 15 min)

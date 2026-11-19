@@ -1493,6 +1493,38 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("needs_qr_since");
 
+                    b.Property<int>("OutboundCap")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("outbound_cap");
+
+                    b.Property<int>("OutboundMinScore")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(50)
+                        .HasColumnName("outbound_min_score");
+
+                    b.Property<DateTimeOffset?>("OutboundPausedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("outbound_paused_at");
+
+                    b.Property<List<string>>("OutboundRubros")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("outbound_rubros")
+                        .HasDefaultValueSql("'{}'::text[]");
+
+                    b.Property<string>("OutboundSenderName")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("outbound_sender_name");
+
+                    b.Property<string>("OutboundTemplate")
+                        .HasColumnType("text")
+                        .HasColumnName("outbound_template");
+
                     b.Property<string>("ProductKey")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
@@ -2668,6 +2700,11 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("assigned_at");
 
+                    b.Property<string>("BookingPlatform")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("booking_platform");
+
                     b.Property<DateTimeOffset?>("BotMutedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("bot_muted_at");
@@ -2804,6 +2841,11 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("origin_seller_id");
 
+                    b.Property<string>("PhoneOrigin")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("phone_origin");
+
                     b.Property<string>("PlaceId")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
@@ -2814,6 +2856,27 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("product_key");
+
+                    b.Property<DateTimeOffset?>("ProspectEnrichedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("prospect_enriched_at");
+
+                    b.Property<string>("ProspectRubro")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("prospect_rubro");
+
+                    b.Property<int?>("ProspectScore")
+                        .HasColumnType("integer")
+                        .HasColumnName("prospect_score");
+
+                    b.Property<string>("ProspectScoreDetail")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("prospect_score_detail");
+
+                    b.Property<DateTimeOffset?>("ProspectScoredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("prospect_scored_at");
 
                     b.Property<string>("Province")
                         .HasMaxLength(128)
@@ -2964,6 +3027,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProductKey", "PlaceId")
                         .HasDatabaseName("ix_leads_product_key_place_id")
                         .HasFilter("place_id IS NOT NULL");
+
+                    b.HasIndex("ProductKey", "ProspectScore")
+                        .HasDatabaseName("ix_leads_product_key_prospect_score")
+                        .HasFilter("prospect_score IS NOT NULL");
 
                     b.HasIndex("ProductKey", "WhatsappPhone")
                         .IsUnique()
@@ -4112,6 +4179,68 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasName("pk_onboarding_personas");
 
                     b.ToTable("onboarding_personas", (string)null);
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.OutboundContact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("error");
+
+                    b.Property<string>("InstanceName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("instance_name");
+
+                    b.Property<Guid>("LeadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lead_id");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("message");
+
+                    b.Property<DateTimeOffset?>("RepliedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("replied_at");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("integer")
+                        .HasColumnName("score");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_outbound_contacts");
+
+                    b.HasIndex("InstanceName")
+                        .HasDatabaseName("ix_outbound_contacts_instance_name");
+
+                    b.HasIndex("LeadId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_outbound_contacts_lead_id");
+
+                    b.ToTable("outbound_contacts", (string)null);
                 });
 
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.Pitch", b =>
@@ -6823,6 +6952,18 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.Navigation("MediaAsset");
 
                     b.Navigation("Seller");
+                });
+
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.OutboundContact", b =>
+                {
+                    b.HasOne("SalesHub.Core.Domain.Entities.Lead", "Lead")
+                        .WithMany()
+                        .HasForeignKey("LeadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_outbound_contacts_leads_lead_id");
+
+                    b.Navigation("Lead");
                 });
 
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.Pitch", b =>

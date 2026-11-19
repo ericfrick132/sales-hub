@@ -270,7 +270,9 @@ public class LeadRebalancer
             .ToList();
 
         var q = _db.Leads.Include(l => l.Product)
-            .Where(l => l.SellerId == null && l.Status == LeadStatus.New);
+            .Where(l => l.SellerId == null && l.Status == LeadStatus.New
+                     // Traídos para la línea outbound: no se reparten ni les sale cadencia.
+                     && !l.Tags.Contains(Outbound.OutboundService.ReservedTag));
         q = FilterCoverable(q, hasCatchAll, coverable, exclusive);
 
         var orphans = await q.OrderBy(l => l.CreatedAt).Take(OrphanBatchPerTick).ToListAsync(ct);
@@ -313,6 +315,7 @@ public class LeadRebalancer
 
         var orphans = await _db.Leads.Include(l => l.Product)
             .Where(l => l.SellerId == null && l.Status == LeadStatus.New
+                     && !l.Tags.Contains(Outbound.OutboundService.ReservedTag)
                      && !coverable.Contains(l.ProductKey)
                      && (!hasCatchAll || exclusiveKeys.Contains(l.ProductKey)))
             .OrderBy(l => l.CreatedAt)

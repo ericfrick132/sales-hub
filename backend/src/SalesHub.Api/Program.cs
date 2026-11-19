@@ -58,6 +58,7 @@ if ((Environment.GetEnvironmentVariable("SALESHUB_RUN_WORKERS") ?? "false") == "
     builder.Services.AddHostedService<SlaAlertWorker>();                   // avisa al maestro cuando un chat pasa el SLA sin respuesta (flag 'sla-alerts')
     builder.Services.AddHostedService<LeadEntryReportWorker>();            // reporte diario por WhatsApp: leads que entraron a cada teléfono (config en /entradas)
     builder.Services.AddHostedService<RemarketingWorker>();                // remarketing con tope por línea por día (config en /remarketing, arranca apagado)
+    builder.Services.AddHostedService<OutboundWorker>();                   // línea outbound: nutre/puntúa leads y manda al mejor, tope de por vida por línea (Leads → Línea outbound)
     builder.Services.AddHostedService<VideoCampaignWorker>();               // campañas con video (Marketing → Campaña con video), arrancan en borrador
     builder.Services.AddHostedService<LineHistoryImportWorker>();          // historial de un teléfono recién escaneado ("cargar para atrás" en /devices)
     builder.Services.AddHostedService<AudiencePlacesWorker>();             // públicos: lo que la extensión no encontró → Google Places solo, tope Audience:PlacesDailyMax (100/día)

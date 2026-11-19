@@ -32,6 +32,7 @@ public class ConversationService
     private readonly InstagramMessengerClient _ig;
     private readonly SellerLineSender _lineSender;
     private readonly IAdminAlerter _alerter;
+    private readonly Outbound.OutboundService _outbound;
     private readonly ILogger<ConversationService> _log;
     private static readonly Regex NonDigit = new(@"\D", RegexOptions.Compiled);
 
@@ -52,9 +53,9 @@ public class ConversationService
     public ConversationService(ApplicationDbContext db, IEvolutionClient evo, ILeadAssigner assigner,
         TakeoverSignal takeover, PitchEngine pitch, RemarketingService remarketing, IntentClassifier intents,
         MetaAdsSyncService metaAds, VideoCampaignService videoCampaigns, InstagramMessengerClient ig,
-        SellerLineSender lineSender, IAdminAlerter alerter, ILogger<ConversationService> log)
+        SellerLineSender lineSender, IAdminAlerter alerter, Outbound.OutboundService outbound, ILogger<ConversationService> log)
     {
-        _ig = ig; _lineSender = lineSender; _alerter = alerter;
+        _ig = ig; _lineSender = lineSender; _alerter = alerter; _outbound = outbound;
         _db = db; _evo = evo; _assigner = assigner; _takeover = takeover; _pitch = pitch; _remarketing = remarketing;
         _videoCampaigns = videoCampaigns;
         _intents = intents; _metaAds = metaAds; _log = log;
@@ -255,6 +256,8 @@ public class ConversationService
         if (!incoming.FromSync && !IsHistory(incoming))
         {
             await _remarketing.OnReplyAsync(lead, incoming.Timestamp, ct, incoming.Text);
+            // Respuesta a la apertura de una línea outbound: pase a la persona de la app (sigue un humano).
+            await _outbound.OnReplyAsync(lead, incoming.Timestamp, incoming.Text, ct);
             // Respuesta a una campaña con video: pase a la persona de la app.
             await _videoCampaigns.OnReplyAsync(lead, incoming.Timestamp, incoming.Text, ct);
         }
