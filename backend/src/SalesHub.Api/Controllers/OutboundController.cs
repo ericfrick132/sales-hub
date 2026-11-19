@@ -56,8 +56,30 @@ public class OutboundController : ControllerBase
         var products = await _db.Products.AsNoTracking().Where(p => p.Active && p.ProductKey != "" && p.DisplayName != "")
             .OrderBy(p => p.DisplayName).Select(p => new { p.ProductKey, p.DisplayName }).ToListAsync(ct);
 
+        // DMs en frío por Instagram de las apps con leads del outbound (los manda el userscript en el Chrome
+        // logueado con la cuenta de la app; el tope, el horario y las pausas los pone sales-hub).
+        var now = DateTimeOffset.UtcNow;
+        var dayStart = SalesHub.Infrastructure.Instagram.IgOutreachPlan.ArDayStart(now);
+        var outboundApps = await _db.Leads.Where(l => l.Tags.Contains(OutboundService.ReservedTag))
+            .Select(l => l.ProductKey).Distinct().ToListAsync(ct);
+        var igDm = new List<object>();
+        foreach (var s in await _db.IgDmSettings.AsNoTracking().Where(x => outboundApps.Contains(x.ProductKey)).ToListAsync(ct))
+        {
+            igDm.Add(new
+            {
+                s.ProductKey, s.Enabled, account = s.AccountUsername, s.FromHour, s.ToHour,
+                cap = SalesHub.Infrastructure.Instagram.IgOutreachPlan.ColdCapToday(s, now),
+                sentToday = await _db.Leads.CountAsync(l => l.ProductKey == s.ProductKey && l.IgDmSentAt >= dayStart, ct),
+                sentTotal = await _db.Leads.CountAsync(l => l.ProductKey == s.ProductKey && l.IgDmSentAt != null, ct),
+                lastSentAt = await _db.Leads.Where(l => l.ProductKey == s.ProductKey).MaxAsync(l => l.IgDmSentAt, ct),
+                queue = await OutboundService.InstagramDmQueue(_db, s.ProductKey).CountAsync(ct),
+                pausedUntil = s.PausedUntil > now ? s.PausedUntil : null, s.PausedReason,
+            });
+        }
+
         return Ok(new
         {
+            igDm,
             lines = outboundLines,
             otherLines = lines.Where(l => l.OutboundCap <= 0)
                 .Select(l => new { l.Id, l.InstanceName, label = l.Label ?? l.InstanceName, l.ProductKey, status = l.Status.ToString(), l.ListenOnly }),
@@ -141,7 +163,7 @@ public class OutboundController : ControllerBase
 
     public record RankingRow(Guid LeadId, string Name, string? Rubro, string? City, string? Address, double? Rating,
         int? Reviews, string? Website, string? Instagram, string? Phone, string? PhoneOrigin, string? BookingPlatform,
-        int? InstagramFollowers, string? InstagramBioLink, DateTimeOffset? InstagramCheckedAt, int? Score, JsonElement? Detail, string Status, bool Excluded, bool Reserved, bool Eligible, string? Blocked,
+        int? InstagramFollowers, string? InstagramBioLink, DateTimeOffset? InstagramCheckedAt, DateTimeOffset? IgDmSentAt, int? Score, JsonElement? Detail, string Status, bool Excluded, bool Reserved, bool Eligible, string? Blocked,
         string? MapsUrl, DateTimeOffset CreatedAt);
 
     /// <summary>
@@ -165,7 +187,7 @@ public class OutboundController : ControllerBase
             {
                 l.Id, l.Name, l.ProspectRubro, l.City, l.Address, l.Rating, l.TotalReviews, l.Website, l.InstagramHandle,
                 l.WhatsappPhone, l.PhoneOrigin, l.BookingPlatform, l.InstagramFollowers, l.InstagramBioLink, l.InstagramCheckedAt,
-                l.ProspectScore, l.ProspectScoreDetail, l.Status, l.Tags,
+                l.IgDmSentAt, l.ProspectScore, l.ProspectScoreDetail, l.Status, l.Tags,
                 l.PlaceId, l.SentAt, l.FirstReplyAt, l.BusinessStatus, l.CreatedAt,
                 Eligible = eligibleIds.Contains(l.Id),
                 Contacted = _db.OutboundContacts.Any(c => c.LeadId == l.Id) || _db.ConversationMessages.Any(m => m.LeadId == l.Id),
@@ -192,7 +214,7 @@ public class OutboundController : ControllerBase
                 try { detail = JsonDocument.Parse(r.ProspectScoreDetail).RootElement.Clone(); } catch (JsonException) { }
             return new RankingRow(r.Id, r.Name, r.ProspectRubro, r.City, r.Address, r.Rating, r.TotalReviews, r.Website,
                 r.InstagramHandle, r.WhatsappPhone, r.PhoneOrigin, r.BookingPlatform, r.InstagramFollowers, r.InstagramBioLink,
-                r.InstagramCheckedAt, r.ProspectScore, detail,
+                r.InstagramCheckedAt, r.IgDmSentAt, r.ProspectScore, detail,
                 r.Status.ToString(), excluded, r.Tags.Contains(OutboundService.ReservedTag), r.Eligible, blocked,
                 r.PlaceId is null ? null : $"https://www.google.com/maps/place/?q=place_id:{r.PlaceId}", r.CreatedAt);
         }).ToList();

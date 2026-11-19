@@ -32,7 +32,13 @@ type Reader = {
   state: { version?: string; state?: string; queue?: number; igToday?: number; lastError?: string | null; restUntil?: string | null; blockedUntil?: string | null };
 };
 
+type IgDm = {
+  productKey: string; enabled: boolean; account: string | null; fromHour: number; toHour: number; cap: number;
+  sentToday: number; sentTotal: number; lastSentAt: string | null; queue: number; pausedUntil: string | null; pausedReason: string | null;
+};
+
 type Info = {
+  igDm: IgDm[];
   lines: Line[];
   readers: Reader[];
   products: { productKey: string; displayName: string }[];
@@ -45,7 +51,7 @@ type Row = {
   leadId: string; name: string; rubro: string | null; city: string | null; address: string | null;
   rating: number | null; reviews: number | null; website: string | null; instagram: string | null;
   phone: string | null; phoneOrigin: string | null; bookingPlatform: string | null; score: number | null;
-  instagramFollowers: number | null; instagramBioLink: string | null; instagramCheckedAt: string | null;
+  instagramFollowers: number | null; instagramBioLink: string | null; instagramCheckedAt: string | null; igDmSentAt: string | null;
   detail: Detail | null; status: string; excluded: boolean; reserved: boolean; eligible: boolean;
   blocked: string | null; mapsUrl: string | null; createdAt: string;
 };
@@ -233,6 +239,7 @@ export function RankingProspectos() {
                       {r.detail?.zona ?? r.city ?? ''}{r.blocked && <span className="text-rose-600"> · {r.blocked}</span>}
                       {r.eligible && r.instagramCheckedAt && r.phoneOrigin?.startsWith('whatsapp-') &&
                         <span className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">listo para la línea</span>}
+                      {r.igDmSentAt && <span className="ml-1 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">DM de Instagram {ar(r.igDmSentAt)}</span>}
                       {r.instagram && !r.instagramCheckedAt && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">Instagram sin leer · puntaje provisorio</span>}
                       {!r.instagram && !r.instagramCheckedAt && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">sin Instagram: el lector lo busca por nombre</span>}
                       {!r.instagram && r.instagramCheckedAt && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">no tiene Instagram (buscado)</span>}
@@ -459,6 +466,31 @@ export function LineaOutbound() {
       </div>
 
       <ReaderStatus readers={info.data.readers ?? []} />
+
+      {(info.data.igDm ?? []).map((d) => {
+        const paused = d.pausedUntil != null;
+        return (
+          <section key={d.productKey} className="rounded-xl border bg-white p-4 space-y-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-semibold">DMs por Instagram · @{d.account ?? '—'}</div>
+              <span className={`text-xs ${d.enabled && !paused ? 'text-emerald-700' : 'text-slate-500'}`}>
+                {!d.enabled ? 'apagado' : paused ? `en pausa hasta ${ar(d.pausedUntil)} (${d.pausedReason ?? 'aviso de Instagram'})` : `prendido · de ${d.fromHour} a ${d.toHour} h`}
+              </span>
+            </div>
+            <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full bg-sky-600" style={{ width: `${(100 * d.sentToday) / Math.max(1, d.cap)}%` }} />
+            </div>
+            <div className="text-xs text-slate-500">
+              {d.sentToday} de {d.cap} hoy · {d.sentTotal} en total · {d.queue} en cola (los mejores analizados; si ya les llegó
+              el WhatsApp, el DM sale 20 h después) {d.lastSentAt && <>· último {ar(d.lastSentAt)}</>}
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Los manda el userscript "SalesHub Maps Capture" en un Chrome logueado con @{d.account}. Si contestan, le llega el pase a la
+              persona de la app. Texto y horario: Apps → Automatizaciones → DMs por Instagram.
+            </div>
+          </section>
+        );
+      })}
 
       {info.data.lines.map((l) => <LineCard key={l.id} line={l} info={info.data!} onQr={() => setQrFor(l)} />)}
 

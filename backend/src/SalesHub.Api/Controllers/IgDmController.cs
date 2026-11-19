@@ -234,17 +234,37 @@ public class IgDmController : ControllerBase
             else
             {
                 var claimCutoff = now.AddMinutes(-15);
-                var lead = await IgOutreachPlan.ColdQueue(_db.Leads, s.ProductKey).Include(l => l.Product)
-                    .Where(l => l.IgDmClaimedAt == null || l.IgDmClaimedAt < claimCutoff)
-                    .OrderByDescending(l => l.Score).ThenByDescending(l => l.CreatedAt)
-                    .FirstOrDefaultAsync(ct);
+                // App con leads traídos para el outbound (Leads → Buscar): le escribe solo a esos, analizados a
+                // fondo y por puntaje de prospecto, coordinado con la línea outbound de WhatsApp.
+                var outbound = await _db.Leads.AnyAsync(l => l.ProductKey == s.ProductKey
+                    && l.Tags.Contains(SalesHub.Infrastructure.Services.Outbound.OutboundService.ReservedTag), ct);
+                var lead = outbound
+                    ? await SalesHub.Infrastructure.Services.Outbound.OutboundService.InstagramDmQueue(_db, s.ProductKey)
+                        .Include(l => l.Product)
+                        .Where(l => l.IgDmClaimedAt == null || l.IgDmClaimedAt < claimCutoff)
+                        .FirstOrDefaultAsync(ct)
+                    : await IgOutreachPlan.ColdQueue(_db.Leads, s.ProductKey).Include(l => l.Product)
+                        .Where(l => l.IgDmClaimedAt == null || l.IgDmClaimedAt < claimCutoff)
+                        .OrderByDescending(l => l.Score).ThenByDescending(l => l.CreatedAt)
+                        .FirstOrDefaultAsync(ct);
                 if (lead is null)
-                    candidate = Wait(now.AddMinutes(30), "No hay leads con Instagram sin contactar");
+                    candidate = Wait(now.AddMinutes(30), outbound
+                        ? "No hay leads analizados a fondo para mandarles DM (el lector sigue leyendo)"
+                        : "No hay leads con Instagram sin contactar");
                 else
                 {
                     lead.IgDmClaimedAt = now;
                     await _db.SaveChangesAsync(ct);
-                    var text = IgOutreachPlan.RenderCold(IgOutreachPlan.PickVariant(s.Template), lead, lead.Product);
+                    string text;
+                    if (outbound)
+                    {
+                        var sender = await SalesHub.Infrastructure.Services.Outbound.OutboundService.HandoffFirstNameAsync(_db, s.ProductKey, ct) ?? "mateo";
+                        var variant = IgOutreachPlan.PickVariant(s.Template);
+                        if (string.IsNullOrWhiteSpace(variant)) variant = SalesHub.Infrastructure.Services.Outbound.OutboundService.DefaultIgTemplate;
+                        text = SalesHub.Infrastructure.Services.CopyStyle.Clean(
+                            SalesHub.Infrastructure.Services.Outbound.OutboundService.FillTemplate(variant, lead, lead.Product!, sender));
+                    }
+                    else text = IgOutreachPlan.RenderCold(IgOutreachPlan.PickVariant(s.Template), lead, lead.Product);
                     return new NextDm(lead.Id, Norm(lead.InstagramHandle), text, s.ProductKey, 0, null);
                 }
             }

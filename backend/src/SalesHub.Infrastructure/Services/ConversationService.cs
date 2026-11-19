@@ -655,6 +655,8 @@ public class ConversationService
                 .Where(o => o.LeadId == lead.Id && o.Status == OutboxStatus.Scheduled)
                 .ToListAsync(ct);
             foreach (var o in pending) o.Status = OutboxStatus.Cancelled;
+            // Lead del outbound que contestó el DM en frío: pase a la persona (el bot no se mete).
+            await _outbound.OnReplyAsync(lead, dm.Timestamp, dm.Text, ct);
         }
 
         await _db.SaveChangesAsync(ct);

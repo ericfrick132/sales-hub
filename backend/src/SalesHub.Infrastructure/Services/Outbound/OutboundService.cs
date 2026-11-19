@@ -62,6 +62,80 @@ public class OutboundService
     /// </summary>
     public IQueryable<Lead> Eligible(string productKey) => EligibleQuery(_db).Where(l => l.ProductKey == productKey);
 
+    /// <summary>Horas entre el primer canal y el segundo (WhatsApp ↔ Instagram) para el mismo lead.</summary>
+    public const int SecondChannelHours = 20;
+
+    /// <summary>
+    /// DM en frío por Instagram desde la cuenta de la app (@turnos.pro): los mismos analizados a fondo, mejores
+    /// primero, con la cuenta de Instagram confirmada. Si ya le llegó el WhatsApp, recién 20 h después y si no
+    /// contestó (los mejores van por los dos canales, escalonado).
+    /// </summary>
+    public static IQueryable<Lead> InstagramDmQueue(ApplicationDbContext db, string productKey, int minScore = 50)
+    {
+        var secondChannel = DateTimeOffset.UtcNow.AddHours(-SecondChannelHours);
+        return db.Leads.Where(l => l.ProductKey == productKey
+            && l.Tags.Contains(ReservedTag) && !l.Tags.Contains(ExcludedTag)
+            && l.ProspectEnrichedAt != null && l.InstagramCheckedAt != null
+            && l.InstagramHandle != null && l.InstagramHandle != ""
+            && l.IgDmSentAt == null && l.IgDmError == null && l.InstagramScopedId == null
+            && l.FirstReplyAt == null
+            && (l.Status == LeadStatus.New || l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Sent)
+            && (l.BusinessStatus == null || l.BusinessStatus == "OPERATIONAL")
+            && (l.BookingPlatform == null || !l.BookingPlatform.StartsWith("TurnosPro"))
+            && l.ProspectScore >= minScore
+            && (l.SentAt == null || l.SentAt < secondChannel)
+            // Tomado a mano por un vendedor (que no sea el pase de la propia línea outbound): no.
+            && !(l.SellerId != null && l.ManualAssignedAt != null && !l.Tags.Contains(SentTag))
+            && !db.ConversationMessages.Any(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound)
+            && !db.Outbox.Any(o => o.LeadId == l.Id && (o.Status == OutboxStatus.Scheduled || o.Status == OutboxStatus.Sending)))
+            .OrderByDescending(l => l.ProspectScore).ThenByDescending(l => l.TotalReviews);
+    }
+
+    /// <summary>
+    /// DM de Instagram por defecto (misma estructura que el outreach que cerró, sin "hablo con…?": ya estás en su
+    /// cuenta). {observacion} se arma según el lead: si ya le llegó el WhatsApp lo dice; si toma turnos por
+    /// WhatsApp (verificado) lo dice; si no, "vi su perfil".
+    /// </summary>
+    public const string DefaultIgTemplate =
+        "hola como va? soy {vendedor} de {app}. {observacion}: un sistema donde {clientes} sacan el turno desde tu link " +
+        "a cualquier hora, {cobro} y les llega el recordatorio por whatsapp el dia anterior. queres que te llame y te cuento mejor?";
+
+    public static string IgObservation(Lead lead)
+    {
+        var rubro = ProspectScorer.RubroByKey(lead.ProspectRubro)?.Plural ?? "negocios como el tuyo";
+        if (lead.SentAt is not null) return $"te escribi por whatsapp, por si no lo viste: trabajamos con {rubro}";
+        if (lead.PhoneOrigin is "whatsapp-publicado" or "whatsapp-instagram")
+            return $"vi que {ProspectScorer.RubroByKey(lead.ProspectRubro)?.Toman ?? "toman"} los turnos por whatsapp y justo trabajamos con {rubro} en eso";
+        return $"vi su perfil y justo trabajamos con {rubro}";
+    }
+
+    /// <summary>Completa los placeholders del outbound ({negocio}, {vendedor}, {app}, {rubros}, {clientes}, {cobro}, {toman}, {observacion}).</summary>
+    public static string FillTemplate(string template, Lead lead, Product product, string senderName)
+    {
+        var rubro = ProspectScorer.RubroByKey(lead.ProspectRubro);
+        var negocio = BusinessName(lead.Name);
+        if (negocio is null) template = Regex.Replace(template, @"hablo con \{negocio\}\?\s*", "", RegexOptions.IgnoreCase);
+        return template
+            .Replace("{observacion}", IgObservation(lead))
+            .Replace("{negocio}", negocio ?? "")
+            .Replace("{vendedor}", senderName.Trim().ToLowerInvariant())
+            .Replace("{app}", product.DisplayName)
+            .Replace("{rubros}", rubro?.Plural ?? "negocios como el tuyo")
+            .Replace("{clientes}", rubro?.Clientes ?? "tus clientes")
+            .Replace("{cobro}", rubro?.Cobro ?? "cobras la seña si queres")
+            .Replace("{toman}", rubro?.Toman ?? "toman");
+    }
+
+    /// <summary>Nombre de pila de la persona de la app (la del pase), para "soy mateo de...".</summary>
+    public static async Task<string?> HandoffFirstNameAsync(ApplicationDbContext db, string productKey, CancellationToken ct)
+    {
+        var id = await db.OnboardingConfigs.AsNoTracking().Where(c => c.ProductKey == productKey)
+            .Select(c => c.HandoffSellerId).FirstOrDefaultAsync(ct);
+        if (id is null) return null;
+        var name = await db.Sellers.AsNoTracking().Where(s => s.Id == id).Select(s => s.DisplayName).FirstOrDefaultAsync(ct);
+        return name?.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+    }
+
     /// <summary>Contactables con Instagram conocido que todavía no se leyó (la extensión de la Mac los recorre).</summary>
     public static IQueryable<Lead> InstagramPendingQuery(ApplicationDbContext db) =>
         EligibleQuery(db).Where(l => l.InstagramCheckedAt == null
@@ -87,7 +161,11 @@ public class OutboundService
             && (l.BookingPlatform == null || !l.BookingPlatform.StartsWith("TurnosPro"))
             && !(l.SellerId != null && l.ManualAssignedAt != null)
             && !db.OutboundContacts.Any(c => c.LeadId == l.Id)
-            && !db.ConversationMessages.Any(m => m.LeadId == l.Id)
+            // Lo único que puede tener es el DM en frío por Instagram (los mejores van por los dos canales, Eric
+            // 19/11): ninguna respuesta, ningún mensaje por WhatsApp, y el DM de hace más de 20 h.
+            && !db.ConversationMessages.Any(m => m.LeadId == l.Id
+                && (m.Direction == MessageDirection.Inbound || !m.EvolutionInstance.StartsWith(Instagram.InstagramMessengerClient.LinePrefix)))
+            && (l.IgDmSentAt == null || l.IgDmSentAt < DateTimeOffset.UtcNow.AddHours(-SecondChannelHours))
             && !db.Outbox.Any(o => o.LeadId == l.Id
                 && (o.Status == OutboxStatus.Sent || o.Status == OutboxStatus.Sending || o.Status == OutboxStatus.Scheduled)));
 
@@ -338,19 +416,8 @@ public class OutboundService
 
     public string Render(Lead lead, Product product, EvolutionInstance line, string senderName)
     {
-        var rubro = ProspectScorer.RubroByKey(lead.ProspectRubro);
         var template = string.IsNullOrWhiteSpace(line.OutboundTemplate) ? DefaultTemplate : line.OutboundTemplate!;
-        var negocio = BusinessName(lead.Name);
-        if (negocio is null) template = Regex.Replace(template, @"hablo con \{negocio\}\?\s*", "", RegexOptions.IgnoreCase);
-
-        var text = template
-            .Replace("{negocio}", negocio ?? "")
-            .Replace("{vendedor}", senderName.Trim().ToLowerInvariant())
-            .Replace("{app}", product.DisplayName)
-            .Replace("{rubros}", rubro?.Plural ?? "negocios como el tuyo")
-            .Replace("{clientes}", rubro?.Clientes ?? "tus clientes")
-            .Replace("{cobro}", rubro?.Cobro ?? "cobras la seña si queres")
-            .Replace("{toman}", rubro?.Toman ?? "toman");
+        var text = FillTemplate(template, lead, product, senderName);
         // Spin-text {a|b} y el resto de los placeholders de siempre ({saludo}, {nombre}...).
         return _renderer.RenderTemplate(text, lead, product);
     }
@@ -402,10 +469,17 @@ public class OutboundService
     {
         var contact = await _db.OutboundContacts
             .FirstOrDefaultAsync(c => c.LeadId == lead.Id && c.RepliedAt == null && c.Status != OutboundContact.Reserved, ct);
-        if (contact is null) return;
-        contact.RepliedAt = at;
         var handoffId = await HandoffSellerAsync(lead.ProductKey, ct);
-        await _handoff.HandoffAsync(lead, handoffId, "contestó al outbound", text,
-            $"Le escribimos desde la línea outbound: {contact.Message}", ct, mute: true);
+        if (contact is not null)
+        {
+            contact.RepliedAt = at;
+            await _handoff.HandoffAsync(lead, handoffId, "contestó al outbound", text,
+                $"Le escribimos desde la línea outbound: {contact.Message}", ct, mute: true);
+            return;
+        }
+        // Contestó el DM en frío por Instagram de un lead del outbound: mismo pase (una sola vez).
+        if (lead.IgDmSentAt is not null && lead.Tags.Contains(ReservedTag) && !lead.Tags.Contains(PersonHandoffService.Tag))
+            await _handoff.HandoffAsync(lead, handoffId, "contestó el DM de Instagram del outbound", text,
+                "Le escribimos por Instagram (DM en frío) desde la cuenta de la app.", ct, mute: true);
     }
 }

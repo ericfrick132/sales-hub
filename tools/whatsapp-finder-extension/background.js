@@ -620,7 +620,8 @@ async function heartbeat() {
 // ---- Un negocio por vez ----
 
 async function lookup(item, s) {
-  let followPending = ACCOUNT_APP[s.igAccount] === item.app && canFollow(s, item.app);
+  // Los leads del outbound (igOnly) nunca se siguen: se les escribe por WhatsApp/DM, el follow no suma.
+  let followPending = !item.igOnly && ACCOUNT_APP[s.igAccount] === item.app && canFollow(s, item.app);
   let followResult = null;
   // Cuentas de las plataformas (pie de las fichas de AgendaPro, Fresha…), no del negocio.
   let handle = PLATFORM_IG.test(item.instagram || '') ? null : item.instagram;
