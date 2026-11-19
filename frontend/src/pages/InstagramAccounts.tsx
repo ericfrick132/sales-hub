@@ -16,6 +16,8 @@ interface IgAccount {
   proxyUrl?: string | null;
   dailyDmCap?: number | null;
   blockedUntil?: string | null;
+  loginPausedUntil?: string | null;
+  lastLoginError?: string | null;
   lastLoginAt?: string | null;
   lastUsedAt?: string | null;
   createdAt: string;
@@ -305,6 +307,13 @@ function statusOf(a: IgAccount): {
   if (a.isAwaitingTwoFactor) {
     return { label: 'Esperando código 2FA', dot: 'bg-amber-500', text: 'text-amber-600', primary: '2fa' };
   }
+  if (!a.isLoggedIn && a.lastLoginError) {
+    const paused = a.loginPausedUntil && new Date(a.loginPausedUntil) > new Date();
+    return {
+      label: `No pudo entrar: ${a.lastLoginError}${paused ? ` · no reintenta solo hasta ${new Date(a.loginPausedUntil!).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}`,
+      dot: 'bg-rose-500', text: 'text-rose-600', primary: 'login',
+    };
+  }
   if (!a.isLoggedIn) {
     return { label: 'Falta iniciar sesión', dot: 'bg-amber-500', text: 'text-amber-600', primary: 'login' };
   }
@@ -420,6 +429,7 @@ function EditModal({
   onSubmit: (body: Record<string, unknown>) => void;
 }) {
   const [sellerId, setSellerId] = useState(account.sellerId);
+  const [username, setUsername] = useState(account.username);
   const [password, setPassword] = useState('');
   const [twoFactorSecret, setTwoFactorSecret] = useState('');
   const [isActive, setIsActive] = useState(account.isActive);
@@ -430,6 +440,9 @@ function EditModal({
     <Modal title={`Editar @${account.username}`} onCancel={onCancel}>
       <div className="space-y-3">
         <SellerSelect value={sellerId} onChange={setSellerId} sellers={sellers} />
+        <Field label="Usuario de Instagram (sin @) — cambialo si la cuenta se renombró">
+          <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
+        </Field>
         <Field label="Nueva password (vacío = no cambiar)">
           <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </Field>
@@ -460,6 +473,8 @@ function EditModal({
           disabled={submitting}
           onClick={() => {
             const body: Record<string, unknown> = { sellerId, isActive };
+            const cleanUser = username.trim().replace(/^@/, '');
+            if (cleanUser && cleanUser !== account.username) body.username = cleanUser;
             if (password) body.password = password;
             if (twoFactorSecret) body.twoFactorSecret = twoFactorSecret;
             // proxyUrl siempre se envía: permite setear y también limpiar (string vacío → null)

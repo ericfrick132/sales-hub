@@ -101,6 +101,16 @@ public class InstagramFollowService
             return;
         }
 
+        // Login frenado (IG rechazó el último usuario+password): sin cookies, cualquier paso
+        // terminaría en otro login fallido. Ni abrimos el browser hasta que se levante el freno.
+        if (string.IsNullOrEmpty(account.SessionCookiesJson)
+            && account.LoginPausedUntil is { } pausedUntil && pausedUntil > DateTimeOffset.UtcNow)
+        {
+            _log.LogDebug("Campaña {Id}: login de {User} en pausa hasta {Until} ({Reason})",
+                campaign.Id, account.Username, pausedUntil, account.LastLoginError);
+            return;
+        }
+
         // Ventana horaria: la cuenta actúa en horario humano (hora local AR).
         if (!IsWithinActiveWindow(campaign))
         {

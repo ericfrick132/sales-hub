@@ -48,6 +48,8 @@ public class InstagramAccountsController : ControllerBase
                 IsAwaitingTwoFactor = a.IsAwaitingTwoFactor,
                 ProxyUrl = a.ProxyUrl,
                 BlockedUntil = a.BlockedUntil,
+                LoginPausedUntil = a.LoginPausedUntil,
+                LastLoginError = a.LastLoginError,
                 LastLoginAt = a.LastLoginAt,
                 LastUsedAt = a.LastUsedAt,
                 CreatedAt = a.CreatedAt
@@ -79,6 +81,8 @@ public class InstagramAccountsController : ControllerBase
             IsAwaitingTwoFactor = account.IsAwaitingTwoFactor,
             ProxyUrl = account.ProxyUrl,
             BlockedUntil = account.BlockedUntil,
+            LoginPausedUntil = account.LoginPausedUntil,
+            LastLoginError = account.LastLoginError,
             LastLoginAt = account.LastLoginAt,
             LastUsedAt = account.LastUsedAt,
             CreatedAt = account.CreatedAt
@@ -206,21 +210,44 @@ public class InstagramAccountsController : ControllerBase
         if (account is null) return NotFound();
 
         if (req.SellerId.HasValue) account.SellerId = req.SellerId.Value;
+        // Username editable: si la marca renombra la cuenta en IG (playcrewpadel → playcrew.app),
+        // el login con el usuario viejo da "credenciales incorrectas" para siempre.
+        var usernameChanged = false;
+        if (!string.IsNullOrWhiteSpace(req.Username))
+        {
+            var newUser = req.Username.Trim().TrimStart('@').ToLowerInvariant();
+            if (newUser != account.Username)
+            {
+                if (await _db.InstagramAccounts.AnyAsync(a => a.Id != id && a.Username == newUser))
+                    return Conflict(new { error = $"Ya hay otra cuenta con el usuario {newUser}" });
+                account.Username = newUser;
+                usernameChanged = true;
+            }
+        }
         if (!string.IsNullOrEmpty(req.Password))
             account.EncryptedPassword = _crypto.Encrypt(req.Password);
+        var loginInputsBefore = (account.TwoFactorSecret, account.ProxyUrl);
         if (req.TwoFactorSecret is not null) account.TwoFactorSecret = req.TwoFactorSecret;
         // ProxyUrl: si viene null no se toca; si viene vacío se limpia.
         if (req.ProxyUrl is not null)
             account.ProxyUrl = string.IsNullOrWhiteSpace(req.ProxyUrl) ? null : req.ProxyUrl.Trim();
+        var loginInputsChanged = !string.IsNullOrEmpty(req.Password) || usernameChanged
+            || loginInputsBefore != (account.TwoFactorSecret, account.ProxyUrl);
         if (req.IsActive.HasValue) account.IsActive = req.IsActive.Value;
         // DailyDmCap: null no toca; 0 = volver al global.
         if (req.DailyDmCap.HasValue) account.DailyDmCap = req.DailyDmCap.Value > 0 ? req.DailyDmCap.Value : null;
 
-        // Si se cambió la contraseña, invalidar sesión
-        if (!string.IsNullOrEmpty(req.Password))
+        // Si se cambió usuario o contraseña, invalidar sesión
+        if (!string.IsNullOrEmpty(req.Password) || usernameChanged)
         {
             account.SessionCookiesJson = null;
             account.IsLoggedIn = false;
+        }
+        // Cambió algo de lo que usa el login → levantar el freno de login para que reintente.
+        if (loginInputsChanged)
+        {
+            account.LoginPausedUntil = null;
+            account.LastLoginError = null;
         }
 
         account.UpdatedAt = DateTimeOffset.UtcNow;
@@ -265,6 +292,8 @@ public class InstagramAccountsController : ControllerBase
 
         foreach (var account in accounts)
         {
+            // Pedido a mano: levanta el freno de login (si IG lo vuelve a rechazar, se re-frena).
+            account.LoginPausedUntil = null;
             try
             {
                 // Si ya está logueada, verificar sesión
@@ -347,6 +376,8 @@ public class InstagramAccountsController : ControllerBase
         var account = await _db.InstagramAccounts.FirstOrDefaultAsync(a => a.Id == id);
         if (account is null) return NotFound();
 
+        // "Conectar" a mano: levanta el freno de login (si IG lo vuelve a rechazar, se re-frena).
+        account.LoginPausedUntil = null;
         try
         {
             await using var client = new InstagramClient(_db, _crypto, _opts, _log);
@@ -374,6 +405,7 @@ public class InstagramAccountsController : ControllerBase
         // Forzar re-login limpiando cookies EN MEMORIA (no persistimos).
         account.SessionCookiesJson = null;
         account.IsLoggedIn = false;
+        account.LoginPausedUntil = null;
 
         await using var client = new InstagramClient(_db, _crypto, _opts, _log);
         var err = "";
@@ -452,6 +484,8 @@ public class InstagramAccountsController : ControllerBase
         public bool IsAwaitingTwoFactor { get; init; }
         public string? ProxyUrl { get; init; }
         public DateTimeOffset? BlockedUntil { get; init; }
+        public DateTimeOffset? LoginPausedUntil { get; init; }
+        public string? LastLoginError { get; init; }
         public DateTimeOffset? LastLoginAt { get; init; }
         public DateTimeOffset? LastUsedAt { get; init; }
         public DateTimeOffset CreatedAt { get; init; }
@@ -469,6 +503,7 @@ public class InstagramAccountsController : ControllerBase
     public record UpdateInstagramAccountRequest
     {
         public Guid? SellerId { get; init; }
+        public string? Username { get; init; }
         public string? Password { get; init; }
         public string? TwoFactorSecret { get; init; }
         public bool? IsActive { get; init; }

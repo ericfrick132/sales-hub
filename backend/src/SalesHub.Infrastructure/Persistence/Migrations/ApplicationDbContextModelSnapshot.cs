@@ -2122,9 +2122,18 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_login_at");
 
+                    b.Property<string>("LastLoginError")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("last_login_error");
+
                     b.Property<DateTimeOffset?>("LastUsedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_used_at");
+
+                    b.Property<DateTimeOffset?>("LoginPausedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("login_paused_until");
 
                     b.Property<DateTimeOffset?>("NextFollowEligibleAt")
                         .HasColumnType("timestamp with time zone")

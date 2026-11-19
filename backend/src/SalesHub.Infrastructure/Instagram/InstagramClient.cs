@@ -64,6 +64,15 @@ public class InstagramClient : IAsyncDisposable
     /// </summary>
     public async Task InitializeAsync(InstagramAccount account, CancellationToken ct = default)
     {
+        // Sin cookies esto termina en un login con usuario+password. Si el último lo rechazó
+        // IG, no insistimos (ni abrimos el browser) hasta que venza el freno o alguien edite
+        // la cuenta / toque "Conectar": reintentar cada minuto es lo que dispara el captcha.
+        if (string.IsNullOrEmpty(account.SessionCookiesJson)
+            && account.LoginPausedUntil is { } pausedUntil && pausedUntil > DateTimeOffset.UtcNow)
+            throw new InvalidOperationException(
+                $"Login de {account.Username} en pausa hasta {pausedUntil:yyyy-MM-dd HH:mm} UTC: " +
+                $"{account.LastLoginError ?? "el último intento falló"}. Editá la cuenta o tocá Conectar.");
+
         _playwright = await Microsoft.Playwright.Playwright.CreateAsync();
 
         var launchOpts = new BrowserTypeLaunchOptions
@@ -1174,9 +1183,12 @@ public class InstagramClient : IAsyncDisposable
 
         await Task.Delay(3000, ct);
 
-        // Verificar si estamos en la página principal (login exitoso)
+        // Verificar si estamos en la página principal (login exitoso). Ojo: IG también puede
+        // mandar a /auth_platform/recaptcha/ (captcha), /auth_platform/codeentry/ (código por
+        // mail) o /accounts/suspended|checkpoint — ninguna dice "login" y antes se tomaban
+        // como login exitoso (visto con archicloud el 2026-11-19).
         var currentUrl = _page.Url;
-        if (currentUrl.Contains("login") || currentUrl.Contains("challenge"))
+        if (IsLoginNotCompletedUrl(currentUrl))
         {
             // El login no se completó (sigue en login / pide challenge). Esto NO es un
             // action-block de Instagram: puede ser 2FA no resuelto, un challenge, timing
@@ -1186,9 +1198,10 @@ public class InstagramClient : IAsyncDisposable
             _log.LogWarning("Login no se completó para {User}. URL: {Url}", account.Username, currentUrl);
             // Diagnóstico: capturar qué texto muestra Instagram (throttle, password,
             // checkpoint, "esperá unos minutos", etc.) para no adivinar la causa.
+            var bodyText = "";
             try
             {
-                var bodyText = await _page.InnerTextAsync("body");
+                bodyText = await _page.InnerTextAsync("body");
                 bodyText = bodyText.Replace("\n", " ").Trim();
                 if (bodyText.Length > 700) bodyText = bodyText[..700];
                 _log.LogWarning("IG mostró a {User}: «{Text}»", account.Username, bodyText);
@@ -1198,11 +1211,18 @@ public class InstagramClient : IAsyncDisposable
                 _log.LogWarning("No se pudo leer el texto de la página de IG para {User}: {Err}",
                     account.Username, diagEx.Message);
             }
+
+            var (reason, pause) = ClassifyLoginFailure(currentUrl, bodyText);
             account.IsLoggedIn = false;
+            account.SessionCookiesJson = null;
+            account.LastLoginError = reason;
+            account.LoginPausedUntil = DateTimeOffset.UtcNow.Add(pause);
             account.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
+            _log.LogWarning("Login de {User} frenado hasta {Until:yyyy-MM-dd HH:mm} UTC: {Reason}",
+                account.Username, account.LoginPausedUntil, reason);
             throw new InvalidOperationException(
-                $"Login no se completó para {account.Username} (sigue en login/challenge).");
+                $"Login no se completó para {account.Username}: {reason}");
         }
 
         _loggedIn = true;
@@ -1210,12 +1230,43 @@ public class InstagramClient : IAsyncDisposable
         account.IsActionBlocked = false;
         account.BlockedUntil = null;
         account.IsAwaitingTwoFactor = false;
+        account.LoginPausedUntil = null;
+        account.LastLoginError = null;
         account.LastLoginAt = DateTimeOffset.UtcNow;
 
         // Guardar cookies de sesión
         await SaveSessionCookiesAsync(account, ct);
 
         _log.LogInformation("Login exitoso en Instagram como {User}", account.Username);
+    }
+
+    /// <summary>La URL post-login todavía es una pantalla de login, 2FA, captcha o checkpoint.</summary>
+    internal static bool IsLoginNotCompletedUrl(string url) =>
+        url.Contains("login") || url.Contains("challenge") || url.Contains("auth_platform")
+        || url.Contains("checkpoint") || url.Contains("/accounts/suspended")
+        || url.Contains("two_factor") || url.Contains("two_step_verification");
+
+    /// <summary>
+    /// Motivo legible + cuánto frenar el próximo login automático. Credenciales malas no se
+    /// arreglan solas (7 días, hasta que alguien edite la cuenta); captcha/checkpoint
+    /// necesitan una persona en el browser (24 h); el resto, 2 h.
+    /// </summary>
+    internal static (string Reason, TimeSpan Pause) ClassifyLoginFailure(string url, string bodyText)
+    {
+        var text = bodyText.ToLowerInvariant();
+        if (text.Contains("es incorrecta") || text.Contains("son incorrectos")
+            || text.Contains("was incorrect") || text.Contains("is incorrect") || text.Contains("no es correcta")
+            || text.Contains("doesn't belong to an account") || text.Contains("no pertenece a ninguna cuenta"))
+            return ("IG dice que el usuario o la contraseña son incorrectos (¿cambió el usuario o la clave?)", TimeSpan.FromDays(7));
+        if (url.Contains("recaptcha") || text.Contains("captcha"))
+            return ("IG pide un captcha: entrá a mano a la cuenta desde el celu o la compu", TimeSpan.FromHours(24));
+        if (url.Contains("auth_platform") || url.Contains("challenge") || url.Contains("checkpoint"))
+            return ("IG pide verificar la cuenta (código por mail/SMS o checkpoint): entrá a mano", TimeSpan.FromHours(24));
+        if (url.Contains("suspended"))
+            return ("IG suspendió la cuenta", TimeSpan.FromDays(7));
+        if (url.Contains("two_factor") || url.Contains("two_step_verification"))
+            return ("IG no aceptó el código 2FA (¿clave 2FA vieja?)", TimeSpan.FromHours(24));
+        return ("el login no se completó (sigue en la pantalla de login)", TimeSpan.FromHours(2));
     }
 
     private void EnsureLoggedIn()

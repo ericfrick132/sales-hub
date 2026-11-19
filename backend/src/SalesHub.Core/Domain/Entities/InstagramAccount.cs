@@ -40,6 +40,18 @@ public class InstagramAccount
     /// </summary>
     public bool IsAwaitingTwoFactor { get; set; }
 
+    /// <summary>
+    /// Freno de login: tras un login con usuario+password que IG rechazó (credenciales
+    /// incorrectas, captcha, checkpoint), NO se vuelve a intentar solo hasta esta hora. Sin
+    /// esto los workers reintentaban cada 1-3 min (~130 logins fallidos/hora el 2026-11-19),
+    /// que es lo que hace que IG pida captcha y marque la IP. Lo limpian: editar la cuenta,
+    /// "Conectar" a mano, login-all o un login exitoso.
+    /// </summary>
+    public DateTimeOffset? LoginPausedUntil { get; set; }
+
+    /// <summary>Por qué falló el último login (texto corto para la UI). null si el último salió bien.</summary>
+    public string? LastLoginError { get; set; }
+
     public DateTimeOffset? LastLoginAt { get; set; }
     public DateTimeOffset? LastUsedAt { get; set; }
 

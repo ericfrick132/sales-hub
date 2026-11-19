@@ -575,7 +575,11 @@ public class DashboardController : ControllerBase
                 a.Id, a.Username, a.IsActive, a.IsLoggedIn, a.IsActionBlocked,
                 a.IsAwaitingTwoFactor, a.BlockedUntil, a.LastLoginAt, lastFollow,
                 active.Count, active.Sum(c => c.DailyRate), todayCount,
-                pending.GetValueOrDefault(a.Id), lastErrorByAccount.GetValueOrDefault(a.Id), status);
+                pending.GetValueOrDefault(a.Id),
+                // Deslogueada por un login que IG rechazó: ese motivo explica más que el último follow fallido.
+                (!a.IsLoggedIn && a.LastLoginError != null ? "Login: " + a.LastLoginError : null)
+                    ?? lastErrorByAccount.GetValueOrDefault(a.Id),
+                status);
         }).ToList();
 
         var attention = rows.Count(r => r.Status is "2fa" or "blocked" or "logged_out" or "stale");

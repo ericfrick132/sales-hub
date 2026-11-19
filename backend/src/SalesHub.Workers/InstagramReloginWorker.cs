@@ -73,9 +73,14 @@ public class InstagramReloginWorker : BackgroundService
             .ToHashSet();
         if (activeCampaignAccountIds.Count == 0) return;
 
+        // Las que IG rechazó hace poco (credenciales, captcha, checkpoint) quedan afuera hasta
+        // que venza el freno o alguien edite la cuenta: reintentar a ciegas cada 3 min es lo que
+        // las hace caer en captcha.
+        var now = DateTimeOffset.UtcNow;
         var down = await db.InstagramAccounts
             .Where(a => a.IsActive && !a.IsActionBlocked && !a.IsLoggedIn
-                     && a.ProxyUrl != null && a.ProxyUrl != "")
+                     && a.ProxyUrl != null && a.ProxyUrl != ""
+                     && (a.LoginPausedUntil == null || a.LoginPausedUntil <= now))
             .ToListAsync(ct);
         down = down.Where(a => activeCampaignAccountIds.Contains(a.Id)).ToList();
         if (down.Count == 0) return;
