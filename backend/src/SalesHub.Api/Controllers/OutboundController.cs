@@ -222,7 +222,8 @@ public class OutboundController : ControllerBase
 
     /// <summary>Contactables con Instagram conocido (handle o web de Instagram) que todavía no se leyeron.</summary>
     private IQueryable<Lead> IgPending(string productKey) =>
-        OutboundService.InstagramPendingQuery(_db).Where(l => l.ProductKey == productKey);
+        OutboundService.InstagramPendingQuery(_db).Where(l => l.ProductKey == productKey
+            && l.Tags.Contains(OutboundService.ReservedTag)); // los mismos que le da la cola al lector
 
     /// <summary>Perfiles de Instagram a leer, los de mejor puntaje primero.</summary>
     [HttpGet("instagram/pending")]
