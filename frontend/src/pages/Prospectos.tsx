@@ -27,8 +27,14 @@ type Line = {
   canSend: boolean; reason: string; nextAt: string | null; eligible: number; contacts: Contact[];
 };
 
+type Reader = {
+  account: string; at: string;
+  state: { version?: string; state?: string; queue?: number; igToday?: number; lastError?: string | null; restUntil?: string | null; blockedUntil?: string | null };
+};
+
 type Info = {
   lines: Line[];
+  readers: Reader[];
   products: { productKey: string; displayName: string }[];
   rubros: Rubro[];
   zones: Zone[];
@@ -76,6 +82,24 @@ function ScoreBadge({ score }: { score: number | null }) {
   const s = score ?? 0;
   const cls = s >= 70 ? 'bg-emerald-600 text-white' : s >= 50 ? 'bg-emerald-100 text-emerald-800' : s >= 35 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500';
   return <span className={`inline-flex w-10 justify-center rounded-md px-1.5 py-0.5 text-sm font-semibold tabular-nums ${cls}`}>{score ?? '—'}</span>;
+}
+
+/**
+ * El lector de Instagram: la extensión de Chrome de la Mac de Eric. Arranca sola cuando se prende la Mac (Chrome
+ * abre al iniciar sesión), le manda un latido a sales-hub cada 2 minutos y pide de a un perfil: los leads del
+ * outbound con Instagram sin leer van primero. Sin latido en 6 minutos = Mac apagada o Chrome cerrado.
+ */
+function ReaderStatus({ readers }: { readers: Reader[] }) {
+  const r = readers[0];
+  const online = r && Date.now() - new Date(r.at).getTime() < 6 * 60_000;
+  return (
+    <div className={`rounded-lg border px-3 py-2 text-xs ${online ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+      <b>Lector de Instagram (tu Mac):</b>{' '}
+      {!r ? 'nunca se conectó. Abrí Chrome en el perfil efcloud.tech.'
+        : online ? <>prendido · @{r.account} · {r.state.state ?? '—'}{r.state.igToday != null && <> · {r.state.igToday} perfiles hoy</>}{r.state.lastError && <span className="text-rose-700"> · {r.state.lastError}</span>}</>
+        : <>apagado desde {ar(r.at)} (Mac apagada o Chrome cerrado). Retoma solo cuando se prenda.</>}
+    </div>
+  );
 }
 
 // ─── Ranking ──────────────────────────────────────────────────────────────────────────
@@ -144,6 +168,8 @@ export function RankingProspectos() {
           {rescore.isPending ? 'Recalculando…' : 'Recalcular'}
         </button>
       </div>
+
+      {info.data && <ReaderStatus readers={info.data.readers ?? []} />}
 
       {c && (
         <div className="text-sm text-slate-600">

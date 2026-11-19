@@ -163,6 +163,10 @@ public class AudienceController : ControllerBase
     /// <summary>Último estado que reportó cada extensión (en memoria: se pierde al reiniciar la API).</summary>
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (JsonElement State, DateTimeOffset At)> Heartbeats = new();
 
+    /// <summary>Último latido de cada extensión (cuenta de IG, cuándo y qué estaba haciendo), para mostrar en Leads.</summary>
+    internal static IEnumerable<object> ReaderStatus() =>
+        Heartbeats.OrderByDescending(h => h.Value.At).Select(h => (object)new { account = h.Key, at = h.Value.At, state = h.Value.State });
+
     /// <summary>La extensión avisa cada 2 min qué está haciendo (sin login: header X-Audience-Key).</summary>
     [HttpPost("finder-heartbeat")]
     [AllowAnonymous]

@@ -65,6 +65,8 @@ public class OutboundController : ControllerBase
             rubros = ProspectScorer.Rubros.Select(r => new { r.Key, r.Label, r.SearchTerms }),
             zones = ProspectScorer.Zones.Select(z => new { z.Key, z.Label }),
             defaultTemplate = OutboundService.DefaultTemplate,
+            // La extensión de Chrome de la Mac que lee los Instagram (latido cada 2 min = la Mac está prendida).
+            readers = AudienceController.ReaderStatus(),
         });
     }
 
@@ -217,8 +219,7 @@ public class OutboundController : ControllerBase
 
     /// <summary>Contactables con Instagram conocido (handle o web de Instagram) que todavía no se leyeron.</summary>
     private IQueryable<Lead> IgPending(string productKey) =>
-        _outbound.Eligible(productKey).Where(l => l.InstagramCheckedAt == null
-            && ((l.InstagramHandle != null && l.InstagramHandle != "") || (l.Website != null && l.Website.Contains("instagram.com/"))));
+        OutboundService.InstagramPendingQuery(_db).Where(l => l.ProductKey == productKey);
 
     /// <summary>Perfiles de Instagram a leer, los de mejor puntaje primero.</summary>
     [HttpGet("instagram/pending")]
@@ -235,12 +236,7 @@ public class OutboundController : ControllerBase
             .Where(r => r.handle is not null));
     }
 
-    private static string? HandleOf(string? handle, string? website)
-    {
-        if (!string.IsNullOrWhiteSpace(handle)) return handle.Trim().TrimStart('@').TrimEnd('/');
-        var m = System.Text.RegularExpressions.Regex.Match(website ?? "", @"instagram\.com/([A-Za-z0-9_\.]{2,30})");
-        return m.Success && m.Groups[1].Value is not ("p" or "reel" or "explore") ? m.Groups[1].Value.TrimEnd('.') : null;
-    }
+    private static string? HandleOf(string? handle, string? website) => OutboundService.InstagramHandleOf(handle, website);
 
     /// <summary>Carga lo leído de cada perfil (bio, links, seguidores) y recalcula el puntaje.</summary>
     [HttpPost("instagram")]

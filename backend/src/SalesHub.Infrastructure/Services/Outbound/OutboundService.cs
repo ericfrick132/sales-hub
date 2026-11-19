@@ -60,9 +60,23 @@ public class OutboundService
     /// nadie, con WhatsApp, con puntaje, sin cadencia en cola, no tomados a mano por un vendedor, no
     /// excluidos, abiertos y que no sean ya clientes.
     /// </summary>
-    public IQueryable<Lead> Eligible(string productKey) =>
-        _db.Leads.Where(l => l.ProductKey == productKey
-            && (int)l.Source < 400
+    public IQueryable<Lead> Eligible(string productKey) => EligibleQuery(_db).Where(l => l.ProductKey == productKey);
+
+    /// <summary>Contactables con Instagram conocido que todavía no se leyó (la extensión de la Mac los recorre).</summary>
+    public static IQueryable<Lead> InstagramPendingQuery(ApplicationDbContext db) =>
+        EligibleQuery(db).Where(l => l.InstagramCheckedAt == null
+            && ((l.InstagramHandle != null && l.InstagramHandle != "") || (l.Website != null && l.Website.Contains("instagram.com/"))));
+
+    /// <summary>Handle de Instagram del lead: el cargado o el de su "web" cuando es un perfil de Instagram.</summary>
+    public static string? InstagramHandleOf(string? handle, string? website)
+    {
+        if (!string.IsNullOrWhiteSpace(handle)) return handle.Trim().TrimStart('@').TrimEnd('/');
+        var m = Regex.Match(website ?? "", @"instagram\.com/([A-Za-z0-9_\.]{2,30})");
+        return m.Success && m.Groups[1].Value is not ("p" or "reel" or "explore" or "whatsapp") ? m.Groups[1].Value.TrimEnd('.') : null;
+    }
+
+    public static IQueryable<Lead> EligibleQuery(ApplicationDbContext db) =>
+        db.Leads.Where(l => (int)l.Source < 400
             && l.Source != LeadSource.Remarketing && l.Source != LeadSource.Competencia
             && (l.Status == LeadStatus.New || l.Status == LeadStatus.Assigned)
             && l.SentAt == null && l.FirstReplyAt == null && l.BotMutedAt == null
@@ -72,9 +86,9 @@ public class OutboundService
             && (l.BusinessStatus == null || l.BusinessStatus == "OPERATIONAL")
             && (l.BookingPlatform == null || !l.BookingPlatform.StartsWith("TurnosPro"))
             && !(l.SellerId != null && l.ManualAssignedAt != null)
-            && !_db.OutboundContacts.Any(c => c.LeadId == l.Id)
-            && !_db.ConversationMessages.Any(m => m.LeadId == l.Id)
-            && !_db.Outbox.Any(o => o.LeadId == l.Id
+            && !db.OutboundContacts.Any(c => c.LeadId == l.Id)
+            && !db.ConversationMessages.Any(m => m.LeadId == l.Id)
+            && !db.Outbox.Any(o => o.LeadId == l.Id
                 && (o.Status == OutboxStatus.Sent || o.Status == OutboxStatus.Sending || o.Status == OutboxStatus.Scheduled)));
 
     public IQueryable<Lead> CandidatesFor(EvolutionInstance line)

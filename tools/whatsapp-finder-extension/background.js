@@ -444,17 +444,27 @@ function igProfileRead(handle, expand) {
   // wa.me/message/… y api.whatsapp.com/message/… (link de WhatsApp Business sin número): al abrirlo muestra el número.
   const rank = (h) => (/(wa\.me|whatsapp\.com)\/message\//i.test(h) ? 0 : /linktr\.ee|linkin\.bio|beacons\.ai|taplink|bio\.link|wa\.link/i.test(h) ? 1 : /facebook\.com/i.test(h) ? 3 : 2);
   const links = [...header.querySelectorAll('a[href]')].map((a) => unwrap(a.href)).filter((h) => /^https?:/i.test(h));
+  const external = [...new Set(links.filter((h) => !USELESS.test(h)))].sort((a, b) => rank(a) - rank(b));
+  // Para el puntaje de prospecto (leads del outbound): seguidores y si la bio dice que es WhatsApp.
+  const fm = header.innerText.match(/([\d.,]+)\s*(mil|k|m)?\s+(seguidores|followers)/i);
+  let followers = null;
+  if (fm) {
+    const u = (fm[2] || '').toLowerCase();
+    const n = parseFloat(u ? fm[1].replace(',', '.') : fm[1].replace(/[.,]/g, ''));
+    followers = Math.round(n * (u === 'mil' || u === 'k' ? 1e3 : u === 'm' ? 1e6 : 1));
+  }
+  const extra = { followers, links: external.map((h) => h.replace(/[?#].*$/, '')).slice(0, 5) };
   const wa = links.map(waNumber).find(Boolean);
-  if (wa) return { status: 'ok', phone: wa, source: 'instagram_link' };
+  if (wa) return { status: 'ok', phone: wa, source: 'instagram_link', waLine: true, ...extra };
   // Número en la bio: preferir la línea que habla de WhatsApp / teléfono.
   const lines = header.innerText.split('\n');
+  const isWa = (l) => /(whats|wsp|wpp|wa\b|📲)/i.test(l);
   const cand = [...lines.filter((l) => /(whats|wsp|wpp|wa\b|📲|📱|☎|📞|tel|cel|turnos|reservas)/i.test(l)), ...lines];
   for (const l of cand) {
     const m = l.match(/\+?\d[\d\s\-().]{7,}\d/);
-    if (m && m[0].replace(/\D/g, '').length >= 8) return { status: 'ok', phone: m[0], source: 'instagram_bio' };
+    if (m && m[0].replace(/\D/g, '').length >= 8) return { status: 'ok', phone: m[0], source: 'instagram_bio', waLine: isWa(l), ...extra };
   }
-  const external = [...new Set(links.filter((h) => !USELESS.test(h)))].sort((a, b) => rank(a) - rank(b));
-  return { status: 'no_phone', links: external };
+  return { status: 'no_phone', waLine: lines.some(isWa), ...extra };
 }
 
 // Seguir: solo el botón del header (abajo están las "Sugerencias" con su propio "Seguir").
@@ -560,7 +570,8 @@ async function refill() {
     const seen = new Set([...fresh.queue.map((q) => q.key), ...skip]);
     const add = items
       .map((i) => ({ key: `${i.dataset}|${i.externalId}`, app: i.productKey, dataset: i.dataset, externalId: i.externalId, name: i.name,
-                     city: i.city || '', country: i.country || '', instagram: i.instagram || null, website: i.website || null }))
+                     city: i.city || '', country: i.country || '', instagram: i.instagram || null, website: i.website || null,
+                     igOnly: !!i.igOnly }))
       .filter((i) => !seen.has(i.key));
     if (add.length) await setState({ queue: [...fresh.queue, ...add] });
   } catch { /* sin red: se reintenta en el próximo turno */ }
@@ -622,7 +633,9 @@ async function lookup(item, s) {
   const steps = [];
   const step = (name, result, detail) => steps.push({ step: name, result, detail: detail || null, at: new Date().toISOString() });
   const host = (u) => { try { return new URL(/^https?:/i.test(u) ? u : `https://${u}`).hostname; } catch { return String(u).slice(0, 60); } };
-  const done = (r) => ({ ...r, steps, igUsed, googleUsed, googleBlocked, followResult });
+  // Lo último que se leyó del perfil (seguidores, links, si dice WhatsApp): va con el resultado.
+  let igInfo = {};
+  const done = (r) => ({ ...igInfo, ...r, steps, igUsed, googleUsed, googleBlocked, followResult });
 
   const tabs = await workTabs();
   const profile = async (h, results) => {
@@ -630,6 +643,7 @@ async function lookup(item, s) {
     try { p = await igProfile(tabs.ig, h, followPending, results); }
     catch (e) { p = { status: 'error', error: String(e?.message || e) }; }
     step('ig_profile', p?.status || 'error', p?.status === 'ok' ? `@${h} · ${p.source}` : p?.error ? `@${h} · ${p.error}` : `@${h}`);
+    if (p && (p.status === 'ok' || p.status === 'no_phone')) igInfo = { followers: p.followers ?? null, links: p.links || [], waLine: !!p.waLine };
     if (p?.follow) {
       step('ig_follow', p.follow, `@${h}`);
       followResult = p.follow;
@@ -655,6 +669,9 @@ async function lookup(item, s) {
     if (p?.status === 'not_found') handle = null;
     else igLinks = p?.links || [];
   }
+  // Lead del outbound (sales-hub ya leyó su web y tiene teléfono): solo su Instagram y los links de la bio.
+  // Sin buscar la cuenta por nombre (podría ser otra) y sin Google.
+  if (item.igOnly && !handle) return done({ status: 'not_found', instagram: item.instagram || null });
   if (!handle && !igLinks.length) {
     const st = await ready();
     if (st === 'login' || st === 'blocked') return done({ status: st });
@@ -676,7 +693,7 @@ async function lookup(item, s) {
 
   // 2) Web: primero un link de WhatsApp Business de la bio, después la web de la base y los demás links.
   const waMsg = igLinks.filter((h) => /(wa\.me|whatsapp\.com)\/message\//i.test(h));
-  const sites = [...new Set([...waMsg, website, ...igLinks].filter(Boolean))].slice(0, 2);
+  const sites = [...new Set([...waMsg, ...(item.igOnly ? [] : [website]), ...igLinks].filter(Boolean))].slice(0, 2);
   if (!sites.length) step('web', 'sin_web', 'no hay web ni links en la bio');
   for (const site of sites) {
     try {
@@ -688,6 +705,7 @@ async function lookup(item, s) {
     }
   }
   website = website || sites.find((x) => !/whatsapp|wa\.me/i.test(x)) || null;
+  if (item.igOnly) return done({ status: 'no_phone', instagram: handle, website });
 
   // 3) Google: el nombre tal cual + ciudad
   if (canGoogle(s)) {
@@ -796,7 +814,8 @@ async function runOne() {
     const retry = r.status === 'error' && fails < 2;
     if (retry) patch.queue.push(item); // un reintento al final de la cola
     const res = { phone: r.phone || null, source: r.source || null, instagram: r.instagram || item.instagram || null,
-                  website: r.website || item.website || null, status: r.status, fails, at: Date.now() };
+                  website: r.website || item.website || null, status: r.status, fails, at: Date.now(),
+                  followers: r.followers ?? null, links: r.links || null, waLine: r.waLine ?? null };
     patch.results = { ...fresh.results, [item.key]: res };
     send = { ...base, ...res, at, status: retry ? 'retry' : r.status };
   }

@@ -36,7 +36,9 @@ public record FinderStep(string Step, string Result, string? Detail, DateTimeOff
 /// blocked o login (IG frenó a mitad: solo se guarda el historial, el negocio sigue pendiente).</param>
 /// <param name="Source">instagram_link, instagram_bio, web_whatsapp, web_tel, web_texto.</param>
 public record FinderResult(string Dataset, string ExternalId, string Status, string? Phone, string? Source,
-    string? Instagram, string? Website, List<FinderStep>? Steps = null, DateTimeOffset? At = null);
+    string? Instagram, string? Website, List<FinderStep>? Steps = null, DateTimeOffset? At = null,
+    // Del perfil de Instagram (v1.10+): seguidores, links de la bio y si la línea del número dice WhatsApp.
+    int? Followers = null, List<string>? Links = null, bool? WaLine = null);
 
 public record AudienceSummaryRow(string ProductKey, string Competitor, string Dataset, string Segment, string? Country,
     int Total, int WithPhone, int Whatsapp, int FromCompetitor, int FromInstagram, int FromWeb, int FromLeads,
@@ -68,10 +70,12 @@ public class AudienceLeadService
     private readonly ILogger<AudienceLeadService> _log;
 
     public AudienceLeadService(ApplicationDbContext db, IGooglePlacesEnricher places, IPhoneNormalizer phone,
-        ILogger<AudienceLeadService> log)
+        ILogger<AudienceLeadService> log, Outbound.ProspectEnricher prospects)
     {
-        _db = db; _places = places; _phone = phone; _log = log;
+        _db = db; _places = places; _phone = phone; _log = log; _prospects = prospects;
     }
+
+    private readonly Outbound.ProspectEnricher _prospects;
 
     /// <summary>Clave fija para que la extensión mande resultados sin login: HMAC de la clave del JWT.</summary>
     public static string IngestKey(string jwtSigningKey) =>
@@ -139,7 +143,10 @@ public class AudienceLeadService
     }
 
     public record FinderItem(string ProductKey, string Dataset, string ExternalId, string Name, string? City, string? Country,
-        string? Instagram, string? Website);
+        string? Instagram, string? Website, bool IgOnly = false);
+
+    /// <summary>Dataset con el que viajan por la extensión los leads del outbound (externalId = id del lead).</summary>
+    public const string LeadDataset = "lead";
 
     /// <summary>
     /// Orden en que la extensión recorre los listados ("app:dataset"; el mismo dataset puede estar en dos
@@ -172,13 +179,33 @@ public class AudienceLeadService
                         && (onlyProducts == null || onlyProducts.Count == 0 || onlyProducts.Contains(b.ProductKey)));
         var skipSet = skip.ToHashSet();
         var items = new List<FinderItem>();
+
+        // Primero los leads del outbound con Instagram sin leer, los de mejor puntaje primero: de eso depende
+        // a quién le escribe la línea outbound ("vi que toman los turnos por whatsapp" verificado en su IG).
+        // Solo los traídos para el outbound; nunca se siguen (la cuenta de la extensión es de otra app).
+        var pending = await Outbound.OutboundService.InstagramPendingQuery(_db)
+            .Where(l => l.Tags.Contains(Outbound.OutboundService.ReservedTag)
+                     && (excludeProducts == null || !excludeProducts.Contains(l.ProductKey))
+                     && (onlyProducts == null || onlyProducts.Count == 0 || onlyProducts.Contains(l.ProductKey)))
+            .OrderByDescending(l => l.ProspectScore)
+            .Take(limit + skipSet.Count)
+            .Select(l => new { l.Id, l.ProductKey, l.Name, l.City, l.InstagramHandle, l.Website })
+            .ToListAsync(ct);
+        foreach (var l in pending)
+        {
+            var handle = Outbound.OutboundService.InstagramHandleOf(l.InstagramHandle, l.Website);
+            if (handle is null || skipSet.Contains($"{LeadDataset}|{l.Id}")) continue;
+            items.Add(new FinderItem(l.ProductKey, LeadDataset, l.Id.ToString(), l.Name, l.City, "AR", handle, null, IgOnly: true));
+        }
+        if (items.Count >= limit) return items.Take(limit).ToList();
+
         foreach (var batch in batches)
         {
             var rows = await _db.AudienceLeads
                 .Where(a => a.FinderBatchId == batch.Id && a.FinderStatus == null && (a.Phone == null || a.Instagram != null))
                 .OrderBy(a => a.Phone != null).ThenBy(a => a.Instagram == null).ThenBy(a => a.Name)
                 .Take(limit + skipSet.Count)
-                .Select(a => new FinderItem(a.ProductKey, a.Dataset, a.ExternalId, a.Name, a.City, a.Country, a.Instagram, a.Website))
+                .Select(a => new FinderItem(a.ProductKey, a.Dataset, a.ExternalId, a.Name, a.City, a.Country, a.Instagram, a.Website, false))
                 .ToListAsync(ct);
             items.AddRange(rows.Where(r => !skipSet.Contains($"{r.Dataset}|{r.ExternalId}")));
             if (items.Count >= limit) break;
@@ -334,11 +361,48 @@ public class AudienceLeadService
     /// Lo que manda la extensión. Un número ya cargado (del competidor u otra fuente) no se pisa: si el de
     /// Instagram/web es otro, queda como secundario.
     /// </summary>
+    /// <summary>
+    /// Resultado de la extensión para un lead del outbound: lo leído de su Instagram pasa por el mismo camino que
+    /// la carga manual (<see cref="Outbound.ProspectEnricher.ApplyInstagramAsync"/>) y recalcula el puntaje. Un
+    /// número que salió de un link de WhatsApp (o de la línea de la bio que dice WhatsApp) verifica el lead.
+    /// Bloqueo/login/reintento: no se marca como leído, vuelve a la cola.
+    /// </summary>
+    private async Task<bool> ApplyLeadResultAsync(FinderResult r, Dictionary<string, Outbound.ProspectEnricher.Batch> batches,
+        CancellationToken ct)
+    {
+        if (r.Status is "blocked" or "login" or "retry") return false;
+        if (!Guid.TryParse(r.ExternalId, out var id)) return false;
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (lead is null) return false;
+        if (!batches.TryGetValue(lead.ProductKey, out var batch))
+            batches[lead.ProductKey] = batch = await _prospects.LoadBatchAsync(lead.ProductKey, ct);
+
+        var links = new List<string>();
+        var waVerified = r.Source is "instagram_link" or "web_whatsapp" || (r.Source == "instagram_bio" && r.WaLine == true);
+        if (!string.IsNullOrWhiteSpace(r.Phone) && waVerified)
+            links.Add("wa:" + new string(r.Phone.Where(char.IsDigit).ToArray()));
+        links.AddRange(r.Links ?? new List<string>());
+        // Sin número pero la bio dice WhatsApp: toman turnos por WhatsApp (al número que ya tenemos).
+        var header = r.WaLine == true && string.IsNullOrWhiteSpace(r.Phone) ? "whatsapp" : null;
+
+        var profile = new Outbound.ProspectEnricher.InstagramProfile(lead.Id, r.Instagram ?? lead.InstagramHandle ?? "",
+            Found: r.Status != "not_found", header, links, r.Followers);
+        await _prospects.ApplyInstagramAsync(lead, profile, batch, ct);
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
     public async Task<int> ApplyFinderResultsAsync(IReadOnlyList<FinderResult> results, CancellationToken ct = default)
     {
         var n = 0;
+        var batches = new Dictionary<string, Outbound.ProspectEnricher.Batch>();
         foreach (var r in results)
         {
+            if (r.Dataset == LeadDataset)
+            {
+                if (await ApplyLeadResultAsync(r, batches, ct)) n++;
+                continue;
+            }
             var a = await _db.AudienceLeads.FirstOrDefaultAsync(x => x.Dataset == r.Dataset && x.ExternalId == r.ExternalId, ct);
             if (a is null) continue;
             AppendLog(a, r.Steps);
