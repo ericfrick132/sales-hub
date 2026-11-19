@@ -157,7 +157,7 @@ public static class ProspectScorer
         if (!string.IsNullOrWhiteSpace(lead.BookingPlatform))
             parts.Add(new Part("competencia", "Usa otro sistema", -20, 0, $"ya usa {lead.BookingPlatform}"));
         if (ctx.SameNameCount >= 3)
-            parts.Add(new Part("cadena", "Cadena", -10, 0, $"mismo nombre en {ctx.SameNameCount} leads"));
+            parts.Add(new Part("cadena", "Cadena", -10, 0, $"misma marca o cuenta de Instagram en {ctx.SameNameCount} leads"));
 
         var score = Math.Clamp(parts.Sum(p => p.Points), 0, 100);
         return new Result(score, rubro?.Key, zone?.Label, parts);

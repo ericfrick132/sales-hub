@@ -37,7 +37,11 @@ public partial class ProspectEnricher
     private static partial Regex FacebookRx();
 
     private static readonly HashSet<string> IgNoise = new(StringComparer.OrdinalIgnoreCase)
-        { "p", "explore", "reel", "reels", "stories", "accounts", "about", "legal", "developer", "direct", "tv" };
+        { "p", "explore", "reel", "reels", "stories", "accounts", "about", "legal", "developer", "direct", "tv", "whatsapp", "graphql", "instagram" };
+
+    /// <summary>Links de la bio que no tiene sentido abrir (redes, no dicen cómo toman turnos).</summary>
+    private static readonly string[] SocialHosts =
+        { "threads.net", "threads.com", "tiktok.com", "youtube.com", "youtu.be", "facebook.com", "fb.com", "twitter.com", "x.com/", "spotify.com", "instagram.com" };
 
     /// <summary>Lo que el puntaje necesita del resto de la base, cargado una vez por tanda.</summary>
     public sealed class Batch
@@ -46,6 +50,8 @@ public partial class ProspectEnricher
         public Dictionary<string, string> CompetitorBySuffix { get; init; } = new();
         /// <summary>Clave de cadena (ProspectScorer.ChainKey) → cuántos leads del producto la comparten.</summary>
         public Dictionary<string, int> ChainCounts { get; init; } = new();
+        /// <summary>Cuenta de Instagram → cuántos leads del producto la comparten (sucursales de una cadena).</summary>
+        public Dictionary<string, int> InstagramCounts { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task<Batch> LoadBatchAsync(string productKey, CancellationToken ct)
@@ -69,7 +75,15 @@ public partial class ProspectEnricher
             .GroupBy(k => k).Where(g => g.Count() >= 2)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        return new Batch { CompetitorBySuffix = competitor, ChainCounts = chains };
+        var handles = await _db.Leads.AsNoTracking()
+            .Where(l => l.ProductKey == productKey && l.InstagramHandle != null && l.InstagramHandle != "")
+            .Select(l => l.InstagramHandle!)
+            .ToListAsync(ct);
+        var igCounts = handles.GroupBy(h => h.Trim().TrimStart('@').ToLowerInvariant())
+            .Where(g => g.Count() >= 2)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+        return new Batch { CompetitorBySuffix = competitor, ChainCounts = chains, InstagramCounts = igCounts };
     }
 
     /// <summary>Lee la web, cruza con la competencia y recalcula. No guarda: lo persiste quien llama.</summary>
@@ -186,7 +200,8 @@ public partial class ProspectEnricher
         }
 
         // Linktree, web de Canva, wa.link...: se abre (gratis, HTTP plano) y se busca el WhatsApp adentro.
-        foreach (var link in links.Where(l => !l.StartsWith("wa:", StringComparison.Ordinal)))
+        foreach (var link in links.Where(l => !l.StartsWith("wa:", StringComparison.Ordinal)
+                     && !SocialHosts.Any(h => l.Contains(h, StringComparison.OrdinalIgnoreCase))))
         {
             if (wa is not null && platform is not null) break;
             var lower = link.ToLowerInvariant();
@@ -268,6 +283,9 @@ public partial class ProspectEnricher
             lead.PhoneOrigin = PhoneOriginFor(lead, null);
         var key = ProspectScorer.ChainKey(lead.Name);
         var same = key.Length > 0 && batch.ChainCounts.TryGetValue(key, out var c) ? c : 1;
+        // La misma cuenta de Instagram en varias sucursales también es cadena (Depilife, Definit, Umara...).
+        var ig = (lead.InstagramHandle ?? "").Trim().TrimStart('@');
+        if (ig.Length > 0 && batch.InstagramCounts.TryGetValue(ig, out var n) && n > same) same = n;
         var r = ProspectScorer.Score(lead, new ProspectScorer.Context(same));
         lead.ProspectScore = r.Score;
         lead.ProspectRubro = r.RubroKey;
