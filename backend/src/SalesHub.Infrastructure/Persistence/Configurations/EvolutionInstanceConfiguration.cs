@@ -30,9 +30,10 @@ public class EvolutionInstanceConfiguration : IEntityTypeConfiguration<Evolution
         b.Property(x => x.ProspectSkipWords)
             .HasColumnType("text[]")
             .HasDefaultValueSql("'{}'::text[]");
-        // Línea outbound (tope de contactos de por vida). Defaults para que entren en una tabla con filas.
+        // Línea outbound (tope de contactos nuevos por día). Defaults para que entren en una tabla con filas.
         b.Property(x => x.OutboundCap).HasDefaultValue(0);
         b.Property(x => x.OutboundMinScore).HasDefaultValue(50);
+        b.Property(x => x.OutboundRequireWhatsapp).HasDefaultValue(true);
         b.Property(x => x.OutboundRubros)
             .HasColumnType("text[]")
             .HasDefaultValueSql("'{}'::text[]");

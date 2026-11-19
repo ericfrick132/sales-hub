@@ -11,9 +11,9 @@ namespace SalesHub.Infrastructure.Services.Outbound;
 
 /// <summary>
 /// Línea OUTBOUND (pedido de Eric 19/11/2026): se escanea el QR de un teléfono y la línea le escribe sola a
-/// los mejores leads del CRM, uno por vez y espaciados, hasta un tope de contactos EN TOTAL Y PARA SIEMPRE
-/// (<see cref="EvolutionInstance.OutboundCap"/>, 10). Como son tan pocos, va a los de mayor
-/// <see cref="Lead.ProspectScore"/>.
+/// los mejores leads del CRM, uno por vez y espaciados, hasta un tope de contactos nuevos POR DÍA (día de
+/// Argentina, <see cref="EvolutionInstance.OutboundCap"/>, 10), todos los días. Como son pocos, va a los de
+/// mayor <see cref="Lead.ProspectScore"/>.
 ///
 /// El mensaje sigue un outreach real que cerró (PlayCrew, 15/11): UN solo mensaje que nombra al negocio, se
 /// presenta con nombre y marca, cuenta algo cierto de cómo trabajan ("vi que toman los turnos por WhatsApp"),
@@ -80,6 +80,9 @@ public class OutboundService
     public IQueryable<Lead> CandidatesFor(EvolutionInstance line)
     {
         var q = Eligible(line.ProductKey!).Where(l => l.ProspectScore >= line.OutboundMinScore);
+        // "vi que toman los turnos por whatsapp" tiene que ser verdad: solo los verificados (web o Instagram).
+        if (line.OutboundRequireWhatsapp)
+            q = q.Where(l => l.PhoneOrigin == "whatsapp-publicado" || l.PhoneOrigin == "whatsapp-instagram");
         if (line.OutboundRubros is { Count: > 0 })
         {
             var rubros = line.OutboundRubros;
@@ -94,12 +97,14 @@ public class OutboundService
 
     public async Task<LineState> StateAsync(EvolutionInstance line, CancellationToken ct)
     {
-        var used = await UsedAsync(line.InstanceName, ct);
+        var used = await UsedTodayAsync(line.InstanceName, ct);
         var cap = line.OutboundCap;
         LineState Wait(string why, DateTimeOffset? at = null) => new(false, why, at, used, cap);
 
         if (cap <= 0) return Wait("No es una línea outbound");
-        if (used >= cap) return Wait($"Ya mandó sus {cap}: tope de por vida alcanzado");
+        if (used >= cap)
+            return Wait($"Ya mandó sus {cap} de hoy",
+                NextWindowStart(LeadEntryService.ArDayStartUtc(LeadEntryService.TodayAr().AddDays(1))));
         if (line.OutboundPausedAt is not null) return Wait("En pausa");
         if (line.ListenOnly) return Wait("Está en solo escucha: destildalo para que pueda mandar");
         if (string.IsNullOrWhiteSpace(line.ProductKey)) return Wait("La línea no tiene app");
@@ -128,7 +133,15 @@ public class OutboundService
         return new LineState(true, "Lista para mandar", now, used, cap);
     }
 
-    public Task<int> UsedAsync(string instanceName, CancellationToken ct) =>
+    /// <summary>Contactos nuevos que abrió la línea HOY (día de Argentina): es lo que cuenta para el tope.</summary>
+    public Task<int> UsedTodayAsync(string instanceName, CancellationToken ct)
+    {
+        var dayStart = LeadEntryService.ArDayStartUtc(LeadEntryService.TodayAr());
+        return _db.OutboundContacts.CountAsync(c => c.InstanceName == instanceName && c.CreatedAt >= dayStart, ct);
+    }
+
+    /// <summary>Todos los contactos que abrió la línea desde siempre (para mostrar).</summary>
+    public Task<int> TotalAsync(string instanceName, CancellationToken ct) =>
         _db.OutboundContacts.CountAsync(c => c.InstanceName == instanceName, ct);
 
     /// <summary>
@@ -239,7 +252,7 @@ public class OutboundService
         var handoffId = await HandoffSellerAsync(product.ProductKey, ct);
         var text = CopyStyle.Clean(Render(lead, product, line, await SenderNameAsync(line, ct) ?? ""));
 
-        // 1) Reservar el lugar ANTES de mandar: si algo se cae en el medio, el tope no se pasa nunca.
+        // 1) Reservar el lugar ANTES de mandar: si algo se cae en el medio, el tope del día no se pasa nunca.
         var contact = new OutboundContact
         {
             InstanceName = line.InstanceName,
@@ -302,10 +315,6 @@ public class OutboundService
             msg.Status = MessageDeliveryStatus.Failed;
         }
         await _db.SaveChangesAsync(ct);
-
-        var used = await UsedAsync(line.InstanceName, ct);
-        if (used >= line.OutboundCap)
-            await _alerter.AlertAsync($"outbound: la linea {line.Label ?? line.InstanceName} ya mando sus {line.OutboundCap} mensajes de por vida. Para seguir, agrega otro telefono en Leads > Linea outbound.", ct);
     }
 
     // ── Mensaje ────────────────────────────────────────────────────────────────────────

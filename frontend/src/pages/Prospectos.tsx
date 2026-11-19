@@ -7,7 +7,7 @@ import Switch from '../components/Switch';
 import QrConnectModal from '../components/QrConnectModal';
 
 // Menú Leads (Eric 19/11/2026): ranking de prospectos con puntaje, búsqueda en Places por rubro × zona y
-// la línea outbound, que le escribe sola a los mejores con un tope de contactos de por vida.
+// la línea outbound, que le escribe sola a los mejores con un tope de contactos nuevos por día.
 
 type Rubro = { key: string; label: string; searchTerms: string[] };
 type Zone = { key: string; label: string };
@@ -21,8 +21,9 @@ type Contact = {
 
 type Line = {
   id: string; instanceName: string; label: string; phone: string | null; status: string; listenOnly: boolean;
-  productKey: string | null; cap: number; used: number; minScore: number; rubros: string[];
+  productKey: string | null; cap: number; used: number; total: number; minScore: number; rubros: string[];
   senderName: string | null; senderNameEffective: string | null; template: string | null; paused: boolean;
+  requireWhatsapp: boolean;
   canSend: boolean; reason: string; nextAt: string | null; eligible: number; contacts: Contact[];
 };
 
@@ -38,6 +39,7 @@ type Row = {
   leadId: string; name: string; rubro: string | null; city: string | null; address: string | null;
   rating: number | null; reviews: number | null; website: string | null; instagram: string | null;
   phone: string | null; phoneOrigin: string | null; bookingPlatform: string | null; score: number | null;
+  instagramFollowers: number | null; instagramBioLink: string | null; instagramCheckedAt: string | null;
   detail: Detail | null; status: string; excluded: boolean; reserved: boolean; eligible: boolean;
   blocked: string | null; mapsUrl: string | null; createdAt: string;
 };
@@ -45,7 +47,7 @@ type Row = {
 type Ranking = {
   rows: Row[];
   counts: {
-    eligible: number; eligibleOver50: number; reserved: number; pendingEnrich: number;
+    eligible: number; eligibleOver50: number; reserved: number; pendingEnrich: number; verified: number; igPending: number;
     byRubro: { rubro: string | null; count: number; over50: number }[];
   };
 };
@@ -54,7 +56,8 @@ const ar = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 
 const ORIGIN: Record<string, string> = {
-  'whatsapp-publicado': 'WhatsApp publicado',
+  'whatsapp-publicado': 'WhatsApp (en su web)',
+  'whatsapp-instagram': 'WhatsApp (en su Instagram)',
   'maps-celular': 'celular (Maps)',
   'maps-fijo': 'fijo (Maps)',
   instagram: 'del Instagram',
@@ -144,7 +147,9 @@ export function RankingProspectos() {
 
       {c && (
         <div className="text-sm text-slate-600">
-          <b>{c.eligible}</b> contactables · <b>{c.eligibleOver50}</b> con 50 o más · {c.reserved} traídos para el outbound
+          <b>{c.eligible}</b> contactables · <b>{c.verified}</b> con WhatsApp verificado (a esos les escribe la línea) ·{' '}
+          {c.eligibleOver50} con 50 o más · {c.reserved} traídos para el outbound
+          {c.igPending > 0 && <> · {c.igPending} Instagram sin leer</>}
           {c.pendingEnrich > 0 && <> · {c.pendingEnrich} todavía sin nutrir (se lee su web de a 20 por minuto)</>}
         </div>
       )}
@@ -181,10 +186,13 @@ export function RankingProspectos() {
                   <td className="px-3 py-2 whitespace-nowrap">
                     {r.rating != null ? <>★ {r.rating.toFixed(1)}</> : '—'} <span className="text-slate-400">({r.reviews ?? 0})</span>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-xs">{r.phoneOrigin ? ORIGIN[r.phoneOrigin] ?? r.phoneOrigin : '—'}</td>
+                  <td className={`px-3 py-2 whitespace-nowrap text-xs ${r.phoneOrigin?.startsWith('whatsapp-') ? 'text-emerald-700 font-medium' : ''}`}>
+                    {r.phoneOrigin ? ORIGIN[r.phoneOrigin] ?? r.phoneOrigin : '—'}
+                  </td>
                   <td className="px-3 py-2 text-xs">
                     {r.website && <a href={r.website} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline" onClick={(e) => e.stopPropagation()}>web</a>}
                     {r.instagram && <> {r.website && '· '}<a href={`https://instagram.com/${r.instagram}`} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline" onClick={(e) => e.stopPropagation()}>@{r.instagram}</a></>}
+                    {r.instagramCheckedAt && <div className="text-slate-400">IG leído{r.instagramFollowers != null && <> · {r.instagramFollowers.toLocaleString('es-AR')} seg.</>}</div>}
                     {r.bookingPlatform && <div className="text-rose-600">usa {r.bookingPlatform}</div>}
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
@@ -211,6 +219,7 @@ export function RankingProspectos() {
                       </div>
                       <div className="mt-2 text-xs text-slate-500">
                         {r.address} {r.mapsUrl && <> · <a href={r.mapsUrl} target="_blank" rel="noreferrer" className="text-sky-700 underline">ver en Maps</a></>}
+                        {r.instagramBioLink && <> · link de la bio: {r.instagramBioLink}</>}
                         {r.phone && <> · {r.phone}</>}
                       </div>
                     </td>
@@ -365,6 +374,7 @@ export function LineaOutbound() {
       })).data;
       const saved = (await api.put<Line>(`/outbound/lines/${line.id}`, {
         cap: 10, minScore: 50, rubros: info.data?.rubros.map((r) => r.key) ?? [], senderName: form.senderName.trim(), template: null, paused: false,
+        requireWhatsapp: true,
       })).data;
       qc.invalidateQueries({ queryKey: ['outbound'] });
       setForm({ ...form, label: '', senderName: '' });
@@ -384,8 +394,8 @@ export function LineaOutbound() {
         <h1 className="text-xl md:text-2xl font-bold">Línea outbound</h1>
         <p className="text-sm text-slate-500 mt-1">
           Escaneás el QR y la línea le escribe sola a los mejores del ranking, de a uno: lunes a viernes de 10 a 19 y
-          sábados de 10 a 13, unos 30 minutos entre uno y otro. Tiene un <b>tope de por vida</b>: con 10 manda 10 y no
-          manda más, aunque la desvincules. Antes de cada envío verifica que el número tenga WhatsApp. Cuando contestan,
+          sábados de 10 a 13, unos 30 minutos entre uno y otro. Tiene un <b>tope por día</b>: con 10 abre 10 charlas
+          nuevas por día, todos los días. Antes de cada envío verifica que el número tenga WhatsApp. Cuando contestan,
           el bot no se mete: le llega el pase a la persona de la app (con copia al maestro) y sigue ella. Al que no
           contesta no se le insiste.
         </p>
@@ -412,7 +422,7 @@ export function LineaOutbound() {
           </label>
         </div>
         <button className="btn-primary" disabled={creating} onClick={create}>{creating ? 'Creando…' : 'Crear y mostrar QR'}</button>
-        <div className="text-xs text-slate-500">Arranca con tope 10, puntaje mínimo 50 y los 6 rubros. Se cambia después.</div>
+        <div className="text-xs text-slate-500">Arranca con 10 por día, puntaje mínimo 50, los 6 rubros y solo WhatsApp verificado. Se cambia después.</div>
       </section>
 
       {qrFor && (
@@ -431,11 +441,11 @@ function LineCard({ line, info, onQr }: { line: Line; info: Info; onQr: () => vo
   const qc = useQueryClient();
   const initial = () => ({
     cap: line.cap, minScore: line.minScore, rubros: line.rubros, senderName: line.senderName ?? '',
-    template: line.template ?? info.defaultTemplate, paused: line.paused,
+    template: line.template ?? info.defaultTemplate, paused: line.paused, requireWhatsapp: line.requireWhatsapp,
   });
   const [form, setForm] = useState(initial);
   const [preview, setPreview] = useState<{ leadId: string; name: string; score: number; message: string }[] | null>(null);
-  useEffect(() => { setForm(initial()); }, [line.id, line.cap, line.minScore, line.senderName, line.template, line.paused, line.rubros.join(',')]);
+  useEffect(() => { setForm(initial()); }, [line.id, line.cap, line.minScore, line.senderName, line.template, line.paused, line.requireWhatsapp, line.rubros.join(',')]);
 
   const save = useMutation({
     mutationFn: async (f: typeof form) => (await api.put<Line>(`/outbound/lines/${line.id}`, f)).data,
@@ -474,13 +484,13 @@ function LineCard({ line, info, onQr }: { line: Line; info: Info; onQr: () => vo
         <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
           <div className="h-full bg-slate-800" style={{ width: `${(100 * line.used) / Math.max(1, line.cap)}%` }} />
         </div>
-        <div className="mt-1 text-xs text-slate-500">{line.used} de {line.cap} contactos de por vida</div>
+        <div className="mt-1 text-xs text-slate-500">{line.used} de {line.cap} contactos hoy · {line.total} en total</div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="space-y-1">
-          <div className="text-slate-600">Tope de por vida</div>
-          <input type="number" min={line.used} max={50} className="input w-full" value={form.cap} onChange={(e) => setForm({ ...form, cap: Number(e.target.value) })} />
+          <div className="text-slate-600">Contactos nuevos por día</div>
+          <input type="number" min={0} max={50} className="input w-full" value={form.cap} onChange={(e) => setForm({ ...form, cap: Number(e.target.value) })} />
         </label>
         <label className="space-y-1">
           <div className="text-slate-600">Puntaje mínimo</div>
@@ -503,6 +513,11 @@ function LineCard({ line, info, onQr }: { line: Line; info: Info; onQr: () => vo
           ))}
         </div>
       </div>
+
+      <label className="flex items-center gap-2 text-slate-600">
+        <Switch on={form.requireWhatsapp} onClick={() => setForm({ ...form, requireWhatsapp: !form.requireWhatsapp })} />
+        Solo a los que tienen verificado que toman turnos por WhatsApp (wa.me en su web o su Instagram)
+      </label>
 
       <label className="block space-y-1">
         <div className="text-slate-600">Mensaje</div>

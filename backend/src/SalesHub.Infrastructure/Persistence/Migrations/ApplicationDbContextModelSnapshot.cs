@@ -1509,6 +1509,12 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("outbound_paused_at");
 
+                    b.Property<bool>("OutboundRequireWhatsapp")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("outbound_require_whatsapp");
+
                     b.Property<List<string>>("OutboundRubros")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -2775,6 +2781,19 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("IgDmSentAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ig_dm_sent_at");
+
+                    b.Property<string>("InstagramBioLink")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("instagram_bio_link");
+
+                    b.Property<DateTimeOffset?>("InstagramCheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("instagram_checked_at");
+
+                    b.Property<int?>("InstagramFollowers")
+                        .HasColumnType("integer")
+                        .HasColumnName("instagram_followers");
 
                     b.Property<string>("InstagramHandle")
                         .HasMaxLength(128)

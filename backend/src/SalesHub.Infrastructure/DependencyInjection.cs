@@ -151,7 +151,7 @@ public static class DependencyInjection
         services.AddScoped<RemarketingService>();
         services.AddScoped<VideoCampaignService>();
         services.AddScoped<PersonHandoffService>();
-        // Línea outbound: puntaje de prospecto, búsqueda por rubro × zona y envío con tope de por vida.
+        // Línea outbound: puntaje de prospecto, búsqueda por rubro × zona y envío con tope de contactos nuevos por día.
         services.AddHttpClient<Services.Outbound.ProspectEnricher>();
         services.AddScoped<Services.Outbound.ProspectService>();
         services.AddScoped<Services.Outbound.OutboundService>();

@@ -5,7 +5,7 @@ namespace SalesHub.Workers;
 /// <summary>
 /// Línea outbound (Leads → Línea outbound): cada minuto nutre una tanda de leads (lee su web, los cruza con la
 /// competencia y recalcula el puntaje de prospecto) y deja que cada línea outbound lista mande a lo sumo un
-/// contacto nuevo al mejor lead. El tope de por vida, la ventana horaria y el espaciado los aplica
+/// contacto nuevo al mejor lead. El tope diario, la ventana horaria y el espaciado los aplica
 /// <see cref="OutboundService"/>.
 /// </summary>
 public class OutboundWorker : BackgroundService

@@ -81,7 +81,7 @@ export function CrmHub() {
 
 /**
  * Leads (Eric 19/11/2026): armar la lista y contactar a los mejores. Ranking de prospectos con puntaje,
- * búsqueda en Places por rubro × zona y la línea outbound (tope de contactos de por vida).
+ * búsqueda en Places por rubro × zona y la línea outbound (tope de contactos nuevos por día).
  */
 export function LeadsHub() {
   return (

@@ -7,7 +7,7 @@ namespace SalesHub.Infrastructure.Services.Outbound;
 
 /// <summary>
 /// Puntaje de PROSPECTO (0-100): qué tan buen cliente de TurnosPro es o puede llegar a ser un negocio,
-/// ANTES de hablarle. Existe para la línea outbound, que tiene muy pocos envíos de por vida (10): hay que
+/// ANTES de hablarle. Existe para la línea outbound, que tiene pocos envíos por día (10): hay que
 /// gastarlos en los mejores. Es una función pura sobre los datos del lead (lo que trae Google Maps + lo que
 /// se le sacó de la web); el enriquecimiento lo hace <see cref="ProspectEnricher"/>.
 ///
@@ -121,7 +121,8 @@ public static class ProspectScorer
         var (waPts, waWhy) = lead.PhoneOrigin switch
         {
             _ when string.IsNullOrWhiteSpace(lead.WhatsappPhone) => (0, "sin teléfono"),
-            "whatsapp-publicado" => (20, "lo publica como WhatsApp (link wa.me)"),
+            "whatsapp-publicado" => (20, "lo publica como WhatsApp en su web (wa.me)"),
+            "whatsapp-instagram" => (20, "toma turnos por WhatsApp según su Instagram"),
             "maps-celular" => (14, "celular de Google Maps"),
             "instagram" => (12, "número del Instagram"),
             "web" => (8, "número de su web"),
@@ -137,7 +138,13 @@ public static class ProspectScorer
         var why = new List<string>();
         if (kind == "propia") { digital += 7; why.Add("web propia"); }
         else if (kind == "link-en-bio") { digital += 3; why.Add("link en bio"); }
-        if (!string.IsNullOrWhiteSpace(lead.InstagramHandle) || kind == "instagram") { digital += 5; why.Add("Instagram"); }
+        if (!string.IsNullOrWhiteSpace(lead.InstagramHandle) || kind == "instagram")
+        {
+            digital += 5;
+            var f = lead.InstagramFollowers;
+            if (f is >= 1000) { digital += 3; why.Add($"Instagram ({Followers(f.Value)} seguidores)"); }
+            else why.Add(f is null ? "Instagram" : $"Instagram ({f} seguidores)");
+        }
         if (!string.IsNullOrWhiteSpace(lead.FacebookUrl) || kind == "facebook") { digital += 3; why.Add("Facebook"); }
         digital = Math.Min(15, digital);
         parts.Add(new Part("digital", "Presencia web", digital, 15, why.Count == 0 ? "nada" : string.Join(", ", why)));
@@ -155,6 +162,13 @@ public static class ProspectScorer
         var score = Math.Clamp(parts.Sum(p => p.Points), 0, 100);
         return new Result(score, rubro?.Key, zone?.Label, parts);
     }
+
+    private static string Followers(int n) => n >= 1000
+        ? (n / 1000.0).ToString(n >= 10_000 ? "0" : "0.#", CultureInfo.InvariantCulture) + "k"
+        : n.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Los orígenes donde "toman turnos por WhatsApp" está verificado.</summary>
+    public static readonly string[] VerifiedWhatsappOrigins = { "whatsapp-publicado", "whatsapp-instagram" };
 
     public static string DetailJson(Result r) => JsonSerializer.Serialize(new
     {

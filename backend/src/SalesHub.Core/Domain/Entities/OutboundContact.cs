@@ -1,7 +1,7 @@
 namespace SalesHub.Core.Domain.Entities;
 
 /// <summary>
-/// Un contacto nuevo que abrió una línea outbound. Es el CONTADOR del tope de por vida de la línea
+/// Un contacto nuevo que abrió una línea outbound. Es el CONTADOR del tope diario de la línea
 /// (<see cref="EvolutionInstance.OutboundCap"/>) y el registro de a quién se le escribió, con qué
 /// puntaje y qué contestó. La fila se crea ANTES de mandar (Reserved): si el proceso se cae en el
 /// medio, el lugar queda gastado y nunca se pasa del tope.

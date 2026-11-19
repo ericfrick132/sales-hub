@@ -90,9 +90,8 @@ public class EvolutionInstance
 
     /// <summary>
     /// Línea OUTBOUND: apenas se escanea el QR le escribe sola a los mejores leads del CRM (por
-    /// <see cref="Lead.ProspectScore"/>), hasta este tope de CONTACTOS EN TOTAL Y PARA SIEMPRE (no por
-    /// día). 0 = no es outbound. El contador es la tabla outbound_contacts: desvincular o volver a
-    /// escanear no lo resetea; para mandar más se agrega otro teléfono.
+    /// <see cref="Lead.ProspectScore"/>), hasta este tope de CONTACTOS NUEVOS POR DÍA (día de Argentina),
+    /// todos los días. 0 = no es outbound. El contador son las filas de outbound_contacts del día.
     /// </summary>
     public int OutboundCap { get; set; }
 
@@ -110,6 +109,12 @@ public class EvolutionInstance
 
     /// <summary>Outbound en pausa (no manda nada nuevo hasta que se reanude).</summary>
     public DateTimeOffset? OutboundPausedAt { get; set; }
+
+    /// <summary>
+    /// Solo le escribe a los que tienen VERIFICADO que toman turnos por WhatsApp (wa.me en su web o su
+    /// Instagram, o la bio lo dice). Así "vi que toman los turnos por whatsapp" del mensaje es siempre cierto.
+    /// </summary>
+    public bool OutboundRequireWhatsapp { get; set; } = true;
 
     public InstanceStatus Status { get; set; } = InstanceStatus.Disconnected;
     public DateTimeOffset? LastStatusCheckAt { get; set; }

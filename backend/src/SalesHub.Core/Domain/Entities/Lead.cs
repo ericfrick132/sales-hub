@@ -83,7 +83,7 @@ public class Lead
     /// Puntaje de PROSPECTO (0-100): qué tan buen cliente es o puede llegar a ser el negocio, antes de
     /// hablarle — zona, reseñas de Google Maps, web/Instagram, de dónde salió el número, rubro y si ya
     /// usa un sistema de la competencia. Lo calcula <c>ProspectScorer</c>; con pocos envíos (línea
-    /// outbound con tope de por vida) se le escribe solo a los de arriba. null = todavía no se calculó.
+    /// outbound con tope diario) se le escribe solo a los de arriba. null = todavía no se calculó.
     /// </summary>
     public int? ProspectScore { get; set; }
 
@@ -104,11 +104,19 @@ public class Lead
     public string? BookingPlatform { get; set; }
 
     /// <summary>
-    /// De dónde salió el número: "whatsapp-publicado" (lo publica como WhatsApp: link wa.me en su web o
-    /// su Instagram), "maps-celular", "maps-fijo", "web", "instagram". Es lo que dice si "vi que toman los
-    /// turnos por WhatsApp" es verdad.
+    /// De dónde salió el número: "whatsapp-publicado" (link wa.me en su web), "whatsapp-instagram" (wa.me
+    /// en la bio o los links de su Instagram, o la bio dice que los turnos son por WhatsApp), "maps-celular",
+    /// "maps-fijo", "web", "instagram". Los dos "whatsapp-*" son los únicos donde "vi que toman los turnos
+    /// por WhatsApp" está verificado.
     /// </summary>
     public string? PhoneOrigin { get; set; }
+
+    /// <summary>Cuándo se leyó su perfil de Instagram (con la sesión del Chrome de Eric). null = nunca.</summary>
+    public DateTimeOffset? InstagramCheckedAt { get; set; }
+    public int? InstagramFollowers { get; set; }
+
+    /// <summary>El link de la bio de Instagram (wa.me, Linktree, AgendaPro...), para mostrar y auditar.</summary>
+    public string? InstagramBioLink { get; set; }
 
     public Guid? SellerId { get; set; }
     public Seller? Seller { get; set; }

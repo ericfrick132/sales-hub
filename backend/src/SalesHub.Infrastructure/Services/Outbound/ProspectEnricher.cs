@@ -123,7 +123,9 @@ public partial class ProspectEnricher
             lead.WhatsappPhone = _phone.NormalizeBusiness(waFromWeb, "54");
         }
 
-        lead.PhoneOrigin = PhoneOriginFor(lead, waFromWeb);
+        // Lo verificado en Instagram no lo pisa la web (salvo que la web también publique el WhatsApp).
+        var fromWeb = PhoneOriginFor(lead, waFromWeb);
+        if (lead.PhoneOrigin != "whatsapp-instagram" || fromWeb == "whatsapp-publicado") lead.PhoneOrigin = fromWeb;
 
         // Cruce con los listados de la competencia (si aparece ahí, reserva con ese sistema).
         var suffix = Suffix(lead.WhatsappPhone);
@@ -133,6 +135,130 @@ public partial class ProspectEnricher
 
         lead.ProspectEnrichedAt = DateTimeOffset.UtcNow;
         Rescore(lead, batch);
+    }
+
+    /// <summary>
+    /// Lo que se leyó del perfil de Instagram del negocio (con la sesión del Chrome de Eric, desde Claude in
+    /// Chrome): el texto de la cabecera (bio incluida), los links de la bio ya decodificados ("wa:549..."
+    /// para los de WhatsApp) y los seguidores.
+    /// </summary>
+    public sealed record InstagramProfile(Guid LeadId, string Handle, bool Found, string? Header,
+        List<string>? Links, int? Followers);
+
+    [GeneratedRegex(@"\b(whats?app|whatsap|wh?sp|wpp|wapp|wa)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex MentionsWhatsappRx();
+
+    [GeneratedRegex(@"(\+?\d[\d\s\-\.\(\)]{7,}\d)")]
+    private static partial Regex LoosePhoneRx();
+
+    private static readonly string[] LinkHubs =
+        { "linktr.ee", "linktree", "beacons.ai", "taplink", "bio.link", "linkin.bio", "lnk.bio", "campsite.bio", "canva.site", "my.canva", "wa.link", "bit.ly", "msha.ke", "carrd.co", "solo.to" };
+
+    /// <summary>
+    /// Aplica el perfil de Instagram: si el link de la bio (o lo que hay detrás de un Linktree/Canva/wa.link)
+    /// es un WhatsApp, ese es el número donde toman turnos → "whatsapp-instagram" (verificado). Si la bio dice
+    /// WhatsApp con un número, también. Si el link es AgendaPro/Fresha/etc., usa la competencia. Recalcula.
+    /// No guarda: lo persiste quien llama.
+    /// </summary>
+    public async Task ApplyInstagramAsync(Lead lead, InstagramProfile p, Batch batch, CancellationToken ct)
+    {
+        lead.InstagramCheckedAt = DateTimeOffset.UtcNow;
+        lead.UpdatedAt = DateTimeOffset.UtcNow;
+        if (!p.Found)
+        {
+            Rescore(lead, batch);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(lead.InstagramHandle)) lead.InstagramHandle = p.Handle.Trim().TrimStart('@');
+        if (p.Followers is not null) lead.InstagramFollowers = p.Followers;
+
+        var links = (p.Links ?? new()).Select(l => (l ?? "").Trim()).Where(l => l.Length > 0).Distinct().ToList();
+        if (links.Count > 0) lead.InstagramBioLink = links[0].Length > 512 ? links[0][..512] : links[0];
+
+        string? wa = null;
+        string? platform = null;
+        foreach (var link in links)
+        {
+            if (link.StartsWith("wa:", StringComparison.Ordinal)) { wa ??= link[3..]; continue; }
+            platform ??= ProspectScorer.BookingPlatformIn(link);
+            var m = WaLinkRx().Match(link);
+            if (m.Success) wa ??= m.Groups[1].Value;
+        }
+
+        // Linktree, web de Canva, wa.link...: se abre (gratis, HTTP plano) y se busca el WhatsApp adentro.
+        foreach (var link in links.Where(l => !l.StartsWith("wa:", StringComparison.Ordinal)))
+        {
+            if (wa is not null && platform is not null) break;
+            var lower = link.ToLowerInvariant();
+            if (!LinkHubs.Any(lower.Contains) && ProspectScorer.WebsiteKind(link) != "propia") continue;
+            if (!Uri.TryCreate(link.StartsWith("http") ? link : "https://" + link, UriKind.Absolute, out var url)) continue;
+            var (finalUrl, html) = await FetchWithUrlAsync(url, ct);
+            var hay = $"{finalUrl} {html}";
+            platform ??= ProspectScorer.BookingPlatformIn(hay);
+            var m = WaLinkRx().Match(hay);
+            if (m.Success) wa ??= m.Groups[1].Value;
+        }
+
+        var header = p.Header ?? "";
+        platform ??= ProspectScorer.BookingPlatformIn(header);
+        var saysWhatsapp = MentionsWhatsappRx().IsMatch(header);
+        if (wa is null && saysWhatsapp)
+        {
+            // "Turnos por WhatsApp 11 2345-6789": el número de la bio.
+            var phone = LoosePhoneRx().Matches(header).Select(x => x.Value)
+                .FirstOrDefault(x => x.Count(char.IsDigit) is >= 10 and <= 13);
+            if (phone is not null) wa = phone;
+        }
+
+        if (wa is not null)
+        {
+            var norm = _phone.NormalizeBusiness(wa, "54");
+            if (!string.IsNullOrWhiteSpace(norm))
+            {
+                lead.InstagramPhone = norm;
+                if (Suffix(norm) != Suffix(lead.WhatsappPhone))
+                {
+                    // Se le escribe al número que publican para WhatsApp (salvo que ya sea de otro lead de la app).
+                    var taken = await _db.Leads.AnyAsync(l => l.ProductKey == lead.ProductKey && l.WhatsappPhone == norm && l.Id != lead.Id, ct);
+                    if (!taken)
+                    {
+                        lead.RawPhone ??= wa;
+                        lead.WhatsappPhone = norm;
+                        lead.WhatsappValidated = false;
+                        lead.WhatsappJid = null;
+                    }
+                }
+                if (Suffix(norm) == Suffix(lead.WhatsappPhone) && lead.PhoneOrigin != "whatsapp-publicado")
+                    lead.PhoneOrigin = "whatsapp-instagram";
+            }
+        }
+        else if (saysWhatsapp && !string.IsNullOrWhiteSpace(lead.WhatsappPhone) && lead.PhoneOrigin != "whatsapp-publicado")
+        {
+            // La bio dice WhatsApp pero sin número: toman turnos por WhatsApp, al número de Maps.
+            lead.PhoneOrigin = "whatsapp-instagram";
+        }
+
+        if (platform is not null) lead.BookingPlatform ??= platform;
+        Rescore(lead, batch);
+    }
+
+    private async Task<(string FinalUrl, string Html)> FetchWithUrlAsync(Uri url, CancellationToken ct)
+    {
+        try
+        {
+            using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            var final = resp.RequestMessage?.RequestUri?.ToString() ?? url.ToString();
+            if (!resp.IsSuccessStatusCode) return (final, "");
+            var type = resp.Content.Headers.ContentType?.MediaType ?? "";
+            if (type.Length > 0 && !type.Contains("html", StringComparison.OrdinalIgnoreCase)) return (final, "");
+            var html = await resp.Content.ReadAsStringAsync(ct);
+            return (final, html.Length > 600_000 ? html[..600_000] : html);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _log.LogDebug(ex, "Prospecto: no pude abrir el link de la bio {Url}", url);
+            return (url.ToString(), "");
+        }
     }
 
     /// <summary>Recalcula el puntaje con lo que el lead ya tiene (sin leer la web).</summary>

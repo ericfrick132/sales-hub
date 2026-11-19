@@ -38,6 +38,7 @@ public class LeadConfiguration : IEntityTypeConfiguration<Lead>
         b.Property(x => x.BookingPlatform).HasMaxLength(64);
         b.Property(x => x.ProspectRubro).HasMaxLength(24);
         b.Property(x => x.PhoneOrigin).HasMaxLength(32);
+        b.Property(x => x.InstagramBioLink).HasMaxLength(512);
         b.HasIndex(x => new { x.ProductKey, x.ProspectScore }).HasFilter("prospect_score IS NOT NULL");
         b.Property(x => x.RenderedMessage).HasColumnType("text");
         b.Property(x => x.WhatsappLink).HasColumnType("text");
