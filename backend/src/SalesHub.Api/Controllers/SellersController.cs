@@ -307,6 +307,10 @@ public class SellersController : ControllerBase
         if (seller?.EvolutionInstance is null) return NotFound();
         await _evo.LogoutInstanceAsync(seller.EvolutionInstance.InstanceName, ct);
         seller.EvolutionInstance.Status = InstanceStatus.Disconnected;
+        // Cierre a propósito: el vigilante de reconexión no la tiene que revivir.
+        seller.EvolutionInstance.LastSeenOpenAt = null;
+        seller.EvolutionInstance.NeedsQrSince = null;
+        seller.EvolutionInstance.DownAlertedAt = null;
         // Si la línea sigue saliendo por un celu (bridge), desconectar el QR legacy
         // no debe pausar el envío del vendedor.
         var hasDevice = await _db.Devices.AnyAsync(d => d.SellerId == id, ct);

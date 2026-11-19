@@ -93,6 +93,25 @@ public class EvolutionInstance
     public DateTimeOffset? ConnectedAt { get; set; }
     public DateTimeOffset? DisconnectedAt { get; set; }
 
+    /// <summary>
+    /// Última vez que el monitor vio la línea conectada EN VIVO (connectionState = open). Es lo que
+    /// habilita al vigilante a reconectarla sola: solo se reintenta una línea que estuvo viva hace
+    /// poco, nunca una vieja o abandonada. null al cerrar sesión a propósito desde sales.
+    /// </summary>
+    public DateTimeOffset? LastSeenOpenAt { get; set; }
+
+    /// <summary>Último <c>instance/connect</c> que mandó el vigilante (para espaciar los reintentos).</summary>
+    public DateTimeOffset? LastReconnectAttemptAt { get; set; }
+
+    /// <summary>
+    /// El vigilante intentó reconectar y Evolution devolvió un QR: WhatsApp desvinculó el
+    /// dispositivo y hace falta escanear de nuevo. Mientras esté seteado no se reintenta.
+    /// </summary>
+    public DateTimeOffset? NeedsQrSince { get; set; }
+
+    /// <summary>Ya se avisó al maestro que esta línea está caída (una vez por caída; se limpia al volver).</summary>
+    public DateTimeOffset? DownAlertedAt { get; set; }
+
     public string? LastQrCodeBase64 { get; set; }
     public DateTimeOffset? QrCodeGeneratedAt { get; set; }
 

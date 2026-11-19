@@ -335,6 +335,10 @@ public class PhoneLinesController : ControllerBase
         line.Status = InstanceStatus.Disconnected;
         line.DisconnectedAt = DateTimeOffset.UtcNow;
         line.ConnectedAt = null;
+        // Cierre a propósito: el vigilante de reconexión no la tiene que revivir.
+        line.LastSeenOpenAt = null;
+        line.NeedsQrSince = null;
+        line.DownAlertedAt = null;
         // Si después se escanea otro celu, su historial se carga de nuevo.
         line.HistoryImportPasses = 0;
         line.HistoryImportTotalChats = 0;

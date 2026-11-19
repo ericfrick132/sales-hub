@@ -1072,6 +1072,11 @@ public class ConversationService
         rawJson is not null && (rawJson.Contains("\"audioMessage\"")
             || (InstagramMessengerClient.AccountFromLine(instance) is not null && rawJson.Contains("\"audio\"")));
 
+    private static string LineName(EvolutionInstance line) =>
+        !string.IsNullOrWhiteSpace(line.Label) ? line.Label.Trim()
+        : !string.IsNullOrWhiteSpace(line.ConnectedPhoneNumber) ? "+" + line.ConnectedPhoneNumber
+        : line.InstanceName;
+
     private async Task<ConversationMessage?> SendOutboundAsync(Guid leadId, string text,
         Func<string, string, Task<bool>> send, CancellationToken ct, string? viaInstance = null)
     {
@@ -1080,15 +1085,13 @@ public class ConversationService
             .FirstOrDefaultAsync(l => l.Id == leadId, ct);
         if (lead is null) return null;
         if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return null;
-        if (lead.Seller is null)
-            throw new InvalidOperationException("El lead no tiene línea asignada: asignale un vendedor para poder contestarle.");
-
-        var seller = lead.Seller!;
 
         // Responder por la línea donde VIVE la conversación: si el último mensaje entró por
         // una línea de APP (ej. app_playcrew), contestar por la del seller sería escribirle
         // desde otro número. Si esa línea de app está conectada, se usa; si no, cae a la
-        // del seller como siempre.
+        // del seller como siempre. Un lead SIN vendedor (entró por una línea de app) se
+        // contesta igual por esa línea: antes se cortaba con "asignale un vendedor" aunque
+        // la charla tuviera su línea (19/11/2026, chat de PlayCrew).
         string? sendInstanceName = viaInstance;
         var lastInstanceName = sendInstanceName is not null ? null : await _db.ConversationMessages
             .Where(m => m.LeadId == lead.Id && m.EvolutionInstance != null)
@@ -1098,15 +1101,21 @@ public class ConversationService
         if (lastInstanceName is not null)
         {
             var appLine = await _db.EvolutionInstances.AsNoTracking()
-                .FirstOrDefaultAsync(i => i.InstanceName == lastInstanceName
-                    && i.ProductKey != null && i.Status == InstanceStatus.Connected, ct);
-            sendInstanceName = appLine?.InstanceName;
+                .FirstOrDefaultAsync(i => i.InstanceName == lastInstanceName && i.ProductKey != null, ct);
+            if (appLine is { Status: InstanceStatus.Connected })
+                sendInstanceName = appLine.InstanceName;
+            else if (appLine is not null && lead.Seller is null)
+                throw new InvalidOperationException(
+                    $"La línea de este chat ({LineName(appLine)}) está desconectada: volvé a escanear su QR en Dispositivos para poder contestarle.");
         }
         if (sendInstanceName is null)
         {
-            var instance = seller.EvolutionInstance;
+            if (lead.Seller is null)
+                throw new InvalidOperationException("El lead no tiene línea asignada: asignale un vendedor para poder contestarle.");
+            var instance = lead.Seller.EvolutionInstance;
             if (instance is null || instance.Status != InstanceStatus.Connected)
-                throw new InvalidOperationException("Evolution instance no conectada");
+                throw new InvalidOperationException(
+                    $"La línea de {lead.Seller.DisplayName} está desconectada: tiene que volver a escanear el QR para poder contestar.");
             sendInstanceName = instance.InstanceName;
         }
 
@@ -1117,7 +1126,7 @@ public class ConversationService
         {
             Id = Guid.NewGuid(),
             LeadId = lead.Id,
-            SellerId = seller.Id,
+            SellerId = lead.SellerId,
             Direction = MessageDirection.Outbound,
             Status = MessageDeliveryStatus.Sent,
             Text = text,

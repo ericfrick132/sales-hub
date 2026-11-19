@@ -160,6 +160,10 @@ public class ProductsController : ControllerBase
         await _evo.LogoutInstanceAsync(instance.InstanceName, ct);
         instance.Status = InstanceStatus.Disconnected;
         instance.DisconnectedAt = DateTimeOffset.UtcNow;
+        // Cierre a propósito: el vigilante de reconexión no la tiene que revivir.
+        instance.LastSeenOpenAt = null;
+        instance.NeedsQrSince = null;
+        instance.DownAlertedAt = null;
         instance.LastQrCodeBase64 = null;
         instance.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);

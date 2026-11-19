@@ -1,30 +1,55 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SalesHub.Core.Abstractions;
+using SalesHub.Core.Domain.Entities;
 using SalesHub.Core.Domain.Enums;
 using SalesHub.Infrastructure.Persistence;
 
 namespace SalesHub.Infrastructure.Services;
 
+/// <summary>
+/// Cada minuto: estado en vivo de cada línea de WhatsApp + VIGILANTE de reconexión.
+///
+/// Por qué existe el vigilante (19/11/2026): desde el reinicio de Evolution del 17/11 las sesiones
+/// se cortan cada pocas horas y Evolution no las vuelve a levantar solo. La línea de GymHero estuvo
+/// 26 h y después 16 h sin recibir nada: WhatsApp retiene lo entrante y lo entrega de golpe al
+/// reconectar, pero el bot contesta horas tarde. Abrir el QR en /devices la "arreglaba" porque eso
+/// llama a <c>instance/connect</c>, que con la sesión guardada reconecta sin escanear. El vigilante
+/// hace exactamente eso solo, y avisa al maestro si no alcanza.
+///
+/// Es conservador a propósito: reconectar NO manda mensajes, pero una línea vieja revivida sí
+/// podría volver a mandar (cadencias, bot). Por eso solo toca líneas vistas conectadas en vivo
+/// hace menos de <see cref="ReconnectWindow"/>, y deja de insistir si Evolution pide QR.
+/// </summary>
 public class InstanceMonitor
 {
+    /// <summary>Hasta cuánto después de la última vez que la vimos viva se reintenta una línea.</summary>
+    private static readonly TimeSpan ReconnectWindow = TimeSpan.FromHours(72);
+    /// <summary>Espacio entre reintentos de la misma línea.</summary>
+    private static readonly TimeSpan ReconnectEvery = TimeSpan.FromMinutes(3);
+    /// <summary>Caída más larga que esto sin poder reconectar → aviso al maestro.</summary>
+    private static readonly TimeSpan AlertAfter = TimeSpan.FromMinutes(15);
+
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
+    private readonly IAdminAlerter _alerter;
     private readonly ILogger<InstanceMonitor> _log;
 
-    public InstanceMonitor(ApplicationDbContext db, IEvolutionClient evo, ILogger<InstanceMonitor> log)
+    public InstanceMonitor(ApplicationDbContext db, IEvolutionClient evo, IAdminAlerter alerter, ILogger<InstanceMonitor> log)
     {
-        _db = db; _evo = evo; _log = log;
+        _db = db; _evo = evo; _alerter = alerter; _log = log;
     }
 
     public async Task TickAsync(CancellationToken ct)
     {
         var instances = await _db.EvolutionInstances.ToListAsync(ct);
+        var alerts = new List<string>();
         foreach (var inst in instances)
         {
             try
             {
                 var info = await _evo.GetInstanceStatusAsync(inst.InstanceName, ct);
+                var now = DateTimeOffset.UtcNow;
                 var status = info.Status switch
                 {
                     "open" or "connected" => InstanceStatus.Connected,
@@ -35,13 +60,26 @@ public class InstanceMonitor
                 if (status != inst.Status)
                 {
                     inst.Status = status;
-                    inst.UpdatedAt = DateTimeOffset.UtcNow;
+                    inst.UpdatedAt = now;
                     if (status == InstanceStatus.Connected && inst.ConnectedAt is null)
-                        inst.ConnectedAt = DateTimeOffset.UtcNow;
+                        inst.ConnectedAt = now;
                     if (status == InstanceStatus.Disconnected)
-                        inst.DisconnectedAt = DateTimeOffset.UtcNow;
+                        inst.DisconnectedAt = now;
                 }
-                inst.LastStatusCheckAt = DateTimeOffset.UtcNow;
+                inst.LastStatusCheckAt = now;
+
+                if (status == InstanceStatus.Connected)
+                {
+                    if (inst.DownAlertedAt is not null && inst.LastSeenOpenAt is { } downSince)
+                        alerts.Add($"Linea {Name(inst)} volvio a conectarse (estuvo caida {Ago(now - downSince)}).");
+                    inst.LastSeenOpenAt = now;
+                    inst.NeedsQrSince = null;
+                    inst.DownAlertedAt = null;
+                }
+                else if (info.Status != "not_found")
+                {
+                    await WatchAsync(inst, info.Status, now, alerts, ct);
+                }
             }
             catch (Exception ex)
             {
@@ -60,5 +98,53 @@ public class InstanceMonitor
                     inst.ConnectedPhoneNumber = owner;
         }
         await _db.SaveChangesAsync(ct);
+
+        // Después de guardar: si el aviso falla (o tarda), el estado ya quedó registrado.
+        foreach (var alert in alerts)
+            await _alerter.AlertAsync(alert, ct);
     }
+
+    /// <summary>Línea que no está open: reintentar la reconexión y/o avisar, si corresponde.</summary>
+    private async Task WatchAsync(EvolutionInstance inst, string liveState, DateTimeOffset now, List<string> alerts, CancellationToken ct)
+    {
+        // Solo líneas que estaban vivas hace poco. Las viejas/abandonadas no se tocan nunca.
+        if (inst.LastSeenOpenAt is not { } lastOpen || now - lastOpen > ReconnectWindow) return;
+        if (inst.NeedsQrSince is not null) return;
+
+        // "connecting" = Evolution ya está intentando (o hay un QR abierto en /devices): no pisarlo.
+        if (liveState == "close"
+            && (inst.LastReconnectAttemptAt is null || now - inst.LastReconnectAttemptAt >= ReconnectEvery))
+        {
+            inst.LastReconnectAttemptAt = now;
+            _log.LogWarning("Vigilante: la línea {Line} está caída (vista viva hace {Ago}) → instance/connect",
+                inst.InstanceName, Ago(now - lastOpen));
+            var qr = await _evo.GetQrCodeAsync(inst.InstanceName, ct);
+            if (qr is not null)
+            {
+                // Sin sesión guardada: WhatsApp desvinculó el dispositivo. Reintentar no sirve.
+                inst.NeedsQrSince = now;
+                inst.LastQrCodeBase64 = qr;
+                inst.QrCodeGeneratedAt = now;
+                inst.DownAlertedAt = now;
+                _log.LogWarning("Vigilante: la línea {Line} pide QR nuevo (WhatsApp la desvinculó)", inst.InstanceName);
+                alerts.Add($"Linea {Name(inst)} se desvinculo de WhatsApp: hay que escanear el QR de nuevo en sales.efcloud.tech/devices. Hasta entonces no entran mensajes por esa linea.");
+                return;
+            }
+        }
+
+        if (inst.DownAlertedAt is null && now - lastOpen >= AlertAfter)
+        {
+            inst.DownAlertedAt = now;
+            alerts.Add($"Linea {Name(inst)} esta caida hace {Ago(now - lastOpen)} y no se pudo reconectar sola: no estan entrando mensajes. Probar abriendo su QR en sales.efcloud.tech/devices.");
+        }
+    }
+
+    private static string Name(EvolutionInstance i)
+    {
+        var label = string.IsNullOrWhiteSpace(i.Label) ? i.InstanceName : i.Label.Trim();
+        return string.IsNullOrWhiteSpace(i.ConnectedPhoneNumber) ? label : $"{label} (+{i.ConnectedPhoneNumber})";
+    }
+
+    private static string Ago(TimeSpan t) =>
+        t.TotalMinutes < 120 ? $"{Math.Max(1, (int)t.TotalMinutes)} min" : $"{(int)t.TotalHours} h";
 }

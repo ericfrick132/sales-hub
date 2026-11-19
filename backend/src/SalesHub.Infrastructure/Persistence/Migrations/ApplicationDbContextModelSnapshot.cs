@@ -1415,6 +1415,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("disconnected_at");
 
+                    b.Property<DateTimeOffset?>("DownAlertedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("down_alerted_at");
+
                     b.Property<List<string>>("ExtraProductKeys")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -1469,6 +1473,14 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("last_qr_code_base64");
 
+                    b.Property<DateTimeOffset?>("LastReconnectAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_reconnect_attempt_at");
+
+                    b.Property<DateTimeOffset?>("LastSeenOpenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_open_at");
+
                     b.Property<DateTimeOffset?>("LastStatusCheckAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_status_check_at");
@@ -1476,6 +1488,10 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.Property<bool>("ListenOnly")
                         .HasColumnType("boolean")
                         .HasColumnName("listen_only");
+
+                    b.Property<DateTimeOffset?>("NeedsQrSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("needs_qr_since");
 
                     b.Property<string>("ProductKey")
                         .HasMaxLength(64)
