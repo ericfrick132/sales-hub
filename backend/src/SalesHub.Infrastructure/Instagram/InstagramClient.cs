@@ -1232,6 +1232,14 @@ public class InstagramClient : IAsyncDisposable
         account.IsAwaitingTwoFactor = false;
         account.LoginPausedUntil = null;
         account.LastLoginError = null;
+        // Forzar el UPDATE de los null: si otro worker frenó la cuenta en paralelo (otro
+        // DbContext), en esta copia ya estaban en null y EF no los grabaría → quedaba el freno
+        // viejo pegado a una cuenta logueada (visto con playcrew.app el 2026-11-19).
+        if (_db.Entry(account).State != EntityState.Detached)
+        {
+            _db.Entry(account).Property(a => a.LoginPausedUntil).IsModified = true;
+            _db.Entry(account).Property(a => a.LastLoginError).IsModified = true;
+        }
         account.LastLoginAt = DateTimeOffset.UtcNow;
 
         // Guardar cookies de sesión
