@@ -28,6 +28,15 @@ public class InstagramClient : IAsyncDisposable
     private bool _loggedIn;
 
     /// <summary>
+    /// Un solo login con usuario+password por cuenta a la vez (en todo el proceso). Sin esto,
+    /// cada campaña de la cuenta + el self-heal + "Conectar" abrían su propio Chrome y se
+    /// logueaban EN PARALELO por el mismo túnel: el túnel se saturaba, la pantalla de login
+    /// pasaba los 30 s y fallaban todos (gymhero con 3 campañas, 2026-11-19). El que espera,
+    /// al entrar, reusa la sesión que dejó guardada el que logueó primero.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, SemaphoreSlim> LoginLocks = new();
+
+    /// <summary>
     /// Tracker de fallos de selectores (opcional). Si un caller lo setea, el scrape
     /// reporta cuándo un selector no matchea o trae 0 resultados → tras N fallos se
     /// dispara el re-análisis con Claude (self-heal). Si es null, no se reporta nada.
@@ -162,40 +171,73 @@ public class InstagramClient : IAsyncDisposable
 
         // Restaurar cookies si existen
         if (!string.IsNullOrEmpty(account.SessionCookiesJson))
-        {
-            try
-            {
-                var cookies = JsonSerializer.Deserialize<List<BrowserContextCookies>>(account.SessionCookiesJson);
-                if (cookies is { Count: > 0 })
-                {
-                    await _context.AddCookiesAsync(cookies.Select(c => new Cookie
-                    {
-                        Name = c.Name,
-                        Value = c.Value,
-                        Domain = c.Domain,
-                        Path = c.Path,
-                        HttpOnly = c.HttpOnly,
-                        Secure = c.Secure,
-                        SameSite = c.SameSite,
-                        Expires = c.Expires
-                    }).ToArray());
-                    _loggedIn = true;
-                    _log.LogInformation("Sesión de Instagram restaurada para {User}", account.Username);
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Error al restaurar cookies de Instagram para {User}", account.Username);
-            }
-        }
+            _loggedIn = await RestoreCookiesAsync(account.SessionCookiesJson, account.Username);
 
         _page = await _context.NewPageAsync();
         _page.SetDefaultTimeout(_opts.NavigationTimeoutMs);
 
-        // Si no hay sesión, hacer login
+        // Si no hay sesión, hacer login (de a uno por cuenta: ver LoginLocks)
         if (!_loggedIn)
         {
-            await LoginAsync(account, ct);
+            var gate = LoginLocks.GetOrAdd(account.Id, _ => new SemaphoreSlim(1, 1));
+            if (!await gate.WaitAsync(TimeSpan.FromMinutes(4), ct))
+                throw new InvalidOperationException(
+                    $"Ya hay otro login de {account.Username} en curso; se reintenta en el próximo ciclo.");
+            try
+            {
+                // Mientras esperábamos, otro worker pudo haber logueado (o frenado) la cuenta.
+                var fresh = await _db.InstagramAccounts.AsNoTracking()
+                    .Where(a => a.Id == account.Id)
+                    .Select(a => new { a.SessionCookiesJson, a.LoginPausedUntil, a.LastLoginError })
+                    .FirstOrDefaultAsync(ct);
+                if (!string.IsNullOrEmpty(fresh?.SessionCookiesJson)
+                    && await RestoreCookiesAsync(fresh.SessionCookiesJson, account.Username))
+                {
+                    account.SessionCookiesJson = fresh.SessionCookiesJson;
+                    _loggedIn = true;
+                }
+                else if (fresh?.LoginPausedUntil is { } p && p > DateTimeOffset.UtcNow)
+                {
+                    throw new InvalidOperationException(
+                        $"Login de {account.Username} en pausa hasta {p:yyyy-MM-dd HH:mm} UTC: " +
+                        $"{fresh.LastLoginError ?? "el último intento falló"}.");
+                }
+                else
+                {
+                    await LoginAsync(account, ct);
+                }
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+    }
+
+    private async Task<bool> RestoreCookiesAsync(string cookiesJson, string username)
+    {
+        try
+        {
+            var cookies = JsonSerializer.Deserialize<List<BrowserContextCookies>>(cookiesJson);
+            if (cookies is not { Count: > 0 }) return false;
+            await _context!.AddCookiesAsync(cookies.Select(c => new Cookie
+            {
+                Name = c.Name,
+                Value = c.Value,
+                Domain = c.Domain,
+                Path = c.Path,
+                HttpOnly = c.HttpOnly,
+                Secure = c.Secure,
+                SameSite = c.SameSite,
+                Expires = c.Expires
+            }).ToArray());
+            _log.LogInformation("Sesión de Instagram restaurada para {User}", username);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Error al restaurar cookies de Instagram para {User}", username);
+            return false;
         }
     }
 
@@ -210,9 +252,12 @@ public class InstagramClient : IAsyncDisposable
 
         _log.LogInformation("Logueando en Instagram como {User}...", account.Username);
 
+        // DOMContentLoaded + esperar el input (abajo), NO NetworkIdle: IG deja conexiones
+        // abiertas y por el túnel la página nunca "asienta" → timeout de 30 s con el form ya
+        // visible (mismo motivo que en CheckSessionAsync).
         await _page!.GotoAsync("https://www.instagram.com/accounts/login/", new PageGotoOptions
         {
-            WaitUntil = WaitUntilState.NetworkIdle,
+            WaitUntil = WaitUntilState.DOMContentLoaded,
             Timeout = _opts.NavigationTimeoutMs
         });
 
