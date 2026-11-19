@@ -204,6 +204,9 @@ public class OutboundController : ControllerBase
             verified = await _outbound.Eligible(productKey).CountAsync(l => l.PhoneOrigin == "whatsapp-publicado" || l.PhoneOrigin == "whatsapp-instagram", ct),
             igPending = await IgPending(productKey).CountAsync(ct),
             igChecked = await _outbound.Eligible(productKey).CountAsync(l => l.InstagramCheckedAt != null, ct),
+            igSearchPending = await _outbound.Eligible(productKey).CountAsync(l => l.Tags.Contains(OutboundService.ReservedTag)
+                && l.InstagramCheckedAt == null && (l.InstagramHandle == null || l.InstagramHandle == "")
+                && (l.Website == null || !l.Website.Contains("instagram.com/")), ct),
             // Listos para la línea: analizados a fondo (web + Instagram) y con WhatsApp verificado.
             ready = await _outbound.Eligible(productKey).CountAsync(l => l.ProspectEnrichedAt != null && l.InstagramCheckedAt != null
                 && (l.PhoneOrigin == "whatsapp-publicado" || l.PhoneOrigin == "whatsapp-instagram"), ct),

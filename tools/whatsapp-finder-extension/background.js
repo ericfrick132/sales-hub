@@ -571,7 +571,7 @@ async function refill() {
     const add = items
       .map((i) => ({ key: `${i.dataset}|${i.externalId}`, app: i.productKey, dataset: i.dataset, externalId: i.externalId, name: i.name,
                      city: i.city || '', country: i.country || '', instagram: i.instagram || null, website: i.website || null,
-                     igOnly: !!i.igOnly }))
+                     igOnly: !!i.igOnly, igSearch: !!i.igSearch }))
       .filter((i) => !seen.has(i.key));
     if (add.length) await setState({ queue: [...fresh.queue, ...add] });
   } catch { /* sin red: se reintenta en el próximo turno */ }
@@ -671,7 +671,9 @@ async function lookup(item, s) {
   }
   // Lead del outbound (sales-hub ya leyó su web y tiene teléfono): solo su Instagram y los links de la bio.
   // Sin buscar la cuenta por nombre (podría ser otra) y sin Google.
-  if (item.igOnly && !handle) return done({ status: 'not_found', instagram: item.instagram || null });
+  // (salvo igSearch: no tenía Instagram y sales-hub pide buscarlo por nombre + zona; el servidor confirma que
+  // sea el mismo negocio por teléfono o web antes de usarlo).
+  if (item.igOnly && !item.igSearch && !handle) return done({ status: 'not_found', instagram: item.instagram || null });
   if (!handle && !igLinks.length) {
     const st = await ready();
     if (st === 'login' || st === 'blocked') return done({ status: st });

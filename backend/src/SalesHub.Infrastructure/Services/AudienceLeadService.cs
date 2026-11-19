@@ -143,7 +143,7 @@ public class AudienceLeadService
     }
 
     public record FinderItem(string ProductKey, string Dataset, string ExternalId, string Name, string? City, string? Country,
-        string? Instagram, string? Website, bool IgOnly = false);
+        string? Instagram, string? Website, bool IgOnly = false, bool IgSearch = false);
 
     /// <summary>Dataset con el que viajan por la extensión los leads del outbound (externalId = id del lead).</summary>
     public const string LeadDataset = "lead";
@@ -199,13 +199,34 @@ public class AudienceLeadService
         }
         if (items.Count >= limit) return items.Take(limit).ToList();
 
+        // Después, los que no tienen Instagram conocido: el lector lo busca por nombre + zona. La cuenta que
+        // encuentre solo se acepta si coincide el teléfono o la web (ApplyLeadResultAsync).
+        var search = await Outbound.OutboundService.EligibleQuery(_db)
+            .Where(l => l.Tags.Contains(Outbound.OutboundService.ReservedTag)
+                     && l.InstagramCheckedAt == null && l.ProspectEnrichedAt != null
+                     && (l.InstagramHandle == null || l.InstagramHandle == "")
+                     && (l.Website == null || !l.Website.Contains("instagram.com/"))
+                     && (excludeProducts == null || !excludeProducts.Contains(l.ProductKey))
+                     && (onlyProducts == null || onlyProducts.Count == 0 || onlyProducts.Contains(l.ProductKey)))
+            .OrderByDescending(l => l.ProspectScore)
+            .Take(limit + skipSet.Count)
+            .Select(l => new { l.Id, l.ProductKey, l.Name, l.City })
+            .ToListAsync(ct);
+        foreach (var l in search)
+        {
+            if (skipSet.Contains($"{LeadDataset}|{l.Id}")) continue;
+            var name = Outbound.OutboundService.BusinessName(l.Name) ?? l.Name;
+            items.Add(new FinderItem(l.ProductKey, LeadDataset, l.Id.ToString(), name, l.City, "AR", null, null, IgOnly: true, IgSearch: true));
+        }
+        if (items.Count >= limit) return items.Take(limit).ToList();
+
         foreach (var batch in batches)
         {
             var rows = await _db.AudienceLeads
                 .Where(a => a.FinderBatchId == batch.Id && a.FinderStatus == null && (a.Phone == null || a.Instagram != null))
                 .OrderBy(a => a.Phone != null).ThenBy(a => a.Instagram == null).ThenBy(a => a.Name)
                 .Take(limit + skipSet.Count)
-                .Select(a => new FinderItem(a.ProductKey, a.Dataset, a.ExternalId, a.Name, a.City, a.Country, a.Instagram, a.Website, false))
+                .Select(a => new FinderItem(a.ProductKey, a.Dataset, a.ExternalId, a.Name, a.City, a.Country, a.Instagram, a.Website, false, false))
                 .ToListAsync(ct);
             items.AddRange(rows.Where(r => !skipSet.Contains($"{r.Dataset}|{r.ExternalId}")));
             if (items.Count >= limit) break;
@@ -377,6 +398,24 @@ public class AudienceLeadService
         if (!batches.TryGetValue(lead.ProductKey, out var batch))
             batches[lead.ProductKey] = batch = await _prospects.LoadBatchAsync(lead.ProductKey, ct);
 
+        // Cuenta encontrada POR NOMBRE (el lead no tenía Instagram): se acepta solo si es la misma — coincide el
+        // teléfono (el de su Instagram con el de Maps/web) o el dominio de su web. Con solo el nombre no alcanza:
+        // podría ser otro negocio y le escribiríamos con datos ajenos. Sin confirmar = analizado, sin Instagram.
+        var known = Outbound.OutboundService.InstagramHandleOf(lead.InstagramHandle, lead.Website);
+        var searched = known is null && !string.IsNullOrWhiteSpace(r.Instagram);
+        if (searched && !SameBusiness(lead, r))
+        {
+            await _prospects.ApplyInstagramAsync(lead,
+                new Outbound.ProspectEnricher.InstagramProfile(lead.Id, "", Found: false, null, null, null), batch, ct);
+            _db.LeadNotes.Add(new LeadNote
+            {
+                Id = Guid.NewGuid(), LeadId = lead.Id, Kind = LeadNoteKind.System, CreatedAt = DateTimeOffset.UtcNow,
+                Text = $"Lector de Instagram: encontró @{r.Instagram} por el nombre pero no coincide el teléfono ni la web; no se usa.",
+            });
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+
         var links = new List<string>();
         var waVerified = r.Source is "instagram_link" or "web_whatsapp" || (r.Source == "instagram_bio" && r.WaLine == true);
         if (!string.IsNullOrWhiteSpace(r.Phone) && waVerified)
@@ -390,6 +429,32 @@ public class AudienceLeadService
         await _prospects.ApplyInstagramAsync(lead, profile, batch, ct);
         await _db.SaveChangesAsync(ct);
         return true;
+    }
+
+    /// <summary>¿La cuenta de Instagram encontrada por nombre es de este negocio? Mismo teléfono o mismo dominio web.</summary>
+    private static bool SameBusiness(Lead lead, FinderResult r)
+    {
+        static string? Suffix(string? p)
+        {
+            var d = new string((p ?? "").Where(char.IsDigit).ToArray());
+            return d.Length >= 8 ? d[^8..] : null;
+        }
+        static string? Domain(string? u)
+        {
+            if (string.IsNullOrWhiteSpace(u)) return null;
+            if (!Uri.TryCreate(u.StartsWith("http") ? u : "https://" + u, UriKind.Absolute, out var x)) return null;
+            var h = x.Host.ToLowerInvariant();
+            if (h.StartsWith("www.")) h = h[4..];
+            // Redes y "link en bio" no identifican a nadie.
+            string[] generic = { "instagram.com", "facebook.com", "linktr.ee", "wa.me", "wa.link", "whatsapp.com", "beacons.ai",
+                "taplink.cc", "bio.link", "threads.net", "threads.com", "tiktok.com", "youtube.com", "google.com", "agora.red" };
+            return generic.Any(g => h == g || h.EndsWith("." + g)) ? null : h;
+        }
+        var phone = Suffix(r.Phone);
+        if (phone is not null && (phone == Suffix(lead.WhatsappPhone) || phone == Suffix(lead.RawPhone))) return true;
+        var mine = Domain(lead.Website);
+        if (mine is null) return false;
+        return new[] { r.Website }.Concat(r.Links ?? new List<string>()).Select(Domain).Any(d => d == mine);
     }
 
     public async Task<int> ApplyFinderResultsAsync(IReadOnlyList<FinderResult> results, CancellationToken ct = default)
