@@ -47,7 +47,7 @@ type Row = {
 type Ranking = {
   rows: Row[];
   counts: {
-    eligible: number; eligibleOver50: number; reserved: number; pendingEnrich: number; verified: number; igPending: number;
+    eligible: number; eligibleOver50: number; reserved: number; pendingEnrich: number; verified: number; igPending: number; igChecked: number;
     byRubro: { rubro: string | null; count: number; over50: number }[];
   };
 };
@@ -149,7 +149,10 @@ export function RankingProspectos() {
         <div className="text-sm text-slate-600">
           <b>{c.eligible}</b> contactables · <b>{c.verified}</b> con WhatsApp verificado (a esos les escribe la línea) ·{' '}
           {c.eligibleOver50} con 50 o más · {c.reserved} traídos para el outbound
-          {c.igPending > 0 && <> · {c.igPending} Instagram sin leer</>}
+          <div className="mt-1 text-xs text-slate-500">
+            Instagram: <b>{c.igChecked}</b> leídos · <b className="text-amber-700">{c.igPending}</b> sin leer. Los sin leer tienen
+            puntaje provisorio: al leerlos puede subir (WhatsApp en la bio, seguidores) o bajar (link a AgendaPro/Fresha, cadena).
+          </div>
           {c.pendingEnrich > 0 && <> · {c.pendingEnrich} todavía sin nutrir (se lee su web de a 20 por minuto)</>}
         </div>
       )}
@@ -180,7 +183,10 @@ export function RankingProspectos() {
                   <td className="px-3 py-2"><ScoreBadge score={r.score} /></td>
                   <td className="px-3 py-2">
                     <Link to={`/leads/${r.leadId}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>{r.name}</Link>
-                    <div className="text-xs text-slate-500">{r.detail?.zona ?? r.city ?? ''}{r.blocked && <span className="text-rose-600"> · {r.blocked}</span>}</div>
+                    <div className="text-xs text-slate-500">
+                      {r.detail?.zona ?? r.city ?? ''}{r.blocked && <span className="text-rose-600"> · {r.blocked}</span>}
+                      {r.instagram && !r.instagramCheckedAt && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">Instagram sin leer · puntaje provisorio</span>}
+                    </div>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{rubroLabel(r.rubro)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
