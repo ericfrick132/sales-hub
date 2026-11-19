@@ -827,7 +827,7 @@ public class ConversationService
     /// El chat guarda "[imagen] caption" / "[video] caption" para que se vea qué se mandó.
     /// </summary>
     public Task<ConversationMessage?> SendMediaReplyAsync(Guid sellerId, Guid leadId, byte[] content, string mimeType,
-        string fileName, string? caption, CancellationToken ct)
+        string fileName, string? caption, CancellationToken ct, string? viaInstance = null)
     {
         var isImage = mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
         var isVideo = mimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
@@ -836,7 +836,7 @@ public class ConversationService
         var text = string.IsNullOrWhiteSpace(caption) || (!isImage && !isVideo) ? kind : $"{kind} {caption.Trim()}";
         return SendOutboundAsync(leadId, text,
             (instance, phone) => _evo.SendMediaAsync(instance, phone, content, mimeType, fileName,
-                string.IsNullOrWhiteSpace(caption) ? null : caption.Trim(), ct), ct);
+                string.IsNullOrWhiteSpace(caption) ? null : caption.Trim(), ct), ct, viaInstance);
     }
 
     /// <summary>
@@ -846,7 +846,7 @@ public class ConversationService
     /// Las notas de voz no llevan descripción: si vino texto, sale como mensaje aparte.
     /// </summary>
     public async Task<ConversationMessage?> SendAudioReplyAsync(Guid sellerId, Guid leadId, byte[] content, string mimeType,
-        string fileName, string? caption, CancellationToken ct)
+        string fileName, string? caption, CancellationToken ct, string? viaInstance = null)
     {
         var msg = await SendOutboundAsync(leadId, "[audio]", async (instance, phone) =>
         {
@@ -860,7 +860,7 @@ public class ConversationService
                 _log.LogWarning(ex, "Chat: no se pudo mandar {File} como nota de voz; va como archivo", fileName);
             }
             return await _evo.SendMediaAsync(instance, phone, content, mimeType, fileName, null, ct);
-        }, ct);
+        }, ct, viaInstance);
         if (msg is not null && msg.Status != MessageDeliveryStatus.Failed && !string.IsNullOrWhiteSpace(caption))
             await SendReplyAsync(sellerId, leadId, caption.Trim(), ct, msg.EvolutionInstance);
         return msg;
@@ -1072,51 +1072,79 @@ public class ConversationService
         rawJson is not null && (rawJson.Contains("\"audioMessage\"")
             || (InstagramMessengerClient.AccountFromLine(instance) is not null && rawJson.Contains("\"audio\"")));
 
-    private static string LineName(EvolutionInstance line) =>
-        !string.IsNullOrWhiteSpace(line.Label) ? line.Label.Trim()
-        : !string.IsNullOrWhiteSpace(line.ConnectedPhoneNumber) ? "+" + line.ConnectedPhoneNumber
-        : line.InstanceName;
+    /// <summary>
+    /// Por qué línea sale un mensaje del chat cuando nadie eligió una. El vendedor NO es requisito
+    /// (19/11/2026: "le quiero hablar desde una línea y punto"). En orden, entre las líneas
+    /// conectadas que no son de solo escucha:
+    /// 1) la línea donde VIVE la conversación (la del último mensaje), para no escribirle desde otro número;
+    /// 2) la del vendedor del lead;
+    /// 3) cualquier línea de la app del lead (principal, después las que la atienden de extra).
+    /// null = no hay ninguna: el chat tiene que elegir una a mano.
+    /// </summary>
+    public async Task<EvolutionInstance?> ResolveSendLineAsync(Guid leadId, Guid? sellerId, string? productKey, CancellationToken ct)
+    {
+        var lines = await _db.EvolutionInstances.AsNoTracking()
+            .Where(i => i.Status == InstanceStatus.Connected && !i.ListenOnly)
+            .OrderBy(i => i.InstanceName)
+            .ToListAsync(ct);
+        if (lines.Count == 0) return null;
+        var chatLine = await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.LeadId == leadId && m.EvolutionInstance != null)
+            .OrderByDescending(m => m.Timestamp)
+            .Select(m => m.EvolutionInstance)
+            .FirstOrDefaultAsync(ct);
+        return lines.FirstOrDefault(i => i.InstanceName == chatLine)
+            ?? (sellerId is null ? null : lines.FirstOrDefault(i => i.SellerId == sellerId))
+            ?? (string.IsNullOrWhiteSpace(productKey) ? null
+                : lines.FirstOrDefault(i => i.ProductKey == productKey)
+                  ?? lines.FirstOrDefault(i => i.ExtraProductKeys.Contains(productKey)));
+    }
+
+    /// <summary>
+    /// Lo que muestra "Enviar por" en automático: la línea por la que va a salir la respuesta
+    /// (o que la charla vive en un DM de Instagram y se contesta por ahí).
+    /// </summary>
+    public async Task<(string? InstanceName, bool ViaInstagram)> DefaultSendLineAsync(Lead lead, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(lead.InstagramScopedId))
+        {
+            var last = await _db.ConversationMessages.AsNoTracking()
+                .Where(m => m.LeadId == lead.Id && m.EvolutionInstance != null)
+                .OrderByDescending(m => m.Timestamp)
+                .Select(m => m.EvolutionInstance)
+                .FirstOrDefaultAsync(ct);
+            if (InstagramMessengerClient.AccountFromLine(last) is not null) return (null, true);
+        }
+        var line = await ResolveSendLineAsync(lead.Id, lead.SellerId, lead.ProductKey, ct);
+        return (line?.InstanceName, false);
+    }
 
     private async Task<ConversationMessage?> SendOutboundAsync(Guid leadId, string text,
         Func<string, string, Task<bool>> send, CancellationToken ct, string? viaInstance = null)
     {
-        var lead = await _db.Leads
-            .Include(l => l.Seller).ThenInclude(s => s!.EvolutionInstance)
-            .FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
         if (lead is null) return null;
-        if (string.IsNullOrWhiteSpace(lead.WhatsappPhone)) return null;
+        if (string.IsNullOrWhiteSpace(lead.WhatsappPhone))
+            throw new InvalidOperationException("Este lead no tiene numero de WhatsApp.");
 
-        // Responder por la línea donde VIVE la conversación: si el último mensaje entró por
-        // una línea de APP (ej. app_playcrew), contestar por la del seller sería escribirle
-        // desde otro número. Si esa línea de app está conectada, se usa; si no, cae a la
-        // del seller como siempre. Un lead SIN vendedor (entró por una línea de app) se
-        // contesta igual por esa línea: antes se cortaba con "asignale un vendedor" aunque
-        // la charla tuviera su línea (19/11/2026, chat de PlayCrew).
-        string? sendInstanceName = viaInstance;
-        var lastInstanceName = sendInstanceName is not null ? null : await _db.ConversationMessages
-            .Where(m => m.LeadId == lead.Id && m.EvolutionInstance != null)
-            .OrderByDescending(m => m.Timestamp)
-            .Select(m => m.EvolutionInstance)
-            .FirstOrDefaultAsync(ct);
-        if (lastInstanceName is not null)
+        // Línea elegida a mano en el chat (o al iniciar la conversación): esa y punto.
+        string sendInstanceName;
+        if (!string.IsNullOrWhiteSpace(viaInstance))
         {
-            var appLine = await _db.EvolutionInstances.AsNoTracking()
-                .FirstOrDefaultAsync(i => i.InstanceName == lastInstanceName && i.ProductKey != null, ct);
-            if (appLine is { Status: InstanceStatus.Connected })
-                sendInstanceName = appLine.InstanceName;
-            else if (appLine is not null && lead.Seller is null)
-                throw new InvalidOperationException(
-                    $"La línea de este chat ({LineName(appLine)}) está desconectada: volvé a escanear su QR en Dispositivos para poder contestarle.");
+            var picked = await _db.EvolutionInstances.AsNoTracking()
+                .FirstOrDefaultAsync(i => i.InstanceName == viaInstance, ct);
+            if (picked is null) throw new InvalidOperationException("Esa linea no existe.");
+            if (picked.ListenOnly) throw new InvalidOperationException("Esa linea es de solo escucha: no manda mensajes.");
+            if (picked.Status != InstanceStatus.Connected)
+                throw new InvalidOperationException("Esa linea esta desconectada: elegi otra o escanea su QR en Dispositivos.");
+            sendInstanceName = picked.InstanceName;
         }
-        if (sendInstanceName is null)
+        else
         {
-            if (lead.Seller is null)
-                throw new InvalidOperationException("El lead no tiene línea asignada: asignale un vendedor para poder contestarle.");
-            var instance = lead.Seller.EvolutionInstance;
-            if (instance is null || instance.Status != InstanceStatus.Connected)
-                throw new InvalidOperationException(
-                    $"La línea de {lead.Seller.DisplayName} está desconectada: tiene que volver a escanear el QR para poder contestar.");
-            sendInstanceName = instance.InstanceName;
+            var line = await ResolveSendLineAsync(lead.Id, lead.SellerId, lead.ProductKey, ct)
+                ?? throw new InvalidOperationException(
+                    "No hay ninguna linea conectada para este chat: elegi una en \"Enviar por\" o conecta una en Dispositivos.");
+            sendInstanceName = line.InstanceName;
         }
 
         // Persistir ANTES de mandar: el eco fromMe del webhook se matchea contra esto. Si se

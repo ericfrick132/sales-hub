@@ -81,13 +81,16 @@ public class ConversationsController : ControllerBase
         string Source, List<string> Tags, string? AdId, string? AdTitle, string? AdSourceUrl,
         DateTimeOffset? LastInboundAt, DateTimeOffset? WindowExpiresAt, DateTimeOffset? ClosedAt,
         DateTimeOffset CreatedAt, DateTimeOffset? FirstMessageAt, int MessagesCount, DateTimeOffset? LastActiveAt,
-        PitchInfoDto? Pitch, IReadOnlyList<FeedbackDto> Feedback, string? City, int Score);
+        PitchInfoDto? Pitch, IReadOnlyList<FeedbackDto> Feedback, string? City, int Score,
+        // "Enviar por" en automático: línea por la que sale la respuesta si no se elige otra (null = ninguna conectada).
+        string? SendLine = null, bool SendViaInstagram = false);
     public record PitchInfoDto(Guid PitchId, string Name, int StepIndex, int StepsTotal, int FollowupsSent, bool Completed, bool GaveUp, DateTimeOffset? NextStepDueAt);
     public record FeedbackDto(Guid Id, int Rating, string? Note, string? RatedMessage, string? SellerName, DateTimeOffset CreatedAt);
     public record SetTagsRequest(List<string> Tags);
     public record FeedbackRequest(int Rating, string? Note);
 
-    public record SendReplyRequest(string Text);
+    /// <summary><paramref name="InstanceName"/>: línea elegida en "Enviar por"; null = la automática.</summary>
+    public record SendReplyRequest(string Text, string? InstanceName = null);
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ConversationListItem>>> List(
@@ -278,6 +281,7 @@ public class ConversationsController : ControllerBase
             .Take(5)
             .Select(f => new FeedbackDto(f.Id, f.Rating, f.Note, f.RatedMessage, f.Seller != null ? f.Seller.DisplayName : null, f.CreatedAt))
             .ToListAsync(ct);
+        var sendLine = await _conv.DefaultSendLineAsync(lead, ct);
         var pitchInfo = ps is null ? null : new PitchInfoDto(ps.PitchId, ps.Pitch!.Name, ps.StepIndex + 1, ps.Pitch.Steps.Count,
             ps.FollowupsSent, ps.CompletedAt != null, ps.GaveUpAt != null, ps.NextStepDueAt);
         return new ConversationThreadDto(lead.Id, lead.Name, lead.WhatsappPhone, lead.RenderedMessage,
@@ -290,7 +294,8 @@ public class ConversationsController : ControllerBase
             lead.LastInboundAt, lead.LastInboundAt?.AddHours(24), lead.ConversationClosedAt,
             lead.CreatedAt, messages.Count > 0 ? messages[0].Timestamp : null, messages.Count,
             messages.Count > 0 ? messages[^1].Timestamp : null,
-            pitchInfo, feedback, lead.City, lead.Score);
+            pitchInfo, feedback, lead.City, lead.Score,
+            sendLine.InstanceName, sendLine.ViaInstagram);
     }
 
     /// <summary>
@@ -339,7 +344,8 @@ public class ConversationsController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Text)) return BadRequest(new { error = "Texto vacío" });
         try
         {
-            var msg = await _conv.SendReplyAsync(sellerId, leadId, req.Text, ct);
+            var msg = await _conv.SendReplyAsync(sellerId, leadId, req.Text, ct,
+                string.IsNullOrWhiteSpace(req.InstanceName) ? null : req.InstanceName.Trim());
             if (msg is null) return NotFound();
             return Ok(new ConversationMessageDto(msg.Id, msg.Direction, msg.Text, msg.Timestamp, msg.Status, msg.IsRead));
         }
@@ -378,7 +384,8 @@ public class ConversationsController : ControllerBase
 
     [HttpPost("{leadId:guid}/reply-media")]
     [RequestSizeLimit(17_000_000)]
-    public async Task<IActionResult> ReplyMedia(Guid leadId, IFormFile file, [FromForm] string? caption, CancellationToken ct)
+    public async Task<IActionResult> ReplyMedia(Guid leadId, IFormFile file, [FromForm] string? caption,
+        [FromForm] string? instanceName, CancellationToken ct)
     {
         if (file is null || file.Length == 0) return BadRequest(new { error = "Falta el archivo" });
         var mime = file.ContentType ?? "";
@@ -394,12 +401,13 @@ public class ConversationsController : ControllerBase
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms, ct);
+        var via = string.IsNullOrWhiteSpace(instanceName) ? null : instanceName.Trim();
         try
         {
             var msg = isAudio && !isImage && !isVideo
                 ? await _conv.SendAudioReplyAsync(CurrentUser.Id(User), leadId, ms.ToArray(),
-                    mime.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ? mime : "audio/ogg", file.FileName ?? "audio.ogg", caption, ct)
-                : await _conv.SendMediaReplyAsync(CurrentUser.Id(User), leadId, ms.ToArray(), mime, file.FileName, caption, ct);
+                    mime.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ? mime : "audio/ogg", file.FileName ?? "audio.ogg", caption, ct, via)
+                : await _conv.SendMediaReplyAsync(CurrentUser.Id(User), leadId, ms.ToArray(), mime, file.FileName, caption, ct, via);
             if (msg is null) return NotFound();
             if (msg.Status == MessageDeliveryStatus.Failed) return StatusCode(502, new { error = "WhatsApp no acepto el archivo" });
             return Ok(new ConversationMessageDto(msg.Id, msg.Direction, msg.Text, msg.Timestamp, msg.Status, msg.IsRead));

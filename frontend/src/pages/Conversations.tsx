@@ -96,6 +96,9 @@ type Thread = {
   feedback: { id: string; rating: number; note?: string | null; ratedMessage?: string | null; sellerName?: string | null; createdAt: string }[];
   city?: string | null;
   score: number;
+  /** Línea por la que sale la respuesta si no se elige otra en "Enviar por" (null = ninguna conectada). */
+  sendLine?: string | null;
+  sendViaInstagram?: boolean;
 };
 
 type WindowFilter = '' | '12h+' | '6-12h' | '<6h' | 'expired' | 'new';
@@ -230,10 +233,21 @@ export default function Conversations() {
     el.style.height = `${Math.min(el.scrollHeight + el.offsetHeight - el.clientHeight, 160)}px`;
   }, [reply]);
 
-  useEffect(() => { setInfoSheet(false); }, [selected]);
+  // "Enviar por": líneas conectadas que pueden mandar. '' = la automática (la del chat).
+  const [sendVia, setSendVia] = useState('');
+  useEffect(() => { setInfoSheet(false); setSendVia(''); }, [selected]);
+  const sendLinesQ = useQuery({
+    queryKey: ['conv-send-lines'],
+    queryFn: async () => (await api.get<SendLine[]>('/conversations/lines')).data,
+    staleTime: 30_000
+  });
+  const sendLines = sendLinesQ.data ?? [];
+  const lineText = (l: SendLine) => (l.phone ? `${l.label} · ${formatPhone(l.phone)}` : l.label);
+  const autoLine = sendLines.find((l) => l.instanceName === thread.data?.sendLine);
+  const autoText = thread.data?.sendViaInstagram ? 'Instagram' : autoLine ? lineText(autoLine) : null;
 
   const sendMut = useMutation({
-    mutationFn: async () => (await api.post(`/conversations/${selected}/reply`, { text: reply })).data,
+    mutationFn: async () => (await api.post(`/conversations/${selected}/reply`, { text: reply, instanceName: sendVia || null })).data,
     onSuccess: () => {
       setReply('');
       qc.invalidateQueries({ queryKey: ['conv-thread', selected] });
@@ -249,6 +263,7 @@ export default function Conversations() {
       const fd = new FormData();
       fd.append('file', attachment!);
       if (reply.trim()) fd.append('caption', reply.trim());
+      if (sendVia) fd.append('instanceName', sendVia);
       return (await api.post(`/conversations/${selected}/reply-media`, fd)).data;
     },
     onSuccess: () => {
@@ -728,6 +743,20 @@ export default function Conversations() {
                     </div>
                   )}
                   <QuickReplyBar replies={replies} onPick={(t) => setReply(t)} />
+                  <div className="px-3 pt-2 flex items-center gap-2 text-xs text-slate-500">
+                    <span className="shrink-0">Enviar por</span>
+                    <select
+                      className={clsx('min-w-0 flex-1 md:flex-none md:max-w-xs rounded border bg-white px-2 py-1 text-xs',
+                        !sendVia && !autoText ? 'border-rose-300 text-rose-700' : 'border-slate-200 text-slate-700')}
+                      value={sendVia}
+                      onChange={(e) => setSendVia(e.target.value)}
+                      disabled={sending}>
+                      <option value="">{autoText ? `Automatico: ${autoText}` : 'Ninguna conectada: elegi una'}</option>
+                      {sendLines.map((l) => (
+                        <option key={l.instanceName} value={l.instanceName}>{lineText(l)}</option>
+                      ))}
+                    </select>
+                  </div>
                   {attachment && (
                     <div className="px-3 pt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
                       <span className="rounded bg-slate-100 px-2 py-1 truncate max-w-[70%]">
