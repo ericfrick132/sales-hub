@@ -230,7 +230,7 @@ public static class ProspectScorer
         ("doctoralia", "Doctoralia"), ("topdoctors", "TopDoctors"), ("vagaro.com", "Vagaro"),
         ("treatwell", "Treatwell"), ("koibox", "Koibox"), ("bewe.", "Bewe"), ("appointy", "Appointy"),
         ("turnonet", "Turnonet"), ("sacarturno", "SacarTurno"), ("miturno", "MiTurno"), ("turnosweb", "TurnosWeb"),
-        ("squareup.com/appointments", "Square"), ("mindbody", "Mindbody"), ("wonoma.com", "Wonoma"),
+        ("squareup.com/appointments", "Square"), ("mindbody", "Mindbody"), ("wonoma", "Wonoma"),
         ("turnau.app", "Turnau"), ("tuturno", "TuTurno"), ("agendaonline", "AgendaOnline"),
     };
 
