@@ -337,8 +337,10 @@ public class OutboundService
     public static string? BusinessName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
-        var n = Regex.Split(name, @"\s[|\-–—·•:]\s|\s?[|•·]\s?|\(|,")[0].Trim();
+        var n = Regex.Split(name, @"\s[|\-–—·•:/]\s|\s?[|•·]\s?|\(|,")[0].Trim();
         n = Regex.Replace(n, @"[®™]", "").Trim();
+        // "Psicóloga Diana Usach" / "Lic. Juan Pérez" → "Diana Usach": se le habla a la persona, no al título.
+        n = Regex.Replace(n, @"^(psic[oó]log[oa]s?|lic\.?|licenciad[oa]|dra?\.?|doctor[a]?)\s+", "", RegexOptions.IgnoreCase).Trim();
         if (n.Length < 3 || n.Length > 32) return null;
         if (n.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length > 5) return null;
         // Todo en mayúsculas grita: se pasa a "Título".

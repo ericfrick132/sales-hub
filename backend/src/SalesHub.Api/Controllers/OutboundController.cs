@@ -53,7 +53,7 @@ public class OutboundController : ControllerBase
         var outboundLines = new List<LineDto>();
         foreach (var l in lines.Where(l => l.OutboundCap > 0)) outboundLines.Add(await ToDtoAsync(l, ct));
 
-        var products = await _db.Products.AsNoTracking().Where(p => p.Active)
+        var products = await _db.Products.AsNoTracking().Where(p => p.Active && p.ProductKey != "" && p.DisplayName != "")
             .OrderBy(p => p.DisplayName).Select(p => new { p.ProductKey, p.DisplayName }).ToListAsync(ct);
 
         return Ok(new
