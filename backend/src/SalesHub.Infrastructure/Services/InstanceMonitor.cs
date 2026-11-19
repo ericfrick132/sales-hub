@@ -19,7 +19,7 @@ namespace SalesHub.Infrastructure.Services;
 ///
 /// Es conservador a propósito: reconectar NO manda mensajes, pero una línea vieja revivida sí
 /// podría volver a mandar (cadencias, bot). Por eso solo toca líneas vistas conectadas en vivo
-/// hace menos de <see cref="ReconnectWindow"/>, y deja de insistir si Evolution pide QR.
+/// hace menos de <see cref="ReconnectWindow"/>, y deja de insistir si WhatsApp la desvinculó (401/403).
 /// </summary>
 public class InstanceMonitor
 {
@@ -118,15 +118,19 @@ public class InstanceMonitor
             inst.LastReconnectAttemptAt = now;
             _log.LogWarning("Vigilante: la línea {Line} está caída (vista viva hace {Ago}) → instance/connect",
                 inst.InstanceName, Ago(now - lastOpen));
-            var qr = await _evo.GetQrCodeAsync(inst.InstanceName, ct);
-            if (qr is not null)
+            // OJO: lo que devuelve instance/connect NO dice si hace falta QR. Evolution guarda en memoria
+            // el último QR que generó y nunca lo limpia al conectar, así que devuelve ese base64 viejo
+            // aunque la sesión esté sana y reconecte sola (falsa alarma del 19/11 13:11).
+            await _evo.GetQrCodeAsync(inst.InstanceName, ct);
+
+            // Desvinculada de verdad = Evolution registró un 401/403 después de la última vez que la
+            // vimos viva. Ahí reintentar no sirve: hay que escanear.
+            var cut = await _evo.GetLastDisconnectionAsync(inst.InstanceName, ct);
+            if (cut is { Code: 401 or 403 } d && d.At >= lastOpen.AddMinutes(-2))
             {
-                // Sin sesión guardada: WhatsApp desvinculó el dispositivo. Reintentar no sirve.
                 inst.NeedsQrSince = now;
-                inst.LastQrCodeBase64 = qr;
-                inst.QrCodeGeneratedAt = now;
                 inst.DownAlertedAt = now;
-                _log.LogWarning("Vigilante: la línea {Line} pide QR nuevo (WhatsApp la desvinculó)", inst.InstanceName);
+                _log.LogWarning("Vigilante: la línea {Line} fue desvinculada por WhatsApp ({Code}) → pide QR", inst.InstanceName, d.Code);
                 alerts.Add($"Linea {Name(inst)} se desvinculo de WhatsApp: hay que escanear el QR de nuevo en sales.efcloud.tech/devices. Hasta entonces no entran mensajes por esa linea.");
                 return;
             }

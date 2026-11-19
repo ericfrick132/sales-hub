@@ -49,6 +49,9 @@ public class WhatsAppAdbClient : IEvolutionClient
         return Task.FromResult(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
 
+    public Task<(int Code, DateTimeOffset At)?> GetLastDisconnectionAsync(string instanceName, CancellationToken ct = default)
+        => Task.FromResult<(int Code, DateTimeOffset At)?>(null);
+
     public Task<InstanceConnectionInfo> EnsureInstanceAsync(string instanceName, CancellationToken ct = default, string? proxyUrl = null)
     {
         // No hay nada que crear: el device ya tiene WhatsApp instalado y activo.

@@ -12,6 +12,13 @@ public interface IEvolutionClient
     Task<Dictionary<string, string>> GetInstanceOwnersAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Último corte "sin reconexión" que registró Evolution (fetchInstances: disconnectionReasonCode
+    /// y disconnectionAt). Evolution solo lo escribe cuando decide NO reconectar: 401 = WhatsApp
+    /// desvinculó el dispositivo, 403 = prohibido; en 2.4.0-rc2 también 408. null si no hay registro.
+    /// </summary>
+    Task<(int Code, DateTimeOffset At)?> GetLastDisconnectionAsync(string instanceName, CancellationToken ct = default);
+
+    /// <summary>
     /// Archiva (o desarchiva) el chat en el WhatsApp de la línea. Pensado para líneas que
     /// comparten teléfono con el uso personal: el tráfico de ventas queda en Archivados.
     /// OJO: en WhatsApp un chat archivado vuelve a la lista principal al llegar un mensaje

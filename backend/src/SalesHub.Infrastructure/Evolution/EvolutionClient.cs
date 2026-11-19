@@ -67,6 +67,30 @@ public class EvolutionClient : IEvolutionClient
         return map;
     }
 
+    public async Task<(int Code, DateTimeOffset At)?> GetLastDisconnectionAsync(string instanceName, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await _http.GetAsync($"instance/fetchInstances?instanceName={Uri.EscapeDataString(instanceName)}", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            var root = doc.RootElement;
+            var item = root.ValueKind == JsonValueKind.Array
+                ? root.EnumerateArray().FirstOrDefault(e => e.TryGetProperty("name", out var n) && n.GetString() == instanceName)
+                : root;
+            if (item.ValueKind != JsonValueKind.Object) return null;
+            if (!item.TryGetProperty("disconnectionReasonCode", out var c) || c.ValueKind != JsonValueKind.Number) return null;
+            if (!item.TryGetProperty("disconnectionAt", out var a) || a.ValueKind != JsonValueKind.String
+                || !DateTimeOffset.TryParse(a.GetString(), out var at)) return null;
+            return (c.GetInt32(), at);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "fetchInstances fallo (desconexion de {Instance})", instanceName);
+            return null;
+        }
+    }
+
     public async Task<InstanceConnectionInfo> EnsureInstanceAsync(string instanceName, CancellationToken ct = default, string? proxyUrl = null)
     {
         var status = await GetInstanceStatusAsync(instanceName, ct);
