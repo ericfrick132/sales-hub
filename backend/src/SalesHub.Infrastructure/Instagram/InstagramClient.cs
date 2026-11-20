@@ -479,6 +479,14 @@ public class InstagramClient : IAsyncDisposable
                 await _page.EvaluateAsync(
                     "(s) => document.querySelector(s)?.scrollBy(0, 300)",
                     sel.FollowersDialog.ScrollContainer);
+                // La lista de "seguidos" no usa el mismo contenedor que la de seguidores (con el selector
+                // de arriba no scrolleaba y traía siempre los primeros 12): llevar el último perfil a la
+                // vista hace que IG cargue el lote siguiente sea cual sea el contenedor.
+                if (links.Count > 0)
+                {
+                    try { await links[^1].EvaluateAsync("e => e.scrollIntoView({ block: 'end' })"); }
+                    catch (PlaywrightException) { /* el link se desmontó al re-renderizar la lista */ }
+                }
             }
             else
             {
