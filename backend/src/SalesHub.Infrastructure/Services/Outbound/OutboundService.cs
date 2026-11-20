@@ -469,17 +469,35 @@ public class OutboundService
     {
         var contact = await _db.OutboundContacts
             .FirstOrDefaultAsync(c => c.LeadId == lead.Id && c.RepliedAt == null && c.Status != OutboundContact.Reserved, ct);
-        var handoffId = await HandoffSellerAsync(lead.ProductKey, ct);
         if (contact is not null)
         {
+            if (IsAutoGreeting(text, at, contact.SentAt))
+            {
+                _log.LogInformation("Outbound: saludo automático de {Lead} ({Sec:0}s), se espera a que conteste una persona",
+                    lead.Id, (at - (contact.SentAt ?? at)).TotalSeconds);
+                return;
+            }
             contact.RepliedAt = at;
-            await _handoff.HandoffAsync(lead, handoffId, "contestó al outbound", text,
+            await _handoff.HandoffAsync(lead, await HandoffSellerAsync(lead.ProductKey, ct), "contestó al outbound", text,
                 $"Le escribimos desde la línea outbound: {contact.Message}", ct, mute: true);
             return;
         }
         // Contestó el DM en frío por Instagram de un lead del outbound: mismo pase (una sola vez).
-        if (lead.IgDmSentAt is not null && lead.Tags.Contains(ReservedTag) && !lead.Tags.Contains(PersonHandoffService.Tag))
-            await _handoff.HandoffAsync(lead, handoffId, "contestó el DM de Instagram del outbound", text,
+        if (lead.IgDmSentAt is not null && lead.Tags.Contains(ReservedTag) && !lead.Tags.Contains(PersonHandoffService.Tag)
+            && !IsAutoGreeting(text, at, lead.IgDmSentAt))
+            await _handoff.HandoffAsync(lead, await HandoffSellerAsync(lead.ProductKey, ct), "contestó el DM de Instagram del outbound", text,
                 "Le escribimos por Instagram (DM en frío) desde la cuenta de la app.", ct, mute: true);
     }
+
+    /// <summary>Hasta acá después de nuestro mensaje, lo que llega es el saludo automático del negocio.</summary>
+    internal static readonly TimeSpan AutoGreetingWindow = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Saludo automático de WhatsApp Business (o respuesta instantánea de Instagram), no una persona: llega a
+    /// los 1-6 s de nuestro mensaje ("Gracias por comunicarte con…", "Bienvenida a…"), mientras que una persona
+    /// tarda minutos (outbound 19-20/11: 11 automáticos entre 1 y 6 s, las 2 personas a los 11 y 17 min). No
+    /// cuenta como respuesta: el contacto sigue sin contestar y el pase sale con lo primero que escriba alguien.
+    /// </summary>
+    internal static bool IsAutoGreeting(string? text, DateTimeOffset at, DateTimeOffset? sentAt)
+        => (sentAt is { } s && at - s <= AutoGreetingWindow) || AiSuggestionService.IsAutoResponder(text);
 }
