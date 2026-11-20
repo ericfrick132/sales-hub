@@ -40,12 +40,48 @@ public class InstanceMonitor
         _db = db; _evo = evo; _alerter = alerter; _log = log;
     }
 
+    /// <summary>
+    /// Líneas que viven SOLO en Evolution, sin fila en evolution_instances (adrede: no aparecen en /devices
+    /// ni las recorre ningún worker). Hoy: el WhatsApp personal de Eric (<see cref="ClaudeTaskService.LineName"/>),
+    /// que le transcribe los audios que se reenvía y le pasa tareas a Claude. Se vigilan igual que las otras
+    /// (20/11/2026: estuvo caída 3 días sin que nadie avisara). Su estado vive en memoria (no hay fila donde
+    /// guardarlo): tras reiniciar la API se vuelve a vigilar desde la primera vez que se la vea conectada.
+    /// </summary>
+    private static readonly EvolutionInstance[] PrivateLines =
+    {
+        new() { InstanceName = ClaudeTaskService.LineName, Label = "WhatsApp personal de Eric (transcripcion / Claude)" },
+    };
+
     public async Task TickAsync(CancellationToken ct)
     {
         var instances = await _db.EvolutionInstances.ToListAsync(ct);
         var alerts = new List<string>();
         foreach (var inst in instances)
+            await CheckAsync(inst, alerts, ct);
+        // Objetos sueltos, sin trackear: el SaveChanges de abajo no los toca.
+        foreach (var inst in PrivateLines)
+            await CheckAsync(inst, alerts, ct);
+
+        // connectionState no trae el número: si un teléfono se vinculó por fuera del modal del
+        // QR (o se re-escaneó con otro celu), lo completamos desde fetchInstances.
+        var missingPhone = instances.Where(i => i.Status == InstanceStatus.Connected && i.ConnectedPhoneNumber is null).ToList();
+        if (missingPhone.Count > 0)
         {
+            var owners = await _evo.GetInstanceOwnersAsync(ct);
+            foreach (var inst in missingPhone)
+                if (owners.TryGetValue(inst.InstanceName, out var owner) && !string.IsNullOrWhiteSpace(owner))
+                    inst.ConnectedPhoneNumber = owner;
+        }
+        await _db.SaveChangesAsync(ct);
+
+        // Después de guardar: si el aviso falla (o tarda), el estado ya quedó registrado.
+        foreach (var alert in alerts)
+            await _alerter.AlertAsync(alert, ct);
+    }
+
+    /// <summary>Estado en vivo de una línea; si no está open, la pasa al vigilante.</summary>
+    private async Task CheckAsync(EvolutionInstance inst, List<string> alerts, CancellationToken ct)
+    {
             try
             {
                 var info = await _evo.GetInstanceStatusAsync(inst.InstanceName, ct);
@@ -85,23 +121,6 @@ public class InstanceMonitor
             {
                 _log.LogDebug(ex, "Instance {N} status check failed", inst.InstanceName);
             }
-        }
-
-        // connectionState no trae el número: si un teléfono se vinculó por fuera del modal del
-        // QR (o se re-escaneó con otro celu), lo completamos desde fetchInstances.
-        var missingPhone = instances.Where(i => i.Status == InstanceStatus.Connected && i.ConnectedPhoneNumber is null).ToList();
-        if (missingPhone.Count > 0)
-        {
-            var owners = await _evo.GetInstanceOwnersAsync(ct);
-            foreach (var inst in missingPhone)
-                if (owners.TryGetValue(inst.InstanceName, out var owner) && !string.IsNullOrWhiteSpace(owner))
-                    inst.ConnectedPhoneNumber = owner;
-        }
-        await _db.SaveChangesAsync(ct);
-
-        // Después de guardar: si el aviso falla (o tarda), el estado ya quedó registrado.
-        foreach (var alert in alerts)
-            await _alerter.AlertAsync(alert, ct);
     }
 
     /// <summary>Línea que no está open: reintentar la reconexión y/o avisar, si corresponde.</summary>
@@ -131,7 +150,7 @@ public class InstanceMonitor
                 inst.NeedsQrSince = now;
                 inst.DownAlertedAt = now;
                 _log.LogWarning("Vigilante: la línea {Line} fue desvinculada por WhatsApp ({Code}) → pide QR", inst.InstanceName, d.Code);
-                alerts.Add($"Linea {Name(inst)} se desvinculo de WhatsApp: hay que escanear el QR de nuevo en sales.efcloud.tech/devices. Hasta entonces no entran mensajes por esa linea.");
+                alerts.Add($"Linea {Name(inst)} se desvinculo de WhatsApp: hay que escanear el QR de nuevo {QrWhere(inst)}. Hasta entonces no entran mensajes por esa linea.");
                 return;
             }
         }
@@ -139,9 +158,15 @@ public class InstanceMonitor
         if (inst.DownAlertedAt is null && now - lastOpen >= AlertAfter)
         {
             inst.DownAlertedAt = now;
-            alerts.Add($"Linea {Name(inst)} esta caida hace {Ago(now - lastOpen)} y no se pudo reconectar sola: no estan entrando mensajes. Probar abriendo su QR en sales.efcloud.tech/devices.");
+            alerts.Add($"Linea {Name(inst)} esta caida hace {Ago(now - lastOpen)} y no se pudo reconectar sola: no estan entrando mensajes. Probar abriendo su QR {QrWhere(inst)}.");
         }
     }
+
+    /// <summary>Dónde se escanea el QR: las líneas privadas no están en /devices.</summary>
+    private static string QrWhere(EvolutionInstance i) =>
+        PrivateLines.Contains(i)
+            ? $"(no esta en /devices: pedile a Claude el QR de la instancia {i.InstanceName} de Evolution)"
+            : "en sales.efcloud.tech/devices";
 
     private static string Name(EvolutionInstance i)
     {
