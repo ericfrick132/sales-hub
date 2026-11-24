@@ -281,7 +281,7 @@ public class IgDmController : ControllerBase
                     {
                         var sender = await SalesHub.Infrastructure.Services.Outbound.OutboundService.HandoffFirstNameAsync(_db, s.ProductKey, ct) ?? "mateo";
                         var variant = IgOutreachPlan.PickVariant(s.Template);
-                        if (string.IsNullOrWhiteSpace(variant)) variant = SalesHub.Infrastructure.Services.Outbound.OutboundService.DefaultIgTemplate;
+                        if (string.IsNullOrWhiteSpace(variant)) variant = SalesHub.Infrastructure.Services.Outbound.OutboundService.DefaultIgTemplateFor(s.ProductKey);
                         text = SalesHub.Infrastructure.Services.CopyStyle.Clean(
                             SalesHub.Infrastructure.Services.Outbound.OutboundService.FillTemplate(variant, lead, lead.Product!, sender));
                     }

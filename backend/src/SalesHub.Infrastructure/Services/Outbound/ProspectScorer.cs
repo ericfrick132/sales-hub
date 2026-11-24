@@ -6,52 +6,99 @@ using SalesHub.Core.Domain.Entities;
 namespace SalesHub.Infrastructure.Services.Outbound;
 
 /// <summary>
-/// Puntaje de PROSPECTO (0-100): qué tan buen cliente de TurnosPro es o puede llegar a ser un negocio,
-/// ANTES de hablarle. Existe para la línea outbound, que tiene pocos envíos por día (10): hay que
+/// Puntaje de PROSPECTO (0-100): qué tan buen cliente de la app es o puede llegar a ser un negocio,
+/// ANTES de hablarle. Nació para TurnosPro; desde el 24/11/2026 califica igual a GymHero (mismos criterios y
+/// pesos, pedido de Eric: "calificarlos como hacemos con turnos-pro"): lo que cambia por app son los rubros
+/// (<see cref="Rubros"/>), los sistemas de la competencia (<see cref="PlatformsFor"/>) y el texto del mensaje. Existe para la línea outbound, que tiene pocos envíos por día (10): hay que
 /// gastarlos en los mejores. Es una función pura sobre los datos del lead (lo que trae Google Maps + lo que
 /// se le sacó de la web); el enriquecimiento lo hace <see cref="ProspectEnricher"/>.
 ///
 /// Criterios (decididos con Eric el 19/11/2026):
 ///   Ubicación 25       zonas de plata de AMBA (CABA norte + zona norte) arriba de todo.
 ///   Reseñas Maps 25     un negocio activo con clientela (20-300 reseñas) y buena nota; cadenas enormes no.
-///   WhatsApp 20         el número lo publica como WhatsApp (wa.me): "vi que toman los turnos por WhatsApp" es cierto.
+///   WhatsApp 20         el número lo publica como WhatsApp (wa.me en su web o su Instagram).
 ///   Presencia web 15    web propia, Instagram, Facebook.
 ///   Rubro 15            uno de los rubros que buscamos, confirmado por el nombre.
-///   Competencia −20     ya usa AgendaPro/Fresha/Booksy: resta (Eric: con 10 envíos, ir a los que anotan a mano).
+///   Competencia −20     ya usa otro sistema (AgendaPro/Fresha/Booksy; en gimnasios Crossfy/AccesoGym/Mindbody): resta.
 ///   Cadena −10          el mismo nombre en 3+ leads.
 /// </summary>
 public static class ProspectScorer
 {
-    public sealed record Rubro(string Key, string Label, string[] SearchTerms, string[] Keywords,
+    public const string TurnosPro = "turnospro";
+    public const string GymHero = "gymhero";
+
+    public sealed record Rubro(string ProductKey, string Key, string Label, string[] SearchTerms, string[] Keywords,
         string Plural, string Clientes, string Cobro, string Toman);
 
     /// <summary>
-    /// Los rubros de la tanda (lista de Eric 19/11/2026). Keywords van sin tildes y con ñ→n (se compara
-    /// normalizado). Plural/Clientes/Cobro/Toman completan el mensaje de apertura según el rubro.
+    /// Los rubros de cada app. Keywords van sin tildes y con ñ→n (se compara normalizado). Plural/Clientes/Cobro/
+    /// Toman completan el mensaje de apertura según el rubro. Las claves no se repiten entre apps (se guardan en
+    /// Lead.ProspectRubro). El orden importa: gana el primero que coincide, así que lo específico va antes que lo
+    /// general ("crossfit" antes que "gimnasio").
     /// </summary>
     public static readonly IReadOnlyList<Rubro> Rubros = new[]
     {
-        new Rubro("estetica", "Centro de estética", new[] { "centro de estética" },
+        // TurnosPro (lista de Eric 19/11/2026).
+        new Rubro(TurnosPro, "estetica", "Centro de estética", new[] { "centro de estética" },
             new[] { "estetic", "cosmetolog", "spa facial", "medicina estetica", "beauty", "skin" },
             "centros de estetica", "tus clientas", "cobras la seña si queres", "toman"),
-        new Rubro("unas", "Uñas", new[] { "salón de uñas", "manicuría" },
+        new Rubro(TurnosPro, "unas", "Uñas", new[] { "salón de uñas", "manicuría" },
             new[] { "unas", "manicur", "nail", "kapping", "esmaltado", "semipermanente", "pedicur" },
             "salones de uñas", "tus clientas", "cobras la seña si queres", "toman"),
-        new Rubro("pestanas", "Pestañas", new[] { "extensiones de pestañas" },
+        new Rubro(TurnosPro, "pestanas", "Pestañas", new[] { "extensiones de pestañas" },
             new[] { "pestan", "lash", "cejas", "brow", "lifting" },
             "estudios de pestañas", "tus clientas", "cobras la seña si queres", "toman"),
-        new Rubro("depilacion", "Depilación", new[] { "depilación definitiva", "depilación" },
+        new Rubro(TurnosPro, "depilacion", "Depilación", new[] { "depilación definitiva", "depilación" },
             new[] { "depila", "laser", "descartable", "wax" },
             "centros de depilacion", "tus clientas", "cobras la seña si queres", "toman"),
-        new Rubro("psicologia", "Psicólogos", new[] { "psicólogo" },
+        new Rubro(TurnosPro, "psicologia", "Psicólogos", new[] { "psicólogo" },
             new[] { "psicolog", "psicoterap", "psicoanal", "terapia", "terapeuta" },
             "psicologos", "tus pacientes", "cobras la sesion por adelantado si queres", "das"),
-        new Rubro("peluqueria", "Peluquería", new[] { "peluquería" },
+        new Rubro(TurnosPro, "peluqueria", "Peluquería", new[] { "peluquería" },
             new[] { "peluquer", "hair", "estilista", "colorista", "salon de belleza", "peinado" },
             "peluquerias", "tus clientes", "cobras la seña si queres", "toman"),
+
+        // GymHero (24/11/2026): las categorías del producto. El mensaje no usa Cobro ni Toman.
+        new Rubro(GymHero, "crossfit", "CrossFit", new[] { "crossfit" },
+            new[] { "crossfit", "cross fit", "cross training" },
+            "boxes de crossfit", "tus alumnos", "", ""),
+        new Rubro(GymHero, "funcional", "Funcional", new[] { "entrenamiento funcional" },
+            new[] { "funcional", "functional", "hiit" },
+            "centros de entrenamiento funcional", "tus alumnos", "", ""),
+        new Rubro(GymHero, "pilates", "Pilates", new[] { "pilates" },
+            new[] { "pilates", "reformer" },
+            "estudios de pilates", "tus alumnos", "", ""),
+        new Rubro(GymHero, "yoga", "Yoga", new[] { "yoga" },
+            new[] { "yoga" },
+            "estudios de yoga", "tus alumnos", "", ""),
+        new Rubro(GymHero, "artes-marciales", "Artes marciales", new[] { "artes marciales", "taekwondo" },
+            new[] { "taekwondo", "karate", "jiu jitsu", "jiujitsu", "judo", "boxeo", "kickbox", "muay thai", "artes marciales", "dojo" },
+            "academias de artes marciales", "tus alumnos", "", ""),
+        new Rubro(GymHero, "danza", "Danza", new[] { "escuela de danza" },
+            new[] { "danza", "dance", "baile", "ballet" },
+            "escuelas de danza", "tus alumnos", "", ""),
+        new Rubro(GymHero, "natacion", "Natación", new[] { "natatorio" },
+            new[] { "natacion", "natatorio", "pileta", "swim" },
+            "natatorios", "tus alumnos", "", ""),
+        new Rubro(GymHero, "running", "Running", new[] { "running team" },
+            new[] { "running", "runners", "run team" },
+            "grupos de running", "tus alumnos", "", ""),
+        new Rubro(GymHero, "gimnasio", "Gimnasio", new[] { "gimnasio" },
+            new[] { "gimnasio", "gym", "fitness", "musculacion", "entrenamiento" },
+            "gimnasios", "tus socios", "", ""),
     };
 
     public static Rubro? RubroByKey(string? key) => Rubros.FirstOrDefault(r => r.Key == key);
+
+    /// <summary>Los rubros con los que se califica a los leads de esa app (vacío = la app no tiene outbound armado).</summary>
+    public static IEnumerable<Rubro> RubrosFor(string? productKey) => Rubros.Where(r => r.ProductKey == productKey);
+
+    /// <summary>Lo que dice el mensaje cuando el lead no tiene rubro detectado.</summary>
+    public sealed record Copy(string Rubros, string Clientes, string Cobro, string Toman);
+
+    public static Copy CopyFor(string? productKey) => productKey == GymHero
+        ? new Copy("gimnasios", "tus socios", "", "")
+        : new Copy("negocios como el tuyo", "tus clientes", "cobras la seña si queres", "toman");
 
     public sealed record Zone(string Key, string Label, string SearchCity, string SearchProvince,
         double Lat, double Lng, double RadiusKm);
@@ -122,7 +169,7 @@ public static class ProspectScorer
         {
             _ when string.IsNullOrWhiteSpace(lead.WhatsappPhone) => (0, "sin teléfono"),
             "whatsapp-publicado" => (20, "lo publica como WhatsApp en su web (wa.me)"),
-            "whatsapp-instagram" => (20, "toma turnos por WhatsApp según su Instagram"),
+            "whatsapp-instagram" => (20, "publica su WhatsApp en su Instagram"),
             "maps-celular" => (14, "celular de Google Maps"),
             "instagram" => (12, "número del Instagram"),
             "web" => (8, "número de su web"),
@@ -133,7 +180,7 @@ public static class ProspectScorer
         parts.Add(new Part("whatsapp", "WhatsApp", waPts, 20, waWhy));
 
         // ── Presencia digital (15) ─────────────────────────────────────────────────────
-        var kind = WebsiteKind(lead.Website);
+        var kind = WebsiteKind(lead.Website, lead.ProductKey);
         var digital = 0;
         var why = new List<string>();
         if (kind == "propia") { digital += 7; why.Add("web propia"); }
@@ -182,8 +229,13 @@ public static class ProspectScorer
     {
         var cat = Norm(lead.SearchCategory);
         var name = Norm(lead.Name);
-        var fromCat = Rubros.FirstOrDefault(r => Matches(cat, r));
-        var fromName = Rubros.FirstOrDefault(r => Matches(name, r));
+        var rubros = RubrosFor(lead.ProductKey).ToList();
+        var fromCat = rubros.FirstOrDefault(r => Matches(cat, r));
+        var fromName = rubros.FirstOrDefault(r => Matches(name, r));
+        // Buscado como "gimnasio" (el rubro general) pero el nombre dice algo más preciso ("CrossFit Tuluka",
+        // "Shanti Yoga"): vale el del nombre, que es con el que se le habla en el mensaje.
+        if (fromCat?.Key == "gimnasio" && fromName is not null && fromName != fromCat)
+            return (fromName, 15, $"{fromName.Label} (por el nombre; buscado como gimnasio)");
         if (fromCat is not null)
         {
             var confirmed = Matches(name, fromCat);
@@ -192,7 +244,10 @@ public static class ProspectScorer
         if (fromName is not null) return (fromName, 10, $"{fromName.Label} (por el nombre)");
 
         var types = lead.Types ?? new List<string>();
-        Rubro? fromTypes = types.Contains("hair_care") ? RubroByKey("peluqueria")
+        Rubro? fromTypes = lead.ProductKey == GymHero
+            ? (types.Contains("gym") ? RubroByKey("gimnasio") : null)
+            : lead.ProductKey != TurnosPro ? null
+            : types.Contains("hair_care") ? RubroByKey("peluqueria")
             : types.Contains("spa") ? RubroByKey("estetica")
             : types.Contains("beauty_salon") ? RubroByKey("estetica")
             : null;
@@ -204,18 +259,38 @@ public static class ProspectScorer
         text.Length > 0 && (r.Keywords.Any(k => text.Contains(k, StringComparison.Ordinal))
                             || r.SearchTerms.Any(t => text.Contains(Norm(t), StringComparison.Ordinal)));
 
-    /// <summary>"propia", "instagram", "facebook", "link-en-bio", "reservas" (plataforma de turnos) o null.</summary>
-    public static string? WebsiteKind(string? url)
+    /// <summary>"propia", "instagram", "facebook", "link-en-bio", "reservas" (un sistema de la competencia) o null.</summary>
+    public static string? WebsiteKind(string? url, string? productKey = TurnosPro)
     {
         if (string.IsNullOrWhiteSpace(url)) return null;
         var u = url.ToLowerInvariant();
         if (u.Contains("instagram.com")) return "instagram";
         if (u.Contains("facebook.com") || u.Contains("fb.com")) return "facebook";
-        if (BookingPlatformIn(u) is not null) return "reservas";
+        if (BookingPlatformIn(u, productKey) is not null) return "reservas";
         string[] bio = { "linktr.ee", "linktree", "beacons.ai", "taplink", "bio.link", "wa.link", "wa.me", "api.whatsapp", "linkin.bio", "lnk.bio", "campsite.bio", "agora.red", "canva.site" };
         if (bio.Any(u.Contains)) return "link-en-bio";
         return "propia";
     }
+
+    /// <summary>Así termina el nombre del sistema cuando es la propia app: ese negocio ya es cliente y no se le escribe.</summary>
+    public const string OwnClientMark = "(ya es cliente)";
+
+    /// <summary>
+    /// Sistemas de gestión de gimnasios que se reconocen por su dominio. GymHero también está: si su web ya usa
+    /// nuestro link, es cliente. Wellhub/Gympass/TotalPass no van: son beneficios, no el sistema del gimnasio.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Host, string Name)> GymPlatforms = new[]
+    {
+        ("gymhero.fitness", "GymHero (ya es cliente)"),
+        ("crossfy", "Crossfy"), ("accesogym", "AccesoGym"), ("myfitnessapp", "My Fitness"), ("mindbody", "Mindbody"),
+        ("glofox", "Glofox"), ("virtuagym", "Virtuagym"), ("trainingym", "Trainingym"), ("wodify", "Wodify"),
+        ("wodbuster", "WodBuster"), ("aimharder", "AimHarder"), ("zenplanner", "Zen Planner"), ("pushpress", "PushPress"),
+        ("boxmagic", "BoxMagic"), ("fitcolatam", "Fitco"), ("resawod", "Resawod"), ("agendapro", "AgendaPro"),
+    };
+
+    /// <summary>Los sistemas de la competencia de esa app (los de turnos para todo lo que no sea GymHero).</summary>
+    public static IReadOnlyList<(string Host, string Name)> PlatformsFor(string? productKey) =>
+        productKey == GymHero ? GymPlatforms : BookingPlatforms;
 
     /// <summary>
     /// Sistemas de turnos/reservas que se reconocen por su dominio (en la web del negocio o en sus links).
@@ -234,11 +309,11 @@ public static class ProspectScorer
         ("turnau.app", "Turnau"), ("tuturno", "TuTurno"), ("agendaonline", "AgendaOnline"),
     };
 
-    public static string? BookingPlatformIn(string? text)
+    public static string? BookingPlatformIn(string? text, string? productKey = TurnosPro)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
         var t = text.ToLowerInvariant();
-        foreach (var (host, name) in BookingPlatforms)
+        foreach (var (host, name) in PlatformsFor(productKey))
             if (t.Contains(host, StringComparison.Ordinal)) return name;
         return null;
     }
@@ -290,11 +365,16 @@ public static class ProspectScorer
         return new string(d.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());
     }
 
+    /// <summary>Palabras que en un gimnasio no distinguen una marca de otra ("Gimnasio Fitness X" no es cadena de "Gimnasio Fitness Y").</summary>
+    private static readonly HashSet<string> GymGenericWords = new()
+        { "gym", "gimnasio", "fitness", "club", "crossfit", "box", "training", "entrenamiento", "funcional", "pilates", "yoga", "academia", "escuela" };
+
     /// <summary>Clave para detectar cadenas: las 2 primeras palabras significativas del nombre.</summary>
-    public static string ChainKey(string? name)
+    public static string ChainKey(string? name, string? productKey = TurnosPro)
     {
         var words = Norm(name).Split(new[] { ' ', '-', '|', '·', ',', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
             .Where(w => w.Length > 2 && w is not ("los" or "las" or "del" or "the" or "spa" or "salon" or "centro" or "estetica" or "studio" or "estudio"))
+            .Where(w => productKey != GymHero || !GymGenericWords.Contains(w))
             .Take(2)
             .ToList();
         // Con una sola palabra ("nails", "lash") no se puede decir que sea la misma marca.

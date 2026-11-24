@@ -64,14 +64,15 @@ public partial class ProspectEnricher
         foreach (var p in phones)
         {
             var s = Suffix(p.Phone);
-            if (s is not null) competitor.TryAdd(s, DatasetName(p.Dataset));
+            var name = DatasetName(p.Dataset);
+            if (s is not null && name is not null) competitor.TryAdd(s, name);
         }
 
         var names = await _db.Leads.AsNoTracking()
             .Where(l => l.ProductKey == productKey)
             .Select(l => l.Name)
             .ToListAsync(ct);
-        var chains = names.Select(ProspectScorer.ChainKey).Where(k => k.Length > 0)
+        var chains = names.Select(n => ProspectScorer.ChainKey(n, productKey)).Where(k => k.Length > 0)
             .GroupBy(k => k).Where(g => g.Count() >= 2)
             .ToDictionary(g => g.Key, g => g.Count());
 
@@ -90,9 +91,9 @@ public partial class ProspectEnricher
     public async Task EnrichAsync(Lead lead, Batch batch, CancellationToken ct)
     {
         string? waFromWeb = null;
-        string? platform = ProspectScorer.BookingPlatformIn(lead.Website);
+        string? platform = ProspectScorer.BookingPlatformIn(lead.Website, lead.ProductKey);
 
-        var kind = ProspectScorer.WebsiteKind(lead.Website);
+        var kind = ProspectScorer.WebsiteKind(lead.Website, lead.ProductKey);
         if (kind == "instagram" && string.IsNullOrWhiteSpace(lead.InstagramHandle))
         {
             var m = InstagramRx().Match(lead.Website!);
@@ -106,7 +107,7 @@ public partial class ProspectEnricher
             var html = await FetchAsync(url, ct);
             if (html is not null)
             {
-                platform ??= ProspectScorer.BookingPlatformIn(html);
+                platform ??= ProspectScorer.BookingPlatformIn(html, lead.ProductKey);
                 var wa = WaLinkRx().Match(html);
                 if (wa.Success) waFromWeb = wa.Groups[1].Value;
                 if (string.IsNullOrWhiteSpace(lead.InstagramHandle))
@@ -194,7 +195,7 @@ public partial class ProspectEnricher
         foreach (var link in links)
         {
             if (link.StartsWith("wa:", StringComparison.Ordinal)) { wa ??= link[3..]; continue; }
-            platform ??= ProspectScorer.BookingPlatformIn(link);
+            platform ??= ProspectScorer.BookingPlatformIn(link, lead.ProductKey);
             var m = WaLinkRx().Match(link);
             if (m.Success) wa ??= m.Groups[1].Value;
         }
@@ -205,17 +206,17 @@ public partial class ProspectEnricher
         {
             if (wa is not null && platform is not null) break;
             var lower = link.ToLowerInvariant();
-            if (!LinkHubs.Any(lower.Contains) && ProspectScorer.WebsiteKind(link) != "propia") continue;
+            if (!LinkHubs.Any(lower.Contains) && ProspectScorer.WebsiteKind(link, lead.ProductKey) != "propia") continue;
             if (!Uri.TryCreate(link.StartsWith("http") ? link : "https://" + link, UriKind.Absolute, out var url)) continue;
             var (finalUrl, html) = await FetchWithUrlAsync(url, ct);
             var hay = $"{finalUrl} {html}";
-            platform ??= ProspectScorer.BookingPlatformIn(hay);
+            platform ??= ProspectScorer.BookingPlatformIn(hay, lead.ProductKey);
             var m = WaLinkRx().Match(hay);
             if (m.Success) wa ??= m.Groups[1].Value;
         }
 
         var header = p.Header ?? "";
-        platform ??= ProspectScorer.BookingPlatformIn(header);
+        platform ??= ProspectScorer.BookingPlatformIn(header, lead.ProductKey);
         var saysWhatsapp = MentionsWhatsappRx().IsMatch(header);
         if (wa is null && saysWhatsapp)
         {
@@ -281,7 +282,7 @@ public partial class ProspectEnricher
     {
         if (lead.ProspectEnrichedAt is null && lead.PhoneOrigin is null)
             lead.PhoneOrigin = PhoneOriginFor(lead, null);
-        var key = ProspectScorer.ChainKey(lead.Name);
+        var key = ProspectScorer.ChainKey(lead.Name, lead.ProductKey);
         var same = key.Length > 0 && batch.ChainCounts.TryGetValue(key, out var c) ? c : 1;
         // La misma cuenta de Instagram en varias sucursales también es cadena (Depilife, Definit, Umara...).
         var ig = (lead.InstagramHandle ?? "").Trim().TrimStart('@');
@@ -337,11 +338,21 @@ public partial class ProspectEnricher
         return d.Length >= 8 ? d[^8..] : null;
     }
 
-    private static string DatasetName(string dataset) => dataset.ToLowerInvariant() switch
+    /// <summary>
+    /// El sistema que usa quien figura en ese listado, o null si el listado no dice que use uno: los de beneficios
+    /// (Wellhub, Gympass, TotalPass, Fitpass no son el sistema del gimnasio) y los de quienes ya se fueron
+    /// ("crossfy-sin-clases", "atc-sin-uso": al revés, son buenos prospectos).
+    /// </summary>
+    private static string? DatasetName(string dataset) => dataset.ToLowerInvariant() switch
     {
+        var d when d.Contains("wellhub") || d.Contains("gympass") || d.Contains("totalpass") || d.Contains("fitpass") => null,
+        var d when d.Contains("sin-") => null,
         var d when d.StartsWith("agendapro") => "AgendaPro (listado)",
         var d when d.StartsWith("fresha") => "Fresha (listado)",
         var d when d.StartsWith("booksy") => "Booksy (listado)",
+        var d when d.StartsWith("crossfy") => "Crossfy (listado)",
+        var d when d.StartsWith("accesogym") => "AccesoGym (listado)",
+        var d when d.StartsWith("mindbody") => "Mindbody (listado)",
         var d => $"{d} (listado)",
     };
 }

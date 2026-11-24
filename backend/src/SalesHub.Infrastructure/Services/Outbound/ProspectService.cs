@@ -40,6 +40,7 @@ public class ProspectService
         var product = await _db.Products.FirstOrDefaultAsync(p => p.ProductKey == productKey, ct)
             ?? throw new ArgumentException("Esa app no existe.");
         var rubro = ProspectScorer.RubroByKey(rubroKey) ?? throw new ArgumentException("Rubro desconocido.");
+        if (rubro.ProductKey != product.ProductKey) throw new ArgumentException($"El rubro {rubro.Label} no es de {product.DisplayName}.");
         var zone = ProspectScorer.ZoneByKey(zoneKey) ?? throw new ArgumentException("Zona desconocida.");
         perQuery = Math.Clamp(perQuery, 1, 20);
 

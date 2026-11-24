@@ -61,7 +61,9 @@ const DEFAULTS = {
   // Cambio de cuenta solo (Eric 24/11): si sales-hub avisa que otra cuenta de este Chrome tiene un DM listo, la
   // extensión cambia con el selector de Instagram. Nunca escribe contraseñas ni códigos.
   autoSwitch: true,
-  switchMinGapMin: 45,  // minutos mínimos entre dos cambios (para no ir y venir entre cuentas)
+  // Minutos mínimos entre dos cambios de cuenta. Con dos cuentas mandando (TurnosPro y GymHero) cada una necesita
+  // volver a tener la pestaña cada ~45 min para llegar a sus 10 por día: con 45 de piso llegaban a 6.
+  switchMinGapMin: 15,
   lastSwitchAt: 0,
   switchBlockedUntil: 0, // no pudo cambiar: no reintenta hasta esta hora
   switchError: '',

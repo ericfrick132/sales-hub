@@ -84,9 +84,12 @@ public class OutboundController : ControllerBase
             otherLines = lines.Where(l => l.OutboundCap <= 0)
                 .Select(l => new { l.Id, l.InstanceName, label = l.Label ?? l.InstanceName, l.ProductKey, status = l.Status.ToString(), l.ListenOnly }),
             products,
-            rubros = ProspectScorer.Rubros.Select(r => new { r.Key, r.Label, r.SearchTerms }),
+            rubros = ProspectScorer.Rubros.Select(r => new { r.Key, r.Label, r.SearchTerms, r.ProductKey }),
             zones = ProspectScorer.Zones.Select(z => new { z.Key, z.Label }),
             defaultTemplate = OutboundService.DefaultTemplate,
+            // La apertura por defecto de cada app que tiene rubros propios (el formulario muestra la de la línea).
+            defaultTemplates = ProspectScorer.Rubros.Select(r => r.ProductKey).Distinct()
+                .ToDictionary(k => k, OutboundService.DefaultTemplateFor),
             // La extensión de Chrome de la Mac que lee los Instagram (latido cada 2 min = la Mac está prendida).
             readers = AudienceController.ReaderStatus(),
         });
@@ -123,8 +126,12 @@ public class OutboundController : ControllerBase
         if (string.IsNullOrWhiteSpace(line.ProductKey)) return BadRequest(new { error = "El teléfono no tiene app." });
 
         var cap = Math.Clamp(req.Cap, 0, 50);
-        var rubros = (req.Rubros ?? new()).Where(r => ProspectScorer.RubroByKey(r) is not null).Distinct().ToList();
-        var template = string.IsNullOrWhiteSpace(req.Template) || req.Template.Trim() == OutboundService.DefaultTemplate
+        // Solo rubros de la app de la línea; y el mensaje se guarda solo si no es el de siempre (el de su app, o
+        // el de TurnosPro que mostraba el formulario viejo).
+        var rubros = (req.Rubros ?? new()).Where(r => ProspectScorer.RubroByKey(r)?.ProductKey == line.ProductKey).Distinct().ToList();
+        var template = string.IsNullOrWhiteSpace(req.Template)
+            || req.Template.Trim() == OutboundService.DefaultTemplateFor(line.ProductKey)
+            || req.Template.Trim() == OutboundService.DefaultTemplate
             ? null : req.Template.Trim();
 
         line.OutboundCap = cap;
@@ -205,7 +212,7 @@ public class OutboundController : ControllerBase
                 : r.Contacted || r.SentAt != null || r.FirstReplyAt != null ? "ya hablamos"
                 : r.Queued ? "tiene cadencia en cola"
                 : r.Manual ? "asignado a mano a un vendedor"
-                : r.BookingPlatform?.StartsWith("TurnosPro") == true ? "ya es cliente"
+                : r.BookingPlatform?.EndsWith(ProspectScorer.OwnClientMark) == true ? "ya es cliente"
                 : string.IsNullOrWhiteSpace(r.WhatsappPhone) ? "sin teléfono"
                 : r.BusinessStatus is not null and not "OPERATIONAL" ? "cerrado"
                 : $"estado {r.Status}";

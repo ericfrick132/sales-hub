@@ -40,6 +40,19 @@ public class OutboundService
         "{clientes} sacan el turno desde tu link a cualquier hora, {cobro} y les llega el recordatorio por whatsapp " +
         "el dia anterior. queres que te llame y te cuento mejor?";
 
+    /// <summary>
+    /// Apertura de GymHero (elegida por Eric el 24/11/2026: "cuota, clases y recordatorio"). Misma estructura; solo
+    /// dice cosas que GymHero hace hoy (cobro por Mercado Pago, reserva de clases, recordatorio de vencimiento).
+    /// </summary>
+    public const string GymHeroTemplate =
+        "hola como va? hablo con {negocio}? soy {vendedor} de {app}. trabajamos con {rubros}: un sistema donde " +
+        "{clientes} pagan la cuota por mercado pago, reservan la clase desde el celu y les llega el recordatorio de " +
+        "vencimiento por whatsapp. queres que te llame y te cuento mejor?";
+
+    /// <summary>La apertura por defecto de la app de la línea (la de TurnosPro para las que no tienen una propia).</summary>
+    public static string DefaultTemplateFor(string? productKey) =>
+        productKey == ProspectScorer.GymHero ? GymHeroTemplate : DefaultTemplate;
+
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
     private readonly IMessageRenderer _renderer;
@@ -82,7 +95,7 @@ public class OutboundService
             && l.FirstReplyAt == null
             && (l.Status == LeadStatus.New || l.Status == LeadStatus.Assigned || l.Status == LeadStatus.Sent)
             && (l.BusinessStatus == null || l.BusinessStatus == "OPERATIONAL")
-            && (l.BookingPlatform == null || !l.BookingPlatform.StartsWith("TurnosPro"))
+            && (l.BookingPlatform == null || !l.BookingPlatform.EndsWith(ProspectScorer.OwnClientMark))
             && l.ProspectScore >= minScore
             && (l.SentAt == null || l.SentAt < secondChannel)
             // Tomado a mano por un vendedor (que no sea el pase de la propia línea outbound): no.
@@ -100,9 +113,17 @@ public class OutboundService
         "hola como va? soy {vendedor} de {app}. {observacion}: un sistema donde {clientes} sacan el turno desde tu link " +
         "a cualquier hora, {cobro} y les llega el recordatorio por whatsapp el dia anterior. queres que te llame y te cuento mejor?";
 
+    /// <summary>DM de Instagram de GymHero: el mismo cuerpo que su apertura de WhatsApp.</summary>
+    public const string GymHeroIgTemplate =
+        "hola como va? soy {vendedor} de {app}. {observacion}: un sistema donde {clientes} pagan la cuota por mercado pago, " +
+        "reservan la clase desde el celu y les llega el recordatorio de vencimiento por whatsapp. queres que te llame y te cuento mejor?";
+
+    public static string DefaultIgTemplateFor(string? productKey) =>
+        productKey == ProspectScorer.GymHero ? GymHeroIgTemplate : DefaultIgTemplate;
+
     public static string IgObservation(Lead lead)
     {
-        var rubro = ProspectScorer.RubroByKey(lead.ProspectRubro)?.Plural ?? "negocios como el tuyo";
+        var rubro = ProspectScorer.RubroByKey(lead.ProspectRubro)?.Plural ?? ProspectScorer.CopyFor(lead.ProductKey).Rubros;
         if (lead.SentAt is not null) return $"te escribi por whatsapp, por si no lo viste: trabajamos con {rubro}";
         return $"vi su perfil y justo trabajamos con {rubro}";
     }
@@ -111,6 +132,7 @@ public class OutboundService
     public static string FillTemplate(string template, Lead lead, Product product, string senderName)
     {
         var rubro = ProspectScorer.RubroByKey(lead.ProspectRubro);
+        var copy = ProspectScorer.CopyFor(product.ProductKey);
         var negocio = BusinessName(lead.Name);
         if (negocio is null) template = Regex.Replace(template, @"hablo con \{negocio\}\?\s*", "", RegexOptions.IgnoreCase);
         return template
@@ -118,10 +140,10 @@ public class OutboundService
             .Replace("{negocio}", negocio ?? "")
             .Replace("{vendedor}", senderName.Trim().ToLowerInvariant())
             .Replace("{app}", product.DisplayName)
-            .Replace("{rubros}", rubro?.Plural ?? "negocios como el tuyo")
-            .Replace("{clientes}", rubro?.Clientes ?? "tus clientes")
-            .Replace("{cobro}", rubro?.Cobro ?? "cobras la seña si queres")
-            .Replace("{toman}", rubro?.Toman ?? "toman");
+            .Replace("{rubros}", rubro?.Plural ?? copy.Rubros)
+            .Replace("{clientes}", rubro?.Clientes ?? copy.Clientes)
+            .Replace("{cobro}", rubro?.Cobro ?? copy.Cobro)
+            .Replace("{toman}", rubro?.Toman ?? copy.Toman);
     }
 
     /// <summary>Nombre de pila de la persona de la app (la del pase), para "soy mateo de...".</summary>
@@ -156,7 +178,7 @@ public class OutboundService
             && l.ProspectScore != null
             && !l.Tags.Contains(ExcludedTag)
             && (l.BusinessStatus == null || l.BusinessStatus == "OPERATIONAL")
-            && (l.BookingPlatform == null || !l.BookingPlatform.StartsWith("TurnosPro"))
+            && (l.BookingPlatform == null || !l.BookingPlatform.EndsWith(ProspectScorer.OwnClientMark))
             && !(l.SellerId != null && l.ManualAssignedAt != null)
             && !db.OutboundContacts.Any(c => c.LeadId == l.Id)
             // Lo único que puede tener es el DM en frío por Instagram (los mejores van por los dos canales, Eric
@@ -414,7 +436,7 @@ public class OutboundService
 
     public string Render(Lead lead, Product product, EvolutionInstance line, string senderName)
     {
-        var template = string.IsNullOrWhiteSpace(line.OutboundTemplate) ? DefaultTemplate : line.OutboundTemplate!;
+        var template = string.IsNullOrWhiteSpace(line.OutboundTemplate) ? DefaultTemplateFor(product.ProductKey) : line.OutboundTemplate!;
         var text = FillTemplate(template, lead, product, senderName);
         // Spin-text {a|b} y el resto de los placeholders de siempre ({saludo}, {nombre}...).
         return _renderer.RenderTemplate(text, lead, product);
