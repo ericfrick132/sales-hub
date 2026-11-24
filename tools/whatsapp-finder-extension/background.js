@@ -52,6 +52,19 @@ const DEFAULTS = {
   igAccount: '',        // cuenta de IG activa en la ventana de trabajo
   igTabId: 0,           // ventana de trabajo: pestaña fija de Instagram
   webTabId: 0,          // y la de las webs
+  // Estas cuatro se guardaban pero getState() solo lee lo que está en DEFAULTS: el candado nunca frenaba, el
+  // estado de los DMs nunca llegaba a sales-hub y la pausa manual se perdía al reiniciar Chrome.
+  igBusy: null,         // candado de la pestaña de Instagram: { owner, at }
+  dmStatus: '',         // último estado de los DMs (va a sales-hub en el latido)
+  dmToday: { day: '', n: 0 },
+  pausedByUser: false,
+  // Cambio de cuenta solo (Eric 24/11): si sales-hub avisa que otra cuenta de este Chrome tiene un DM listo, la
+  // extensión cambia con el selector de Instagram. Nunca escribe contraseñas ni códigos.
+  autoSwitch: true,
+  switchMinGapMin: 45,  // minutos mínimos entre dos cambios (para no ir y venir entre cuentas)
+  lastSwitchAt: 0,
+  switchBlockedUntil: 0, // no pudo cambiar: no reintenta hasta esta hora
+  switchError: '',
   apiKey: '',           // clave de Marketing → Competencia → Públicos
   unsynced: []          // resultados que todavía no llegaron a sales-hub
 };
@@ -59,8 +72,9 @@ const DEFAULTS = {
 const API = 'https://api.sales.efcloud.tech/api/audience';
 const IDLE_MIN = 3;     // sin batch abierto en sales-hub: vuelve a preguntar cada 3 min
 // DMs en frío por Instagram (línea outbound): sales-hub decide a quién, cuándo y con qué texto (tope por día,
-// horario, pausa entre DMs, bloqueo). La extensión solo escribe desde la cuenta logueada si sales-hub tiene DMs
-// prendidos para esa cuenta (ej. @turnos.pro); para cualquier otra cuenta no hace nada.
+// horario, pausa entre DMs, bloqueo). La extensión solo escribe desde la cuenta activa y si sales-hub tiene DMs
+// prendidos para esa cuenta (ej. @turnos.pro). Si los DMs listos son de otra cuenta, sales-hub lo avisa
+// (switchTo) y la extensión cambia sola de cuenta; antes de cada DM confirma en la página qué cuenta está activa.
 const DM_API = 'https://api.sales.efcloud.tech/api/ig-dm';
 const DM_ALARM = 'next-dm';
 
@@ -742,17 +756,20 @@ async function lookup(item, s) {
   return done({ status: 'google', instagram: handle, website });
 }
 
-// Mira qué cuenta de IG está activa; si cambió, descarta lo que tenía en cola para otra app.
+// Mira qué cuenta de IG está activa; si cambió, descarta lo que tenía en cola para otra app. Devuelve la
+// cuenta leída de la página ahora (null si no se pudo leer: sin sesión, Instagram no cargó).
 async function checkAccount() {
   try {
     const tabs = await workTabs();
-    if ((await igReady(tabs.ig)) !== 'ok') return;
+    if ((await igReady(tabs.ig)) !== 'ok') return null;
     const me = await run(tabs.ig, igWhoAmI);
     const s = await getState();
-    if (!me || me === s.igAccount) return;
-    const app = ACCOUNT_APP[me];
-    await setState({ igAccount: me, queue: app ? s.queue.filter((q) => q.app === app) : s.queue });
-  } catch { /* se vuelve a mirar en el próximo turno */ }
+    if (me && me !== s.igAccount) {
+      const app = ACCOUNT_APP[me];
+      await setState({ igAccount: me, queue: app ? s.queue.filter((q) => q.app === app) : s.queue });
+    }
+    return me || null;
+  } catch { return null; /* se vuelve a mirar en el próximo turno */ }
 }
 
 async function runOne() {
@@ -880,7 +897,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 // Chrome se reinició o el service worker se recargó.
 async function ensureRunning() {
   const s = await getState();
-  if (!s.apiKey || s.pausedByUser) return;
+  // Pausada a mano (y sigue pausada): no se reanuda sola al reiniciar Chrome.
+  if (!s.apiKey || (s.pausedByUser && !s.running)) return;
   if (!s.running) await setState({ running: true });
   if (!(await chrome.alarms.get(ALARM))) await schedule(10_000);
   if (!(await chrome.alarms.get(DM_ALARM))) await dmSchedule(60_000);
@@ -917,26 +935,46 @@ async function dmSchedule(ms) {
 
 async function dmTick() {
   const s = await getState();
-  if (!s.apiKey || s.pausedByUser || !s.running) return dmSchedule(15 * 60_000);
-  if (!s.igAccount) await checkAccount();
-  const me = (await getState()).igAccount;
-  if (!me) return dmSchedule(10 * 60_000);
+  if (!s.apiKey || !s.running) return dmSchedule(15 * 60_000);
+  // La pestaña de Instagram es una sola: se toma antes de pedir el DM (sales-hub reserva el lead 15 min).
+  if (!(await igLock('dm'))) return dmSchedule(60_000);
+  let wait;
+  try { wait = await dmStep(s); }
+  catch (e) {
+    await setState({ dmStatus: `error: ${String(e?.message || e).slice(0, 150)}` });
+    wait = 10 * 60_000;
+  } finally { await igUnlock('dm'); }
+  return dmSchedule(wait);
+}
+
+// Un paso de los DMs con la pestaña ya tomada. Devuelve en cuántos ms volver a mirar.
+async function dmStep(s) {
+  // La cuenta se lee de la página cada vez, no de memoria: si alguien cambió de cuenta a mano, el DM de una app
+  // no puede salir desde la cuenta de otra.
+  const me = await checkAccount();
+  if (!me) {
+    await setState({ dmStatus: 'No pude leer qué cuenta de Instagram está activa (¿sin sesión?)' });
+    return 10 * 60_000;
+  }
   let next;
   try {
     const r = await fetch(`${DM_API}/next?account=${encodeURIComponent(me)}`, { headers: { 'X-Audience-Key': s.apiKey } });
-    if (!r.ok) { await setState({ dmStatus: `sales-hub respondió ${r.status}` }); return dmSchedule(15 * 60_000); }
+    if (!r.ok) { await setState({ dmStatus: `sales-hub respondió ${r.status}` }); return 15 * 60_000; }
     next = await r.json();
-  } catch { return dmSchedule(10 * 60_000); }
+  } catch { return 10 * 60_000; }
   if (!next?.leadId) {
+    // Los DMs listos son de otra cuenta de este Chrome: cambia sola y vuelve a preguntar desde esa cuenta.
+    if (next?.switchTo) {
+      const switched = await autoSwitch(String(next.switchTo).toLowerCase(), me);
+      heartbeat();
+      return switched ? rand(40_000, 90_000) : Math.min(next?.waitSeconds || 600, 900) * 1000;
+    }
     await setState({ dmStatus: next?.reason || 'nada para mandar' });
-    return dmSchedule(Math.min(next?.waitSeconds || 600, 3600) * 1000);
+    return Math.min(next?.waitSeconds || 600, 3600) * 1000;
   }
-  // El lead queda reservado 15 min en sales-hub: si la pestaña está ocupada, se reintenta en un rato.
-  if (!(await igLock('dm'))) return dmSchedule(60_000);
   let res;
   try { res = await sendDm(next); }
   catch (e) { res = { ok: false, error: String(e?.message || e).slice(0, 200) }; }
-  finally { await igUnlock('dm'); }
   try {
     await fetch(`${DM_API}/${next.leadId}/result`, {
       method: 'POST',
@@ -947,11 +985,192 @@ async function dmTick() {
   const f = await getState();
   const n = f.dmToday?.day === todayKey() ? f.dmToday.n : 0;
   await setState({
-    dmStatus: res.ok ? `DM a @${next.handle}` : `DM a @${next.handle} falló: ${res.error}`,
+    dmStatus: res.ok ? `DM a @${next.handle} desde @${me}` : `DM a @${next.handle} falló: ${res.error}`,
     dmToday: { day: todayKey(), n: n + (res.ok ? 1 : 0) }
   });
   heartbeat();
-  return dmSchedule(res.blocked ? 6 * 3_600_000 : 60_000);
+  return res.blocked ? 6 * 3_600_000 : 60_000;
+}
+
+// ---- Cambio de cuenta solo ----
+
+const SWITCH_RETRY_MIN = 30;      // falló por algo pasajero (no cargó, no encontró el menú)
+const SWITCH_PERSON_RETRY_H = 6;  // lo tiene que resolver una persona (contraseña, código, cuenta sin agregar)
+
+// Decide si cambia a la cuenta que tiene DMs listos y lo hace. true = quedó en esa cuenta.
+async function autoSwitch(target, from) {
+  const s = await getState();
+  const now = Date.now();
+  const hhmm = (ms) => new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  if (!s.autoSwitch) {
+    await setState({ dmStatus: `Hay DMs listos en @${target} y la cuenta activa es @${from}: el cambio de cuenta solo está apagado` });
+    return false;
+  }
+  if (now < s.switchBlockedUntil) {
+    await setState({ dmStatus: `Hay DMs listos en @${target}; ${s.switchError || 'no pudo cambiar de cuenta'} · reintenta ${hhmm(s.switchBlockedUntil)}` });
+    return false;
+  }
+  const gapEnds = s.lastSwitchAt + s.switchMinGapMin * 60_000;
+  if (now < gapEnds) {
+    await setState({ dmStatus: `Hay DMs listos en @${target}; cambia de cuenta a las ${hhmm(gapEnds)} (pausa entre cambios)` });
+    return false;
+  }
+  let res;
+  try { res = await switchAccount(target); }
+  catch (e) { res = { ok: false, error: String(e?.message || e).slice(0, 200) }; }
+  if (res.ok) {
+    await setState({ lastSwitchAt: Date.now(), switchBlockedUntil: 0, switchError: '', dmStatus: `Cambió de @${from} a @${target} para mandar los DMs` });
+    await checkAccount();
+    return true;
+  }
+  const error = `no pudo cambiar a @${target}: ${String(res.error || 'sin detalle').slice(0, 420)}`;
+  await setState({
+    switchBlockedUntil: Date.now() + (res.needsPerson ? SWITCH_PERSON_RETRY_H * 3_600_000 : SWITCH_RETRY_MIN * 60_000),
+    switchError: error,
+    dmStatus: `Hay DMs listos en @${target}; ${error}`
+  });
+  return false;
+}
+
+// Cambia la cuenta activa con el selector de Instagram: Más (☰) → "Cambiar de cuenta" → la cuenta. Solo sirve
+// entre cuentas ya agregadas en este Chrome. Si Instagram pide contraseña o un código no escribe nada: vuelve al
+// inicio y avisa (needsPerson). Cada falla cuenta qué había en pantalla, para corregir sin adivinar.
+async function switchAccount(target) {
+  const tab = (await workTabs()).ig;
+  const ready = await igReady(tab);
+  if (ready === 'login') return { ok: false, needsPerson: true, error: 'Instagram pide login' };
+  if (ready !== 'ok') return { ok: false, error: ready === 'blocked' ? 'Instagram muestra un aviso de bloqueo' : 'Instagram no cargó' };
+  if ((await run(tab, igWhoAmI)) === target) return { ok: true };
+
+  // Desde el inicio: así no queda un chat ni un buscador abiertos atrás del selector.
+  await navigateTab(tab, 'https://www.instagram.com/').catch(() => {});
+  if ((await igReady(tab)) !== 'ok') return { ok: false, error: 'Instagram no cargó el inicio' };
+  await sleep(rand(1500, 3000));
+
+  const settled = (x) => !!x && ['ok', 'needs_person', 'blocked'].includes(x.state);
+  const debug = async () => (await run(tab, igSwitchDebug).catch(() => '')) || 'sin datos de la página';
+  const backHome = () => navigateTab(tab, 'https://www.instagram.com/').catch(() => {});
+
+  // 1) Abrir el selector de cuentas. "Más" se aprieta una sola vez (apretarlo de nuevo lo cierra); después se
+  // espera a que el menú dibuje "Cambiar de cuenta".
+  let st = null;
+  let lastStep = '';
+  let moreOpened = false;
+  for (let i = 0; i < 7; i++) {
+    st = await run(tab, igSwitchState, [target]).catch(() => null);
+    if (st && st.state !== 'idle') break;
+    lastStep = await run(tab, igSwitchOpen, [!moreOpened]).catch(() => 'none');
+    if (lastStep === 'more') moreOpened = true;
+    if (lastStep === 'none') break;
+    await sleep(rand(1000, 1900));
+  }
+  if (st?.state === 'ok') return { ok: true };
+  if (st?.state === 'blocked') return { ok: false, error: 'Instagram muestra un aviso de bloqueo' };
+  if (st?.state !== 'dialog') {
+    const d = await debug();
+    await backHome();
+    return { ok: false, error: `no se abrió el selector de cuentas (último paso: ${lastStep || 'ninguno'}) · ${d}` };
+  }
+
+  // 2) Elegir la cuenta.
+  await sleep(rand(900, 1800));
+  const picked = await run(tab, igSwitchPick, [target]);
+  if (picked !== 'clicked') {
+    await backHome();
+    return { ok: false, needsPerson: true, error: `@${target} no está agregada en este Chrome (cuentas del selector: ${(st.accounts || []).join(', ') || 'ninguna'})` };
+  }
+
+  // 3) Esperar a que Instagram recargue con la otra cuenta.
+  let r = await until(tab, igSwitchState, [target], settled, 25_000, 1000);
+  if (!settled(r)) {
+    // Puede quedar una pantalla intermedia ("guardar tu información de inicio"): no se elige nada, se va al inicio.
+    await backHome();
+    r = await until(tab, igSwitchState, [target], settled, 20_000, 1000);
+  }
+  if (r?.state === 'ok') { await sleep(rand(3000, 6000)); return { ok: true }; }
+  if (r?.state === 'needs_person') {
+    await backHome();
+    return { ok: false, needsPerson: true, error: `Instagram pide contraseña o código para entrar a @${target}: hay que entrar una vez a mano` };
+  }
+  if (r?.state === 'blocked') return { ok: false, error: 'Instagram muestra un aviso de bloqueo' };
+  const d = await debug();
+  await backHome();
+  return { ok: false, error: `eligió @${target} pero la cuenta activa sigue siendo @${r?.me || '?'} · ${d}` };
+}
+
+// Funciones de página del cambio de cuenta (autocontenidas).
+
+// { state, me, accounts }: 'ok' la cuenta activa ya es la buscada · 'dialog' el selector está abierto (accounts =
+// las cuentas que lista) · 'needs_person' Instagram pide contraseña o código · 'blocked' · 'idle' nada de eso.
+function igSwitchState(target) {
+  const body = document.body?.innerText || '';
+  if (/(intent[aá] de nuevo más tarde|inténtalo de nuevo más tarde|try again later|restringimos|we restrict)/i.test(body)) return { state: 'blocked' };
+  const asksSecret = [...document.querySelectorAll('input[type="password"], input[name="verificationCode"], input[autocomplete="one-time-code"]')]
+    .some((i) => i.offsetParent !== null);
+  if (asksSecret || /^\/(accounts\/login|challenge|accounts\/suspended)/.test(location.pathname)) return { state: 'needs_person' };
+
+  let nav = document.querySelector('svg[aria-label="Inicio"], svg[aria-label="Home"]')?.closest('a');
+  for (let i = 0; i < 10 && nav && !nav.querySelector('svg[aria-label="Configuración"], svg[aria-label="Settings"]'); i++) nav = nav.parentElement;
+  const link = nav && [...nav.querySelectorAll('a[href^="/"]')].find((x) => x.querySelector('img'));
+  const me = link?.getAttribute('href')?.match(/^\/([A-Za-z0-9._]+)\/$/)?.[1]?.toLowerCase() || null;
+
+  // El selector: un diálogo titulado "Cambiar de cuenta" (el menú "Más" también lo nombra, pero además trae "Salir").
+  const lines = (el) => (el.innerText || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const dialog = [...document.querySelectorAll('[role="dialog"]')].filter((d) => d.offsetParent !== null || d.getClientRects().length).find((d) => {
+    const ls = lines(d);
+    return ls.some((l) => /^(cambiar de cuenta|cambiar cuentas?|switch accounts?)$/i.test(l)) && !ls.some((l) => /^(salir|cerrar sesión|log ?out)$/i.test(l));
+  });
+  if (dialog) {
+    const accounts = [...new Set(lines(dialog).map((l) => l.toLowerCase()).filter((l) => /^[a-z0-9._]{2,30}$/.test(l)))];
+    return { state: 'dialog', me, accounts };
+  }
+  return { state: me === target ? 'ok' : 'idle', me };
+}
+
+// Un paso para abrir el selector: si "Cambiar de cuenta" está a la vista lo aprieta ('item'); si no y se
+// permite, abre el menú "Más" ('more'); con el menú ya abierto y sin la opción, 'no_item'.
+function igSwitchOpen(allowMore) {
+  const text = (el) => (el.innerText || '').trim();
+  const shown = (el) => el.offsetParent !== null || el.getClientRects().length > 0;
+  const item = [...document.querySelectorAll('a, button, [role="button"], [role="link"], [role="menuitem"], span')]
+    .filter(shown).find((el) => /^(cambiar de cuenta|cambiar cuentas?|switch accounts?)$/i.test(text(el)));
+  if (item) { (item.closest('a, button, [role="button"], [role="link"], [role="menuitem"]') || item).click(); return 'item'; }
+  if (!allowMore) return 'no_item';
+  const icon = document.querySelector('svg[aria-label="Configuración"], svg[aria-label="Settings"], svg[aria-label="Más"], svg[aria-label="More"]');
+  const more = icon?.closest('a, button, [role="button"], [role="link"]');
+  if (more) { more.click(); return 'more'; }
+  return 'none';
+}
+
+// Con el selector abierto, aprieta la fila de la cuenta buscada.
+function igSwitchPick(target) {
+  const text = (el) => (el.innerText || '').trim().toLowerCase();
+  for (const d of document.querySelectorAll('[role="dialog"]')) {
+    // El elemento más chico cuyo texto es exactamente el usuario.
+    const hit = [...d.querySelectorAll('span, div, a, button')]
+      .find((el) => text(el) === target && ![...el.children].some((c) => text(c) === target));
+    if (!hit) continue;
+    const row = hit.closest('[role="button"], button, a, label');
+    (row && d.contains(row) ? row : hit).click();
+    return 'clicked';
+  }
+  return 'not_listed';
+}
+
+// Qué había en pantalla cuando el cambio de cuenta no salió.
+function igSwitchDebug() {
+  const shown = (el) => el.offsetParent !== null || el.getClientRects().length > 0;
+  const text = (el) => (el.innerText || '').replace(/\s+/g, ' ').trim();
+  const dialogs = [...document.querySelectorAll('[role="dialog"]')].filter(shown).map((d) => text(d).slice(0, 140));
+  const buttons = [...document.querySelectorAll('a, button, [role="button"], [role="link"], [role="menuitem"]')].filter(shown).map(text)
+    .filter((t, i, all) => t && t.length < 40 && /cuenta|account|cambiar|switch|salir|log ?out/i.test(t) && all.indexOf(t) === i).slice(0, 8);
+  const icons = [...new Set([...document.querySelectorAll('svg[aria-label]')].map((x) => x.getAttribute('aria-label')))].slice(0, 14);
+  // El menú "Más" abierto: el bloque que contiene "Salir" (para ver cómo se llama ahí el cambio de cuenta).
+  const clickable = 'a, button, [role="button"], [role="link"], [role="menuitem"]';
+  let box = [...document.querySelectorAll(clickable)].filter(shown).find((el) => /^(salir|cerrar sesión|log ?out)$/i.test(text(el)))?.parentElement;
+  for (let i = 0; i < 6 && box && box.querySelectorAll(clickable).length < 4; i++) box = box.parentElement;
+  const menu = box ? text(box).slice(0, 180) : 'cerrado o sin "Salir"';
+  return `${location.pathname}, ${innerWidth}px · menú: ${menu} · diálogos: ${dialogs.join(' | ') || 'ninguno'} · botones: ${buttons.join(', ') || 'ninguno'} · íconos: ${icons.join(', ')}`;
 }
 
 async function sendDm(job) {

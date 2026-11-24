@@ -35,6 +35,7 @@
     <button id="toggle">Pausar</button>
   </div>
   <div id="status">…</div>
+  <div id="dm" class="note"></div>
 
   <div id="setup" hidden>
     <p>Abrí sales-hub con tu usuario y se conecta sola.</p>
@@ -77,6 +78,9 @@
       <div class="row">
         <label>Entre perfiles</label><input id="minGapSec" type="number" min="5" /><label>–</label><input id="maxGapSec" type="number" min="5" />
         <label>s · entre follows</label><input id="followGapMin" type="number" min="1" /><label>min</label>
+      </div>
+      <div class="row">
+        <label><input id="autoSwitch" type="checkbox" /> cambiar de cuenta sola para mandar DMs</label>
       </div>
       <div id="sync" class="note"></div>
       <div class="row"><button id="unblock" hidden>Quitar bloqueo de Instagram</button></div>

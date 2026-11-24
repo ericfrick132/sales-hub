@@ -24,6 +24,9 @@ async function render() {
 
   for (const f of NUM_FIELDS) if (document.activeElement !== $(f)) $(f).value = s[f] ?? NUM_DEFAULTS[f];
   $('follow').checked = s.follow ?? true;
+  $('autoSwitch').checked = s.autoSwitch ?? true;
+  const dmN = isToday(s.dmToday?.day) ? s.dmToday.n : 0;
+  $('dm').textContent = s.apiKey && (s.dmStatus || dmN) ? `DMs hoy: ${dmN}${s.dmStatus ? ` · ${s.dmStatus}` : ''}` : '';
   const only = s.onlyApps ?? [];
   document.querySelectorAll('.onlyApp').forEach((c) => { c.checked = only.includes(c.value); });
   const day = isToday(s.appToday?.day) ? s.appToday : { visits: {}, follows: {} };
@@ -63,6 +66,11 @@ document.querySelectorAll('.onlyApp').forEach((c) => {
   };
 });
 $('follow').onchange = async () => { await chrome.storage.local.set({ follow: $('follow').checked }); render(); };
+// Al volver a tildarlo se olvida el último intento fallido: prueba de nuevo en el próximo turno.
+$('autoSwitch').onchange = async () => {
+  await chrome.storage.local.set({ autoSwitch: $('autoSwitch').checked, switchBlockedUntil: 0, switchError: '' });
+  render();
+};
 $('connect').onclick = () => chrome.tabs.create({ url: 'https://sales.efcloud.tech/' });
 
 for (const f of NUM_FIELDS) {

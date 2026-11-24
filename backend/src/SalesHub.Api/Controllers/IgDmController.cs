@@ -201,8 +201,12 @@ public class IgDmController : ControllerBase
 
     // ── Extensión de Chrome ────────────────────────────────────────────────────────────────
 
-    /// <summary>Respuesta de "next": un DM para mandar, o cuántos segundos esperar y por qué.</summary>
-    public record NextDm(Guid? LeadId, string? Handle, string? Text, string? ProductKey, int WaitSeconds, string? Reason);
+    /// <summary>
+    /// Respuesta de "next": un DM para mandar, o cuántos segundos esperar y por qué. SwitchTo = otra cuenta de
+    /// Instagram que tiene un DM listo para salir ya: la extensión cambia sola a esa cuenta y vuelve a preguntar.
+    /// </summary>
+    public record NextDm(Guid? LeadId, string? Handle, string? Text, string? ProductKey, int WaitSeconds, string? Reason,
+        string? SwitchTo = null);
 
     /// <summary>
     /// Próximo DM para la cuenta de IG logueada en la extensión. El lead queda reservado 15 min
@@ -222,11 +226,11 @@ public class IgDmController : ControllerBase
         var settings = (await _db.IgDmSettings.Where(s => s.Enabled).ToListAsync(ct))
             .Where(s => Norm(_coordinator.AccountOf(s)) == acct).ToList();
         if (settings.Count == 0)
-            return new NextDm(null, null, null, null, 600, $"@{acct} no tiene DMs prendidos en SalesHub");
+            return await WithSwitchAsync(new NextDm(null, null, null, null, 600, $"@{acct} no tiene DMs prendidos en SalesHub"), acct, now, ct);
         // Las apps que mandan desde un celular no le dan nada a la extensión: si no, saldrían dos DMs.
         settings = settings.Where(s => s.Sender != IgDmSettings.SenderDevice).ToList();
         if (settings.Count == 0)
-            return new NextDm(null, null, null, null, 900, $"@{acct} manda desde el celular, no desde la extensión");
+            return await WithSwitchAsync(new NextDm(null, null, null, null, 900, $"@{acct} manda desde el celular, no desde la extensión"), acct, now, ct);
 
         NextDm? best = null;
         foreach (var s in settings)
@@ -287,7 +291,52 @@ public class IgDmController : ControllerBase
             }
             if (best is null || candidate.WaitSeconds < best.WaitSeconds) best = candidate;
         }
-        return best!;
+        return await WithSwitchAsync(best!, acct, now, ct);
+    }
+
+    /// <summary>
+    /// La cuenta que preguntó no tiene nada para mandar ahora: si otra cuenta (de las que mandan desde la
+    /// extensión) tiene un DM listo, se lo dice para que cambie sola de cuenta (Eric 24/11/2026: "si está con otra
+    /// cuenta tiene que ser autónomo para cambiar de cuenta"; los DMs de @turnos.pro estuvieron 5 días sin salir
+    /// porque el Chrome había quedado en @playcrew.app).
+    /// </summary>
+    private async Task<NextDm> WithSwitchAsync(NextDm next, string acct, DateTimeOffset now, CancellationToken ct)
+    {
+        var other = await AccountWithDmReadyAsync(acct, now, ct);
+        return other is null ? next : next with { SwitchTo = other, Reason = $"{next.Reason} · hay DMs listos en @{other}" };
+    }
+
+    /// <summary>
+    /// Otra cuenta, distinta de <paramref name="except"/>, con un DM que puede salir YA desde la extensión: prendida,
+    /// sin pausa, en horario, debajo del tope de hoy, pasada la espera entre DMs y con un lead en la cola. No
+    /// reserva nada: el lead se reserva recién cuando la extensión pregunta desde esa cuenta. Si hay varias, la que
+    /// hace más que no manda.
+    /// </summary>
+    private async Task<string?> AccountWithDmReadyAsync(string except, DateTimeOffset now, CancellationToken ct)
+    {
+        var local = IgOutreachPlan.ArLocal(now);
+        var dayStart = IgOutreachPlan.ArDayStart(now);
+        var claimCutoff = now.AddMinutes(-15);
+        var candidates = (await _db.IgDmSettings.AsNoTracking().Where(s => s.Enabled).ToListAsync(ct))
+            .Where(s => s.Sender != IgDmSettings.SenderDevice)
+            .OrderBy(s => s.NextAllowedAt ?? DateTimeOffset.MinValue);
+        foreach (var s in candidates)
+        {
+            var account = Norm(_coordinator.AccountOf(s));
+            if (account.Length == 0 || account == except) continue;
+            if (s.PausedUntil > now || s.NextAllowedAt > now) continue;
+            if (local.Hour < s.FromHour || local.Hour >= s.ToHour) continue;
+            var sentToday = await _db.Leads.CountAsync(l => l.ProductKey == s.ProductKey && l.IgDmSentAt >= dayStart, ct);
+            if (sentToday >= IgOutreachPlan.ColdCapToday(s, now)) continue;
+
+            var outbound = await _db.Leads.AnyAsync(l => l.ProductKey == s.ProductKey
+                && l.Tags.Contains(SalesHub.Infrastructure.Services.Outbound.OutboundService.ReservedTag), ct);
+            var queue = outbound
+                ? SalesHub.Infrastructure.Services.Outbound.OutboundService.InstagramDmQueue(_db, s.ProductKey)
+                : IgOutreachPlan.ColdQueue(_db.Leads, s.ProductKey);
+            if (await queue.AnyAsync(l => l.IgDmClaimedAt == null || l.IgDmClaimedAt < claimCutoff, ct)) return account;
+        }
+        return null;
     }
 
     public record ResultRequest(bool Ok, string? Text, string? Error, bool Blocked = false);

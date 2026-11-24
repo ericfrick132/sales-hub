@@ -170,14 +170,21 @@ public class AudienceController : ControllerBase
     /// <summary>La extensión avisa cada 2 min qué está haciendo (sin login: header X-Audience-Key).</summary>
     [HttpPost("finder-heartbeat")]
     [AllowAnonymous]
-    public IActionResult FinderHeartbeat([FromBody] JsonElement state)
+    public IActionResult FinderHeartbeat([FromBody] JsonElement state, [FromServices] ILogger<AudienceController> log)
     {
         if (!KeyOk()) return Unauthorized();
         var account = state.TryGetProperty("account", out var a) && a.ValueKind == JsonValueKind.String ? a.GetString()! : "(sin cuenta)";
         // Por cuenta Y versión: dos copias de la extensión con la misma cuenta de IG (otra compu, otro perfil de
         // Chrome) se pisaban y el estado saltaba de una a otra. Así se ven las dos.
         var version = state.TryGetProperty("version", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "?";
-        Heartbeats[$"{account} (v{version})"] = (state.Clone(), DateTimeOffset.UtcNow);
+        var reader = $"{account} (v{version})";
+        // El estado de los DMs (a quién le mandó, por qué no manda, si cambió de cuenta) queda en el log cada vez
+        // que cambia: el latido vive en memoria y sin esto no hay forma de ver después qué pasó.
+        static string? Dm(JsonElement e) => e.TryGetProperty("dmStatus", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() : null;
+        var dm = Dm(state);
+        if (dm != (Heartbeats.TryGetValue(reader, out var prev) ? Dm(prev.State) : null))
+            log.LogInformation("Lector {Reader}: DMs → {Status}", reader, dm ?? "(sin estado)");
+        Heartbeats[reader] = (state.Clone(), DateTimeOffset.UtcNow);
         return Ok();
     }
 
