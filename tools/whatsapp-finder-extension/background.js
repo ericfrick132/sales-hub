@@ -65,6 +65,7 @@ const DEFAULTS = {
   lastSwitchAt: 0,
   switchBlockedUntil: 0, // no pudo cambiar: no reintenta hasta esta hora
   switchError: '',
+  dmHoldUntil: 0,       // DMs frenados hasta esta hora: falló algo que no es del lead (no pudo escribir, no abrió el chat)
   apiKey: '',           // clave de Marketing → Competencia → Públicos
   unsynced: []          // resultados que todavía no llegaron a sales-hub
 };
@@ -908,7 +909,7 @@ chrome.runtime.onStartup.addListener(ensureRunning);
 // Al actualizar, la cola local se vacía y se vuelve a pedir a sales-hub, que decide el orden (los
 // resultados ya conseguidos se mantienen).
 chrome.runtime.onInstalled.addListener(async (d) => {
-  if (d.reason === 'update') await setState({ queue: [] });
+  if (d.reason === 'update') await setState({ queue: [], dmHoldUntil: 0, switchBlockedUntil: 0, switchError: '' });
   await ensureRunning();
 });
 chrome.storage.onChanged.addListener((c) => { if (c.apiKey?.newValue) ensureRunning(); });
@@ -949,6 +950,7 @@ async function dmTick() {
 
 // Un paso de los DMs con la pestaña ya tomada. Devuelve en cuántos ms volver a mirar.
 async function dmStep(s) {
+  if (Date.now() < s.dmHoldUntil) return Math.min(s.dmHoldUntil - Date.now(), 30 * 60_000);
   // La cuenta se lee de la página cada vez, no de memoria: si alguien cambió de cuenta a mano, el DM de una app
   // no puede salir desde la cuenta de otra.
   const me = await checkAccount();
@@ -975,6 +977,18 @@ async function dmStep(s) {
   let res;
   try { res = await sendDm(next); }
   catch (e) { res = { ok: false, error: String(e?.message || e).slice(0, 200) }; }
+  // Falla de la extensión o de Instagram en general, no del lead: NO se le anota el error al lead (sales-hub lo
+  // descarta para siempre y se pasaría al siguiente cada minuto, quemando la cola: pasó el 24/11 con "no se pudo
+  // escribir el mensaje"). El lead vuelve solo a la cola cuando vence la reserva y los DMs se frenan.
+  if (!res.ok && !res.blocked && DM_OWN_FAILURES.test(res.error || '')) {
+    const until = Date.now() + DM_HOLD_H * 3_600_000;
+    await setState({
+      dmHoldUntil: until,
+      dmStatus: `DMs frenados hasta las ${new Date(until).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })}: ${res.error} (con @${next.handle}; no es un problema del lead)`
+    });
+    heartbeat();
+    return 30 * 60_000;
+  }
   try {
     await fetch(`${DM_API}/${next.leadId}/result`, {
       method: 'POST',
@@ -992,6 +1006,10 @@ async function dmStep(s) {
   return res.blocked ? 6 * 3_600_000 : 60_000;
 }
 
+// Errores de sendDm que no dicen nada del lead.
+const DM_OWN_FAILURES = /no se pudo escribir el mensaje|no se abrió el chat|el perfil no cargó|Instagram pide login/i;
+const DM_HOLD_H = 6;
+
 // ---- Cambio de cuenta solo ----
 
 const SWITCH_RETRY_MIN = 30;      // falló por algo pasajero (no cargó, no encontró el menú)
@@ -1001,7 +1019,7 @@ const SWITCH_PERSON_RETRY_H = 6;  // lo tiene que resolver una persona (contrase
 async function autoSwitch(target, from) {
   const s = await getState();
   const now = Date.now();
-  const hhmm = (ms) => new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  const hhmm = (ms) => new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
   if (!s.autoSwitch) {
     await setState({ dmStatus: `Hay DMs listos en @${target} y la cuenta activa es @${from}: el cambio de cuenta solo está apagado` });
     return false;
@@ -1195,8 +1213,22 @@ async function sendDm(job) {
   if (box === 'blocked') return { ok: false, blocked: true, error: 'Instagram muestra un aviso de bloqueo' };
   if (box !== 'ready') return { ok: false, error: 'no se abrió el chat' };
   await sleep(rand(1000, 2500));
-  const typed = await run(tabs.ig, dmType, [job.text]);
-  if (!typed) return { ok: false, error: 'no se pudo escribir el mensaje' };
+  // El cuadro de Instagram (Lexical) dibuja el texto un instante DESPUÉS del evento, y la ventana de trabajo no
+  // tiene el foco: se prueba un método por vez (escribir, pegar, beforeinput) y se mira el cuadro con espera.
+  // Solo se manda si quedó exactamente el texto; con cualquier otra cosa escrita no se manda nada.
+  const flat = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+  const want = flat(job.text);
+  const tried = [];
+  let got = '';
+  for (const method of [0, 1, 2]) {
+    tried.push(await run(tabs.ig, dmType, [job.text, method]));
+    got = flat(await until(tabs.ig, dmTyped, [], Boolean, 3500, 350));
+    if (got) break;
+  }
+  if (got !== want) {
+    const where = await run(tabs.ig, dmTypeDebug).catch(() => '');
+    return { ok: false, error: `no se pudo escribir el mensaje (${got ? `quedó otro texto: "${got.slice(0, 60)}"` : 'el cuadro quedó vacío'}; probé ${tried.join(', ')}; ${where})` };
+  }
   await sleep(rand(800, 2000));
   await run(tabs.ig, dmSend);
   const sent = await until(tabs.ig, dmSentState, [String(job.text).slice(0, 40)], (r) => r === 'ok' || r === 'blocked', 15_000, 700);
@@ -1237,12 +1269,45 @@ function dmBoxState() {
   if (notNow) notNow.click();
   return document.querySelector('div[role="textbox"][contenteditable="true"]') ? 'ready' : 'waiting';
 }
-function dmType(text) {
+// Escribe en el cuadro del chat con un método: 0 execCommand (como tipear), 1 pegar, 2 beforeinput. No dice si
+// quedó escrito: eso se mira después con dmTyped (el editor actualiza el cuadro un instante más tarde).
+function dmType(text, method) {
   const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
-  if (!input) return false;
+  if (!input) return 'sin cuadro';
+  const clean = String(text).replace(/\s*\n\s*/g, ' ');
   input.focus();
-  document.execCommand('insertText', false, String(text).replace(/\s*\n\s*/g, ' '));
-  return !!(input.innerText || '').trim();
+  // En una ventana de fondo focus() no dispara los eventos: se avisan a mano (React y Lexical escuchan focusin).
+  if (!document.hasFocus()) {
+    input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    input.dispatchEvent(new FocusEvent('focus'));
+  }
+  // El cursor, adentro del cuadro y al final.
+  const range = document.createRange();
+  range.selectNodeContents(input);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  if (method === 0) return document.execCommand('insertText', false, clean) ? 'escribir' : 'escribir (rechazado)';
+  if (method === 1) {
+    const data = new DataTransfer();
+    data.setData('text/plain', clean);
+    input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    return 'pegar';
+  }
+  input.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: clean, bubbles: true, cancelable: true }));
+  return 'beforeinput';
+}
+// Lo que hay escrito en el cuadro del chat ahora.
+function dmTyped() {
+  const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
+  return (input?.innerText || '').replace(/\s+/g, ' ').trim();
+}
+// Cómo estaba la página cuando no se pudo escribir.
+function dmTypeDebug() {
+  const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
+  const attrs = input ? [...input.attributes].map((a) => a.name).filter((n) => /lexical|aria-|data-/.test(n)).slice(0, 6).join(' ') : 'sin cuadro';
+  return `${location.pathname.slice(0, 30)}, foco ${document.hasFocus() ? 'sí' : 'no'}, ${document.visibilityState}, activo ${document.activeElement === input ? 'el cuadro' : (document.activeElement?.tagName || '?')}, cuadro: ${attrs}`;
 }
 function dmSend() {
   const b = [...document.querySelectorAll('div[role="button"], button')].find((x) => /^(enviar|send)$/i.test((x.innerText || x.getAttribute('aria-label') || '').trim()));
