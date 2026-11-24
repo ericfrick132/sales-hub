@@ -9,7 +9,9 @@ import QrConnectModal from '../components/QrConnectModal';
 // Menú Leads (Eric 19/11/2026): ranking de prospectos con puntaje, búsqueda en Places por rubro × zona y
 // la línea outbound, que le escribe sola a los mejores con un tope de contactos nuevos por día.
 
-type Rubro = { key: string; label: string; searchTerms: string[] };
+type Rubro = { key: string; label: string; searchTerms: string[]; productKey: string };
+/** Teléfono ya cargado en SalesHub (de una app, sin vendedor) que todavía no es línea outbound. */
+type OtherLine = { id: string; instanceName: string; label: string; productKey: string | null; status: string; listenOnly: boolean };
 type Zone = { key: string; label: string };
 type Part = { key: string; label: string; points: number; max: number; why: string };
 type Detail = { rubro: string | null; zona: string | null; parts: Part[] };
@@ -46,7 +48,13 @@ type Info = {
   rubros: Rubro[];
   zones: Zone[];
   defaultTemplate: string;
+  /** Apertura por defecto de cada app con rubros propios (TurnosPro, GymHero). */
+  defaultTemplates?: Record<string, string>;
+  otherLines?: OtherLine[];
 };
+
+/** Los rubros con los que se califica a esa app. */
+const rubrosOf = (info: Info | undefined, productKey: string | null) => (info?.rubros ?? []).filter((r) => r.productKey === productKey);
 
 type Row = {
   leadId: string; name: string; rubro: string | null; city: string | null; address: string | null;
@@ -170,7 +178,7 @@ export function RankingProspectos() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <select className="input" value={productKey} onChange={(e) => setProductKey(e.target.value)}>
+        <select className="input" value={productKey} onChange={(e) => { setProductKey(e.target.value); setRubro(''); }}>
           {(info.data?.products ?? [{ productKey: 'turnospro', displayName: 'TurnosPro' }]).map((p) => (
             <option key={p.productKey} value={p.productKey}>{p.displayName}</option>
           ))}
@@ -178,7 +186,7 @@ export function RankingProspectos() {
         <button className={`rounded-full border px-3 py-1 ${rubro === '' ? 'bg-slate-800 text-white' : 'bg-white'}`} onClick={() => setRubro('')}>
           Todos
         </button>
-        {(info.data?.rubros ?? []).map((r) => {
+        {rubrosOf(info.data, productKey).map((r) => {
           const n = c?.byRubro.find((b) => b.rubro === r.key);
           return (
             <button key={r.key} className={`rounded-full border px-3 py-1 ${rubro === r.key ? 'bg-slate-800 text-white' : 'bg-white'}`} onClick={() => setRubro(r.key)}>
@@ -315,10 +323,12 @@ export function BuscarProspectos() {
 
   useEffect(() => {
     if (info.data && rubros.length === 0 && zones.length === 0) {
-      setRubros(info.data.rubros.map((r) => r.key));
+      setRubros(rubrosOf(info.data, productKey).map((r) => r.key));
       setZones(info.data.zones.map((z) => z.key));
     }
   }, [info.data]);
+  // Cada app tiene sus rubros: al cambiar de app se marcan todos los de esa app.
+  const changeProduct = (k: string) => { setProductKey(k); setRubros(rubrosOf(info.data, k).map((r) => r.key)); };
 
   const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const terms = useMemo(
@@ -367,14 +377,15 @@ export function BuscarProspectos() {
       <section className="rounded-xl border bg-white p-4 space-y-4 text-sm">
         <label className="flex items-center gap-2">
           <span className="w-16 text-slate-600">App</span>
-          <select className="input" value={productKey} onChange={(e) => setProductKey(e.target.value)}>
+          <select className="input" value={productKey} onChange={(e) => changeProduct(e.target.value)}>
             {info.data.products.map((p) => <option key={p.productKey} value={p.productKey}>{p.displayName}</option>)}
           </select>
         </label>
         <div>
           <div className="text-slate-600 mb-1">Rubros</div>
           <div className="flex flex-wrap gap-2">
-            {info.data.rubros.map((r) => (
+            {rubrosOf(info.data, productKey).length === 0 && <span className="text-xs text-slate-500">Esa app todavía no tiene rubros para el outbound.</span>}
+            {rubrosOf(info.data, productKey).map((r) => (
               <button key={r.key} type="button" onClick={() => setRubros(toggle(rubros, r.key))}
                 className={`rounded-full border px-3 py-1 ${rubros.includes(r.key) ? 'bg-slate-800 text-white' : 'bg-white'}`}
                 title={`Se busca: ${r.searchTerms.join(', ')}`}>
@@ -438,7 +449,7 @@ export function LineaOutbound() {
         label: form.label.trim(), productKey: form.productKey, extraProductKeys: [], listenOnly: false, importHistory: false,
       })).data;
       const saved = (await api.put<Line>(`/outbound/lines/${line.id}`, {
-        cap: 10, minScore: 50, rubros: info.data?.rubros.map((r) => r.key) ?? [], senderName: form.senderName.trim(), template: null, paused: false,
+        cap: 10, minScore: 50, rubros: rubrosOf(info.data, form.productKey).map((r) => r.key), senderName: form.senderName.trim(), template: null, paused: false,
         requireWhatsapp: true,
       })).data;
       qc.invalidateQueries({ queryKey: ['outbound'] });
@@ -515,8 +526,10 @@ export function LineaOutbound() {
           </label>
         </div>
         <button className="btn-primary" disabled={creating} onClick={create}>{creating ? 'Creando…' : 'Crear y mostrar QR'}</button>
-        <div className="text-xs text-slate-500">Arranca con 10 por día, puntaje mínimo 50, los 6 rubros y solo WhatsApp verificado. Se cambia después.</div>
+        <div className="text-xs text-slate-500">Arranca con 10 por día, puntaje mínimo 50, todos los rubros de la app y solo WhatsApp verificado. Se cambia después.</div>
       </section>
+
+      <ExistingPhoneToOutbound info={info.data} />
 
       {qrFor && (
         <QrConnectModal
@@ -530,11 +543,72 @@ export function LineaOutbound() {
   );
 }
 
+/**
+ * Pasa a outbound un teléfono que ya está en SalesHub (por ejemplo la línea de la app, ya conectada): no hay que
+ * escanear nada. Arranca igual que una línea nueva: 10 por día, puntaje mínimo 50, los rubros de su app.
+ */
+function ExistingPhoneToOutbound({ info }: { info: Info }) {
+  const qc = useQueryClient();
+  const phones = (info.otherLines ?? []).filter((l) => l.productKey && rubrosOf(info, l.productKey).length > 0);
+  const [id, setId] = useState('');
+  const [senderName, setSenderName] = useState('');
+  const [saving, setSaving] = useState(false);
+  if (phones.length === 0) return null;
+  const chosen = phones.find((l) => l.id === id);
+  const appName = (k: string | null) => info.products.find((p) => p.productKey === k)?.displayName ?? k ?? '';
+
+  async function turnOn() {
+    if (!chosen) return toast.error('Elegí el teléfono');
+    setSaving(true);
+    try {
+      await api.put(`/outbound/lines/${chosen.id}`, {
+        cap: 10, minScore: 50, rubros: rubrosOf(info, chosen.productKey).map((r) => r.key),
+        senderName: senderName.trim() || null, template: null, paused: false, requireWhatsapp: true,
+      });
+      qc.invalidateQueries({ queryKey: ['outbound'] });
+      setId('');
+      toast.success(`${chosen.label} ya es línea outbound de ${appName(chosen.productKey)}`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error ?? 'No se pudo prender');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="rounded-xl border bg-white p-4 space-y-3 text-sm">
+      <div className="font-semibold">Usar un teléfono que ya está cargado</div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="space-y-1 sm:col-span-2">
+          <div className="text-slate-600">Teléfono</div>
+          <select className="input w-full" value={id} onChange={(e) => setId(e.target.value)}>
+            <option value="">Elegí…</option>
+            {phones.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.label} · {appName(l.productKey)} · {l.status === 'Connected' ? 'conectado' : 'sin conectar'}{l.listenOnly ? ' · solo escucha' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <div className="text-slate-600">Se presenta como</div>
+          <input className="input w-full" placeholder="el de la persona de la app" value={senderName} onChange={(e) => setSenderName(e.target.value)} />
+        </label>
+      </div>
+      <button className="btn-primary" disabled={saving || !chosen} onClick={turnOn}>{saving ? 'Prendiendo…' : 'Prender outbound en este teléfono'}</button>
+      <div className="text-xs text-slate-500">
+        Empieza a escribir apenas haya leads de su app analizados a fondo. Si es la línea donde entran los anuncios de la app,
+        los mensajes en frío salen del mismo número: un freno de WhatsApp la deja sin atender.
+      </div>
+    </section>
+  );
+}
+
 function LineCard({ line, info, onQr }: { line: Line; info: Info; onQr: () => void }) {
   const qc = useQueryClient();
   const initial = () => ({
     cap: line.cap, minScore: line.minScore, rubros: line.rubros, senderName: line.senderName ?? '',
-    template: line.template ?? info.defaultTemplate, paused: line.paused, requireWhatsapp: line.requireWhatsapp,
+    template: line.template ?? info.defaultTemplates?.[line.productKey ?? ''] ?? info.defaultTemplate, paused: line.paused, requireWhatsapp: line.requireWhatsapp,
   });
   const [form, setForm] = useState(initial);
   const [preview, setPreview] = useState<{ leadId: string; name: string; score: number; message: string }[] | null>(null);
@@ -598,7 +672,7 @@ function LineCard({ line, info, onQr }: { line: Line; info: Info; onQr: () => vo
       <div>
         <div className="text-slate-600 mb-1">Rubros a los que les escribe</div>
         <div className="flex flex-wrap gap-2">
-          {info.rubros.map((r) => (
+          {rubrosOf(info, line.productKey).map((r) => (
             <button key={r.key} type="button" onClick={() => toggle(r.key)}
               className={`rounded-full border px-3 py-1 ${form.rubros.includes(r.key) ? 'bg-slate-800 text-white' : 'bg-white'}`}>
               {r.label}
