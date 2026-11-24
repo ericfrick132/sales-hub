@@ -62,7 +62,10 @@ interface OutboundApp {
   /** Tope de hoy del canal; null = ese canal no está prendido para la app. */
   whatsappCap: number | null; instagramCap: number | null;
   daily: OutboundDay[];
+  /** De dónde salieron y de qué rubro son los leads contactados del período (total y cuántos de esos hoy). */
+  sources: OutboundGroup[]; rubros: OutboundGroup[];
 }
+interface OutboundGroup { label: string; total: number; today: number }
 interface OutboundSummary { days: number; apps: OutboundApp[] }
 
 const fmtDay = (iso: string) => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
@@ -356,7 +359,26 @@ function OutboundAppBlock({ app, color }: { app: OutboundApp; color: string }) {
           </tbody>
         </table>
       </div>
+      <OutboundGroups title="De dónde salen" groups={app.sources} />
+      <OutboundGroups title="Rubros" groups={app.rubros} />
     </div>
+  );
+}
+
+/** "Rubros: Centro de estética 18 (1 hoy) · Peluquería 7" — de los leads contactados en el período. */
+function OutboundGroups({ title, groups }: { title: string; groups?: OutboundGroup[] }) {
+  if (!groups?.length) return null;
+  return (
+    <p className="text-xs text-slate-500 mt-1.5">
+      <span className="text-slate-400">{title}: </span>
+      {groups.map((g, i) => (
+        <span key={g.label}>
+          {i > 0 && ' · '}
+          <span className="text-slate-700">{g.label}</span> <b className="tabular-nums text-slate-900">{g.total}</b>
+          {g.today > 0 && <span className="tabular-nums"> ({g.today} hoy)</span>}
+        </span>
+      ))}
+    </p>
   );
 }
 

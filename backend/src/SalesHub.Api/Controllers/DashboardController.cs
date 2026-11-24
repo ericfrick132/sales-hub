@@ -281,7 +281,10 @@ public class DashboardController : ControllerBase
     }
 
     public record OutboundDay(string Date, int Whatsapp, int WhatsappReplied, int Instagram, int InstagramReplied);
-    public record OutboundApp(string ProductKey, string DisplayName, int? WhatsappCap, int? InstagramCap, List<OutboundDay> Daily);
+    /// <summary>Leads contactados de un rubro (o de un origen) en el período y cuántos de esos hoy.</summary>
+    public record OutboundGroup(string Label, int Total, int Today);
+    public record OutboundApp(string ProductKey, string DisplayName, int? WhatsappCap, int? InstagramCap, List<OutboundDay> Daily,
+        List<OutboundGroup> Sources, List<OutboundGroup> Rubros);
     public record OutboundResult(int Days, List<OutboundApp> Apps);
 
     /// <summary>
@@ -289,7 +292,8 @@ public class DashboardController : ControllerBase
     /// nuevos que abrió la línea outbound (outbound_contacts enviados); Instagram = DMs que salieron desde la cuenta
     /// de la app (leads.IgDmSentAt). "Contestaron" va por la tanda de ese día: de los que se mandaron ese día,
     /// cuántos contestaron después (en WhatsApp, sin contar el saludo automático del negocio). El tope es el de hoy;
-    /// null = ese canal no está prendido para la app.
+    /// null = ese canal no está prendido para la app. Sources y Rubros dicen de dónde salieron y de qué rubro son los
+    /// leads contactados del período (cada lead una vez, aunque le haya llegado por los dos canales).
     /// </summary>
     [HttpGet("outbound")]
     public async Task<ActionResult<OutboundResult>> Outbound([FromQuery] int days = 7, CancellationToken ct = default)
@@ -304,7 +308,11 @@ public class DashboardController : ControllerBase
 
         var wa = await _db.OutboundContacts.AsNoTracking()
             .Where(c => c.Status == OutboundContact.Sent && c.SentAt >= since)
-            .Select(c => new { c.Lead!.ProductKey, At = c.SentAt!.Value, Replied = c.RepliedAt != null })
+            .Select(c => new
+            {
+                c.LeadId, c.Lead!.ProductKey, c.Lead.Source, Rubro = c.Lead.ProspectRubro,
+                At = c.SentAt!.Value, Replied = c.RepliedAt != null,
+            })
             .ToListAsync(ct);
 
         var igLine = SalesHub.Infrastructure.Instagram.InstagramMessengerClient.LinePrefix;
@@ -312,7 +320,7 @@ public class DashboardController : ControllerBase
             .Where(l => l.IgDmSentAt >= since)
             .Select(l => new
             {
-                l.ProductKey,
+                LeadId = l.Id, l.ProductKey, l.Source, Rubro = l.ProspectRubro,
                 At = l.IgDmSentAt!.Value,
                 Replied = _db.ConversationMessages.Any(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound
                     && m.Timestamp >= l.IgDmSentAt && m.EvolutionInstance!.StartsWith(igLine)),
@@ -339,6 +347,19 @@ public class DashboardController : ControllerBase
         var igBy = ig.GroupBy(x => (x.ProductKey, Day: Day(x.At)))
             .ToDictionary(g => g.Key, g => (Sent: g.Count(), Replied: g.Count(x => x.Replied)));
 
+        // De dónde salieron y de qué rubro son: un lead cuenta una vez; "hoy" si hoy le salió algo por algún canal.
+        var contacted = wa.Select(x => (x.LeadId, x.ProductKey, x.Source, x.Rubro, Day: Day(x.At)))
+            .Concat(ig.Select(x => (x.LeadId, x.ProductKey, x.Source, x.Rubro, Day: Day(x.At))))
+            .GroupBy(x => x.LeadId)
+            .Select(g => (g.First().ProductKey, g.First().Source, g.First().Rubro, Today: g.Any(x => x.Day == today)))
+            .ToList();
+        List<OutboundGroup> Groups(string productKey, Func<(string ProductKey, LeadSource Source, string? Rubro, bool Today), string> label) =>
+            contacted.Where(x => x.ProductKey == productKey)
+                .GroupBy(label)
+                .Select(g => new OutboundGroup(g.Key, g.Count(), g.Count(x => x.Today)))
+                .OrderByDescending(g => g.Total).ThenBy(g => g.Label)
+                .ToList();
+
         var apps = waCaps.Keys.Concat(igCaps.Keys).Concat(wa.Select(x => x.ProductKey)).Concat(ig.Select(x => x.ProductKey))
             .Where(k => !string.IsNullOrEmpty(k)).Distinct()
             .Select(k =>
@@ -354,7 +375,9 @@ public class DashboardController : ControllerBase
                 return new OutboundApp(k, names.GetValueOrDefault(k) is { Length: > 0 } n ? n : k,
                     waCaps.TryGetValue(k, out var wc) ? wc : null,
                     igCaps.TryGetValue(k, out var ic) ? ic : null,
-                    daily);
+                    daily,
+                    Groups(k, x => OutboundSourceLabel(x.Source)),
+                    Groups(k, x => SalesHub.Infrastructure.Services.Outbound.ProspectScorer.RubroByKey(x.Rubro)?.Label ?? "Sin rubro"));
             })
             .OrderByDescending(a => a.Daily[^1].Whatsapp + a.Daily[^1].Instagram)
             .ThenByDescending(a => a.Daily.Sum(d => d.Whatsapp + d.Instagram))
@@ -363,6 +386,19 @@ public class DashboardController : ControllerBase
 
         return new OutboundResult(days, apps);
     }
+
+    /// <summary>De dónde se trajo el lead, como se lee en la card de outbound.</summary>
+    private static string OutboundSourceLabel(LeadSource s) => s switch
+    {
+        LeadSource.GooglePlaces or LeadSource.ApifyGoogleMaps or LeadSource.ManualMaps => "Google Maps",
+        LeadSource.ApifyInstagram or LeadSource.InstagramScraper or LeadSource.ManualInstagram => "Instagram",
+        LeadSource.InstagramFollower => "Seguidores de Instagram",
+        LeadSource.ApifyMetaAdsLibrary => "Biblioteca de anuncios",
+        LeadSource.ApifyFacebookPages => "Facebook",
+        LeadSource.BrowserCapture => "Captura del navegador",
+        LeadSource.Manual or LeadSource.ManualWhatsApp or LeadSource.ManualWeb => "Carga manual",
+        _ => s.ToString(),
+    };
 
     public record BusinessApp(string ProductKey, bool Connected, DateTimeOffset? LastSyncAt, string? Error,
         decimal MrrUsd, int Active, int Trial, int Free, int PastDue, int NewPaid, int Cancelled, double? ChurnPct, double? TrialToPaidPct);
