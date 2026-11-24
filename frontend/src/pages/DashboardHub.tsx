@@ -7,7 +7,7 @@ import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { api } from '../lib/api';
-import type { AiCost, GlobalMetrics, Product } from '../lib/types';
+import type { GlobalMetrics, Product } from '../lib/types';
 import TabbedPage from '../components/TabbedPage';
 import Collapsible from '../components/Collapsible';
 import TeamCompliance from '../components/TeamCompliance';
@@ -56,8 +56,15 @@ const PERIODS = [
   { days: 90, label: '90 días' },
 ];
 
-const pct = (num: number, den: number) => (den > 0 ? `${Math.round((num / den) * 100)}%` : '—');
-const usd = (n: number) => (!n ? '$0' : n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
+interface OutboundDay { date: string; whatsapp: number; whatsappReplied: number; instagram: number; instagramReplied: number }
+interface OutboundApp {
+  productKey: string; displayName: string;
+  /** Tope de hoy del canal; null = ese canal no está prendido para la app. */
+  whatsappCap: number | null; instagramCap: number | null;
+  daily: OutboundDay[];
+}
+interface OutboundSummary { days: number; apps: OutboundApp[] }
+
 const fmtDay = (iso: string) => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
 
 export default function DashboardHub() {
@@ -68,13 +75,6 @@ export default function DashboardHub() {
     queryKey: ['dashboard-trend', days],
     queryFn: async () => (await api.get<Trend>('/dashboard/trend', { params: { days } })).data,
     refetchInterval: 60000,
-  });
-  const aiCost = useQuery({ queryKey: ['ai-cost'], queryFn: async () => (await api.get<AiCost>('/dashboard/ai-cost')).data, refetchInterval: 60000 });
-  // Comparte queryKey con Atención → react-query dedupe.
-  const waiting = useQuery({
-    queryKey: ['attention-waiting', false],
-    queryFn: async () => (await api.get<{ breached: boolean }[]>('/attention/waiting', { params: { limit: 100 } })).data,
-    refetchInterval: 30000,
   });
 
   // Color estable por app: orden alfabético de productKey.
@@ -89,7 +89,6 @@ export default function DashboardHub() {
   const nameOf = (k: string) => products.data?.find((p) => p.productKey === k)?.displayName || k;
 
   const t = trend.data;
-  const waitingBreached = (waiting.data ?? []).filter((w) => w.breached).length;
 
   return (
     <div className="space-y-5">
@@ -108,22 +107,11 @@ export default function DashboardHub() {
         </div>
       </div>
 
-      {t && <TodayLeads daily={t.daily} colorOf={colorOf} nameOf={nameOf} />}
-
-      {/* Una sola fila de KPIs, sin repetir números en otras partes. */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <Kpi label="Todos los ingresos" value={t?.leads ?? '—'} sub={`últimos ${days} días · anuncios, Maps, chats`} to="/crm?view=lista" />
-        <Kpi label="Contactados" value={t?.sent ?? '—'} sub="primer mensaje enviado" />
-        <Kpi label="Respondieron" value={t?.replied ?? '—'} sub={t ? `${pct(t.replied, t.leads)} de los leads nuevos` : ''} tone="sky" />
-        <Kpi label="Cuentas creadas" value={t?.closed ?? '—'} sub={t ? `${pct(t.closed, t.leads)} de los leads nuevos` : ''} tone="emerald" />
-        <Kpi
-          label="Esperando respuesta"
-          value={waiting.data?.length ?? 0}
-          sub={waitingBreached > 0 ? `${waitingBreached} pasados de 10 min` : 'nadie colgado'}
-          to="/admin?view=equipo&sub=atencion"
-          tone={waitingBreached > 0 ? 'red' : 'emerald'}
-        />
-        <Kpi label="Gasto IA" value={usd(aiCost.data?.last30dUsd ?? 0)} sub={`${usd(aiCost.data?.todayUsd ?? 0)} hoy · 30 días`} />
+      {/* Arriba, solo lo que se mira todos los días: lo que entró por Meta y lo que salió en frío por cada canal.
+          El resto (embudo, atención, gasto de IA) vive en sus pestañas. */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+        <MetaLeadsCard daily={t?.daily} colorOf={colorOf} nameOf={nameOf} />
+        <OutboundCard colorOf={colorOf} />
       </div>
 
       <TabbedPage
@@ -200,56 +188,175 @@ export default function DashboardHub() {
   );
 }
 
-// ── Leads de hoy ────────────────────────────────────────────────────────────
+// ── Lo de todos los días: Meta y outbound ───────────────────────────────────
+
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+/** "jue 19" a partir de un día ISO (sin pasar por UTC: el día es el de Argentina). */
+const dayLabel = (iso: string) => {
+  const d = new Date(`${iso}T12:00:00`);
+  return `${d.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '')} ${d.getDate()}`;
+};
 
 /**
- * Leads de anuncios (WhatsApp Ads + form de Meta + chats que traen el texto de un anuncio) que entraron hoy
- * (día AR; el último día de /dashboard/trend) vs ayer, por app. Al lado, lo que cuenta Meta: incluye a quien
- * ya era lead y volvió a escribir desde un anuncio, y chats sin texto del anuncio ("Hola") que el hub no puede atribuir.
+ * Leads que entraron por Meta (click-to-WhatsApp + formulario + chats que traen el texto de un anuncio): hoy, ayer
+ * y los últimos 7 días (días AR), por app. Abajo, lo que cuenta Meta como conversaciones: incluye a quien ya era
+ * lead y volvió a escribir desde un anuncio, y chats sin texto del anuncio ("Hola") que el hub no puede atribuir.
  */
-function TodayLeads({ daily, colorOf, nameOf }: { daily: TrendDay[]; colorOf: (k: string) => string; nameOf: (k: string) => string }) {
+function MetaLeadsCard({ daily, colorOf, nameOf }: { daily?: TrendDay[]; colorOf: (k: string) => string; nameOf: (k: string) => string }) {
+  if (!daily?.length) return <section className="card p-4 text-sm text-slate-400">Cargando leads de Meta…</section>;
   const today = daily[daily.length - 1];
   const yesterday = daily[daily.length - 2];
-  if (!today) return null;
-  const diff = yesterday ? today.adLeads - yesterday.adLeads : 0;
-  const apps = Object.entries(today.adByProduct ?? {}).sort((a, b) => b[1] - a[1]);
+  const week = daily.slice(-7);
+  const weekByApp: Record<string, number> = {};
+  for (const d of week) for (const [k, n] of Object.entries(d.adByProduct ?? {})) weekByApp[k] = (weekByApp[k] ?? 0) + n;
+  const apps = Object.keys(weekByApp).sort((a, b) => weekByApp[b] - weekByApp[a]);
+  const cell = (n: number, strong = false) => (
+    <td className={`py-1.5 pl-3 text-right tabular-nums ${n === 0 ? 'text-slate-300' : strong ? 'font-bold text-slate-900' : 'text-slate-700'}`}>{n}</td>
+  );
   return (
-    <section className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
-      <div className="shrink-0">
-        <div className="text-[11px] uppercase tracking-wide text-slate-400">Leads de anuncios hoy</div>
-        <div className="flex items-baseline gap-2">
-          <span className="text-4xl font-bold tabular-nums text-brand-700">{(today.adLeads ?? 0).toLocaleString('es-AR')}</span>
-          {yesterday && (
-            <span className={`text-xs font-medium ${diff > 0 ? 'text-emerald-700' : diff < 0 ? 'text-rose-700' : 'text-slate-500'}`}>
-              {diff > 0 ? '▲' : diff < 0 ? '▼' : '='} {Math.abs(diff)} vs ayer ({yesterday.adLeads})
-            </span>
-          )}
-        </div>
-        <div className="text-[11px] text-slate-500">
-          {today.adReplied} ya respondieron · leads nuevos de anuncios
-        </div>
-        {today.metaConversations != null && (
-          <div className="text-[11px] text-slate-500 mt-0.5">
-            Meta cuenta <b className="tabular-nums text-slate-700">{today.metaConversations}</b> conversaciones
-            {yesterday?.metaConversations != null && <> (ayer {yesterday.metaConversations})</>}
-            {Object.keys(today.metaByProduct ?? {}).length > 0 && (
-              <> · {Object.entries(today.metaByProduct ?? {}).sort((a, b) => b[1] - a[1])
-                .map(([k, n]) => `${k === 'sin-app' ? 'Sin app' : nameOf(k)} ${n}`).join(' · ')}</>
-            )}
-          </div>
-        )}
+    <section className="card p-4">
+      <h2 className="text-[11px] uppercase tracking-wide text-slate-400">Leads de Meta</h2>
+      <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+        <span className="text-4xl font-bold tabular-nums text-brand-700">{(today.adLeads ?? 0).toLocaleString('es-AR')}</span>
+        <span className="text-sm text-slate-600">hoy</span>
+        <span className="text-sm text-slate-500">
+          {yesterday && <>· ayer <b className="tabular-nums text-slate-700">{yesterday.adLeads ?? 0}</b> </>}
+          · {week.length} días <b className="tabular-nums text-slate-700">{sum(week.map((d) => d.adLeads ?? 0))}</b>
+        </span>
       </div>
-      <div className="flex flex-wrap gap-1.5 sm:border-l sm:border-slate-100 sm:pl-6">
-        {apps.length === 0 && <span className="text-sm text-slate-400">Todavía no entró ningún lead de anuncios hoy.</span>}
-        {apps.map(([k, n]) => (
-          <span key={k} className="inline-flex items-center gap-1.5 text-xs bg-slate-50 border border-slate-200 rounded-full px-2.5 py-1">
-            <span className="inline-block w-2 h-2 rounded-full" style={{ background: k === 'sin-app' ? OTHER : colorOf(k) }} />
-            {k === 'sin-app' ? 'Sin app' : nameOf(k)}
-            <b className="tabular-nums">{n}</b>
-          </span>
-        ))}
+      {apps.length === 0 ? (
+        <p className="text-sm text-slate-400 mt-3">No entró ningún lead de anuncios en los últimos {week.length} días.</p>
+      ) : (
+        <table className="w-full text-sm mt-3">
+          <thead>
+            <tr className="text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
+              <th className="py-1.5 text-left font-medium">App</th>
+              <th className="py-1.5 pl-3 text-right font-medium">Hoy</th>
+              <th className="py-1.5 pl-3 text-right font-medium">Ayer</th>
+              <th className="py-1.5 pl-3 text-right font-medium">{week.length} días</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {apps.map((k) => (
+              <tr key={k}>
+                <td className="py-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle" style={{ background: k === 'sin-app' ? OTHER : colorOf(k) }} />
+                  {k === 'sin-app' ? 'Sin app' : nameOf(k)}
+                </td>
+                {cell(today.adByProduct?.[k] ?? 0, true)}
+                {cell(yesterday?.adByProduct?.[k] ?? 0)}
+                {cell(weekByApp[k])}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {today.metaConversations != null && (
+        <p className="text-[11px] text-slate-500 mt-2"
+          title="Meta también cuenta a quien ya era lead y volvió a escribir desde un anuncio, y los chats que llegan sin el texto del anuncio.">
+          Meta cuenta <b className="tabular-nums text-slate-700">{today.metaConversations}</b> conversaciones hoy
+          {yesterday?.metaConversations != null && <> · <b className="tabular-nums text-slate-700">{yesterday.metaConversations}</b> ayer</>}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Outbound en frío de cada app por canal: cuántos contactos nuevos salieron hoy por WhatsApp (línea outbound) y
+ * cuántos DMs por Instagram (cuenta de la app), contra el tope del día, y lo mismo día por día. "Contestaron" es
+ * de los que se mandaron ese día (en WhatsApp no cuenta el saludo automático del negocio).
+ */
+function OutboundCard({ colorOf }: { colorOf: (k: string) => string }) {
+  const { data } = useQuery({
+    queryKey: ['dashboard-outbound', 7],
+    queryFn: async () => (await api.get<OutboundSummary>('/dashboard/outbound', { params: { days: 7 } })).data,
+    refetchInterval: 60000,
+  });
+  return (
+    <section className="card p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[11px] uppercase tracking-wide text-slate-400">Outbound de hoy · por app y canal</h2>
+        <Link to="/leads?view=outbound" className="text-[11px] text-brand-700 hover:underline shrink-0">Línea outbound →</Link>
+      </div>
+      {!data && <p className="text-sm text-slate-400 mt-3">Cargando outbound…</p>}
+      {data && data.apps.length === 0 && (
+        <p className="text-sm text-slate-400 mt-3">Ninguna app tiene outbound prendido ni mandó nada en los últimos {data.days} días.</p>
+      )}
+      <div className="space-y-5">
+        {data?.apps.map((app) => <OutboundAppBlock key={app.productKey} app={app} color={colorOf(app.productKey)} />)}
       </div>
     </section>
+  );
+}
+
+function OutboundAppBlock({ app, color }: { app: OutboundApp; color: string }) {
+  const today = app.daily[app.daily.length - 1];
+  const channels = [
+    { key: 'wa', label: 'WhatsApp', cap: app.whatsappCap, sent: (d: OutboundDay) => d.whatsapp, replied: (d: OutboundDay) => d.whatsappReplied },
+    { key: 'ig', label: 'Instagram', cap: app.instagramCap, sent: (d: OutboundDay) => d.instagram, replied: (d: OutboundDay) => d.instagramReplied },
+  ];
+  return (
+    <div className="mt-2">
+      <div className="text-sm font-semibold">
+        <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle" style={{ background: color }} />
+        {app.displayName}
+      </div>
+      <div className="grid grid-cols-2 gap-3 mt-2">
+        {channels.map((c) => {
+          const off = c.cap == null;
+          const n = today ? c.sent(today) : 0;
+          const r = today ? c.replied(today) : 0;
+          return (
+            <div key={c.key} className="rounded-lg border border-slate-200 px-3 py-2">
+              <div className="text-xs text-slate-500">{c.label}</div>
+              <div className="flex items-baseline gap-1.5">
+                <span className={`text-3xl font-bold tabular-nums ${n > 0 ? 'text-slate-900' : 'text-slate-400'}`}>{n}</span>
+                {!off && <span className="text-sm text-slate-500 tabular-nums">de {c.cap}</span>}
+              </div>
+              <div className="text-[11px] text-slate-500">
+                {off && n === 0 ? 'apagado' : r === 1 ? '1 contestó' : `${r} contestaron`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="overflow-x-auto mt-2">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-[11px] text-slate-400 border-b border-slate-100">
+              <th className="py-1 text-left font-medium">Últimos {app.daily.length} días</th>
+              {app.daily.map((d, i) => (
+                <th key={d.date} className={`py-1 pl-2 text-right font-medium whitespace-nowrap ${i === app.daily.length - 1 ? 'text-slate-700' : ''}`}>
+                  {i === app.daily.length - 1 ? 'hoy' : dayLabel(d.date)}
+                </th>
+              ))}
+              <th className="py-1 pl-3 text-right font-medium">Total</th>
+              <th className="py-1 pl-3 text-right font-medium">Contestaron</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {channels.map((c) => (
+              <tr key={c.key}>
+                <td className="py-1.5 text-slate-600">{c.label}</td>
+                {app.daily.map((d, i) => {
+                  const n = c.sent(d);
+                  const last = i === app.daily.length - 1;
+                  return (
+                    <td key={d.date} title={`${dayLabel(d.date)}: ${n} enviados · ${c.replied(d)} contestaron`}
+                      className={`py-1.5 pl-2 text-right tabular-nums ${n === 0 ? 'text-slate-300' : last ? 'font-bold text-slate-900' : 'text-slate-700'}`}>
+                      {n === 0 && !last ? '·' : n}
+                    </td>
+                  );
+                })}
+                <td className="py-1.5 pl-3 text-right tabular-nums font-medium">{sum(app.daily.map(c.sent))}</td>
+                <td className="py-1.5 pl-3 text-right tabular-nums text-slate-600">{sum(app.daily.map(c.replied))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

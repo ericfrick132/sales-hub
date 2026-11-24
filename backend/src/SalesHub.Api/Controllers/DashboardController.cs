@@ -280,6 +280,90 @@ public class DashboardController : ControllerBase
             daily);
     }
 
+    public record OutboundDay(string Date, int Whatsapp, int WhatsappReplied, int Instagram, int InstagramReplied);
+    public record OutboundApp(string ProductKey, string DisplayName, int? WhatsappCap, int? InstagramCap, List<OutboundDay> Daily);
+    public record OutboundResult(int Days, List<OutboundApp> Apps);
+
+    /// <summary>
+    /// Outbound en frío por app, canal y día (días de Argentina), para la card del Dashboard. WhatsApp = contactos
+    /// nuevos que abrió la línea outbound (outbound_contacts enviados); Instagram = DMs que salieron desde la cuenta
+    /// de la app (leads.IgDmSentAt). "Contestaron" va por la tanda de ese día: de los que se mandaron ese día,
+    /// cuántos contestaron después (en WhatsApp, sin contar el saludo automático del negocio). El tope es el de hoy;
+    /// null = ese canal no está prendido para la app.
+    /// </summary>
+    [HttpGet("outbound")]
+    public async Task<ActionResult<OutboundResult>> Outbound([FromQuery] int days = 7, CancellationToken ct = default)
+    {
+        if (!CurrentUser.IsAdmin(User)) return Forbid();
+        days = Math.Clamp(days, 1, 31);
+        var now = DateTimeOffset.UtcNow;
+        var today = SalesHub.Infrastructure.Services.LeadEntryService.TodayAr();
+        var firstDay = today.AddDays(-(days - 1));
+        var since = SalesHub.Infrastructure.Services.LeadEntryService.ArDayStartUtc(firstDay);
+        static DateOnly Day(DateTimeOffset t) => SalesHub.Infrastructure.Services.LeadEntryService.ArDay(t);
+
+        var wa = await _db.OutboundContacts.AsNoTracking()
+            .Where(c => c.Status == OutboundContact.Sent && c.SentAt >= since)
+            .Select(c => new { c.Lead!.ProductKey, At = c.SentAt!.Value, Replied = c.RepliedAt != null })
+            .ToListAsync(ct);
+
+        var igLine = SalesHub.Infrastructure.Instagram.InstagramMessengerClient.LinePrefix;
+        var ig = await _db.Leads.AsNoTracking()
+            .Where(l => l.IgDmSentAt >= since)
+            .Select(l => new
+            {
+                l.ProductKey,
+                At = l.IgDmSentAt!.Value,
+                Replied = _db.ConversationMessages.Any(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound
+                    && m.Timestamp >= l.IgDmSentAt && m.EvolutionInstance!.StartsWith(igLine)),
+            })
+            .ToListAsync(ct);
+
+        // Topes de hoy: los de las líneas outbound de la app (sumados) y el de los DMs de su cuenta de Instagram.
+        var waCaps = (await _db.EvolutionInstances.AsNoTracking()
+                .Where(i => i.SellerId == null && i.OutboundCap > 0 && i.ProductKey != null && i.ProductKey != "")
+                .Select(i => new { ProductKey = i.ProductKey!, i.OutboundCap })
+                .ToListAsync(ct))
+            .GroupBy(x => x.ProductKey).ToDictionary(g => g.Key, g => g.Sum(x => x.OutboundCap));
+        var igCaps = (await _db.IgDmSettings.AsNoTracking().Where(s => s.Enabled).ToListAsync(ct))
+            .GroupBy(s => s.ProductKey)
+            .ToDictionary(g => g.Key, g => g.Sum(s =>
+                SalesHub.Infrastructure.Instagram.IgOutreachPlan.ColdCapToday(s, now)
+                + SalesHub.Infrastructure.Instagram.IgOutreachPlan.FollowerCapToday(s, now)));
+
+        var names = (await _db.Products.AsNoTracking().Select(p => new { p.ProductKey, p.DisplayName }).ToListAsync(ct))
+            .GroupBy(p => p.ProductKey).ToDictionary(g => g.Key, g => g.First().DisplayName);
+
+        var waBy = wa.GroupBy(x => (x.ProductKey, Day: Day(x.At)))
+            .ToDictionary(g => g.Key, g => (Sent: g.Count(), Replied: g.Count(x => x.Replied)));
+        var igBy = ig.GroupBy(x => (x.ProductKey, Day: Day(x.At)))
+            .ToDictionary(g => g.Key, g => (Sent: g.Count(), Replied: g.Count(x => x.Replied)));
+
+        var apps = waCaps.Keys.Concat(igCaps.Keys).Concat(wa.Select(x => x.ProductKey)).Concat(ig.Select(x => x.ProductKey))
+            .Where(k => !string.IsNullOrEmpty(k)).Distinct()
+            .Select(k =>
+            {
+                var daily = new List<OutboundDay>();
+                for (var i = 0; i < days; i++)
+                {
+                    var d = firstDay.AddDays(i);
+                    var w = waBy.GetValueOrDefault((k, d));
+                    var g = igBy.GetValueOrDefault((k, d));
+                    daily.Add(new OutboundDay(d.ToString("yyyy-MM-dd"), w.Sent, w.Replied, g.Sent, g.Replied));
+                }
+                return new OutboundApp(k, names.GetValueOrDefault(k) is { Length: > 0 } n ? n : k,
+                    waCaps.TryGetValue(k, out var wc) ? wc : null,
+                    igCaps.TryGetValue(k, out var ic) ? ic : null,
+                    daily);
+            })
+            .OrderByDescending(a => a.Daily[^1].Whatsapp + a.Daily[^1].Instagram)
+            .ThenByDescending(a => a.Daily.Sum(d => d.Whatsapp + d.Instagram))
+            .ThenBy(a => a.DisplayName)
+            .ToList();
+
+        return new OutboundResult(days, apps);
+    }
+
     public record BusinessApp(string ProductKey, bool Connected, DateTimeOffset? LastSyncAt, string? Error,
         decimal MrrUsd, int Active, int Trial, int Free, int PastDue, int NewPaid, int Cancelled, double? ChurnPct, double? TrialToPaidPct);
     public record BusinessTotals(decimal MrrUsd, int Active, int Trial, int Free, int NewPaid, int Cancelled);
