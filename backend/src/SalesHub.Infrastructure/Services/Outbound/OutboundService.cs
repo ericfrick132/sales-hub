@@ -16,8 +16,8 @@ namespace SalesHub.Infrastructure.Services.Outbound;
 /// mayor <see cref="Lead.ProspectScore"/>.
 ///
 /// El mensaje sigue un outreach real que cerró (PlayCrew, 15/11): UN solo mensaje que nombra al negocio, se
-/// presenta con nombre y marca, cuenta algo cierto de cómo trabajan ("vi que toman los turnos por WhatsApp"),
-/// qué hacemos, y cierra pidiendo una llamada. Lo que sigue lo maneja una PERSONA: el bot queda muteado en
+/// presenta con nombre y marca, dice con qué rubro trabajamos y qué hacemos, y cierra pidiendo una llamada. No
+/// dice "vi que toman los turnos por whatsapp" (Eric 24/11/2026: implica que están haciendo las cosas mal). Lo que sigue lo maneja una PERSONA: el bot queda muteado en
 /// esas charlas y, apenas contestan, se le pasa el lead a la persona de la app (pase de la pre-calificación)
 /// con copia al maestro. Al que no contesta no se le escribe más: sin re-enganche, sin cadencia.
 /// </summary>
@@ -33,11 +33,12 @@ public class OutboundService
     /// <summary>
     /// Apertura por defecto. Placeholders: {negocio} (si el nombre de Maps no sirve, se saca "hablo con ...?"),
     /// {vendedor}, {app}, {rubros}, {clientes}, {cobro}, {toman}. Se limpia con CopyStyle (sin tildes ni ¿).
+    /// Misma estructura que el DM de Instagram que le gustó a Eric (24/11): sin observar cómo toman los turnos hoy.
     /// </summary>
     public const string DefaultTemplate =
-        "hola como va? hablo con {negocio}? soy {vendedor} de {app}. vi que {toman} los turnos por whatsapp y justo " +
-        "trabajamos con {rubros} en eso: un sistema donde {clientes} sacan el turno desde tu link a cualquier hora, " +
-        "{cobro} y les llega el recordatorio por whatsapp el dia anterior. queres que te llame y te cuento mejor?";
+        "hola como va? hablo con {negocio}? soy {vendedor} de {app}. trabajamos con {rubros}: un sistema donde " +
+        "{clientes} sacan el turno desde tu link a cualquier hora, {cobro} y les llega el recordatorio por whatsapp " +
+        "el dia anterior. queres que te llame y te cuento mejor?";
 
     private readonly ApplicationDbContext _db;
     private readonly IEvolutionClient _evo;
@@ -93,8 +94,7 @@ public class OutboundService
 
     /// <summary>
     /// DM de Instagram por defecto (misma estructura que el outreach que cerró, sin "hablo con…?": ya estás en su
-    /// cuenta). {observacion} se arma según el lead: si ya le llegó el WhatsApp lo dice; si toma turnos por
-    /// WhatsApp (verificado) lo dice; si no, "vi su perfil".
+    /// cuenta). {observacion} se arma según el lead: si ya le llegó el WhatsApp lo dice; si no, "vi su perfil".
     /// </summary>
     public const string DefaultIgTemplate =
         "hola como va? soy {vendedor} de {app}. {observacion}: un sistema donde {clientes} sacan el turno desde tu link " +
@@ -104,8 +104,6 @@ public class OutboundService
     {
         var rubro = ProspectScorer.RubroByKey(lead.ProspectRubro)?.Plural ?? "negocios como el tuyo";
         if (lead.SentAt is not null) return $"te escribi por whatsapp, por si no lo viste: trabajamos con {rubro}";
-        if (lead.PhoneOrigin is "whatsapp-publicado" or "whatsapp-instagram")
-            return $"vi que {ProspectScorer.RubroByKey(lead.ProspectRubro)?.Toman ?? "toman"} los turnos por whatsapp y justo trabajamos con {rubro} en eso";
         return $"vi su perfil y justo trabajamos con {rubro}";
     }
 
@@ -175,7 +173,7 @@ public class OutboundService
         // bridge"): su web leída por el worker Y su Instagram leído por el lector de la Mac. Sin Instagram leído no sale.
         var q = Eligible(line.ProductKey!).Where(l => l.ProspectScore >= line.OutboundMinScore
             && l.ProspectEnrichedAt != null && l.InstagramCheckedAt != null);
-        // "vi que toman los turnos por whatsapp" tiene que ser verdad: solo los verificados (web o Instagram).
+        // Solo los que publican su WhatsApp (web o Instagram): el número es de WhatsApp seguro y lo atiende el negocio.
         if (line.OutboundRequireWhatsapp)
             q = q.Where(l => l.PhoneOrigin == "whatsapp-publicado" || l.PhoneOrigin == "whatsapp-instagram");
         if (line.OutboundRubros is { Count: > 0 })

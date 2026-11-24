@@ -112,7 +112,8 @@ public class EvolutionInstance
 
     /// <summary>
     /// Solo le escribe a los que tienen VERIFICADO que toman turnos por WhatsApp (wa.me en su web o su
-    /// Instagram, o la bio lo dice). Así "vi que toman los turnos por whatsapp" del mensaje es siempre cierto.
+    /// Instagram, o la bio lo dice): el número es de WhatsApp seguro y lo atiende el negocio. El mensaje ya no lo
+    /// menciona (24/11/2026), pero el filtro sigue eligiendo a los que se pueden contactar bien por ese canal.
     /// </summary>
     public bool OutboundRequireWhatsapp { get; set; } = true;
 
