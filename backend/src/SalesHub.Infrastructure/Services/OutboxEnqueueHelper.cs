@@ -256,6 +256,22 @@ public static class OutboxEnqueueHelper
     }
 
     /// <summary>
+    /// Agendó la demo en la web (eligió día y hora): un solo mensaje, la confirmación del vendedor. No
+    /// promete una llamada ahora ni manda el Calendly, porque el horario ya está en el calendario y la
+    /// invitación con el link le llegó al mail.
+    /// </summary>
+    public static List<MessageStep> DemoBookedSteps(Product product, DateTimeOffset slot)
+    {
+        var producto = string.IsNullOrWhiteSpace(product.DisplayName) ? product.ProductKey : product.DisplayName;
+        return new List<MessageStep>
+        {
+            new() { DelaySeconds = 0, Text =
+                $"{{saludo}} {{nombre}}! Soy {{seller}} de {producto}. Quedó agendada tu demo para {DemoScheduling.SayAbsolute(slot)} 🙌 " +
+                "Te llegó la invitación al mail con el link de la videollamada. Cualquier cosa, escribime por acá." },
+        };
+    }
+
+    /// <summary>
     /// Devuelve los steps efectivos a usar para este lead. Precedencia:
     /// 1) override por ORIGEN (lead.Source, ej. MetaLeadAd — el lead ya nos
     ///    dejó sus datos, el opener frío no aplica), 2) override por categoría
@@ -265,6 +281,10 @@ public static class OutboxEnqueueHelper
     /// </summary>
     public static (List<MessageStep> steps, string cadenceCategory) ResolveStepsForLead(Lead lead, Product product)
     {
+        // Formulario web con la demo ya agendada: la confirmación le gana a cualquier cadencia cargada.
+        if (lead.Source == LeadSource.LandingForm && lead.DemoScheduledAt is { } booked)
+            return (DemoBookedSteps(product, booked), SourceCadencePrefix + nameof(LeadSource.LandingForm));
+
         if (product.SourceCadences is { Count: > 0 })
         {
             var srcKey = lead.Source.ToString();

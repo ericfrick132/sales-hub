@@ -566,7 +566,8 @@ public class OutboxSender
                 var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == next.LeadId, ct);
                 if (lead is not null)
                 {
-                    lead.Status = LeadStatus.Sent;
+                    // La confirmación de una demo agendada en la web no la vuelve a "Enviado".
+                    if (lead.Status != LeadStatus.DemoScheduled) lead.Status = LeadStatus.Sent;
                     lead.SentAt = DateTimeOffset.UtcNow;
                 }
 

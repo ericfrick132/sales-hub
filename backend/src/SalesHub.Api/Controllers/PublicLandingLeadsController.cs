@@ -164,6 +164,8 @@ public static class LandingCors
 {
     public const string Policy = "landings";
     public const string RateLimitPolicy = "landing-leads";
+    /// <summary>Lectura de los horarios de la agenda de demo: no manda nada a nadie, admite más pedidos.</summary>
+    public const string SlotsRateLimitPolicy = "landing-slots";
 
     /// <summary>Dominios de las landings. Se puede pisar con Cors:LandingOrigins (coma-separado).</summary>
     public static readonly string[] DefaultOrigins =

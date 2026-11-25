@@ -129,15 +129,15 @@ builder.Services.AddCors(c =>
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials());
-    // Formulario público de las landings (POST /api/public/landing-leads): solo sus dominios,
-    // sin credenciales.
+    // Formularios públicos de las landings (POST /api/public/landing-leads y la agenda de demo,
+    // /api/public/demo-booking, que además lee los horarios por GET): solo sus dominios, sin credenciales.
     var landingOrigins = builder.Configuration["Cors:LandingOrigins"]?
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         ?? LandingCors.DefaultOrigins;
     c.AddPolicy(LandingCors.Policy, p => p
         .WithOrigins(landingOrigins)
         .WithHeaders("content-type")
-        .WithMethods("POST"));
+        .WithMethods("POST", "GET"));
 });
 
 // Rate limit del formulario público: 5 envíos cada 15 min por IP del visitante. Evita que
@@ -148,6 +148,10 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy(LandingCors.RateLimitPolicy, ctx => RateLimitPartition.GetFixedWindowLimiter(
         LandingCors.ClientIp(ctx),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(15), QueueLimit = 0 }));
+    // Horarios de la agenda de demo: solo lectura (y cacheada un minuto), así que el tope es más alto.
+    o.AddPolicy(LandingCors.SlotsRateLimitPolicy, ctx => RateLimitPartition.GetFixedWindowLimiter(
+        LandingCors.ClientIp(ctx),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 40, Window = TimeSpan.FromMinutes(5), QueueLimit = 0 }));
 });
 
 var app = builder.Build();

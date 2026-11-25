@@ -43,6 +43,7 @@ public class LeadIngestService : ILeadIngestService
             Name = string.IsNullOrWhiteSpace(req.Name) ? (req.BusinessName ?? "Lead") : req.Name!,
             WhatsappPhone = phone,
             Status = LeadStatus.New,
+            DemoScheduledAt = req.DemoScheduledAt,
         };
         _db.Leads.Add(lead);
 

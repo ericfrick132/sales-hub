@@ -9,7 +9,10 @@ public record LeadIngestRequest(
     string? Name,
     string? BusinessName,
     string? Phone,
-    string? Email);
+    string? Email,
+    // Agendó la demo en la web antes de que exista el lead: se guarda en el lead al crearlo para que
+    // el primer mensaje sea la confirmación de ese horario y no el "te llamo en unos minutos".
+    DateTimeOffset? DemoScheduledAt = null);
 
 public enum LeadIngestOutcome
 {

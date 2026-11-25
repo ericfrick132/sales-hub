@@ -138,13 +138,16 @@ public class GoogleCalendarClient
         return req;
     }
 
-    /// <summary>Horarios libres para la demo entre ahora y fin de mañana (hora AR). Null = no se pudo leer el calendario.</summary>
-    public async Task<List<DateTimeOffset>?> GetFreeSlotsAsync(DateTimeOffset now, CancellationToken ct)
+    /// <summary>
+    /// Horarios libres para la demo entre ahora y el fin del último día (hora AR): por defecto hoy y mañana
+    /// (lo que ofrece el bot); la agenda de la web pide más días. Null = no se pudo leer el calendario.
+    /// </summary>
+    public async Task<List<DateTimeOffset>?> GetFreeSlotsAsync(DateTimeOffset now, CancellationToken ct, int days = 2)
     {
         var s = await GetSettingsAsync(ct);
-        var (from, to) = DemoScheduling.Window(now);
+        var (from, to) = DemoScheduling.Window(now, days);
         var busy = await BusyAsync(s, from, to, ct);
-        return busy is null ? null : DemoScheduling.FreeSlots(busy, now, s);
+        return busy is null ? null : DemoScheduling.FreeSlots(busy, now, s, days);
     }
 
     /// <summary>Ocupados del calendario entre from y to. Null = no se pudo leer.</summary>

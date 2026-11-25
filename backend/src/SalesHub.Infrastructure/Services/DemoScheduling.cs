@@ -13,11 +13,14 @@ public static class DemoScheduling
     private static readonly TimeZoneInfo Ar = LeadEntryService.ArTz;
     private static readonly string[] Days = { "domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado" };
 
-    /// <summary>Ventana en la que se ofrecen demos: desde ahora hasta el fin de mañana (hora AR).</summary>
-    public static (DateTimeOffset From, DateTimeOffset To) Window(DateTimeOffset now)
+    /// <summary>
+    /// Ventana en la que se ofrecen demos: desde ahora hasta el fin del último día (hora AR). El bot usa
+    /// hoy y mañana (<paramref name="days"/> = 2); la agenda de la web mira una semana.
+    /// </summary>
+    public static (DateTimeOffset From, DateTimeOffset To) Window(DateTimeOffset now, int days = 2)
     {
-        var dayAfter = Local(now).Date.AddDays(2);
-        return (now, AtAr(dayAfter, 0));
+        var end = Local(now).Date.AddDays(Math.Max(days, 1));
+        return (now, AtAr(end, 0));
     }
 
     private static DateTimeOffset AtAr(DateTime localDate, int minutesOfDay)
@@ -27,11 +30,12 @@ public static class DemoScheduling
     }
 
     /// <summary>
-    /// Horarios posibles de hoy y mañana (días hábiles, franja y duración de la config) que no pisan
-    /// ningún ocupado del calendario y arrancan con el margen mínimo desde ahora.
+    /// Horarios posibles de hoy y los días siguientes (por defecto hoy y mañana; días hábiles, franja y
+    /// duración de la config) que no pisan ningún ocupado del calendario y arrancan con el margen mínimo
+    /// desde ahora.
     /// </summary>
     public static List<DateTimeOffset> FreeSlots(IReadOnlyList<(DateTimeOffset Start, DateTimeOffset End)> busy,
-        DateTimeOffset now, Core.Domain.Entities.GoogleCalendarSettings cfg)
+        DateTimeOffset now, Core.Domain.Entities.GoogleCalendarSettings cfg, int dayCount = 2)
     {
         var days = cfg.Days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(d => int.TryParse(d, out var x) ? x : -1).ToHashSet();
@@ -39,7 +43,7 @@ public static class DemoScheduling
         var earliest = now.AddMinutes(cfg.MinNoticeMinutes);
         var result = new List<DateTimeOffset>();
         var today = Local(now).Date;
-        foreach (var day in new[] { today, today.AddDays(1) })
+        foreach (var day in Enumerable.Range(0, Math.Max(dayCount, 1)).Select(i => today.AddDays(i)))
         {
             if (!days.Contains((int)day.DayOfWeek)) continue;
             for (var m = cfg.StartHour * 60; m + len <= cfg.EndHour * 60; m += len)
@@ -96,6 +100,21 @@ public static class DemoScheduling
         var day = l.Date == n.Date ? "hoy" : l.Date == n.Date.AddDays(1) ? "mañana" : $"el {Days[(int)l.DayOfWeek]} {l.Day}";
         return $"{day} a las {SayHour(t)}";
     }
+
+    private static readonly string[] DaysWritten = { "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado" };
+
+    /// <summary>"jueves 27" (hora AR, con tildes): el día como se muestra en la agenda de la web.</summary>
+    public static string DayLabel(DateTimeOffset t)
+    {
+        var l = Local(t);
+        return $"{DaysWritten[(int)l.DayOfWeek]} {l.Day}";
+    }
+
+    /// <summary>
+    /// "el jueves 27 a las 10:30": siempre con el día, nunca "hoy" ni "mañana". Para textos que se leen
+    /// más tarde (la confirmación por WhatsApp puede salir horas después de agendar).
+    /// </summary>
+    public static string SayAbsolute(DateTimeOffset t) => $"el {DayLabel(t)} a las {SayHour(t)}";
 
     /// <summary>"10" o "10:30" (hora AR).</summary>
     public static string SayHour(DateTimeOffset t)
