@@ -26,6 +26,9 @@ public class BotLearningService
         "QuickNudge", "QuickNudgeAfterDemo",
     };
     private static readonly string[] ConfigLists = { "Questions", "ReengageQuestions", "FollowUpMessages" };
+    /// <summary>Números del guion que una propuesta puede cambiar: cuántas preguntas hace el bot antes del pase.</summary>
+    private static readonly string[] ConfigInts = { "HandoffAfterQuestions" };
+    private static readonly Regex ListTarget = new(@"^(\w+)\[(\d+)\]$", RegexOptions.Compiled);
 
     private const int MaxConversationsPerProduct = 40;
     private static readonly Regex Placeholder = new(@"\{[^{}]+\}", RegexOptions.Compiled);
@@ -129,7 +132,9 @@ public class BotLearningService
             if (kind == "config")
             {
                 var cfg = await _db.OnboardingConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ProductKey == p.ProductKey, ct);
-                if (cfg is null || !Editable(cfg).TryGetValue(target, out old)) { skipped.Add($"{label}: el campo no existe o está vacío"); continue; }
+                // Una pregunta nueva al final de la lista ("Questions[3]" cuando hay 3) no tiene texto anterior.
+                if (cfg is null || (!Editable(cfg).TryGetValue(target, out old) && !IsAppend(cfg, target)))
+                { skipped.Add($"{label}: el campo no existe o está vacío"); continue; }
             }
             else if (kind == "intent")
             {
@@ -141,6 +146,8 @@ public class BotLearningService
             if (kind != "idea")
             {
                 if (string.IsNullOrWhiteSpace(newValue) || newValue == old) { skipped.Add($"{label}: texto nuevo vacío o igual"); continue; }
+                if (kind == "config" && ConfigInts.Contains(target) && !(int.TryParse(newValue, out var number) && number is >= 1 and <= 8))
+                { skipped.Add($"{label}: tiene que ser un número entre 1 y 8"); continue; }
                 var allowed = Placeholder.Matches(old ?? "").Select(m => m.Value).ToHashSet();
                 var invented = Placeholder.Matches(newValue).Select(m => m.Value).Where(v => !allowed.Contains(v) && !v.Contains('|')).ToList();
                 if (invented.Count > 0) { skipped.Add($"{label}: placeholders que no existen ({string.Join(", ", invented)})"); continue; }
@@ -276,16 +283,26 @@ public class BotLearningService
             return;
         }
         var cfg = await _db.OnboardingConfigs.FirstAsync(c => c.ProductKey == p.ProductKey, ct);
-        var m = Regex.Match(p.Target, @"^(\w+)\[(\d+)\]$");
+        var m = ListTarget.Match(p.Target);
         if (m.Success)
         {
             var prop = typeof(OnboardingConfig).GetProperty(m.Groups[1].Value)!;
             var list = new List<string>((List<string>)prop.GetValue(cfg)!);
-            list[int.Parse(m.Groups[2].Value)] = value;
+            var i = int.Parse(m.Groups[2].Value);
+            if (i == list.Count) list.Add(value);                                   // pregunta nueva al final
+            else if (value.Length == 0 && i == list.Count - 1) list.RemoveAt(i);    // deshacer esa pregunta nueva
+            else list[i] = value;
             prop.SetValue(cfg, list);
         }
+        else if (ConfigInts.Contains(p.Target)) typeof(OnboardingConfig).GetProperty(p.Target)!.SetValue(cfg, int.Parse(value));
         else typeof(OnboardingConfig).GetProperty(p.Target)!.SetValue(cfg, value);
     }
+
+    /// <summary>El target es el índice siguiente al último de una lista del guion: agrega un texto, no reemplaza.</summary>
+    private static bool IsAppend(OnboardingConfig cfg, string target) =>
+        ListTarget.Match(target) is { Success: true } m && ConfigLists.Contains(m.Groups[1].Value)
+        && typeof(OnboardingConfig).GetProperty(m.Groups[1].Value)?.GetValue(cfg) is List<string> list
+        && int.Parse(m.Groups[2].Value) == list.Count;
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────
 
@@ -299,6 +316,8 @@ public class BotLearningService
             if (typeof(OnboardingConfig).GetProperty(f)?.GetValue(cfg) is List<string> list)
                 for (var i = 0; i < list.Count; i++)
                     if (!string.IsNullOrWhiteSpace(list[i])) d[$"{f}[{i}]"] = list[i];
+        foreach (var f in ConfigInts)
+            if (typeof(OnboardingConfig).GetProperty(f)?.GetValue(cfg) is int number) d[f] = number.ToString();
         return d;
     }
 
