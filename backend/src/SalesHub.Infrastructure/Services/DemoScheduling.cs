@@ -30,6 +30,21 @@ public static class DemoScheduling
     }
 
     /// <summary>
+    /// Todos los horarios de un día según la config (vacío si no es día hábil), sin mirar ocupados ni la
+    /// hora actual. Es la grilla completa: la usa la agenda de la web para decidir qué horarios no ofrece.
+    /// </summary>
+    public static List<DateTimeOffset> DaySlots(DateTime localDay, Core.Domain.Entities.GoogleCalendarSettings cfg)
+    {
+        var days = cfg.Days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(d => int.TryParse(d, out var x) ? x : -1).ToHashSet();
+        var result = new List<DateTimeOffset>();
+        if (!days.Contains((int)localDay.DayOfWeek)) return result;
+        var len = Math.Max(cfg.SlotMinutes, 10);
+        for (var m = cfg.StartHour * 60; m + len <= cfg.EndHour * 60; m += len) result.Add(AtAr(localDay, m));
+        return result;
+    }
+
+    /// <summary>
     /// Horarios posibles de hoy y los días siguientes (por defecto hoy y mañana; días hábiles, franja y
     /// duración de la config) que no pisan ningún ocupado del calendario y arrancan con el margen mínimo
     /// desde ahora.

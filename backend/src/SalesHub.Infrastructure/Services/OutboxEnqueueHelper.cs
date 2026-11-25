@@ -257,8 +257,8 @@ public static class OutboxEnqueueHelper
 
     /// <summary>
     /// Agendó la demo en la web (eligió día y hora): un solo mensaje, la confirmación del vendedor. No
-    /// promete una llamada ahora ni manda el Calendly, porque el horario ya está en el calendario y la
-    /// invitación con el link le llegó al mail.
+    /// promete una llamada ahora ni manda el Calendly, porque el horario ya está tomado. El texto vale
+    /// con o sin Google Calendar: si está conectado, además le llega la invitación al mail.
     /// </summary>
     public static List<MessageStep> DemoBookedSteps(Product product, DateTimeOffset slot)
     {
@@ -267,7 +267,7 @@ public static class OutboxEnqueueHelper
         {
             new() { DelaySeconds = 0, Text =
                 $"{{saludo}} {{nombre}}! Soy {{seller}} de {producto}. Quedó agendada tu demo para {DemoScheduling.SayAbsolute(slot)} 🙌 " +
-                "Te llegó la invitación al mail con el link de la videollamada. Cualquier cosa, escribime por acá." },
+                "Es por videollamada: te paso el link por acá. Cualquier cosa, escribime." },
         };
     }
 
