@@ -60,7 +60,14 @@ public class PublicDemoBookingController : ControllerBase
         ["artes-marciales"] = "Artes marciales", ["otro"] = "Otro centro deportivo",
     };
     private static readonly Dictionary<string, string> Sites = new(StringComparer.Ordinal)
-        { ["1"] = "Una sede", ["2-3"] = "Dos o tres sedes", ["4+"] = "Más de tres sedes" };
+    {
+        ["1"] = "Una sede", ["2"] = "Dos sedes", ["3+"] = "Tres sedes o más",
+        // Los de antes del 26/11/2026, por si queda una pestaña abierta con el formulario viejo.
+        ["2-3"] = "Dos o tres sedes", ["4+"] = "Más de tres sedes",
+    };
+    /// <summary>Opción múltiple: llega como los valores separados por coma.</summary>
+    private static readonly Dictionary<string, string> PaymentPlaces = new(StringComparer.Ordinal)
+        { ["mercadopago"] = "Mercado Pago", ["banco"] = "transferencia al banco", ["efectivo"] = "efectivo" };
     private static readonly Dictionary<string, string> Routines = new(StringComparer.Ordinal)
         { ["si"] = "Les arma rutinas", ["no"] = "No arma rutinas" };
     private static readonly Dictionary<string, string> AccessModes = new(StringComparer.Ordinal)
@@ -110,10 +117,20 @@ public class PublicDemoBookingController : ControllerBase
     /// </summary>
     public static string SuggestedPlan(string sites, string routines) => sites switch
     {
+        "1" => routines == "si" ? "Coaching Pro" : "Starter",
         "4+" => "A medida",
-        "2-3" => "Multi-sede",
-        _ => routines == "si" ? "Coaching Pro" : "Starter",
+        _ => "Multi-sede",
     };
+
+    /// <summary>"Mercado Pago, transferencia al banco y efectivo". Null si falta o trae algo que no es una opción.</summary>
+    public static string? PaymentsText(string? payments)
+    {
+        var values = (payments ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct().ToList();
+        if (values.Count == 0 || values.Any(v => !PaymentPlaces.ContainsKey(v))) return null;
+        var labels = values.Select(v => PaymentPlaces[v]).ToList();
+        return labels.Count == 1 ? labels[0] : $"{string.Join(", ", labels.Take(labels.Count - 1))} y {labels[^1]}";
+    }
 
     /// <summary>
     /// Los horarios de un día que no se ofrecen: <paramref name="percent"/>% de la grilla completa del día,
@@ -129,7 +146,8 @@ public class PublicDemoBookingController : ControllerBase
             .Take(Math.Min(count, daySlots.Count)).ToHashSet();
     }
 
-    public record Answers(string? Center, string? Sites, string? Routines, string? Access);
+    /// <param name="Payments">Dónde cobra (opción múltiple). Opcional: el formulario de antes no la preguntaba.</param>
+    public record Answers(string? Center, string? Sites, string? Routines, string? Access, string? Payments = null);
 
     public record Attribution(string? UtmSource, string? UtmMedium, string? UtmCampaign, string? UtmContent,
         string? Fbclid, string? Fbp);
@@ -187,6 +205,9 @@ public class PublicDemoBookingController : ControllerBase
             || a.Routines is null || !Routines.TryGetValue(a.Routines, out var routines)
             || a.Access is null || !AccessModes.TryGetValue(a.Access, out var access))
             return BadRequest(new { error = "Faltan respuestas de las preguntas." });
+        var payments = PaymentsText(a.Payments);
+        if (a.Payments is not null && payments is null)
+            return BadRequest(new { error = "Faltan respuestas de las preguntas." });
 
         if (req.Slot is not { } slot) return BadRequest(new { error = "Elegí un día y un horario." });
 
@@ -227,7 +248,7 @@ public class PublicDemoBookingController : ControllerBase
         var plan = SuggestedPlan(a.Sites, a.Routines);
         var app = DemoScheduling.AppName(productKey);
         var when = DemoScheduling.SayAbsolute(slot);
-        var summary = $"{center}. {sites}. {routines}. {access}. Plan sugerido: {plan}.";
+        var summary = $"{center}. {sites}. {(payments is null ? "" : $"Cobra con {payments}. ")}{routines}. {access}. Plan sugerido: {plan}.";
 
         if (agenda.Google)
         {
