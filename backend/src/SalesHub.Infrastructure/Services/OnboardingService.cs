@@ -14,10 +14,13 @@ namespace SalesHub.Infrastructure.Services;
 /// texto que va después de los adjuntos (la 1ª pregunta) — orden reacción → media → pregunta.
 ///
 /// Handoff (modo pre-calificación): el motivo del pase a la persona; el caller manda Reply (si hay),
-/// silencia el bot en la charla y le avisa a la persona con el resumen.</summary>
+/// silencia el bot en la charla y le avisa a la persona con el resumen.
+///
+/// FunnelStage: etapa del embudo a la que llegó el lead en este turno ("qualified" / "demo_scheduled", ver
+/// <see cref="MetaFunnel"/>), para avisarle a Meta. No cambia nada de la charla.</summary>
 public record OnboardingResult(string? Reply, bool OffScript, bool Provisioned, string? PendingQuestion = null, bool WithPitchAudio = false,
     List<Guid>? MediaAssetIds = null, string? PostMediaText = null, List<string>? MediaCaptions = null, string? Handoff = null,
-    string? Notify = null);
+    string? Notify = null, string? FunnelStage = null);
 
 /// <summary>
 /// Motor de onboarding de ads GENÉRICO y multi-app. Lee la <see cref="OnboardingConfig"/> de cada
@@ -233,7 +236,8 @@ public partial class OnboardingService
         var when = DemoScheduling.Say(slot, DateTimeOffset.UtcNow);
         return new OnboardingResult(
             Spin("{listo|buenisimo}, quedo agendado para " + when + ". te llega la invitacion al mail con el link de la llamada", lead.Id, 92),
-            OffScript: false, Provisioned: false, Handoff: $"demo agendada {when} (Google Calendar, invitacion a {email})");
+            OffScript: false, Provisioned: false, Handoff: $"demo agendada {when} (Google Calendar, invitacion a {email})",
+            FunnelStage: MetaFunnel.DemoScheduled);
     }
 
     /// <summary>
@@ -820,7 +824,8 @@ public partial class OnboardingService
                     await _db.SaveChangesAsync(ct);
                     return new OnboardingResult(
                         PresentAs(Join(Spin(np.Text, lead.Id, 95), DemoTail(cfg, lead.Id)), cfg),
-                        OffScript: false, Provisioned: false, MediaAssetIds: np.MediaAssetIds is { Count: > 0 } nmm ? nmm : null);
+                        OffScript: false, Provisioned: false, MediaAssetIds: np.MediaAssetIds is { Count: > 0 } nmm ? nmm : null,
+                        FunnelStage: MetaFunnel.Qualified); // contó todo en el saludo: es como terminar las preguntas
                 }
                 if (n >= 2)
                 {
@@ -930,6 +935,7 @@ public partial class OnboardingService
         string reply;
         var withAudio = false;
         var provisioned = false;
+        string? funnel = null; // terminó las preguntas de calificación en este turno → "qualified" (aviso a Meta)
         if (ob.Step == 0)
         {
             // Solo apps de una sola persona (las multi-persona ya pasaron por la selección).
@@ -1027,7 +1033,7 @@ public partial class OnboardingService
                         ob.UpdatedAt = DateTimeOffset.UtcNow;
                         await _db.SaveChangesAsync(ct);
                         return new OnboardingResult(PresentAs(ReactTo(msg, lead.Id) + "[NUEVO_MENSAJE]" + Spin(pitch, lead.Id, 96), cfg),
-                            OffScript: false, Provisioned: false);
+                            OffScript: false, Provisioned: false, FunnelStage: MetaFunnel.Qualified);
                     }
                     // Con pitch del anuncio (o sin agenda): el bot cierra su parte (con el pitch del ángulo del anuncio, si hay)
                     // y sigue la persona en la misma línea.
@@ -1042,7 +1048,8 @@ public partial class OnboardingService
                         await _db.SaveChangesAsync(ct);
                         return new OnboardingResult(PresentAs(Join(reply, DemoTail(cfg, lead.Id)), cfg),
                             OffScript: false, Provisioned: false,
-                            MediaAssetIds: anglePitch.MediaAssetIds is { Count: > 0 } dm ? dm : null);
+                            MediaAssetIds: anglePitch.MediaAssetIds is { Count: > 0 } dm ? dm : null,
+                            FunnelStage: MetaFunnel.Qualified);
                     }
                     if (!string.IsNullOrWhiteSpace(cfg.PricesMessage) && !string.IsNullOrWhiteSpace(reply))
                     {
@@ -1051,7 +1058,8 @@ public partial class OnboardingService
                         ob.UpdatedAt = DateTimeOffset.UtcNow;
                         await _db.SaveChangesAsync(ct);
                         return new OnboardingResult(PresentAs(reply, cfg), OffScript: false, Provisioned: false,
-                            MediaAssetIds: anglePitch?.MediaAssetIds is { Count: > 0 } pm ? pm : null);
+                            MediaAssetIds: anglePitch?.MediaAssetIds is { Count: > 0 } pm ? pm : null,
+                            FunnelStage: MetaFunnel.Qualified);
                     }
                     if (string.IsNullOrWhiteSpace(cfg.PricesMessage) && !string.IsNullOrWhiteSpace(cfg.StartQuestion)
                         && !string.IsNullOrWhiteSpace(reply))
@@ -1063,19 +1071,22 @@ public partial class OnboardingService
                         await _db.SaveChangesAsync(ct);
                         return new OnboardingResult(PresentAs(Join(reply, Spin(cfg.StartQuestion, lead.Id, 98)), cfg),
                             OffScript: false, Provisioned: false,
-                            MediaAssetIds: anglePitch?.MediaAssetIds is { Count: > 0 } sm ? sm : null);
+                            MediaAssetIds: anglePitch?.MediaAssetIds is { Count: > 0 } sm ? sm : null,
+                            FunnelStage: MetaFunnel.Qualified);
                     }
                     ob.Step = StepHumanHandoff;
                     ob.UpdatedAt = DateTimeOffset.UtcNow;
                     await _db.SaveChangesAsync(ct);
                     return new OnboardingResult(string.IsNullOrWhiteSpace(reply) ? null : PresentAs(reply, cfg),
                         OffScript: false, Provisioned: false, Handoff: $"respondió {k} preguntas",
-                        MediaAssetIds: anglePitch?.MediaAssetIds is { Count: > 0 } media ? media : null);
+                        MediaAssetIds: anglePitch?.MediaAssetIds is { Count: > 0 } media ? media : null,
+                        FunnelStage: MetaFunnel.Qualified);
                 }
                 if (k < n) { reply = questions[k]; ob.Step = k + 1; }
                 else if (cfg.SelfServe) // última pregunta → audio del pitch (si hay) + pide mail
                 {
                     reply = emailPrompt; ob.Step = n + 1; withAudio = cfg.UsePitchAudio;
+                    funnel = MetaFunnel.Qualified;
                 }
                 else
                 {
@@ -1084,6 +1095,7 @@ public partial class OnboardingService
                     lead.Status = LeadStatus.Interested;
                     ob.Step = n + 2; // terminado; el vendedor coordina la demo
                     withAudio = cfg.UsePitchAudio;
+                    funnel = MetaFunnel.Qualified;
                 }
             }
         }
@@ -1143,7 +1155,8 @@ public partial class OnboardingService
 
         ob.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return new OnboardingResult(PresentAs(reply, cfg), OffScript: false, Provisioned: provisioned, WithPitchAudio: withAudio);
+        return new OnboardingResult(PresentAs(reply, cfg), OffScript: false, Provisioned: provisioned, WithPitchAudio: withAudio,
+            FunnelStage: funnel);
     }
 
     /// <summary>

@@ -23,6 +23,7 @@ public class LeadsController : ControllerBase
     private readonly IGooglePlacesEnricher _enricher;
     private readonly IEvolutionClient _evo;
     private readonly IProductStatusNotifier _statusNotifier;
+    private readonly MetaConversionQueue _metaConversions;
     private readonly ILogger<LeadsController> _log;
 
     public LeadsController(
@@ -34,10 +35,11 @@ public class LeadsController : ControllerBase
         IGooglePlacesEnricher enricher,
         IEvolutionClient evo,
         IProductStatusNotifier statusNotifier,
+        MetaConversionQueue metaConversions,
         ILogger<LeadsController> log)
     {
         _db = db; _renderer = renderer; _pipeline = pipeline; _rebalancer = rebalancer; _phone = phone; _enricher = enricher;
-        _evo = evo; _statusNotifier = statusNotifier; _log = log;
+        _evo = evo; _statusNotifier = statusNotifier; _metaConversions = metaConversions; _log = log;
     }
 
     public record AssignRequest(Guid SellerId, bool AutoQueue = true);
@@ -895,6 +897,9 @@ public class LeadsController : ControllerBase
         if (req.Status == LeadStatus.DemoScheduled && before != LeadStatus.DemoScheduled)
             await DemoHandoff.ApplyAsync(_db, lead, sellerId, ct);
         await _db.SaveChangesAsync(ct);
+
+        // Pasado a mano a "Interesado" o "Demo agendada": aviso a Meta en segundo plano (si es de anuncio).
+        _metaConversions.Enqueue(lead.Id, MetaFunnel.FromStatusChange(before, req.Status), "crm");
 
         // Status-back al producto de origen (no-op si el lead no es de producto o no hay
         // StatusWebhookUrl configurado para ese productKey).

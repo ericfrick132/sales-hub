@@ -65,6 +65,7 @@ public class ConversationAgentService
 
     private readonly PersonHandoffService _handoff;
     private readonly InstagramMessengerClient _ig;
+    private readonly MetaConversionQueue _metaConversions;
 
     public ConversationAgentService(
         ApplicationDbContext db, IEvolutionClient evo, GroqWhisperClient whisper,
@@ -74,9 +75,9 @@ public class ConversationAgentService
         TakeoverSignal takeover, IAdminAlerter alerter, SellerLineSender lineSender,
         ILogger<ConversationAgentService> log,
         PitchEngine pitch, ConversationFeedbackProvider feedback, PersonHandoffService handoff,
-        InstagramMessengerClient ig)
+        InstagramMessengerClient ig, MetaConversionQueue metaConversions)
     {
-        _handoff = handoff; _ig = ig;
+        _handoff = handoff; _ig = ig; _metaConversions = metaConversions;
         _db = db; _evo = evo; _whisper = whisper; _suggestions = suggestions; _onboarding = onboarding;
         _scheduler = scheduler; _voiceNotes = voiceNotes; _renderer = renderer; _config = config;
         _takeover = takeover; _alerter = alerter; _lineSender = lineSender; _log = log;
@@ -442,7 +443,12 @@ public class ConversationAgentService
 
             if (runOnboarding)
             {
+                var stepBefore = onb?.Step;
                 var ob = await _onboarding.ProcessAsync(lead, last, onbCfg!, ct, recentBurst);
+                // Aviso a Meta (CAPI) si en este turno quedó calificado o agendó la demo. ProcessAsync ya guardó el
+                // paso; el aviso sale en segundo plano. El guion closer se lee por el salto de paso (MetaFunnel).
+                _metaConversions.Enqueue(lead.Id, MetaFunnel.FromOnboardingTurn(stepBefore,
+                    _db.LeadOnboardings.Local.FirstOrDefault(o => o.LeadId == lead.Id)?.Step, ob.FunnelStage), "bot");
                 // Guion closer: aviso a Mateo SIN silenciar el bot (sigue la charla y los seguimientos).
                 if (ob.Notify is not null)
                     await _handoff.HandoffAsync(lead, onbCfg!.HandoffSellerId, ob.Notify, last, null, ct, mute: false);

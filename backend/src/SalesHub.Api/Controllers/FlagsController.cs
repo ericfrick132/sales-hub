@@ -34,6 +34,7 @@ public class FlagsController : ControllerBase
         ("chat-sync", "Workers:ChatSyncAutoStart", "Sync de chats de Evolution (todos los chats → Conversaciones)"),
         ("sla-alerts", "Workers:SlaAlertsAutoStart", "Aviso de chats colgados (SLA de respuesta sin cumplir)"),
         ("closer-gymhero", "Workers:CloserGymHeroAutoStart", "Bot nuevo de GymHero (guion closer, 12/11/2026)"),
+        ("meta-capi", "MetaCapi:Enabled", "Avisos a Meta (CAPI): lead de anuncio calificado y demo agendada"),
         // Marca interna del backfill inicial: APAGARLA fuerza un re-barrido completo de
         // Sync:ChatSyncBootstrapDays (default 30 días) en el próximo tick del sync.
         ("chat-sync-bootstrapped", "Workers:ChatSyncBootstrapped", "Chat sync: backfill hecho (apagar = re-barrer 30 días)"),

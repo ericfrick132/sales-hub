@@ -118,6 +118,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<MetaAd> MetaAds => Set<MetaAd>();
     /// <summary>Rendimiento diario de cada anuncio por provincia (mapa de anuncios, MetaGeoSyncService).</summary>
     public DbSet<MetaGeoDaily> MetaGeoDaily => Set<MetaGeoDaily>();
+    /// <summary>Avisos a la Conversions API de Meta (lead calificado / demo agendada): uno por lead y etapa.</summary>
+    public DbSet<MetaConversionEvent> MetaConversionEvents => Set<MetaConversionEvent>();
     /// <summary>Listados de la competencia para públicos de Meta. Nunca se contactan (no son leads).</summary>
     public DbSet<AudienceLead> AudienceLeads => Set<AudienceLead>();
     public DbSet<FinderBatch> FinderBatches => Set<FinderBatch>();

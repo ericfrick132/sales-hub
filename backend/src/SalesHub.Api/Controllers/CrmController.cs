@@ -24,11 +24,13 @@ public class CrmController : ControllerBase
     private readonly IProductStatusNotifier _statusNotifier;
     private readonly IMessageRenderer _renderer;
     private readonly OnboardingService _onboarding;
+    private readonly MetaConversionQueue _metaConversions;
 
     public CrmController(ApplicationDbContext db, IProductStatusNotifier statusNotifier,
-        IMessageRenderer renderer, OnboardingService onboarding)
+        IMessageRenderer renderer, OnboardingService onboarding, MetaConversionQueue metaConversions)
     {
         _db = db; _statusNotifier = statusNotifier; _renderer = renderer; _onboarding = onboarding;
+        _metaConversions = metaConversions;
     }
 
     /// <summary>
@@ -585,6 +587,9 @@ public class CrmController : ControllerBase
             : null;
 
         await _db.SaveChangesAsync(ct);
+
+        // Pasado a mano a "Interesados" o "Demo agendada": aviso a Meta en segundo plano (si es de anuncio).
+        _metaConversions.Enqueue(id, MetaFunnel.FromStatusChange(before, target), "crm");
 
         // Mismo status-back que el PATCH clásico: el producto de origen se entera del cierre.
         await _statusNotifier.NotifyAsync(lead.ProductKey, lead.ExternalId, target.ToString(),

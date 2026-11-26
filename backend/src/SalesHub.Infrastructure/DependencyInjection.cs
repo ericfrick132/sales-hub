@@ -161,6 +161,11 @@ public static class DependencyInjection
         services.AddScoped<MetaAdMediaService>();         // miniatura y video de cada anuncio (rendimiento de anuncios)
         services.AddScoped<MetaGeoSyncService>();         // rendimiento por provincia → meta_geo_daily (mapa de anuncios)
         services.AddScoped<MetaGeoReportService>();       // KPIs/provincias/anuncios del mapa + leads por código de área
+        // Conversions API: lead de anuncio calificado / demo agendada → Meta (pixel por app en MetaCapi:Products).
+        services.Configure<MetaCapiOptions>(config.GetSection("MetaCapi"));
+        services.AddHttpClient("meta-capi");
+        services.AddScoped<MetaConversionService>();
+        services.AddSingleton<MetaConversionQueue>();     // los avisos salen en segundo plano, después de guardar
         services.AddScoped<AudienceLeadService>();        // listados de la competencia para públicos de Meta (no se contactan)
         services.AddScoped<PitchEngine>();                 // pitch por anuncio (pasos, follow-ups, avance por respuesta)
         services.AddScoped<ConversationFeedbackProvider>(); // 👍/👎 humanos → aprendizajes en el prompt

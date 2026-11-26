@@ -3712,6 +3712,126 @@ namespace SalesHub.Infrastructure.Persistence.Migrations
                     b.ToTable("meta_ads", (string)null);
                 });
 
+            modelBuilder.Entity("SalesHub.Core.Domain.Entities.MetaConversionEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActionSource")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("action_source");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("error");
+
+                    b.Property<string>("EventId")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)")
+                        .HasColumnName("event_id");
+
+                    b.Property<string>("EventName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("event_name");
+
+                    b.Property<bool>("FallbackUsed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("fallback_used");
+
+                    b.Property<string>("FbTraceId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("fb_trace_id");
+
+                    b.Property<string>("FirstError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("first_error");
+
+                    b.Property<int?>("FirstHttpStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("first_http_status");
+
+                    b.Property<int?>("HttpStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("http_status");
+
+                    b.Property<bool>("IsTest")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_test");
+
+                    b.Property<Guid>("LeadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lead_id");
+
+                    b.Property<string>("MatchKeys")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("match_keys");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("ProductKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("product_key");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("stage");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Trigger")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("trigger");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_meta_conversion_events");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_meta_conversion_events_created_at");
+
+                    b.HasIndex("LeadId", "Stage", "IsTest")
+                        .IsUnique()
+                        .HasDatabaseName("ix_meta_conversion_events_lead_id_stage_is_test");
+
+                    b.ToTable("meta_conversion_events", (string)null);
+                });
+
             modelBuilder.Entity("SalesHub.Core.Domain.Entities.MetaGeoDaily", b =>
                 {
                     b.Property<Guid>("Id")
