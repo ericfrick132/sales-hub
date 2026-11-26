@@ -20,6 +20,10 @@ public class ConversationAgentService
 {
     private const int MaxTranscriptionAttempts = 3;
     private const int BatchSize = 10;
+    // Notas de voz NUESTRAS (grabadas desde el celu de la línea): solo se transcriben las recientes.
+    // Sin esta ventana, las viejas y las que trae la carga del historial de un teléfono entrarían
+    // todas al batch y demorarían la transcripción de los audios del lead.
+    private static readonly TimeSpan OwnAudioWindow = TimeSpan.FromHours(24);
     // Techo diario de RESPUESTAS automáticas por vendedor, APARTE del cap de outreach
     // (OutboxSender.MaxMessagesPerSellerPerDay). Contestar a alguien que nos escribió es
     // mucho menos baneable que el contacto frío; cuando compartían cap, el outreach
@@ -104,19 +108,26 @@ public class ConversationAgentService
         return transcribed + pitched + replied + reengaged + postSignup;
     }
 
-    /// <summary>Transcribe las notas de voz inbound que el webhook dejó como "[audio]".</summary>
+    /// <summary>
+    /// Transcribe las notas de voz que el webhook dejó como "[audio]": las del lead y también las
+    /// nuestras grabadas desde el celu de la línea (salientes que llegaron con su RawJson). Los audios
+    /// que manda el sistema (pitch, reenvíos) no guardan el archivo y no pasan por acá.
+    /// </summary>
     private async Task<int> TranscribeAudiosAsync(CancellationToken ct)
     {
         // Sin API key de Groq no tocamos nada — los audios quedan como "[audio]".
         if (!_whisper.IsConfigured) return 0;
 
+        var ownSince = DateTimeOffset.UtcNow - OwnAudioWindow;
         var pending = await _db.ConversationMessages
-            .Where(m => m.Direction == MessageDirection.Inbound
-                     && m.Text == "[audio]"
+            .Where(m => m.Text == "[audio]"
                      && m.TranscriptionAttempts < MaxTranscriptionAttempts
                      && m.RawJson != null
-                     && m.EvolutionInstance != null)
-            .OrderBy(m => m.Timestamp)
+                     && m.EvolutionInstance != null
+                     && (m.Direction == MessageDirection.Inbound || m.Timestamp >= ownSince))
+            // Primero los del lead: el bot espera esa transcripción para contestar.
+            .OrderBy(m => m.Direction == MessageDirection.Inbound ? 0 : 1)
+            .ThenBy(m => m.Timestamp)
             .Take(BatchSize)
             .ToListAsync(ct);
 
@@ -140,9 +151,11 @@ public class ConversationAgentService
             {
                 msg.Text = $"🎤 {transcript}";
                 done++;
-                _log.LogInformation("Audio transcripto: msg={Id} lead={Lead}", msg.Id, msg.LeadId);
+                _log.LogInformation("Audio transcripto: msg={Id} lead={Lead} dir={Dir}", msg.Id, msg.LeadId, msg.Direction);
             }
-            else if (msg.TranscriptionAttempts >= MaxTranscriptionAttempts)
+            // Solo los del lead pasan a "no se pudo transcribir": ese texto como último mensaje hace
+            // que el bot le pida que lo escriba. Uno nuestro que no se pudo queda como "[audio]".
+            else if (msg.TranscriptionAttempts >= MaxTranscriptionAttempts && msg.Direction == MessageDirection.Inbound)
             {
                 // Agotó los intentos: lo dejamos legible en vez de "[audio]".
                 msg.Text = "[audio — no se pudo transcribir]";

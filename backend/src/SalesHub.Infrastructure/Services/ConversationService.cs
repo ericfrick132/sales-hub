@@ -405,13 +405,41 @@ public class ConversationService
         var anchor = incoming.FromSync ? incoming.Timestamp : DateTimeOffset.UtcNow;
         var since = anchor.AddMinutes(-10);
         var until = anchor.AddMinutes(10);
-        var isOwnEcho = await _db.ConversationMessages.AnyAsync(m =>
-            m.LeadId == lead.Id
-            && m.Direction == MessageDirection.Outbound
-            && m.Timestamp >= since && m.Timestamp <= until
-            // Imagen/video con descripción mandados desde el chat se guardan "[imagen] texto"; el eco trae solo el texto.
-            && (m.Text == incoming.Text || m.Text == "[imagen] " + incoming.Text || m.Text == "[video] " + incoming.Text), ct);
-        if (isOwnEcho) return false;
+        if (text == "[audio]")
+        {
+            // Nota de voz: todos los ecos traen el mismo "[audio]", así que comparar por texto no alcanza
+            // (otra nota de voz grabada desde el celu hace un rato, o un audio del bot, hacían que esta se
+            // descartara como eco: no llegaba al chat ni a la transcripción). Los audios que manda el
+            // sistema se guardan sin id de WhatsApp ni archivo; cada uno absorbe UN eco y se le anota el id.
+            var systemAudio = await _db.ConversationMessages
+                .Where(m => m.LeadId == lead.Id
+                    && m.Direction == MessageDirection.Outbound
+                    && m.Timestamp >= since && m.Timestamp <= until
+                    && m.WhatsappMessageId == null && m.RawJson == null
+                    // "[audio]", "[audio] guion", "[audio: archivo]" o "🎤 guion" (nota de voz de IA).
+                    && (m.Text.StartsWith("[audio") || m.Text.StartsWith("🎤")))
+                .OrderBy(m => m.Timestamp)
+                .FirstOrDefaultAsync(ct);
+            if (systemAudio is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(incoming.MessageId))
+                {
+                    systemAudio.WhatsappMessageId = incoming.MessageId;
+                    await _db.SaveChangesAsync(ct);
+                }
+                return false;
+            }
+        }
+        else
+        {
+            var isOwnEcho = await _db.ConversationMessages.AnyAsync(m =>
+                m.LeadId == lead.Id
+                && m.Direction == MessageDirection.Outbound
+                && m.Timestamp >= since && m.Timestamp <= until
+                // Imagen/video con descripción mandados desde el chat se guardan "[imagen] texto"; el eco trae solo el texto.
+                && (m.Text == incoming.Text || m.Text == "[imagen] " + incoming.Text || m.Text == "[video] " + incoming.Text), ct);
+            if (isOwnEcho) return false;
+        }
 
         // Dedup por message id (reentregas del webhook).
         if (!string.IsNullOrWhiteSpace(incoming.MessageId)
@@ -712,10 +740,14 @@ public class ConversationService
 
         var since = DateTimeOffset.UtcNow.AddMinutes(-10);
         var text = echo.Text;
+        // Nota de voz grabada en la app de Instagram: otra nuestra de hace un rato (ya registrada, con
+        // su id) trae el mismo "[audio]" y no es su eco. Solo cuenta un envío del sistema (sin id).
+        var isAudio = text == "[audio]";
         var isOwnEcho = await _db.ConversationMessages.AnyAsync(m =>
             m.LeadId == lead.Id
             && m.Direction == MessageDirection.Outbound
             && m.Timestamp >= since
+            && (!isAudio || m.WhatsappMessageId == null)
             && (m.Text == text || m.Text.Contains(text)), ct);
         if (isOwnEcho) return false;
 

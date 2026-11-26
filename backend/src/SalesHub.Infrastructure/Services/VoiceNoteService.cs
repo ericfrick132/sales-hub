@@ -83,6 +83,9 @@ public class VoiceNoteService
         var sentToday = await _db.ConversationMessages.CountAsync(m =>
             m.Direction == MessageDirection.Outbound
             && m.Timestamp >= dayStart
+            // Sin archivo = la mandó el bot. Las grabadas desde el celu también quedan "🎤 …"
+            // al transcribirse (llegan con su RawJson) y no gastan créditos de voz.
+            && m.RawJson == null
             && m.Text.StartsWith(AudioPrefix), ct);
         if (sentToday >= _opts.MaxPerDay)
         {
