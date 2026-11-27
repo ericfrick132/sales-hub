@@ -44,7 +44,8 @@ public record GeoMetrics(
     long Clicks, long UniqueClicks, long LinkClicks, double? Ctr, decimal? Cpc, decimal? Cpm,
     long VideoViews3s, double? HookRate,
     long Conversations, decimal? CostPerConversation, long FirstReplies, long Depth2, long Depth3,
-    double Leads, double LeadsQualified, double LeadsClosed, decimal? CostPerLead, double LeadsShared);
+    double Leads, double LeadsQualified, double LeadsClosed, decimal? CostPerLead, double LeadsShared,
+    double Demos, decimal? CostPerDemo);
 
 /// <summary>
 /// Arma el mapa de anuncios por provincia sobre <see cref="MetaGeoDaily"/> + los leads de sales-hub
@@ -119,7 +120,7 @@ public class MetaGeoReportService
     /// </summary>
     private sealed record GeoLead(string AdId, string? ProductKey, string? CampaignId, string? CampaignName, string? AdsetId,
         string? AdsetName, string AdName, string Format, string Country, string? Province, DateOnly Date, LeadStatus Status,
-        double W = 1, bool Shared = false);
+        bool Demo, double W = 1, bool Shared = false);
 
     private sealed record Loaded(DateOnly From, DateOnly To, int Days, List<MetaGeoDaily> Rows, List<GeoLead> Leads, HashSet<string> RegionKeys);
 
@@ -151,7 +152,7 @@ public class MetaGeoReportService
         var leadsQ = _db.Leads.AsNoTracking().Where(l => l.AdId != null && l.CreatedAt >= fromUtc && l.CreatedAt < toUtc);
         if (q.Products.Count > 0) leadsQ = leadsQ.Where(l => q.Products.Contains(l.ProductKey));
         var rawLeads = await leadsQ
-            .Select(l => new { l.AdId, l.ProductKey, l.WhatsappPhone, l.RawPhone, l.Province, l.CreatedAt, l.Status })
+            .Select(l => new { l.AdId, l.ProductKey, l.WhatsappPhone, l.RawPhone, l.Province, l.CreatedAt, l.Status, Demo = l.DemoScheduledAt != null })
             .ToListAsync(ct);
         var mapped = rawLeads.Select(l =>
         {
@@ -161,7 +162,7 @@ public class MetaGeoReportService
             var name = info?.Name ?? metaAdNames.GetValueOrDefault(l.AdId!) ?? string.Empty;
             return new GeoLead(l.AdId!, l.ProductKey, info?.CampaignId, info?.CampaignName, info?.AdsetId, info?.AdsetName, name,
                 AdFormat.Infer(name), country ?? "AR", province,
-                DateOnly.FromDateTime(l.CreatedAt.ToOffset(TimeSpan.FromHours(-3)).DateTime), l.Status);
+                DateOnly.FromDateTime(l.CreatedAt.ToOffset(TimeSpan.FromHours(-3)).DateTime), l.Status, l.Demo);
         }).ToList();
         GeoLead Rebind(GeoLead l, string adId, double w, bool shared)
         {
@@ -469,7 +470,7 @@ public class MetaGeoReportService
     private sealed class Acc
     {
         decimal _spend; long _impr, _reach, _clicks, _uclicks, _link, _video, _conv, _first, _d2, _d3;
-        double _leads, _qualified, _closed, _shared;
+        double _leads, _qualified, _closed, _shared, _demos;
 
         public static Acc Of(IEnumerable<MetaGeoDaily> rows)
         {
@@ -490,6 +491,7 @@ public class MetaGeoReportService
                 _leads += l.W;
                 if (Qualified.Contains(l.Status)) _qualified += l.W;
                 if (l.Status == LeadStatus.Closed) _closed += l.W;
+                if (l.Demo) _demos += l.W;
                 if (l.Shared) _shared += l.W;
             }
         }
@@ -511,7 +513,8 @@ public class MetaGeoReportService
                 CostPerConversation: _conv > 0 ? Math.Round(_spend / _conv, 4) : null,
                 FirstReplies: _first, Depth2: _d2, Depth3: _d3,
                 Leads: Math.Round(_leads, 2), LeadsQualified: Math.Round(_qualified, 2), LeadsClosed: Math.Round(_closed, 2),
-                CostPerLead: _leads > 0.005 ? Math.Round(_spend / (decimal)_leads, 4) : null, LeadsShared: Math.Round(_shared, 2));
+                CostPerLead: _leads > 0.005 ? Math.Round(_spend / (decimal)_leads, 4) : null, LeadsShared: Math.Round(_shared, 2),
+                Demos: Math.Round(_demos, 2), CostPerDemo: _demos > 0.005 ? Math.Round(_spend / (decimal)_demos, 4) : null);
         }
     }
 }

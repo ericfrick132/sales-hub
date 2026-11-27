@@ -44,7 +44,9 @@ public class PublicLandingLeadsController : ControllerBase
         string? ProductKey, string? Name, string? Phone, string? Email, string? Business,
         string? Size, string? Plan, string? Message, string? Page,
         /// <summary>Honeypot: campo oculto que una persona nunca completa.</summary>
-        string? Website);
+        string? Website,
+        /// <summary>UTM del anuncio que lo trajo (opcional: el popup y la sección de precios no la mandan).</summary>
+        PublicDemoBookingController.Attribution? Attribution = null);
 
     [HttpPost]
     [EnableRateLimiting(LandingCors.RateLimitPolicy)]
@@ -84,6 +86,7 @@ public class PublicLandingLeadsController : ControllerBase
                 {
                     lead.Notes = note;
                     if (!lead.Tags.Contains("pidio-demo-web")) lead.Tags.Add("pidio-demo-web");
+                    lead.AdId ??= PublicDemoBookingController.AdIdFrom(req.Attribution);
                     lead.RawDataJson = JsonSerializer.Serialize(req with { Website = null });
                     lead.WebRequestAt = DateTimeOffset.UtcNow;
                     lead.WebRequestJson = lead.RawDataJson;
@@ -100,6 +103,7 @@ public class PublicLandingLeadsController : ControllerBase
                 {
                     lead.Notes = string.IsNullOrWhiteSpace(lead.Notes) ? note : $"{lead.Notes}\n{note}";
                     if (!lead.Tags.Contains("pidio-demo-web")) lead.Tags.Add("pidio-demo-web");
+                    lead.AdId ??= PublicDemoBookingController.AdIdFrom(req.Attribution);
                     // Pedido nuevo: vuelve arriba en "Pedidos web" y queda "Sin llamar" desde ahora.
                     lead.WebRequestAt = DateTimeOffset.UtcNow;
                     lead.WebRequestJson = JsonSerializer.Serialize(req with { Website = null });

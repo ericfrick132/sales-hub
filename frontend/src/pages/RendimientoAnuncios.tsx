@@ -15,6 +15,7 @@ type M = {
   conversations: number; costPerConversation: number | null;
   leads: number; leadsQualified: number; leadsClosed: number; costPerLead: number | null;
   leadsShared: number; // parte de los leads repartida entre anuncios con el mismo mensaje pre-armado (estimada)
+  demos: number; costPerDemo: number | null; // leads del anuncio con demo agendada (web, bot o vendedor)
 };
 type Filters = { configured: boolean; lastSyncAt: string | null; today: string; products: { key: string; displayName: string }[]; countries: string[] };
 type TableData = { from: string; to: string; days: number; rows: { keys: { id: string; label: string }[]; m: M }[] };
@@ -87,8 +88,9 @@ const cellLevel = (k: ColKey, m: M) => {
   return lvl && LEVELS.indexOf(lvl) >= 3 ? lvl : null;
 };
 
-type ColKey = 'spend' | 'impressions' | 'hookRate' | 'ctr' | 'conversations' | 'costPerConversation' | 'leads' | 'costPerLead' | 'leadsQualified' | 'leadsClosed';
-const COLS: { key: ColKey; label: string; hint: string; fmt: (n: number | null) => string; rank?: 'high' | 'low' }[] = [
+type ColKey = 'spend' | 'impressions' | 'hookRate' | 'ctr' | 'conversations' | 'costPerConversation' | 'leads' | 'costPerLead' | 'leadsQualified' | 'demos' | 'costPerDemo' | 'leadsClosed';
+/** neutral: sin color (no hay referencia de mercado y no es volumen). */
+const COLS: { key: ColKey; label: string; hint: string; fmt: (n: number | null) => string; rank?: 'high' | 'low'; neutral?: boolean }[] = [
   { key: 'spend', label: 'Gasto', hint: 'Lo que gastó en el rango (USD).', fmt: usd },
   { key: 'impressions', label: 'Impresiones', hint: 'Veces que se mostró.', fmt: num },
   { key: 'hookRate', label: 'Enganche', hint: 'De cada 100 que lo vieron, cuántos miraron 3 segundos.', fmt: pct, rank: 'high' },
@@ -98,9 +100,11 @@ const COLS: { key: ColKey; label: string; hint: string; fmt: (n: number | null) 
   { key: 'leads', label: 'Leads', hint: 'Leads que entraron a sales-hub desde este anuncio.', fmt: leadNum },
   { key: 'costPerLead', label: '$ / lead', hint: 'Gasto dividido leads de sales-hub.', fmt: usd, rank: 'low' },
   { key: 'leadsQualified', label: 'Interesados', hint: 'Leads interesados, con demo o cerrados.', fmt: leadNum },
+  { key: 'demos', label: 'Demos', hint: 'Leads de este anuncio con demo agendada (en la web, por el bot o por un vendedor).', fmt: leadNum },
+  { key: 'costPerDemo', label: '$ / demo', hint: 'Gasto dividido demos agendadas.', fmt: usd, rank: 'low', neutral: true },
   { key: 'leadsClosed', label: 'Cerrados', hint: 'Leads que cerraron.', fmt: leadNum },
 ];
-const LEAD_COLS = new Set<ColKey>(['leads', 'costPerLead', 'leadsQualified', 'leadsClosed']);
+const LEAD_COLS = new Set<ColKey>(['leads', 'costPerLead', 'leadsQualified', 'demos', 'costPerDemo', 'leadsClosed']);
 const sharedNote = (m: M) => (m.leadsShared > 0
   ? ` · ≈ estimado: ${leadNum(m.leadsShared)} de estos leads llegaron con un mensaje pre-armado que comparten varios anuncios (WhatsApp no dice de qué anuncio vienen) y se repartieron según los chats que Meta contó a cada uno ese día`
   : '');
@@ -162,7 +166,7 @@ export default function RendimientoAnuncios() {
   // Cortes de quintil por columna de volumen (sobre los valores > 0 de la tabla).
   const volumeBreaks = useMemo(() => {
     const out = new Map<ColKey, number[]>();
-    for (const c of COLS.filter((x) => !BENCH[x.key])) {
+    for (const c of COLS.filter((x) => !BENCH[x.key] && !x.neutral)) {
       const vals = rows.map((r) => r.m[c.key]).filter((v): v is number => v != null && v > 0).sort((a, b) => a - b);
       if (vals.length) out.set(c.key, [0.2, 0.4, 0.6, 0.8].map((q) => vals[Math.min(vals.length - 1, Math.floor(q * vals.length))]));
     }
@@ -189,8 +193,8 @@ export default function RendimientoAnuncios() {
     const t = rows.reduce((a, r) => ({
       spend: a.spend + r.m.spend, impressions: a.impressions + r.m.impressions, clicks: a.clicks + r.m.clicks,
       video: a.video + r.m.videoViews3s, conversations: a.conversations + r.m.conversations, leads: a.leads + r.m.leads,
-      qualified: a.qualified + r.m.leadsQualified, closed: a.closed + r.m.leadsClosed,
-    }), { spend: 0, impressions: 0, clicks: 0, video: 0, conversations: 0, leads: 0, qualified: 0, closed: 0 });
+      qualified: a.qualified + r.m.leadsQualified, closed: a.closed + r.m.leadsClosed, demos: a.demos + r.m.demos,
+    }), { spend: 0, impressions: 0, clicks: 0, video: 0, conversations: 0, leads: 0, qualified: 0, closed: 0, demos: 0 });
     // Repartidos: la suma vuelve a ser casi entera; se redondea para no mostrar 53,9 leads en el total.
     return {
       ...t,
@@ -198,6 +202,7 @@ export default function RendimientoAnuncios() {
       ctr: t.impressions ? (100 * t.clicks) / t.impressions : null,
       costPerConversation: t.conversations ? t.spend / t.conversations : null,
       costPerLead: t.leads ? t.spend / t.leads : null,
+      costPerDemo: t.demos ? t.spend / t.demos : null,
     };
   }, [rows]);
 
@@ -246,13 +251,14 @@ export default function RendimientoAnuncios() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
         <Kpi label="Anuncios" value={num(rows.length)} />
         <Kpi label="Gasto" value={usd(totals.spend)} />
         <Kpi label="Enganche" value={pct(totals.hookRate)} />
         <Kpi label="CTR" value={pct(totals.ctr)} />
         <Kpi label="Chats" value={num(totals.conversations)} sub={`${usd(totals.costPerConversation)} c/u`} />
         <Kpi label="Leads" value={leadNum(Math.round(totals.leads))} sub={`${usd(totals.costPerLead)} c/u`} />
+        <Kpi label="Demos" value={leadNum(Math.round(totals.demos))} sub={`${usd(totals.costPerDemo)} c/u`} />
         <Kpi label="Cerrados" value={leadNum(Math.round(totals.closed))} sub={`${leadNum(Math.round(totals.qualified))} interesados`} />
       </div>
 
@@ -308,6 +314,14 @@ export default function RendimientoAnuncios() {
                           </td>
                         );
                       }
+                      if (c.neutral) {
+                        return (
+                          <td key={c.key} title={`${c.hint}${v == null && r.m.spend > 0 ? ` · gastó ${usd(r.m.spend)} sin demos` : ''}${few}${estNote}`}
+                            className={clsx('py-2 px-2 text-right tabular-nums whitespace-nowrap text-slate-700', few && 'italic')}>
+                            {v == null ? '—' : `${est ? '≈ ' : ''}${c.fmt(v)}`}
+                          </td>
+                        );
+                      }
                       const tone = volumeTone(c.key, v);
                       return (
                         <td key={c.key} title={`${c.hint}${few}${estNote}`}
@@ -332,10 +346,11 @@ export default function RendimientoAnuncios() {
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
         {BLUES.map((b, i) => <span key={b} className={clsx('px-2 py-0.5 rounded', b)}>{['Menos', '', '', '', 'Más'][i] || '·'}</span>)}
-        <span className="text-slate-400">Volumen (gasto, impresiones, chats, leads, interesados, cerrados) comparado entre los anuncios de la tabla.</span>
+        <span className="text-slate-400">Volumen (gasto, impresiones, chats, leads, interesados, demos, cerrados) comparado entre los anuncios de la tabla.</span>
       </div>
       <div className="text-[11px] text-slate-400">
-        Chats = conversaciones que cuenta Meta. Leads = los que llegaron a sales-hub y se reconocieron por el mensaje que deja escrito el anuncio.
+        Chats = conversaciones que cuenta Meta. Leads = los que llegaron a sales-hub y se reconocieron por el mensaje que deja escrito el anuncio
+        o, en los anuncios a la web, por el link (utm_content). Demos = esos leads con demo agendada, en /agendar-demo, por el bot o por un vendedor.
       </div>
 
       {playing && <VideoModal row={playing} productName={productName(playing.ad?.productKey)} onClose={() => setPlaying(null)} />}

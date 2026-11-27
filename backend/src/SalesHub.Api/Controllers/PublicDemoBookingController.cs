@@ -152,6 +152,10 @@ public class PublicDemoBookingController : ControllerBase
     public record Attribution(string? UtmSource, string? UtmMedium, string? UtmCampaign, string? UtmContent,
         string? Fbclid, string? Fbp);
 
+    /// <summary>El anuncio que trajo al visitante: los links llevan {{ad.id}} en utm_content. Null si no es un id.</summary>
+    public static string? AdIdFrom(Attribution? attribution) =>
+        attribution?.UtmContent?.Trim() is { } ad && AdIdRx.IsMatch(ad) ? ad : null;
+
     public record BookRequest(
         string? ProductKey, string? Name, string? Phone, string? Email, string? Business, string? City,
         Answers? Answers, DateTimeOffset? Slot, string? Page, Attribution? Attribution,
@@ -292,7 +296,7 @@ public class PublicDemoBookingController : ControllerBase
             lead.DemoScheduledAt = slot;
             lead.City ??= city;
             // El anuncio que lo trajo ({{ad.id}} viaja en utm_content), si el lead no venía ya de otro.
-            if (lead.AdId is null && req.Attribution?.UtmContent?.Trim() is { } ad && AdIdRx.IsMatch(ad)) lead.AdId = ad;
+            lead.AdId ??= AdIdFrom(req.Attribution);
             lead.UpdatedAt = now;
             await _db.SaveChangesAsync(ct);
         }
