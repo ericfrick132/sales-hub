@@ -56,11 +56,13 @@ const PERIODS = [
   { days: 90, label: '90 días' },
 ];
 
-interface OutboundDay { date: string; whatsapp: number; whatsappReplied: number; instagram: number; instagramReplied: number }
+interface OutboundDay { date: string; whatsapp: number; whatsappReplied: number }
 interface OutboundApp {
   productKey: string; displayName: string;
-  /** Tope de hoy del canal; null = ese canal no está prendido para la app. */
-  whatsappCap: number | null; instagramCap: number | null;
+  /** Tope de hoy (suma de las líneas outbound de la app); null = no tiene línea prendida. */
+  whatsappCap: number | null;
+  /** Los que la línea puede mandar ya, y los fríos a los que todavía les falta leer la web o el Instagram. */
+  ready: number; analyzing: number;
   daily: OutboundDay[];
   /** De dónde salieron y de qué rubro son los leads contactados del período (total y cuántos de esos hoy). */
   sources: OutboundGroup[]; rubros: OutboundGroup[];
@@ -266,9 +268,9 @@ function MetaLeadsCard({ daily, colorOf, nameOf }: { daily?: TrendDay[]; colorOf
 }
 
 /**
- * Outbound en frío de cada app por canal: cuántos contactos nuevos salieron hoy por WhatsApp (línea outbound) y
- * cuántos DMs por Instagram (cuenta de la app), contra el tope del día, y lo mismo día por día. "Contestaron" es
- * de los que se mandaron ese día (en WhatsApp no cuenta el saludo automático del negocio).
+ * Outbound en frío por WhatsApp de cada app (solo WhatsApp, Eric 27/11/2026): cuántos contactos nuevos salieron hoy
+ * por la línea outbound contra el tope del día, cuántos están listos para salir y cuántos falta analizar, y lo
+ * mismo día por día. "Contestaron" es de los que se mandaron ese día (no cuenta el saludo automático del negocio).
  */
 function OutboundCard({ colorOf }: { colorOf: (k: string) => string }) {
   const { data } = useQuery({
@@ -279,7 +281,7 @@ function OutboundCard({ colorOf }: { colorOf: (k: string) => string }) {
   return (
     <section className="card p-4">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[11px] uppercase tracking-wide text-slate-400">Outbound de hoy · por app y canal</h2>
+        <h2 className="text-[11px] uppercase tracking-wide text-slate-400">Outbound por WhatsApp · por app</h2>
         <Link to="/leads?view=outbound" className="text-[11px] text-brand-700 hover:underline shrink-0">Línea outbound →</Link>
       </div>
       {!data && <p className="text-sm text-slate-400 mt-3">Cargando outbound…</p>}
@@ -295,34 +297,43 @@ function OutboundCard({ colorOf }: { colorOf: (k: string) => string }) {
 
 function OutboundAppBlock({ app, color }: { app: OutboundApp; color: string }) {
   const today = app.daily[app.daily.length - 1];
-  const channels = [
-    { key: 'wa', label: 'WhatsApp', cap: app.whatsappCap, sent: (d: OutboundDay) => d.whatsapp, replied: (d: OutboundDay) => d.whatsappReplied },
-    { key: 'ig', label: 'Instagram', cap: app.instagramCap, sent: (d: OutboundDay) => d.instagram, replied: (d: OutboundDay) => d.instagramReplied },
+  const sent = today?.whatsapp ?? 0;
+  const replied = today?.whatsappReplied ?? 0;
+  const off = app.whatsappCap == null;
+  const rows = [
+    { key: 'sent', label: 'Enviados', value: (d: OutboundDay) => d.whatsapp },
+    { key: 'replied', label: 'Contestaron', value: (d: OutboundDay) => d.whatsappReplied },
   ];
   return (
     <div className="mt-2">
       <div className="text-sm font-semibold">
         <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle" style={{ background: color }} />
         {app.displayName}
+        {off && <span className="ml-2 text-[11px] font-normal text-slate-400">línea apagada</span>}
       </div>
-      <div className="grid grid-cols-2 gap-3 mt-2">
-        {channels.map((c) => {
-          const off = c.cap == null;
-          const n = today ? c.sent(today) : 0;
-          const r = today ? c.replied(today) : 0;
-          return (
-            <div key={c.key} className="rounded-lg border border-slate-200 px-3 py-2">
-              <div className="text-xs text-slate-500">{c.label}</div>
-              <div className="flex items-baseline gap-1.5">
-                <span className={`text-3xl font-bold tabular-nums ${n > 0 ? 'text-slate-900' : 'text-slate-400'}`}>{n}</span>
-                {!off && <span className="text-sm text-slate-500 tabular-nums">de {c.cap}</span>}
-              </div>
-              <div className="text-[11px] text-slate-500">
-                {off && n === 0 ? 'apagado' : r === 1 ? '1 contestó' : `${r} contestaron`}
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid grid-cols-3 gap-3 mt-2">
+        <div className="rounded-lg border border-slate-200 px-3 py-2">
+          <div className="text-xs text-slate-500">Hoy</div>
+          <div className="flex items-baseline gap-1.5">
+            <span className={`text-3xl font-bold tabular-nums ${sent > 0 ? 'text-slate-900' : 'text-slate-400'}`}>{sent}</span>
+            {!off && <span className="text-sm text-slate-500 tabular-nums">de {app.whatsappCap}</span>}
+          </div>
+          <div className="text-[11px] text-slate-500">{replied === 1 ? '1 contestó' : `${replied} contestaron`}</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 px-3 py-2">
+          <div className="text-xs text-slate-500">Listos para salir</div>
+          <span className={`text-3xl font-bold tabular-nums ${app.ready > 0 ? 'text-slate-900' : 'text-slate-400'}`}>
+            {app.ready.toLocaleString('es-AR')}
+          </span>
+          <div className="text-[11px] text-slate-500">analizados, con WhatsApp verificado</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 px-3 py-2">
+          <div className="text-xs text-slate-500">Por analizar</div>
+          <span className={`text-3xl font-bold tabular-nums ${app.analyzing > 0 ? 'text-slate-900' : 'text-slate-400'}`}>
+            {app.analyzing.toLocaleString('es-AR')}
+          </span>
+          <div className="text-[11px] text-slate-500">falta leer la web o el Instagram</div>
+        </div>
       </div>
       <div className="overflow-x-auto mt-2">
         <table className="w-full text-sm">
@@ -335,25 +346,23 @@ function OutboundAppBlock({ app, color }: { app: OutboundApp; color: string }) {
                 </th>
               ))}
               <th className="py-1 pl-3 text-right font-medium">Total</th>
-              <th className="py-1 pl-3 text-right font-medium">Contestaron</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {channels.map((c) => (
-              <tr key={c.key}>
-                <td className="py-1.5 text-slate-600">{c.label}</td>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td className="py-1.5 text-slate-600">{r.label}</td>
                 {app.daily.map((d, i) => {
-                  const n = c.sent(d);
+                  const n = r.value(d);
                   const last = i === app.daily.length - 1;
                   return (
-                    <td key={d.date} title={`${dayLabel(d.date)}: ${n} enviados · ${c.replied(d)} contestaron`}
+                    <td key={d.date} title={`${dayLabel(d.date)}: ${d.whatsapp} enviados · ${d.whatsappReplied} contestaron`}
                       className={`py-1.5 pl-2 text-right tabular-nums ${n === 0 ? 'text-slate-300' : last ? 'font-bold text-slate-900' : 'text-slate-700'}`}>
                       {n === 0 && !last ? '·' : n}
                     </td>
                   );
                 })}
-                <td className="py-1.5 pl-3 text-right tabular-nums font-medium">{sum(app.daily.map(c.sent))}</td>
-                <td className="py-1.5 pl-3 text-right tabular-nums text-slate-600">{sum(app.daily.map(c.replied))}</td>
+                <td className="py-1.5 pl-3 text-right tabular-nums font-medium">{sum(app.daily.map(r.value))}</td>
               </tr>
             ))}
           </tbody>

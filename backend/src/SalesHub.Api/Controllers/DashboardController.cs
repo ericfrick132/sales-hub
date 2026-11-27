@@ -280,27 +280,27 @@ public class DashboardController : ControllerBase
             daily);
     }
 
-    public record OutboundDay(string Date, int Whatsapp, int WhatsappReplied, int Instagram, int InstagramReplied);
-    /// <summary>Leads contactados de un rubro (o de un origen) en el período y cuántos de esos hoy.</summary>
+    public record OutboundDay(string Date, int Whatsapp, int WhatsappReplied);
     public record OutboundGroup(string Label, int Total, int Today);
-    public record OutboundApp(string ProductKey, string DisplayName, int? WhatsappCap, int? InstagramCap, List<OutboundDay> Daily,
-        List<OutboundGroup> Sources, List<OutboundGroup> Rubros);
+    public record OutboundApp(string ProductKey, string DisplayName, int? WhatsappCap, int Ready, int Analyzing,
+        List<OutboundDay> Daily, List<OutboundGroup> Sources, List<OutboundGroup> Rubros);
     public record OutboundResult(int Days, List<OutboundApp> Apps);
 
     /// <summary>
-    /// Outbound en frío por app, canal y día (días de Argentina), para la card del Dashboard. WhatsApp = contactos
-    /// nuevos que abrió la línea outbound (outbound_contacts enviados); Instagram = DMs que salieron desde la cuenta
-    /// de la app (leads.IgDmSentAt). "Contestaron" va por la tanda de ese día: de los que se mandaron ese día,
-    /// cuántos contestaron después (en WhatsApp, sin contar el saludo automático del negocio). El tope es el de hoy;
-    /// null = ese canal no está prendido para la app. Sources y Rubros dicen de dónde salieron y de qué rubro son los
-    /// leads contactados del período (cada lead una vez, aunque le haya llegado por los dos canales).
+    /// Outbound en frío por WhatsApp, por app y día (días de Argentina), para la card del Dashboard. Solo WhatsApp
+    /// (Eric 27/11/2026: "quiero outbound por whatsapp nada mas"): contactos nuevos que abrió la línea outbound
+    /// (outbound_contacts enviados). "Contestaron" va por la tanda de ese día: de los que se mandaron ese día, cuántos
+    /// contestaron después (sin contar el saludo automático del negocio). El tope es el de hoy; null = la app no tiene
+    /// línea outbound prendida. Ready = los que la línea puede mandar ya (mismo filtro que la línea); Analyzing = los
+    /// fríos a los que todavía les falta leer la web o el Instagram. Sources y Rubros: de los contactados del período.
     /// </summary>
     [HttpGet("outbound")]
-    public async Task<ActionResult<OutboundResult>> Outbound([FromQuery] int days = 7, CancellationToken ct = default)
+    public async Task<ActionResult<OutboundResult>> Outbound(
+        [FromServices] SalesHub.Infrastructure.Services.Outbound.OutboundService outbound,
+        [FromQuery] int days = 7, CancellationToken ct = default)
     {
         if (!CurrentUser.IsAdmin(User)) return Forbid();
         days = Math.Clamp(days, 1, 31);
-        var now = DateTimeOffset.UtcNow;
         var today = SalesHub.Infrastructure.Services.LeadEntryService.TodayAr();
         var firstDay = today.AddDays(-(days - 1));
         var since = SalesHub.Infrastructure.Services.LeadEntryService.ArDayStartUtc(firstDay);
@@ -315,43 +315,20 @@ public class DashboardController : ControllerBase
             })
             .ToListAsync(ct);
 
-        var igLine = SalesHub.Infrastructure.Instagram.InstagramMessengerClient.LinePrefix;
-        var ig = await _db.Leads.AsNoTracking()
-            .Where(l => l.IgDmSentAt >= since)
-            .Select(l => new
-            {
-                LeadId = l.Id, l.ProductKey, l.Source, Rubro = l.ProspectRubro,
-                At = l.IgDmSentAt!.Value,
-                Replied = _db.ConversationMessages.Any(m => m.LeadId == l.Id && m.Direction == MessageDirection.Inbound
-                    && m.Timestamp >= l.IgDmSentAt && m.EvolutionInstance!.StartsWith(igLine)),
-            })
+        // Líneas outbound prendidas: el tope de hoy de la app es la suma de sus líneas.
+        var lines = await _db.EvolutionInstances.AsNoTracking()
+            .Where(i => i.SellerId == null && i.OutboundCap > 0 && i.ProductKey != null && i.ProductKey != "")
             .ToListAsync(ct);
-
-        // Topes de hoy: los de las líneas outbound de la app (sumados) y el de los DMs de su cuenta de Instagram.
-        var waCaps = (await _db.EvolutionInstances.AsNoTracking()
-                .Where(i => i.SellerId == null && i.OutboundCap > 0 && i.ProductKey != null && i.ProductKey != "")
-                .Select(i => new { ProductKey = i.ProductKey!, i.OutboundCap })
-                .ToListAsync(ct))
-            .GroupBy(x => x.ProductKey).ToDictionary(g => g.Key, g => g.Sum(x => x.OutboundCap));
-        var igCaps = (await _db.IgDmSettings.AsNoTracking().Where(s => s.Enabled).ToListAsync(ct))
-            .GroupBy(s => s.ProductKey)
-            .ToDictionary(g => g.Key, g => g.Sum(s =>
-                SalesHub.Infrastructure.Instagram.IgOutreachPlan.ColdCapToday(s, now)
-                + SalesHub.Infrastructure.Instagram.IgOutreachPlan.FollowerCapToday(s, now)));
+        var linesBy = lines.GroupBy(i => i.ProductKey!).ToDictionary(g => g.Key, g => g.ToList());
 
         var names = (await _db.Products.AsNoTracking().Select(p => new { p.ProductKey, p.DisplayName }).ToListAsync(ct))
             .GroupBy(p => p.ProductKey).ToDictionary(g => g.Key, g => g.First().DisplayName);
 
         var waBy = wa.GroupBy(x => (x.ProductKey, Day: Day(x.At)))
             .ToDictionary(g => g.Key, g => (Sent: g.Count(), Replied: g.Count(x => x.Replied)));
-        var igBy = ig.GroupBy(x => (x.ProductKey, Day: Day(x.At)))
-            .ToDictionary(g => g.Key, g => (Sent: g.Count(), Replied: g.Count(x => x.Replied)));
 
-        // De dónde salieron y de qué rubro son: un lead cuenta una vez; "hoy" si hoy le salió algo por algún canal.
-        var contacted = wa.Select(x => (x.LeadId, x.ProductKey, x.Source, x.Rubro, Day: Day(x.At)))
-            .Concat(ig.Select(x => (x.LeadId, x.ProductKey, x.Source, x.Rubro, Day: Day(x.At))))
-            .GroupBy(x => x.LeadId)
-            .Select(g => (g.First().ProductKey, g.First().Source, g.First().Rubro, Today: g.Any(x => x.Day == today)))
+        var contacted = wa.GroupBy(x => x.LeadId)
+            .Select(g => (g.First().ProductKey, g.First().Source, g.First().Rubro, Today: g.Any(x => Day(x.At) == today)))
             .ToList();
         List<OutboundGroup> Groups(string productKey, Func<(string ProductKey, LeadSource Source, string? Rubro, bool Today), string> label) =>
             contacted.Where(x => x.ProductKey == productKey)
@@ -360,31 +337,44 @@ public class DashboardController : ControllerBase
                 .OrderByDescending(g => g.Total).ThenBy(g => g.Label)
                 .ToList();
 
-        var apps = waCaps.Keys.Concat(igCaps.Keys).Concat(wa.Select(x => x.ProductKey)).Concat(ig.Select(x => x.ProductKey))
-            .Where(k => !string.IsNullOrEmpty(k)).Distinct()
-            .Select(k =>
+        var apps = new List<OutboundApp>();
+        foreach (var k in linesBy.Keys.Concat(wa.Select(x => x.ProductKey)).Where(k => !string.IsNullOrEmpty(k)).Distinct())
+        {
+            var daily = new List<OutboundDay>();
+            for (var i = 0; i < days; i++)
             {
-                var daily = new List<OutboundDay>();
-                for (var i = 0; i < days; i++)
-                {
-                    var d = firstDay.AddDays(i);
-                    var w = waBy.GetValueOrDefault((k, d));
-                    var g = igBy.GetValueOrDefault((k, d));
-                    daily.Add(new OutboundDay(d.ToString("yyyy-MM-dd"), w.Sent, w.Replied, g.Sent, g.Replied));
-                }
-                return new OutboundApp(k, names.GetValueOrDefault(k) is { Length: > 0 } n ? n : k,
-                    waCaps.TryGetValue(k, out var wc) ? wc : null,
-                    igCaps.TryGetValue(k, out var ic) ? ic : null,
-                    daily,
-                    Groups(k, x => OutboundSourceLabel(x.Source)),
-                    Groups(k, x => SalesHub.Infrastructure.Services.Outbound.ProspectScorer.RubroByKey(x.Rubro)?.Label ?? "Sin rubro"));
-            })
-            .OrderByDescending(a => a.Daily[^1].Whatsapp + a.Daily[^1].Instagram)
-            .ThenByDescending(a => a.Daily.Sum(d => d.Whatsapp + d.Instagram))
-            .ThenBy(a => a.DisplayName)
-            .ToList();
+                var d = firstDay.AddDays(i);
+                var w = waBy.GetValueOrDefault((k, d));
+                daily.Add(new OutboundDay(d.ToString("yyyy-MM-dd"), w.Sent, w.Replied));
+            }
 
-        return new OutboundResult(days, apps);
+            int? cap = null; int ready = 0, analyzing = 0;
+            if (linesBy.TryGetValue(k, out var appLines))
+            {
+                cap = appLines.Sum(l => l.OutboundCap);
+                // Las líneas de una misma app comparten los leads: cuenta la que más tiene listos.
+                foreach (var line in appLines)
+                    ready = Math.Max(ready, await outbound.CandidatesFor(line).CountAsync(ct));
+                var minScore = appLines.Min(l => l.OutboundMinScore);
+                // Por analizar: la web sin leer todavía, o la web leída con buen puntaje y el Instagram sin leer.
+                var webPending = await _db.Leads.AsNoTracking().CountAsync(l => l.ProductKey == k && (int)l.Source < 400
+                    && l.ProspectEnrichedAt == null && l.SentAt == null
+                    && (l.Status == LeadStatus.New || l.Status == LeadStatus.Assigned), ct);
+                var igPending = await outbound.Eligible(k).CountAsync(l => l.ProspectScore >= minScore
+                    && l.ProspectEnrichedAt != null && l.InstagramCheckedAt == null, ct);
+                analyzing = webPending + igPending;
+            }
+
+            apps.Add(new OutboundApp(k, names.GetValueOrDefault(k) is { Length: > 0 } n ? n : k, cap, ready, analyzing, daily,
+                Groups(k, x => OutboundSourceLabel(x.Source)),
+                Groups(k, x => SalesHub.Infrastructure.Services.Outbound.ProspectScorer.RubroByKey(x.Rubro)?.Label ?? "Sin rubro")));
+        }
+
+        return new OutboundResult(days, apps
+            .OrderByDescending(a => a.Daily[^1].Whatsapp)
+            .ThenByDescending(a => a.Daily.Sum(d => d.Whatsapp))
+            .ThenBy(a => a.DisplayName)
+            .ToList());
     }
 
     /// <summary>De dónde se trajo el lead, como se lee en la card de outbound.</summary>
